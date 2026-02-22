@@ -21,6 +21,8 @@ services:
       - SHARED_DATA_DIR=/app/shared_data
     depends_on:
       - redis
+    # Increase shared memory size for potential browser operations or large file buffers
+    shm_size: '2gb'
 
   worker:
     build: .
@@ -35,3 +37,7 @@ services:
     depends_on:
       - redis
       - web
+    # Essential for headless Chrome stability in Docker
+    shm_size: '2gb'
+    # Clean up zombie processes if Celery crashes hard (though worker.py handles most)
+    init: true

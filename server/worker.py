@@ -2,6 +2,7 @@ import os
 import sys
 import subprocess
 import logging
+import signal
 from typing import Optional
 from celery import Task
 from server.celery_app import app
@@ -60,6 +61,7 @@ def translate_task(self: Task, docx_path: str, src_lang: str, dest_lang: str, en
         cmd.extend(["--enginemethod", method])
 
     saved_filename = None
+    process = None
 
     try:
         # Run subprocess
@@ -72,7 +74,8 @@ def translate_task(self: Task, docx_path: str, src_lang: str, dest_lang: str, en
             bufsize=1,
             encoding='utf-8',
             errors='replace',
-            cwd=BASE_DIR
+            cwd=BASE_DIR,
+            preexec_fn=os.setsid # Create a process group for clean termination
         )
 
         # Prevent EOFError on input()
@@ -122,3 +125,16 @@ def translate_task(self: Task, docx_path: str, src_lang: str, dest_lang: str, en
     except Exception as e:
         logger.exception("Unexpected error in worker task")
         return {"status": "error", "message": str(e)}
+
+    finally:
+        # Prevent Zombie Processes: Ensure subprocess and its children are killed
+        if process and process.poll() is None:
+            logger.warning("Terminating hanging subprocess...")
+            try:
+                os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+                process.terminate()
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+            except Exception as e:
+                logger.error(f"Error terminating process: {e}")
