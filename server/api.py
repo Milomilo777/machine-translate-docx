@@ -31,7 +31,7 @@ async def read_root(request: Request):
 @app.post("/translate")
 async def translate_document(
     file: UploadFile = File(...),
-    src_lang: str = Form("Auto"),
+    source_lang: str = Form("Auto"), # Fixed: Changed from src_lang to match HTML form
     dest_lang: str = Form("fa"),
     engine: str = Form("Google"),
     split_sentences: bool = Form(True)
@@ -59,7 +59,7 @@ async def translate_document(
         # In a production environment, you might return a task_id and poll for status.
         task = translate_task.delay(
             docx_path=temp_path,
-            src_lang=src_lang,
+            src_lang=source_lang, # Pass corrected variable
             dest_lang=dest_lang,
             engine=engine,
             split_sentences=split_sentences
