@@ -4,13 +4,21 @@ services:
   redis:
     image: redis:alpine
     restart: unless-stopped
+    # Limit Redis memory usage to prevent system OOM
+    command: redis-server --maxmemory 200mb --maxmemory-policy allkeys-lru --save "" --appendonly no
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
 
   web:
     build: .
     restart: always
-    command: uvicorn server.api:app --host 0.0.0.0 --port 8000
+    # Uvicorn config for long-running connections (1 hour timeout)
+    command: uvicorn server.api:app --host 0.0.0.0 --port 8000 --timeout-keep-alive 3600
     volumes:
       - ./shared_data:/app/shared_data
     ports:
@@ -20,14 +28,17 @@ services:
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
       - SHARED_DATA_DIR=/app/shared_data
     depends_on:
-      - redis
-    # Increase shared memory size for potential browser operations or large file buffers
+      redis:
+        condition: service_healthy
+    # Shared memory for potential file buffering
     shm_size: '2gb'
 
   worker:
     build: .
     restart: always
-    command: celery -A server.celery_app worker --loglevel=info
+    # Limit concurrency to 1 to ensure only ONE Chrome instance runs per container
+    # This prevents RAM exhaustion on smaller servers (e.g., 2GB-4GB RAM instances)
+    command: celery -A server.celery_app worker --loglevel=info --concurrency=1
     volumes:
       - ./shared_data:/app/shared_data
     environment:
@@ -35,9 +46,11 @@ services:
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
       - SHARED_DATA_DIR=/app/shared_data
     depends_on:
-      - redis
-      - web
+      redis:
+        condition: service_healthy
+      web:
+        condition: service_started
     # Essential for headless Chrome stability in Docker
     shm_size: '2gb'
-    # Clean up zombie processes if Celery crashes hard (though worker.py handles most)
+    # Clean up zombie processes if Celery crashes hard
     init: true
