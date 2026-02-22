@@ -14,9 +14,9 @@ logger = logging.getLogger("FastAPI")
 
 app = FastAPI(title="Machine Translator API", version="1.0.0")
 
-# Setup Temp Dir
-TEMP_DIR = os.path.join(os.getcwd(), "server_temp")
-os.makedirs(TEMP_DIR, exist_ok=True)
+# Setup Shared Data Dir (Docker Volume)
+SHARED_DATA_DIR = os.environ.get("SHARED_DATA_DIR", os.path.join(os.getcwd(), "shared_data"))
+os.makedirs(SHARED_DATA_DIR, exist_ok=True)
 
 @app.post("/translate")
 async def translate_document(
@@ -33,10 +33,10 @@ async def translate_document(
     if not file.filename.endswith(".docx"):
         raise HTTPException(status_code=400, detail="Only .docx files are supported.")
 
-    # 1. Save File to Temp Dir
+    # 1. Save File to Shared Data Dir
     file_id = str(uuid.uuid4())
     safe_filename = "".join(c for c in file.filename if c.isalnum() or c in (' ', '.', '_')).rstrip()
-    temp_path = os.path.join(TEMP_DIR, f"{file_id}_{safe_filename}")
+    temp_path = os.path.join(SHARED_DATA_DIR, f"{file_id}_{safe_filename}")
 
     with open(temp_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
@@ -72,10 +72,9 @@ async def translate_document(
         logger.exception("Error processing request")
         raise HTTPException(status_code=500, detail=str(e))
     finally:
-        # Cleanup uploaded file if needed (optional based on policy)
-        # os.remove(temp_path)
+        # Cleanup logic if desired
         pass
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok", "celery_status": "connected"}
+    return {"status": "ok", "celery_status": "connected", "storage": SHARED_DATA_DIR}
