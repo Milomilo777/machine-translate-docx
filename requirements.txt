@@ -5,4 +5,5 @@ python-docx
 openpyxl
 lxml
 chardet
-bidi
+python-bidi
+arabic-reshaper
