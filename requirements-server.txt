@@ -30,9 +30,12 @@ selenium
 undetected-chromedriver
 beautifulsoup4
 
-# Data Handling
+# Data Handling & AI Core
 pandas
 numpy
+torch
+scipy
+scikit-learn
 
 # Advanced NLP/Media
 openai

@@ -40,7 +40,7 @@ A modernized, high-performance web application for translating DOCX files using 
    ```bash
    docker-compose up --build -d
    ```
-   *Note: First run may take a few minutes to download the 1.5GB Docker image.*
+   *Note: First run may take a few minutes to download the 5GB+ Docker image.*
 
 3. **Access the Dashboard:**
    Open your browser to: **[http://localhost:8000](http://localhost:8000)**
@@ -77,3 +77,7 @@ sudo apt-get install google-chrome-stable redis-server
 ## 📜 License
 
 MIT License.
+
+## ⚠️ Heavy AI Warning (v1.2.5)
+This version includes **PyTorch, SciPy, and Scikit-Learn**. The Docker image size is **5GB+**.
+Ensure you have at least 10GB of free disk space before running `docker-compose build`.
