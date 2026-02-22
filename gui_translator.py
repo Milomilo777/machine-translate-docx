@@ -5,6 +5,7 @@ import subprocess
 import threading
 import sys
 import platform
+import time
 
 # Set appearance mode and default color theme
 ctk.set_appearance_mode("dark")
@@ -17,8 +18,8 @@ class MachineTranslatorApp(ctk.CTk):
 
         # Configure window
         self.title("Machine Translator")
-        self.geometry("700x850")
-        self.minsize(600, 750)
+        self.geometry("700x800")
+        self.minsize(600, 700)
 
         # Configure grid layout
         self.grid_columnconfigure(0, weight=1)
@@ -115,7 +116,7 @@ class MachineTranslatorApp(ctk.CTk):
         self.dest_lang_dropdown.set("fa")
         self.dest_lang_dropdown.grid(row=2, column=1, padx=15, pady=(0, 10), sticky="ew")
 
-        # Translation Engine
+        # Translation Engine (Strict Constraint: 4 Options)
         self.engine_label = ctk.CTkLabel(
             self.settings_frame,
             text="Translation Engine",
@@ -125,32 +126,13 @@ class MachineTranslatorApp(ctk.CTk):
 
         self.engine_dropdown = ctk.CTkComboBox(
             self.settings_frame,
-            values=["chatgpt", "google", "deepl", "yandex", "perplexity"],
+            values=["Google", "Perplexity", "ChatGPT (API)", "ChatGPT (Web)"],
             state="readonly",
             height=35,
             font=ctk.CTkFont(size=13)
         )
-        self.engine_dropdown.set("chatgpt")
-        self.engine_dropdown.grid(row=4, column=0, columnspan=2, padx=15, pady=(0, 5), sticky="ew")
-
-        # Method
-        self.method_label = ctk.CTkLabel(
-            self.settings_frame,
-            text="Method",
-            font=ctk.CTkFont(size=13)
-        )
-        self.method_label.grid(row=5, column=0, columnspan=2, padx=15, pady=(5, 5), sticky="w")
-
-        self.method_dropdown = ctk.CTkComboBox(
-            self.settings_frame,
-            values=["api", "javascript", "phrasesblock", "singlephrase"],
-            state="readonly",
-            height=35,
-            font=ctk.CTkFont(size=13)
-        )
-        self.method_dropdown.set("api")
-        self.method_dropdown.grid(row=6, column=0, columnspan=2, padx=15, pady=(0, 15), sticky="ew")
-
+        self.engine_dropdown.set("ChatGPT (API)")
+        self.engine_dropdown.grid(row=4, column=0, columnspan=2, padx=15, pady=(0, 15), sticky="ew")
 
         # Options Frame
         self.options_frame = ctk.CTkFrame(self, fg_color="transparent")
@@ -254,8 +236,7 @@ class MachineTranslatorApp(ctk.CTk):
         # Get settings
         source_lang = self.source_lang_dropdown.get()
         dest_lang = self.dest_lang_dropdown.get()
-        engine = self.engine_dropdown.get()
-        method = self.method_dropdown.get()
+        engine_selection = self.engine_dropdown.get()
         split_sentences = self.split_sentences_checkbox.get()
         show_browser = self.show_browser_checkbox.get()
 
@@ -263,8 +244,7 @@ class MachineTranslatorApp(ctk.CTk):
         self.log_message("\n" + "="*50)
         self.log_message("🚀 Starting translation...")
         self.log_message(f"Source: {source_lang} -> Destination: {dest_lang}")
-        self.log_message(f"Engine: {engine}")
-        self.log_message(f"Method: {method}")
+        self.log_message(f"Engine: {engine_selection}")
         self.log_message(f"Split: {split_sentences}")
         self.log_message("="*50)
 
@@ -283,7 +263,6 @@ class MachineTranslatorApp(ctk.CTk):
         cmd = [sys.executable, script_path]
         cmd.extend(["--docxfile", file_path])
         cmd.extend(["--destlang", dest_lang])
-        cmd.extend(["--engine", engine])
 
         if source_lang != "Auto":
              cmd.extend(["--srclang", source_lang])
@@ -291,37 +270,47 @@ class MachineTranslatorApp(ctk.CTk):
         if split_sentences:
             cmd.append("--split")
 
-        if method and method != "":
-             cmd.extend(["--enginemethod", method])
-
         if show_browser:
             cmd.append("--showbrowser")
 
+        # Handle Engine Mapping (Layer 2 & 3: Integration & Constraints)
+        if engine_selection == "Google":
+            cmd.extend(["--engine", "google"])
+        elif engine_selection == "Perplexity":
+            cmd.extend(["--engine", "perplexity"])
+            # Assuming default method or 'webservice' depending on backend behavior
+        elif engine_selection == "ChatGPT (API)":
+            cmd.extend(["--engine", "chatgpt"])
+            cmd.extend(["--enginemethod", "api"])
+        elif engine_selection == "ChatGPT (Web)":
+            cmd.extend(["--engine", "chatgpt"])
+            cmd.extend(["--enginemethod", "phrasesblock"]) # Or explicit method
+
         # Run in thread
+        self.translate_button.configure(state="disabled")
         threading.Thread(target=self.run_process, args=(cmd,), daemon=True).start()
 
     def run_process(self, cmd):
-        self.translate_button.configure(state="disabled")
+        # Layer 1: Concurrency and State
         try:
-            self.log_message(f"Running command...")
+            # self.log_message(f"DEBUG: Running command: {cmd}")
 
             # Using Popen to capture output in real-time
-            # Windows needs shell=False usually for list args, but depends on execution.
-            # Using shell=False is safer with list args.
-
             process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
+                stderr=subprocess.STDOUT, # Redirect stderr to stdout
                 text=True,
                 bufsize=1,
                 encoding='utf-8',
                 errors='replace',
-                cwd=os.getcwd() # Run from current directory
+                cwd=os.getcwd()
             )
 
+            # Read output line by line
             for line in process.stdout:
-                self.log_message(line.strip())
+                if line:
+                    self.log_message(line.strip())
 
             process.wait()
 
@@ -332,8 +321,12 @@ class MachineTranslatorApp(ctk.CTk):
 
         except Exception as e:
             self.log_message(f"\n❌ Error running process: {str(e)}")
+            # Print traceback for debugging if needed
+            import traceback
+            traceback.print_exc()
         finally:
             # Re-enable button
+            # Use self.after to ensure thread safety when updating UI
              self.after(0, lambda: self.translate_button.configure(state="normal"))
 
 
