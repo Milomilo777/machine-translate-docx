@@ -4,4 +4,31 @@ python-multipart
 celery[redis]
 redis
 jinja2
+
+# Core System
 json5
+python-dotenv
+requests
+chardet
+
+# Document Processing
+python-docx
+openpyxl
+lxml
+srt
+
+# Persian/RTL Support
+python-bidi
+arabic-reshaper
+hazm
+parsivar
+khoshnevis
+
+# Web Automation
+selenium
+undetected-chromedriver
+beautifulsoup4
+
+# Data Handling
+pandas
+numpy

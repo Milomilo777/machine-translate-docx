@@ -1,10 +1,27 @@
-selenium
-undetected-chromedriver
+# Core System
+json5
+python-dotenv
 requests
+chardet
+
+# Document Processing
 python-docx
 openpyxl
 lxml
-chardet
+srt
+
+# Persian/RTL Support
 python-bidi
 arabic-reshaper
-json5
+hazm
+parsivar
+khoshnevis
+
+# Web Automation
+selenium
+undetected-chromedriver
+beautifulsoup4
+
+# Data Handling
+pandas
+numpy
