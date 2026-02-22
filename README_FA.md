@@ -1,6 +1,6 @@
-# 🇮🇷 سیستم حرفه‌ای ترجمه خودکار فایل‌های ورد (نسخه ۱.۲.۳)
+# 🇮🇷 سیستم حرفه‌ای ترجمه خودکار فایل‌های ورد (نسخه ۱.۲.۴)
 
-![Release v1.2.3](https://img.shields.io/badge/Release-v1.2.3-green)
+![Release v1.2.4](https://img.shields.io/badge/Release-v1.2.4-green)
 ![Docker](https://img.shields.io/badge/Docker-Ready-blue)
 ![FastAPI](https://img.shields.io/badge/Backend-FastAPI-teal)
 ![RTL Support](https://img.shields.io/badge/RTL-Persian%20%7C%20Arabic-orange)
@@ -13,10 +13,9 @@
   - **فرانت‌اند:** داشبورد مدرن وب با قابلیت "کشیدن و رها کردن" (Drag & Drop) و حالت تاریک.
   - **بک‌اند:** فریم‌ورک سریع FastAPI + صف‌بندی با Celery + ردیس (Redis).
   - **موتور ترجمه:** گوگل کروم هدلس با قابلیت دور زدن سیستم‌های ضدربات (undetected_chromedriver).
-- **پایداری اتمی (Atomic Reliability):**
-  - **مدیریت هوشمند منابع:** محدود کردن تعداد پردازش‌های همزمان به ۱ عدد برای جلوگیری از پر شدن حافظه رم در سیستم‌های ۸ یا ۱۶ گیگابایتی.
-  - **جلوگیری از هنگ کردن:** کشتن خودکار پردازش‌های مرده کروم (Zombie Prevention).
-  - **تایم‌اوت طولانی:** افزایش زمان انتظار سرور به ۱ ساعت برای ترجمه فایل‌های حجیم ۵۰۰+ صفحه‌ای.
+- **پشتیبانی از هوش مصنوعی پیشرفته:**
+  - **Whisper & NLTK:** پشتیبانی از پردازش گفتار و متن با استفاده از کتابخانه‌های `whisper` و `nltk`.
+  - **OpenAI:** یکپارچگی کامل با API‌های هوش مصنوعی.
 - **پشتیبانی پیشرفته از زبان فارسی (RTL):**
   - ادغام کتابخانه‌های `hazm`, `parsivar`, `khoshnevis`, `python-bidi`, و `arabic-reshaper`.
   - نمایش صحیح متون ترکیبی فارسی/انگلیسی و جداول پیچیده.

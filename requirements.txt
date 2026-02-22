@@ -2,7 +2,8 @@
 json5
 python-dotenv
 requests
-chardet
+chardet<6.0.0
+urllib3<2.0.0
 
 # Document Processing
 python-docx
@@ -25,3 +26,9 @@ beautifulsoup4
 # Data Handling
 pandas
 numpy
+
+# Advanced NLP/Media
+openai
+whisper
+nltk
+yt-dlp
