@@ -3,8 +3,10 @@ import shutil
 import uuid
 import logging
 from typing import Optional
-from fastapi import FastAPI, File, UploadFile, HTTPException, Form
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, File, UploadFile, HTTPException, Form, Request
+from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 from server.celery_app import app as celery_app
 from server.worker import translate_task
 
@@ -12,11 +14,19 @@ from server.worker import translate_task
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("FastAPI")
 
-app = FastAPI(title="Machine Translator API", version="1.0.0")
+app = FastAPI(title="Machine Translator API", version="2.0.0")
 
 # Setup Shared Data Dir (Docker Volume)
 SHARED_DATA_DIR = os.environ.get("SHARED_DATA_DIR", os.path.join(os.getcwd(), "shared_data"))
 os.makedirs(SHARED_DATA_DIR, exist_ok=True)
+
+# Setup Templates
+templates = Jinja2Templates(directory="server/templates")
+
+@app.get("/", response_class=HTMLResponse)
+async def read_root(request: Request):
+    """Serve the Web Dashboard."""
+    return templates.TemplateResponse("index.html", {"request": request})
 
 @app.post("/translate")
 async def translate_document(
@@ -55,13 +65,19 @@ async def translate_document(
             split_sentences=split_sentences
         )
 
-        result = task.get(timeout=600) # Wait up to 10 minutes
+        # Wait up to 20 minutes for large files
+        result = task.get(timeout=1200)
 
         if result["status"] == "success":
             output_path = result["file_path"]
             if os.path.exists(output_path):
                 filename = os.path.basename(output_path)
-                return FileResponse(path=output_path, filename=filename, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+                return FileResponse(
+                    path=output_path,
+                    filename=filename,
+                    media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+                )
             else:
                  raise HTTPException(status_code=500, detail="Output file missing after successful task.")
         else:
