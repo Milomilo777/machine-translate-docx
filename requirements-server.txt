@@ -4,3 +4,4 @@ python-multipart
 celery[redis]
 redis
 jinja2
+json5

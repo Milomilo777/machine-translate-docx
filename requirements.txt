@@ -7,3 +7,4 @@ lxml
 chardet
 python-bidi
 arabic-reshaper
+json5
