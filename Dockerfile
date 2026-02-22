@@ -34,4 +34,4 @@ RUN mkdir -p /app/shared_data
 EXPOSE 8000
 
 # Default command (overridden by docker-compose)
-CMD ["uvicorn", "server.api:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["python", "-m", "uvicorn", "server.api:app", "--host", "0.0.0.0", "--port", "8000"]
