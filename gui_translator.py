@@ -300,16 +300,25 @@ class MachineTranslatorApp(ctk.CTk):
             # self.log_message(f"DEBUG: Running command: {cmd}")
 
             # Using Popen to capture output in real-time
+            # stdin=subprocess.PIPE to feed Enter if needed by input() calls
             process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT, # Redirect stderr to stdout
+                stdin=subprocess.PIPE,    # Enable writing to stdin
                 text=True,
                 bufsize=1,
                 encoding='utf-8',
                 errors='replace',
                 cwd=os.getcwd()
             )
+
+            # Write a newline to stdin to prevent EOFError on input() calls
+            try:
+                process.stdin.write('\n')
+                process.stdin.flush()
+            except Exception:
+                pass # Process might have exited already or doesn't need input
 
             # Read output line by line
             for line in process.stdout:
