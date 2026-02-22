@@ -6,6 +6,7 @@ import threading
 import sys
 import platform
 import time
+import re
 
 # Set appearance mode and default color theme
 ctk.set_appearance_mode("dark")
@@ -288,10 +289,13 @@ class MachineTranslatorApp(ctk.CTk):
 
         # Run in thread
         self.translate_button.configure(state="disabled")
-        threading.Thread(target=self.run_process, args=(cmd,), daemon=True).start()
 
-    def run_process(self, cmd):
+        # Pass engine_selection to run_process for filename modification
+        threading.Thread(target=self.run_process, args=(cmd, engine_selection), daemon=True).start()
+
+    def run_process(self, cmd, engine_name):
         # Layer 1: Concurrency and State
+        saved_filename = None
         try:
             # self.log_message(f"DEBUG: Running command: {cmd}")
 
@@ -310,12 +314,44 @@ class MachineTranslatorApp(ctk.CTk):
             # Read output line by line
             for line in process.stdout:
                 if line:
-                    self.log_message(line.strip())
+                    stripped_line = line.strip()
+                    self.log_message(stripped_line)
+                    # Capture "Saved file name: " output
+                    if "Saved file name: " in stripped_line:
+                        parts = stripped_line.split("Saved file name: ")
+                        if len(parts) > 1:
+                            saved_filename = parts[1].strip()
 
             process.wait()
 
             if process.returncode == 0:
                 self.log_message("\n✅ Translation Completed Successfully!")
+
+                # Layer 2: Filename Modification
+                if saved_filename and os.path.exists(saved_filename):
+                    try:
+                        # Sanitize engine name
+                        engine_suffix = engine_name.replace(" ", "_").replace("(", "").replace(")", "")
+
+                        # Construct new filename
+                        file_dir = os.path.dirname(saved_filename)
+                        file_name = os.path.basename(saved_filename)
+                        name_no_ext, ext = os.path.splitext(file_name)
+
+                        new_file_name = f"{name_no_ext}_{engine_suffix}{ext}"
+                        new_file_path = os.path.join(file_dir, new_file_name)
+
+                        # Rename
+                        os.rename(saved_filename, new_file_path)
+                        self.log_message(f"📄 Renamed output file to: {new_file_name}")
+
+                        # Optional: open the folder?
+                        # if platform.system() == 'Windows':
+                        #     os.startfile(file_dir)
+
+                    except Exception as e:
+                        self.log_message(f"⚠️ Warning: Could not rename file: {e}")
+
             else:
                 self.log_message(f"\n❌ Translation Failed with return code {process.returncode}")
 
