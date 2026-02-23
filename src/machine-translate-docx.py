@@ -1249,7 +1249,7 @@ docx_file_name =  "%s%s" % (splitted_filename[splitted_filename_size-2], splitte
 if splitted_filename_size > 1:
     word_file_to_translate_extension = splitted_filename[splitted_filename_size-1].lower()
 
-if word_file_to_translate_extension == ".docx":
+if word_file_to_translate_extension.lower() == ".docx":
     try:
         docxdoc = docx.Document(word_file_to_translate)
     except:
@@ -1308,7 +1308,7 @@ if not os.path.exists(word_file_to_translate):
     print("ERROR: docxfile '%s' not found, exiting." % (word_file_to_translate))
 
 
-if word_file_to_translate_extension != ".docx":
+if word_file_to_translate_extension.lower() != ".docx":
     print("ERROR: not a docx file. Please convert to docx first then run on docx file. Exiting.")
     if not silent:
         pass
