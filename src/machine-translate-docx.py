@@ -825,7 +825,7 @@ right_to_left_languages_list = {
 
 script_folder = os.path.dirname(os.path.realpath(__file__))
 os_path = os.environ["PATH"]
-new_os_path = "%s;%s" %(script_folder, os_path)
+new_os_path = "%s%s%s" %(script_folder, os.pathsep, os_path)
 
 #print("\nAdding %s to path.\n" % (script_folder))
 os.environ["PATH"] = new_os_path
