@@ -66,7 +66,7 @@ async def translate_document(
         )
 
         # Wait up to 20 minutes for large files
-        result = task.get(timeout=1200)
+        result = task.get(timeout=3600)
 
         if result["status"] == "success":
             output_path = result["file_path"]

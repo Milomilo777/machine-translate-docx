@@ -7021,6 +7021,15 @@ def cleanup_selenium_chrome_temp_folders():
 
 def main() -> int:
     global E_mail_str, end_time, elapsed_time, translation_engine, engine_method, tried_login_in_deepl, viewdocx, word_file_to_translate_save_as_path
+    # Startup Hygiene
+    try:
+        cleanup_selenium_chrome_temp_folders()
+        # Perm Check
+        test_file = os.path.join(tempfile.gettempdir(), "perm_check.tmp")
+        with open(test_file, "w") as f: f.write("ok")
+        os.remove(test_file)
+    except Exception as e:
+        print(f"Warning: Startup check failed: {e}")
     global logged_into_deepl, deepl_nb_clear_cached_times, version_checker_sleep_seconds_on_update
     translation_succeded = False
 
