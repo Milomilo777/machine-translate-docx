@@ -1435,7 +1435,7 @@ if  translation_engine.lower() == "chatgpt" and False:
     chrome_options.add_argument(f"--user-data-dir={user_data_dir}") 
     chrome_options.add_argument(r'--profile-directory=Default')
 
-#chrome_options.add_argument("load-extension=C:\\Users\Patriot\\AppData\\Local\\Google\\Chrome\\User Data\\Default\\Extensions\\mooikfkahbdckldjjndioackbalphokd\\3.17.0_0")
+#chrome_options.add_argument("load-extension=C:/Users\Patriot/AppData/Local/Google/Chrome/User Data/Default/Extensions/mooikfkahbdckldjjndioackbalphokd/3.17.0_0")
 
 if not showbrowser :
     chrome_options.add_argument("--headless")
@@ -1640,7 +1640,7 @@ def selenium_chrome_google_translate(to_translate):
         #input_button.send_keys (to_translate_utf8)
 
         time.sleep(0.2)
-        #driver.execute_script('document.getElementById(\'//textarea[@id=\\\'source\\\']\').setAttribute(\'value\', \'Hello world !\');')
+        #driver.execute_script('document.getElementById(\'//textarea[@id=/\'source/\']\').setAttribute(\'value\', \'Hello world !\');')
         #driver.execute_script("arguments[0].value = arguments[1];", input_button, to_translate_utf8)
         
         try:
@@ -5251,8 +5251,8 @@ def clean_up_previous_chrome_selenium_drivers(current_driver_full_path):
         
         if platform.system().lower() == 'windows':
             userprofile_path = os.environ.get('HOME', os.path.expanduser('~'))
-            selenium_cache_folder = f"{userprofile_path}\\.cache\\selenium"
-            list_driver_path = glob.glob(f"{selenium_cache_folder}\\**\\chromedriver.exe", recursive=True)
+            selenium_cache_folder = os.path.join(userprofile_path, ".cache", "selenium")
+            list_driver_path = glob.glob(f"{selenium_cache_folder}/**/chromedriver", recursive=True)
         else:
             home_path = os.environ.get('HOME')
             selenium_cache_folder = f"{home_path}/.cache/selenium"
@@ -6972,7 +6972,7 @@ def cleanup_selenium_chrome_temp_folders():
             tmp_8char_pattern.pattern
         ]
         
-        paths_to_check = [r"C:\Program Files"]
+        paths_to_check = [tempfile.gettempdir()]
         for env_var in ["TEMP", "TMP"]:
             tmp_dir = os.environ.get(env_var)
             if tmp_dir and os.path.isdir(tmp_dir):
