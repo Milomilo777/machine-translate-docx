@@ -67,7 +67,6 @@ import json5 # json 5 with the ability to have comments
 
 from inspect import currentframe, getframeinfo
 import chardet
-import getpass
 import datetime
 
 import zipfile
@@ -97,13 +96,11 @@ from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.keys import Keys
 from selenium.common.exceptions import StaleElementReferenceException, TimeoutException
 
-from screeninfo import get_monitors
 
 
 #from selenium.webdriver import Firefox, FirefoxOptions
 from time import sleep
 import argparse
-import clipboard
 #import pyperclip
 
 import psutil
@@ -168,7 +165,6 @@ import shutil
 import signal
 import atexit
 
-from tkinter import Tk
 import random
 
 # Track the child processes
