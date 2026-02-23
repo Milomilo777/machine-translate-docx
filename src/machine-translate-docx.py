@@ -2493,7 +2493,7 @@ def selenium_chrome_deepl_log_in():
     deepl_account_enabled_key = ['deepl', 'account', 'enabled']
     deepl_account_enabled = get_nested_value_from_json_array(json_configuration_array, deepl_account_enabled_key)
     
-    #driver.maximize_window()
+    #pass # driver.maximize_window()
 
     try:
         driver.get("https://www.deepl.com/translator")
@@ -2651,7 +2651,7 @@ def selenium_chrome_deepl_log_in():
 def selenium_chrome_perplexity_wait_log_in():
     global json_configuration_array, MAX_TRANSLATION_BLOCK_SIZE
     
-    #driver.maximize_window()
+    #pass # driver.maximize_window()
 
     loop_count = 200
     sleep_wait_sec = 5
@@ -5927,7 +5927,7 @@ def minimize_browser():
         # Minimize browser
         #print("Minimizing browser...")
         try:
-            driver.minimize_window()
+            pass # driver.minimize_window()
         except:
             pass
 
@@ -7120,7 +7120,7 @@ def main() -> int:
             print(f"Total cost: {total_cost}")
 
     try:
-        #driver.maximize_window()
+        #pass # driver.maximize_window()
         print("\nClosing chrome browser...")
         
         driver_before_close_time = datetime.datetime.now()
