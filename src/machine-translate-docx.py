@@ -23,12 +23,12 @@ if UNWANTED_FLAGS.issubset(set(sys.argv[1:])):
         c_index = sys.argv.index("-c")
         if c_index + 1 < len(sys.argv):
             # There *is* an argument after -c; likely the resource_tracker helper
-            sys.exit(0)
+            return # raise RuntimeError("Process finished. Exit code: 0")
         # If -c is the last token (rare/invalid), still exit if you want:
-        # sys.exit(0)
+        # raise RuntimeError("Process finished. Exit code: 0")
     except ValueError:
         # -c not found (shouldn't happen when issubset passed), but just in case:
-        sys.exit(0)
+        return # raise RuntimeError("Process finished. Exit code: 0")
     
 # For bidirectional text display right to left and left to right
 from bidi.algorithm import get_display
@@ -603,7 +603,7 @@ if show_version:
     print("Program version: %s\n" % (PROGRAM_VERSION))
     if not silent:
         pass
-    sys.exit(0)
+    raise RuntimeError("Process finished. Exit code: 0")
 
 if args.docxfile is None:
     parser.print_help()
@@ -613,7 +613,7 @@ if args.docxfile is None:
         pass
     else:
         print("Program ended with errors")
-    sys.exit(1)
+    raise RuntimeError("Fatal error. Exit code: 1")
 
 use_html = False
 
@@ -1233,7 +1233,7 @@ def safe_click(driver, element):
 
 if not os.path.exists(word_file_to_translate) :
     print("ERROR: File not found: %s" % (word_file_to_translate))
-    sys.exit(1)
+    raise RuntimeError("Fatal error. Exit code: 1")
 
 splitted_filename = os.path.splitext(os.path.basename(word_file_to_translate))
 
@@ -1258,7 +1258,7 @@ if word_file_to_translate_extension == ".docx":
             pass
         else:
             print("Program ended with errors")
-        sys.exit(2)
+        raise RuntimeError("Fatal error. Exit code: 2")
     styles = docxdoc.styles
     
     if dest_lang_tag != '':
@@ -1310,7 +1310,7 @@ if word_file_to_translate_extension != ".docx":
         pass
     else:
         print("Program ended with errors")
-    os._exit(3)
+    raise RuntimeError("Fatal error. Exit code: 3")
 
 print("")
 
@@ -2016,7 +2016,7 @@ def selenium_chrome_google_translate_text_file(text_file_path):
         print("Error getting google translation from text file.")
         var = traceback.format_exc()
         print(var)
-        sys.exit(7)
+        raise RuntimeError("Fatal error. Exit code: 7")
     return translation_array
     
     
@@ -2379,7 +2379,7 @@ def selenium_chrome_google_translate_xlsx_file(xlsx_file_path):
         print("Error getting google translation from text file.")
         var = traceback.format_exc()
         print(var)
-        sys.exit(8)
+        raise RuntimeError("Fatal error. Exit code: 8")
     return translation_array
 
 
@@ -2439,7 +2439,7 @@ def selenium_chrome_yandex_translate(to_translate):
     except Exception:
         var = traceback.format_exc()
         print(var)
-        sys.exit(9)
+        raise RuntimeError("Fatal error. Exit code: 9")
     return translation
 
 def remove_span_tag(text):  
@@ -3242,7 +3242,7 @@ def selenium_chrome_deepl_translate(to_translate, retry_count):
         var = traceback.format_exc()
         print(var)
         sleep(1)
-        # sys.exit(0)
+        # raise RuntimeError("Process finished. Exit code: 0")
     if res == "":
         return False, ""
     else:
@@ -4180,7 +4180,7 @@ def selenium_chrome_perplexity_translate(to_translate, retry_count, max_try_coun
         var = traceback.format_exc()
         print(var)
         sleep(1)
-        # sys.exit(0)
+        # raise RuntimeError("Process finished. Exit code: 0")
     if translation != "":
         return True, translation
     else:
@@ -4316,7 +4316,7 @@ AFTERTEXTTOTRANSLATE"""
         var = traceback.format_exc()
         print(var)
         sleep(1)
-        # sys.exit(0)
+        # raise RuntimeError("Process finished. Exit code: 0")
     return True, res
 
 
@@ -5020,7 +5020,7 @@ def read_and_parse_docx_document():
             pass
         else:
             print("Program ended with errors")
-        sys.exit(11)
+        raise RuntimeError("Fatal error. Exit code: 11")
 
     rownum = 0
 
@@ -5312,7 +5312,7 @@ def create_webdriver():
             if not exitonsuccess:
                 pass
             
-            sys.exit(12)
+            raise RuntimeError("Fatal error. Exit code: 12")
         
         print("\nChrome started using driver at %s\n" % (driver.service.path))
 
@@ -5538,7 +5538,7 @@ def generate_xlsx_file_from_phrases(xlsx_file_path):
             pass
         else:
             print("Program ended with errors")
-        sys.exit(13)
+        raise RuntimeError("Fatal error. Exit code: 13")
     
     index_current_row = 1
     max_col_length = 0
@@ -6115,7 +6115,7 @@ def print_html_program_result():
             Identical_with_without_separators = ''
         if use_html :
             print("<tr><td>%d<td>'%s'<td>%s<td>%s<td>%s<td>%s%s" % (i, from_text_table[i], translation_result_using_separator[i].encode('utf8'), to_text_by_phrase_separator_table[i].encode('utf8'), to_text_by_phrase_table[i].encode('utf8'), Identical_with_without_separators.encode('utf8'), to_text_by_phrase_table[i].encode('utf8') ))
-        #sys.exit(0)
+        #raise RuntimeError("Process finished. Exit code: 0")
 
     if use_html :
         print("</table><br>elapsedtime = ", elapsedtime)
