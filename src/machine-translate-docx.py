@@ -560,8 +560,6 @@ filename = getframeinfo(cf).filename
 
 start_time = datetime.datetime.now()
 
-for m in get_monitors():
-    #print(str(m))
     break
 
 parser = argparse.ArgumentParser()
@@ -1482,8 +1480,6 @@ if translation_engine.lower() == "chatgpt" and False:
 #user_agent='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/51.0.2704.103 Safari/537.36')
 
 #driver = webdriver.Chrome()
-#driver.set_window_position(0, 350)
-#driver.set_window_size(400, 650)
 
 #driver.get("https://translate.google.com/#%s/%s/" % (src_lang,dest_lang))
 #driver = uc.Firefox()
@@ -1663,7 +1659,6 @@ def selenium_chrome_google_translate(to_translate):
         # driver.execute_script("scrollBy(0,-1000);")
         # actions.move_to_element(EditTranslationButton).perform()
         # sleep(0.1)
-        #driver.set_window_size(800, 700)
         # safe_click(driver, EditTranslationButton)
         
         res_element_xpath = "//textarea[@lang='%s']" % (dest_lang)
@@ -2429,7 +2424,6 @@ def selenium_chrome_yandex_translate(to_translate):
             timeout_copybutton_disabled -=1
 
         actions = ActionChains(driver)
-        driver.set_window_size(800, 700)
         actions.move_to_element(copy_translation_button).perform()
         actions.move_to_element(copy_translation_button).perform()
 
@@ -2533,8 +2527,6 @@ def selenium_chrome_deepl_log_in():
             elif deepl_account_enabled == False:
                 return False
             
-            driver.set_window_position(0, 50)
-            driver.set_window_size(800, 700)
             driver.get("https://www.deepl.com/en/login/")
 
             try:
@@ -2635,21 +2627,18 @@ def selenium_chrome_deepl_log_in():
             var = traceback.format_exc()
             print(var)
             print("Failed to login into Deepl, continuing without being logged on.")
-            driver.set_window_size(800, 700)
             return False
 
     except:
         var = traceback.format_exc()
         print(var)
         print("Failed to login into Deepl, continuing without being logged on.")
-        driver.set_window_size(800, 700)
         return False
 
 
 def selenium_chrome_perplexity_wait_log_in():
     global json_configuration_array, MAX_TRANSLATION_BLOCK_SIZE
     
-    driver.set_window_size(600, 600)
     #driver.maximize_window()
 
     loop_count = 200
@@ -2716,60 +2705,13 @@ def selenium_chrome_deepl_log_off():
         return False
 
 # Module-level cache
-_cached_window_pos = None
 
 
-def set_chrome_window_2_3_screen():
     """
     Sets the Chrome window size to ~2/3 of the screen, max 1200x900.
     Places the window near the top-left corner, but randomly within
     1/10 from the top and 1/10 from the left of the screen.
     Random position is calculated once and reused.
-    """
-    global driver
-    global _cached_window_pos
-
-    try:
-        # Get screen size using Tkinter
-        root = Tk()
-        root.withdraw()
-        screen_width = root.winfo_screenwidth()
-        screen_height = root.winfo_screenheight()
-        root.destroy()
-
-        # Calculate ~2/3 of screen size
-        width = int(screen_width * 5 / 7)
-        height = int(screen_height * 5 / 7)
-
-        # Apply max constraints
-        width = min(width, 1200)
-        height = min(height, 900)
-
-        # ---- Compute random position only once ----
-        if _cached_window_pos is None:
-            max_x_offset = int(screen_width / 15)
-            max_y_offset = int(screen_height / 15)
-
-            x_pos = random.randint(0, max_x_offset)
-            y_pos = random.randint(0, max_y_offset)
-
-            _cached_window_pos = (x_pos, y_pos)
-
-        else:
-            x_pos, y_pos = _cached_window_pos
-
-        # Set window size and position
-        driver.set_window_size(width, height)
-        driver.set_window_position(x_pos, y_pos)
-
-    except Exception as e:
-        print(f"[Warning] Could not set Chrome window size/position: {e}")
-        print("[Info] Falling back to 850x750 at (0,0)")
-        driver.set_window_size(850, 750)
-        driver.set_window_position(0, 0)
-
-        
-def deepl_close_messages():
     """
     Closes all common Deepl popups, messages, and dialogs.
     No parameters needed.
@@ -2847,7 +2789,6 @@ def selenium_chrome_deepl_translate(to_translate, retry_count):
     to_translate_phrases_array = to_translate.split("\n")
     to_translate_phrases_array_len = len(to_translate_phrases_array)
 
-    set_chrome_window_2_3_screen()
     
     def ensure_target_language(driver, dest_lang="fr", dest_lang_name="French", timeout=15):
         try:
@@ -3158,7 +3099,6 @@ def selenium_chrome_deepl_translate(to_translate, retry_count):
                 #except:
                 #    pass
                 sleep(0.05)
-                # driver.set_window_size(800, 700)
                 page_source_str = driver.page_source
                 # print(":::::::::::::::::::::::::::::::::::::::::::::::::::::::")
                 # with open('before.html', 'w', encoding="utf-8") as f:
@@ -3345,7 +3285,6 @@ def selenium_chrome_chatgpt_translate(to_translate, retry_count):
     to_translate_phrases_array = to_translate.split("\n")
     to_translate_phrases_array_len = len(to_translate_phrases_array)
 
-    set_chrome_window_2_3_screen()
 
     try:
         translation_page_openeing_loop_count = 4
@@ -3917,7 +3856,6 @@ def selenium_chrome_perplexity_translate(to_translate, retry_count, max_try_coun
     to_translate_phrases_array = to_translate.split("\n")
     to_translate_phrases_array_len = len(to_translate_phrases_array)
 
-    set_chrome_window_2_3_screen()
     
 
     try:
@@ -5388,13 +5326,8 @@ def create_webdriver():
         print("\nChrome started using driver at %s\n" % (driver.service.path))
 
         #input("driver loaded and running")
-        #driver.set_window_position(0, 350)
         if translation_engine == 'yandex' or translation_engine == 'deepl':
-            driver.set_window_position(0, 100)
-            set_chrome_window_2_3_screen()
         else:
-            set_chrome_window_2_3_screen()
-            #driver.set_window_size(400, 650)
             
     numerrors_deepl = 0
     numerrors_googletranslate= 0
@@ -5904,9 +5837,6 @@ def get_translation_and_replace_after():
                                 service = Service()                                
                                 driver = webdriver.Chrome(service=service, options=chrome_options)
                                 
-                                driver.set_window_position(100, 100)
-                                driver.set_window_size(800, 700)
-                                #driver.set_window_size(400, 650)
 
                             print("phrase_no=%d" % phrase_no)
                             web_translation_separators = selenium_chrome_machine_translate(item_searched_and_replaced_before, phrase_no)
@@ -5921,12 +5851,8 @@ def get_translation_and_replace_after():
                             driver = webdriver.Chrome(service=service, options=chrome_options)
 
                         if translation_engine == 'google' and driver is not None:
-                            driver.set_window_position(100, 100)
-                            driver.set_window_size(800, 700)
 
                         if translation_engine == 'yandex' and driver is not None:
-                            driver.set_window_position(100, 100)
-                            driver.set_window_size(800, 700)
 
                         print("phrase_no = %d" % phrase_no)
                         web_translation_separators = selenium_chrome_machine_translate(item_searched_and_replaced_before, phrase_no)
