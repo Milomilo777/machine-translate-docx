@@ -597,6 +597,7 @@ except:
 
 show_version = args.version
 silent = args.silent
+silent = True
 if show_version:
 
     print("\nDeveloper: %s\n" %(E_mail_str))
@@ -989,6 +990,7 @@ use_api = args.useapi
 
 showbrowser = args.showbrowser
 exitonsuccess = args.exitonsuccess
+exitonsuccess = True
 splitonly = args.splitonly
 if splitonly:
     split_translation = True
