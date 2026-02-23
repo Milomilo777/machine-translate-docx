@@ -8,7 +8,7 @@ ENV SHARED_DATA_DIR=/app/shared_data
 ENV DISPLAY=:99
 
 # Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends     wget     gnupg     unzip     curl     xvfb     fonts-liberation     fonts-noto-core     fonts-noto-cjk     fonts-noto-color-emoji     fonts-arphic-ukai     fonts-arphic-uming     fonts-ipafont-mincho     fonts-ipafont-gothic     fonts-unfonts-core     libnss3     libgconf-2-4     libxss1     libappindicator3-1     libasound2     libatk-bridge2.0-0     libgtk-3-0     libgbm1     && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends     build-essential     python3-dev     libxml2-dev     libxslt1-dev     wget     gnupg     unzip     curl     xvfb     fonts-liberation     fonts-noto-core     fonts-noto-cjk     fonts-noto-color-emoji     fonts-arphic-ukai     fonts-arphic-uming     fonts-ipafont-mincho     fonts-ipafont-gothic     fonts-unfonts-core     libnss3     libgconf-2-4     libxss1     libappindicator3-1     libasound2     libatk-bridge2.0-0     libgtk-3-0     libgbm1     && rm -rf /var/lib/apt/lists/*
 
 # Install Google Chrome Stable
 RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add -     && echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list     && apt-get update     && apt-get install -y google-chrome-stable     && rm -rf /var/lib/apt/lists/*

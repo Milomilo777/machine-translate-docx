@@ -24,12 +24,12 @@ if UNWANTED_FLAGS.issubset(set(sys.argv[1:])):
         c_index = sys.argv.index("-c")
         if c_index + 1 < len(sys.argv):
             # There *is* an argument after -c; likely the resource_tracker helper
-            return # raise RuntimeError("Process finished. Exit code: 0")
+            sys.exit(0)
         # If -c is the last token (rare/invalid), still exit if you want:
         # raise RuntimeError("Process finished. Exit code: 0")
     except ValueError:
         # -c not found (shouldn't happen when issubset passed), but just in case:
-        return # raise RuntimeError("Process finished. Exit code: 0")
+        sys.exit(0)
     
 # For bidirectional text display right to left and left to right
 from bidi.algorithm import get_display
@@ -561,7 +561,6 @@ filename = getframeinfo(cf).filename
 
 start_time = datetime.datetime.now()
 
-    break
 
 parser = argparse.ArgumentParser()
 
@@ -2730,6 +2729,8 @@ def selenium_chrome_deepl_log_off():
     1/10 from the top and 1/10 from the left of the screen.
     Random position is calculated once and reused.
     """
+def deepl_close_messages():
+    """
     Closes all common Deepl popups, messages, and dialogs.
     No parameters needed.
     """
@@ -2895,13 +2896,10 @@ def selenium_chrome_deepl_translate(to_translate, retry_count):
                 ############################################
                 try:
                     js_script = """
-                    // Select DeepL's editable input area
+                    // Select DeepLs editable input area
                     var textarea = document.querySelector('d-textarea[data-testid="translator-source-input"] div[contenteditable="true"]');
                     if (textarea) {
-                        // Set plain text content (not HTML)
                         textarea.textContent = arguments[0];
-
-                        // Simulate real user input so DeepL's JS reacts
                         textarea.dispatchEvent(new InputEvent('input', { bubbles: true }));
                         textarea.dispatchEvent(new Event('change', { bubbles: true }));
                         textarea.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: ' ' }));
@@ -5334,9 +5332,6 @@ def create_webdriver():
         print("\nChrome started using driver at %s\n" % (driver.service.path))
 
         #input("driver loaded and running")
-        if translation_engine == 'yandex' or translation_engine == 'deepl':
-        else:
-            
     numerrors_deepl = 0
     numerrors_googletranslate= 0
 
@@ -5571,7 +5566,7 @@ def generate_xlsx_file_from_phrases(xlsx_file_path):
         
     try:
         wb.save(xlsx_file_path)
-        print ("Excel XLSX file "%s" saved..." %(xlsx_file_path))
+        print ("Excel XLSX file '%s' saved..." %(xlsx_file_path))
     except Exception as e:
         raise RuntimeError(f"Failed to save XLSX file to {xlsx_file_path}: {e}")
 def generate_char_blocks_array_from_phrases(text_file_path):
@@ -5855,9 +5850,12 @@ def get_translation_and_replace_after():
                             driver = webdriver.Chrome(service=service, options=chrome_options)
 
                         if translation_engine == 'google' and driver is not None:
+                            pass
 
                         if translation_engine == 'yandex' and driver is not None:
+                            pass
 
+                            pass
                         print("phrase_no = %d" % phrase_no)
                         web_translation_separators = selenium_chrome_machine_translate(item_searched_and_replaced_before, phrase_no)
                 else:
@@ -6381,21 +6379,20 @@ def run_statistics():
             print("platform_release: %s" % (platform_release))
             print("platform_version: %s" % (platform_version))
             print("platform_machine: %s" % (platform_machine))
-        chrome_options.add_argument("--headless=new")
-        chrome_options.add_argument("--no-sandbox")
-        chrome_options.add_argument("--disable-dev-shm-usage")
-        chrome_options.add_argument("--disable-gpu")
-            print("platform_processor: %s" % (platform_processor))
             print("cpu_count: %s" % (cpu_count))
             print("mem_total: %s" % (mem_total))
             print("local_time_offset: %s" % (local_time_offset_str))
             print(f"cost_google_translate: {cost_google_translate:.2f}$")
-        prefs = { "download.default_directory": os.getcwd(), "download.prompt_for_download": False, "directory_upgrade": True }
-        chrome_options.add_experimental_option("prefs", prefs)
             print("")
         
         #if use_api == False and not splitonly:
         chrome_options = Options()
+        chrome_options.add_argument("--headless=new")
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument("--disable-dev-shm-usage")
+        chrome_options.add_argument("--disable-gpu")
+        prefs = { "download.default_directory": os.getcwd(), "download.prompt_for_download": False, "directory_upgrade": True }
+        chrome_options.add_experimental_option("prefs", prefs)
         chrome_options.add_argument("--disable-web-security")
         chrome_options.add_argument("--disable-xss-auditor")
         chrome_options.add_argument("--log-level=3")  # fatal
@@ -6717,10 +6714,6 @@ def get_robot_usage_comment():
                 print("str_uname : %s" % (str(platform_uname)))
                 # print("platform_uname: %s" % (platform_uname))
                 print("platform_system: %s" % (platform_system))
-            chrome_options.add_argument("--headless=new")
-            chrome_options.add_argument("--no-sandbox")
-            chrome_options.add_argument("--disable-dev-shm-usage")
-            chrome_options.add_argument("--disable-gpu")
                 print("platform_node: %s" % (platform_node))
                 print("platform_release: %s" % (platform_release))
                 print("platform_version: %s" % (platform_version))
@@ -6728,14 +6721,17 @@ def get_robot_usage_comment():
                 print("platform_processor: %s" % (platform_processor))
                 print("cpu_count: %s" % (cpu_count))
                 print("mem_total: %s" % (mem_total))
-            prefs = { "download.default_directory": os.getcwd(), "download.prompt_for_download": False, "directory_upgrade": True }
-            chrome_options.add_experimental_option("prefs", prefs)
-                print("local_time_offset: %s" % (local_time_offset_str))
                 print(f"cost_google_translate: {cost_google_translate:.2f}$")
                 print("")
 
             # if use_api == False and not splitonly:
             chrome_options = Options()
+            chrome_options.add_argument("--headless=new")
+            chrome_options.add_argument("--no-sandbox")
+            chrome_options.add_argument("--disable-dev-shm-usage")
+            chrome_options.add_argument("--disable-gpu")
+            prefs = { "download.default_directory": os.getcwd(), "download.prompt_for_download": False, "directory_upgrade": True }
+            chrome_options.add_experimental_option("prefs", prefs)
             chrome_options.add_argument("--disable-web-security")
             chrome_options.add_argument("--disable-xss-auditor")
             chrome_options.add_argument("--log-level=3")  # fatal
@@ -6878,7 +6874,6 @@ def get_robot_usage_comment():
 # Open the default app for the docx file
     print("File auto-open bypassed in server mode")
     pass
-        print("Warning, unable to open file %s." % (word_file_to_translate_save_as_path))
 def save_docx_file():
     global docxdoc, word_file_to_translate, word_file_to_translate_save_as_path
     
