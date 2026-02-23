@@ -598,6 +598,7 @@ except:
 show_version = args.version
 silent = args.silent
 silent = True
+showbrowser = False
 if show_version:
 
     print("\nDeveloper: %s\n" %(E_mail_str))
@@ -1103,7 +1104,7 @@ else:
     translation_engine = ""
 
 if translation_engine in ['yandex', 'perplexity', 'chatgpt', 'deepl']:
-    showbrowser = True
+    showbrowser = False # Forced headless
 elif translation_engine in ['deepl', 'chatgpt']:
     pass  # keep the value as is
 else:
@@ -1130,11 +1131,11 @@ elif translation_engine == 'google':
     elif engine_method =='xlsxfile':
         engine_method = 'xlsxfile'
         # There is a bug on xlsxfile method, show browser for debugging purpose
-        showbrowser = True
+        showbrowser = False # Forced headless
     elif engine_method  == 'textfile':
         engine_method = 'textfile'
         # There is a bug on textfile method, show browser for debugging purpose
-        showbrowser = True
+        showbrowser = False # Forced headless
     elif engine_method  == 'javascript':
         engine_method = 'javascript'
     else:
@@ -1412,6 +1413,10 @@ user_data_dir = fr"C:\Temp\Chrome"
 
 
 chrome_options = Options()
+chrome_options.add_argument("--headless=new")
+chrome_options.add_argument("--no-sandbox")
+chrome_options.add_argument("--disable-dev-shm-usage")
+chrome_options.add_argument("--disable-gpu")
 chrome_options.add_argument("--disable-web-security")
 chrome_options.add_argument("--disable-xss-auditor")
 chrome_options.add_argument("--lang=en-GB")
@@ -2133,6 +2138,10 @@ def selenium_chrome_google_translate_html_javascript_file(html_file_path):
         except:
             var = traceback.format_exc()
             print(var)
+            chrome_options.add_argument("--headless=new")
+            chrome_options.add_argument("--no-sandbox")
+            chrome_options.add_argument("--disable-dev-shm-usage")
+            chrome_options.add_argument("--disable-gpu")
                         
             
             print("Here do something exit with session failed ")
@@ -6370,6 +6379,10 @@ def run_statistics():
             print("platform_release: %s" % (platform_release))
             print("platform_version: %s" % (platform_version))
             print("platform_machine: %s" % (platform_machine))
+        chrome_options.add_argument("--headless=new")
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument("--disable-dev-shm-usage")
+        chrome_options.add_argument("--disable-gpu")
             print("platform_processor: %s" % (platform_processor))
             print("cpu_count: %s" % (cpu_count))
             print("mem_total: %s" % (mem_total))
@@ -6700,6 +6713,10 @@ def get_robot_usage_comment():
                 print("str_uname : %s" % (str(platform_uname)))
                 # print("platform_uname: %s" % (platform_uname))
                 print("platform_system: %s" % (platform_system))
+            chrome_options.add_argument("--headless=new")
+            chrome_options.add_argument("--no-sandbox")
+            chrome_options.add_argument("--disable-dev-shm-usage")
+            chrome_options.add_argument("--disable-gpu")
                 print("platform_node: %s" % (platform_node))
                 print("platform_release: %s" % (platform_release))
                 print("platform_version: %s" % (platform_version))
