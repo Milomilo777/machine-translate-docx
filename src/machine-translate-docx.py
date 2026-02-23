@@ -602,7 +602,7 @@ if show_version:
     print("\nDeveloper: %s\n" %(E_mail_str))
     print("Program version: %s\n" % (PROGRAM_VERSION))
     if not silent:
-        input("\nEnter to close program")
+        pass
     sys.exit(0)
 
 if args.docxfile is None:
@@ -610,7 +610,7 @@ if args.docxfile is None:
     print("\nDeveloper: smtv.bot@gmail.com\n")
     print("Program version: %s\n" % (PROGRAM_VERSION))
     if not silent:
-        input("\nEnter to close program")
+        pass
     else:
         print("Program ended with errors")
     sys.exit(1)
@@ -1002,7 +1002,7 @@ if dest_lang is not None:
 else:
     dest_lang = ""
     if not splitonly:
-        dest_lang = input ("Please enter language translation code (fr,de,ru,hi,etc.)")
+        raise ValueError("Destination language code (--destlang) is required but was not provided.")
 
 # cjk_segmenter = None 
 # if dest_lang == 'zh':
@@ -1255,7 +1255,7 @@ if word_file_to_translate_extension == ".docx":
         print("\nDeveloper: %s" % (E_mail_str))
         print("Program version: %s\n" % (PROGRAM_VERSION))
         if not silent:
-            input("Enter to close program")
+            pass
         else:
             print("Program ended with errors")
         sys.exit(2)
@@ -1307,7 +1307,7 @@ if not os.path.exists(word_file_to_translate):
 if word_file_to_translate_extension != ".docx":
     print("ERROR: not a docx file. Please convert to docx first then run on docx file. Exiting.")
     if not silent:
-        input("Enter to close program")
+        pass
     else:
         print("Program ended with errors")
     os._exit(3)
@@ -2301,7 +2301,7 @@ def selenium_chrome_google_translate_xlsx_file(xlsx_file_path):
                 
             if ("https://www.google.com/sorry" in driver.current_url):
                 print("We found a CAPTCHA window")
-                input("Press enter after solving CAPTCHA")
+                print("Warning: CAPTCHA detection logic triggered, but running headless. Continuing..."); pass
                 
             download_button_xpath = '//button[normalize-space()="Download translation"]'
             download_button_xpath = '//div[2]/div/button/span'
@@ -3657,7 +3657,7 @@ def click_verify_human_checkbox_if_present(driver, timeout=50):
         WebDriverWait(driver, 20).until(EC.frame_to_be_available_and_switch_to_it((By.CSS_SELECTOR,"iframe[title='Widget containing a Cloudflare security challenge']")))
         WebDriverWait(driver, 20).until(EC.element_to_be_clickable((By.CSS_SELECTOR, "input[type='checkbox']"))).click()
     except:
-        input("Did not find checkbox")
+        print("Warning: Did not find checkbox. Continuing..."); pass
         
     return
 
@@ -3686,7 +3686,7 @@ def click_verify_human_checkbox_if_present(driver, timeout=50):
             EC.presence_of_element_located((By.XPATH, xpath))
         )
     except TimeoutException:
-        input("Didn't find checkbox")
+        print("Warning: Did not find checkbox. Continuing..."); pass
         return False
 
     try:
@@ -5017,7 +5017,7 @@ def read_and_parse_docx_document():
         print("\nDeveloper: %s" %(E_mail_str))
         print("Program version: %s\n" % (PROGRAM_VERSION))
         if not silent:
-            input("Enter to close program")
+            pass
         else:
             print("Program ended with errors")
         sys.exit(11)
@@ -5310,7 +5310,7 @@ def create_webdriver():
             print("\nDeveloper: %s" % (E_mail_str))
             print("Program version: %s\n" % (PROGRAM_VERSION))
             if not exitonsuccess:
-                input("Enter to close program")
+                pass
             
             sys.exit(12)
         
@@ -5535,7 +5535,7 @@ def generate_xlsx_file_from_phrases(xlsx_file_path):
         self.wb = None
         self.ws = None
         if not silent:
-            input("Enter to close program")
+            pass
         else:
             print("Program ended with errors")
         sys.exit(13)
@@ -5558,7 +5558,7 @@ def generate_xlsx_file_from_phrases(xlsx_file_path):
             file_saved=1
         except Exception:
             var = traceback.format_exc()
-            txt_readline = input("\n\nERROR: File saving failed. Please close microsoft excel or other program and press enter to save the xlsx document.\n")
+            print("ERROR: File saving failed. Please close conflicting programs."); txt_readline=""
         
         
 def generate_char_blocks_array_from_phrases(text_file_path):
@@ -6916,7 +6916,7 @@ def save_docx_file():
             file_saved = 1
         except Exception:
             var = traceback.format_exc()
-            txt_readline = input(
+            print("ERROR: File saving failed. Skipping input wait."); txt_readline="" # input(
                 "\n\nERROR: File saving failed. Please close microsoft word or other program and press enter to save the translated document.\n")
 
 import os
@@ -7133,7 +7133,7 @@ def main() -> int:
     print("\nDeveloper: %s" % (E_mail_str))
     print("Program version: %s\n" % (PROGRAM_VERSION))
     if not exitonsuccess and not silent:
-        input("Enter to close program")
+        pass
     else:
         if str_needs_update == "1":
             print(f"Please download and install the program update (message will be shown for {version_checker_sleep_seconds_on_update} seconds).")
