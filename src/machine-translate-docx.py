@@ -3191,15 +3191,6 @@ def selenium_chrome_deepl_translate(to_translate, retry_count):
                             print("Warning: Failed to get translation from html, copying from clipboard")
                             warned_using_clipboard = True
                             
-                        if warned_using_clipboard and (res == "" or res == None):
-                            #return False, None
-                            clipboard.copy('')
-                            safe_click(driver, copy_translation_button)
-                            copy_button_clicked = True
-                            res = clipboard.paste()
-                            if len(res) == 0 or res == None:
-                                print("Error : failed to get translation from Deepl.")
-                                return False, ""
                             
                     except:
                         var = traceback.format_exc()
