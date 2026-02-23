@@ -5568,16 +5568,12 @@ def generate_xlsx_file_from_phrases(xlsx_file_path):
     ws.column_dimensions['A'].width = max_col_length + 1000
     
     file_saved = 0
-    while file_saved == 0:
-        try:
-            wb.save(xlsx_file_path)
-            print ("Excel XLSX english text to translate file \"%s\" saved..." %(xlsx_file_path))
-            file_saved=1
-        except Exception:
-            var = traceback.format_exc()
-            print("ERROR: File saving failed. Please close conflicting programs."); txt_readline=""
         
-        
+    try:
+        wb.save(xlsx_file_path)
+        print ("Excel XLSX file "%s" saved..." %(xlsx_file_path))
+    except Exception as e:
+        raise RuntimeError(f"Failed to save XLSX file to {xlsx_file_path}: {e}")
 def generate_char_blocks_array_from_phrases(text_file_path):
     global dest_lang_name
     global docxfile_table_number_of_phrases
@@ -6926,15 +6922,11 @@ def save_docx_file():
     local_time_offset()
 
     file_saved = 0
-    while file_saved == 0:
-        try:
-            docxdoc.save(word_file_to_translate_save_as_path)
-            file_saved = 1
-        except Exception:
-            var = traceback.format_exc()
-            print("ERROR: File saving failed. Skipping input wait."); txt_readline="" # input(
-                "\n\nERROR: File saving failed. Please close microsoft word or other program and press enter to save the translated document.\n")
 
+    try:
+        docxdoc.save(word_file_to_translate_save_as_path)
+    except Exception as e:
+        raise RuntimeError(f"Failed to save DOCX file to {word_file_to_translate_save_as_path}: {e}")
 import os
 import re
 import shutil
