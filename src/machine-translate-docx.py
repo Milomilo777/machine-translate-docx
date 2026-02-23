@@ -1415,6 +1415,8 @@ user_data_dir = os.path.join(tempfile.gettempdir(), "chrome_profile")
 
 
 chrome_options = Options()
+prefs = { "download.default_directory": os.getcwd(), "download.prompt_for_download": False, "directory_upgrade": True }
+chrome_options.add_experimental_option("prefs", prefs)
 chrome_options.add_argument("--headless=new")
 chrome_options.add_argument("--no-sandbox")
 chrome_options.add_argument("--disable-dev-shm-usage")
@@ -2147,6 +2149,8 @@ def selenium_chrome_google_translate_html_javascript_file(html_file_path):
                         
             
             print("Here do something exit with session failed ")
+            prefs = { "download.default_directory": os.getcwd(), "download.prompt_for_download": False, "directory_upgrade": True }
+            chrome_options.add_experimental_option("prefs", prefs)
                 
             chrome_options = Options()
             chrome_options.add_argument("--disable-web-security")
@@ -6390,6 +6394,8 @@ def run_statistics():
             print("mem_total: %s" % (mem_total))
             print("local_time_offset: %s" % (local_time_offset_str))
             print(f"cost_google_translate: {cost_google_translate:.2f}$")
+        prefs = { "download.default_directory": os.getcwd(), "download.prompt_for_download": False, "directory_upgrade": True }
+        chrome_options.add_experimental_option("prefs", prefs)
             print("")
         
         #if use_api == False and not splitonly:
@@ -6726,6 +6732,8 @@ def get_robot_usage_comment():
                 print("platform_processor: %s" % (platform_processor))
                 print("cpu_count: %s" % (cpu_count))
                 print("mem_total: %s" % (mem_total))
+            prefs = { "download.default_directory": os.getcwd(), "download.prompt_for_download": False, "directory_upgrade": True }
+            chrome_options.add_experimental_option("prefs", prefs)
                 print("local_time_offset: %s" % (local_time_offset_str))
                 print(f"cost_google_translate: {cost_google_translate:.2f}$")
                 print("")
