@@ -1,48 +1,19 @@
-# Core Framework & Server
-fastapi
-uvicorn[standard]
-python-multipart
-celery[redis]
-redis
-jinja2
-python-dotenv
-json5
-
-# Networking & Scrapers
 requests
-urllib3<2.0.0
-chardet<6.0.0
-beautifulsoup4
+json5
+chardet
 selenium
 undetected-chromedriver
-googlesearch-python
-yt-dlp
-
-# Document & Media Processing
+beautifulsoup4
 python-docx
 openpyxl
 lxml
-srt
-pillow
-screeninfo
-
-# Data Science & AI Core
-numpy
-pandas
-scipy
-scikit-learn
-torch
-matplotlib
-
-# NLP & Linguistics
-nltk
-gensim
-whisper
-openai
-
-# Persian/RTL Specialization
 python-bidi
 arabic-reshaper
 hazm
 parsivar
 khoshnevis
+langcodes
+progressbar2
+psutil
+newmm_tokenizer
+tinysegmenter
