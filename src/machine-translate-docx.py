@@ -1,3 +1,4 @@
+import tempfile
 #!/usr/bin/python3
 # - *- coding: utf- 8 - *-
 PROGRAM_VERSION="2025-02-16"
@@ -1407,7 +1408,7 @@ set_SE_DRIVER_MIRROR_URL_if_needed(country_name, chrome_driver_mirror_url)
 #chrome_options.add_argument(r'--profile-directory=Default')
 
 
-user_data_dir = fr"C:\Temp\Chrome"
+user_data_dir = os.path.join(tempfile.gettempdir(), "chrome_profile")
 # Set the user-data-dir to the parent of the profiles
 
 
@@ -1456,13 +1457,13 @@ elif platform.system() == "Linux":  # Linux
 if translation_engine.lower() == "chatgpt" and False:
     # Get the Windows username
     try:
-        username = os.getlogin()
+        username = "user" # os.getlogin()
         home_dir = os.path.expanduser("~")
 
         # Construct the Chrome user data directory path
         user_data_dir = os.path.join(home_dir, "AppData", "Local", "Google", "Chrome", "User Data")
         
-        user_data_dir = fr"C:\Temp\Chrome"
+        user_data_dir = os.path.join(tempfile.gettempdir(), "chrome_profile")
         print(f"Using Chrome user data directory: {user_data_dir}")
 
         # Set up ChromeOptions
@@ -5244,7 +5245,7 @@ def clean_up_previous_chrome_selenium_drivers(current_driver_full_path):
         list_driver_path = []
         
         if platform.system().lower() == 'windows':
-            userprofile_path = os.environ.get('USERPROFILE')
+            userprofile_path = os.environ.get('HOME', os.path.expanduser('~'))
             selenium_cache_folder = f"{userprofile_path}\\.cache\\selenium"
             list_driver_path = glob.glob(f"{selenium_cache_folder}\\**\\chromedriver.exe", recursive=True)
         else:
