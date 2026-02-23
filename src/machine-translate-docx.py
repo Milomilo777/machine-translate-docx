@@ -982,6 +982,7 @@ translation_errors_count = 0
 word_file_to_translate = args.docxfile
 
 viewdocx = args.viewdocx
+viewdocx = False
 client_ip = args.clientip
 
 xlsxreplacefile = args.xlsxreplacefile
@@ -6871,21 +6872,8 @@ def get_robot_usage_comment():
 
 
 # Open the default app for the docx file
-def open_app_docx_file():
-    global word_file_to_translate_save_as_path
-    
-    try:
-        if platform.system() == 'Windows':
-            subprocess.Popen(["start", "", word_file_to_translate_save_as_path], shell=True)
-        elif platform.system() == "Darwin":  # macOS
-            subprocess.Popen(["open", word_file_to_translate_save_as_path])
-        elif platform.system() == "Linux":  # Linux
-            subprocess.Popen(["xdg-open", word_file_to_translate_save_as_path])
-        else:
-            print("Unsupported operating system.")
-            
-    except Exception as e:
-        print("Error:", e)
+    print("File auto-open bypassed in server mode")
+    pass
         print("Warning, unable to open file %s." % (word_file_to_translate_save_as_path))
 def save_docx_file():
     global docxdoc, word_file_to_translate, word_file_to_translate_save_as_path
