@@ -5493,7 +5493,7 @@ def generate_text_file_from_phrases(text_file_path):
 
     #print("text_to_translate=\n%s" % (text_to_translate))
     try:
-        #text_file_path = docx_file_name + '.txt'
+        #text_file_path = word_file_to_translate + '.tmp.txt'
         text_file_to_translate = open(text_file_path, 'w', encoding='utf-8')
         text_file_to_translate.write(text_to_translate)
         text_file_to_translate.close()
@@ -5669,7 +5669,7 @@ def generate_char_blocks_array_from_phrases(text_file_path):
 
     #print("text_to_translate=\n%s" % (text_to_translate))
     try:
-        #text_file_path = docx_file_name + '.txt'
+        #text_file_path = word_file_to_translate + '.tmp.txt'
         #text_file_to_translate = open(text_file_path, 'w', encoding='utf-8')
         #text_file_to_translate.write(text_to_translate)
         #text_file_to_translate.close()
@@ -5682,7 +5682,7 @@ def generate_char_blocks_array_from_phrases(text_file_path):
 def google_translate_from_text_file():
     global docx_file_name, translation_array
     #word_file_to_translate
-    text_file_path = docx_file_name + '.txt'
+    text_file_path = word_file_to_translate + '.tmp.txt'
     text_file_full_path = os.path.realpath(text_file_path)
     #print("text_file_full_path=%s" % text_file_full_path)
     generate_text_file_from_phrases(text_file_full_path)
@@ -5734,7 +5734,7 @@ def google_translate_from_html_xlsxfile():
 
 def translate_from_phrasesblock():
     global docx_file_name, translation_array, translation_engine
-    text_file_path = docx_file_name + '.txt'
+    text_file_path = word_file_to_translate + '.tmp.txt'
     text_file_full_path = os.path.realpath(text_file_path)
     #print("text_file_full_path=%s" % text_file_full_path)
     #generate_text_file_from_phrases(text_file_full_path)
