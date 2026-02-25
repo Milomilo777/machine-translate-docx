@@ -38,6 +38,72 @@ sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', line_bufferin
 sys.stdout.reconfigure(encoding='utf-8')
 import platform
 
+import json
+import datetime
+import traceback
+
+def report_crash(exception, context_text=""):
+    """
+    Writes a fatal error report to last_fatal_error.json for frontend telemetry.
+    """
+    error_report = {
+        "timestamp": datetime.datetime.now().isoformat(),
+        "error_type": type(exception).__name__,
+        "message": str(exception),
+        "traceback": traceback.format_exc(),
+        "current_text_chunk_at_crash": str(context_text)[:500], # Truncate for sanity
+        "engine": globals().get("translation_engine", "Unknown")
+    }
+
+    try:
+        with open("last_fatal_error.json", "w", encoding="utf-8") as f:
+            json.dump(error_report, f, indent=4, ensure_ascii=False)
+        print("\n[CRITICAL] Fatal error logged to last_fatal_error.json")
+    except Exception as e:
+        print(f"\n[CRITICAL] Failed to write error report: {e}")
+
+    # Aggressive RAM Rescue
+    try:
+        cleanup_selenium_chrome_temp_folders()
+        if 'driver' in globals() and driver:
+            driver.quit()
+    except:
+        pass
+
+
+import json
+import datetime
+import traceback
+
+def report_crash(exception, context_text=""):
+    """
+    Writes a fatal error report to last_fatal_error.json for frontend telemetry.
+    """
+    error_report = {
+        "timestamp": datetime.datetime.now().isoformat(),
+        "error_type": type(exception).__name__,
+        "message": str(exception),
+        "traceback": traceback.format_exc(),
+        "current_text_chunk_at_crash": str(context_text)[:500], # Truncate for sanity
+        "engine": globals().get("translation_engine", "Unknown")
+    }
+
+    try:
+        with open("last_fatal_error.json", "w", encoding="utf-8") as f:
+            json.dump(error_report, f, indent=4, ensure_ascii=False)
+        print("\n[CRITICAL] Fatal error logged to last_fatal_error.json")
+    except Exception as e:
+        print(f"\n[CRITICAL] Failed to write error report: {e}")
+
+    # Aggressive RAM Rescue
+    try:
+        cleanup_selenium_chrome_temp_folders()
+        if 'driver' in globals() and driver:
+            driver.quit()
+    except Exception as e:
+        pass
+
+
 json_configuration_url='https://raw.githubusercontent.com/translation-robot/machine-translate-docx/main/src/configuration/configuration.json'
 # Day 0 is October 3rd 2017
 
@@ -237,7 +303,7 @@ def validate_json_string(json_string):
             return False
         return True
         
-    except:
+    except Exception as e:
         var = traceback.format_exc()
         print(var)
         return False
@@ -258,7 +324,7 @@ def get_nested_value_from_json_array(json_array, keys, default_when_none = None)
                         json_obj = None
                 if json_obj is not None:
                     return json_obj
-            except:
+            except Exception as e:
                 pass
         
         return default_when_none
@@ -454,7 +520,7 @@ def test_internet(host="8.8.8.8", port=53, timeout=3):
 
 try:
     json_online_configuration = requests.get(json_configuration_url).content
-except:
+except Exception as e:
     print("Warning, unable to get configuration from internet at {json_configuration_url}")
     if not test_internet():
         print("Warning, internet connection seems to be down, google name servers don't respond")
@@ -482,7 +548,7 @@ try:
     else:
         #print(f"Optional local json configuration file not found at {configuration_file_full_path}, ignoring")
         local_json_contents = None
-except:
+except Exception as e:
     local_json_contents = None
           
 json_configuration_array = [local_json_contents,json_online_configuration,DefaultJsonConfiguration]
@@ -589,7 +655,7 @@ parser.add_argument('--version', required = False, help="Show program version", 
 
 try:
     args = parser.parse_args()
-except:
+except Exception as e:
     #print("Waiting for the input_element...")
     var = traceback.format_exc()
     print(var)
@@ -1094,7 +1160,7 @@ else:
 dest_lang_tag = ""
 try:
     dest_lang_tag = office_language_tags[dest_lang]
-except:
+except Exception as e:
     pass
 
 translation_engine = args.engine
@@ -1198,7 +1264,7 @@ def lineno():
 def linux_distribution():
     try:
         return platform.linux_distribution()
-    except:
+    except Exception as e:
         return "N/A"
 
 def print_os_info():
@@ -1252,7 +1318,7 @@ if splitted_filename_size > 1:
 if word_file_to_translate_extension.lower() == ".docx":
     try:
         docxdoc = docx.Document(word_file_to_translate)
-    except:
+    except Exception as e:
         print(f"Error, file {word_file_to_translate} does not appear to be a valid Microsoft Word docx file.")
         print("Please check that the file is a valid document and rerun on a valid Microsoft docx document.\n")
         
@@ -1476,7 +1542,7 @@ if translation_engine.lower() == "chatgpt" and False:
 
         print(f"Using Chrome user data directory: {user_data_dir}")
     #word_file_to_translate = r'X:\travail\smtv-hindi\NWN 584 sf2 - table fix1.doc'
-    except:
+    except Exception as e:
         var = traceback.format_exc()
         print(var)
         print("Failed to add chrome options")
@@ -1577,7 +1643,7 @@ def selenium_chrome_google_translate(to_translate):
         try:
             (driver.page_source).encode('utf-8')
             WebDriverWait(driver, 15).until(lambda driver: driver.execute_script('return document.readyState') == 'complete')
-        except:
+        except Exception as e:
             print("ERROR: Page load timeout reached.")
         
         
@@ -1594,7 +1660,7 @@ def selenium_chrome_google_translate(to_translate):
             try:
                 (driver.page_source).encode('utf-8')
                 WebDriverWait(driver, 15).until(lambda driver: driver.execute_script('return document.readyState') == 'complete')
-            except:
+            except Exception as e:
                 print("ERROR: Page load timeout reached.")
             # Wait up to 0.5 seconds for the button to appear
             button = WebDriverWait(driver, 0.01).until(
@@ -1607,7 +1673,7 @@ def selenium_chrome_google_translate(to_translate):
         try:
             button = driver.find_element(By.XPATH, "//button[.//span[text()='Browse your files']]")
             #print("Button is present")
-        except:
+        except Exception as e:
             #print("Button not found") 
             pass
             
@@ -1933,7 +1999,7 @@ def selenium_chrome_google_click_cookies_consent_button():
         try:
             button = driver.find_element(By.XPATH, "//button[.//span[text()='Browse your files']]")
             #print("Button is present")
-        except:
+        except Exception as e:
             #print("Button not found") 
             pass
             
@@ -2049,7 +2115,7 @@ def selenium_chrome_google_translate_html_javascript_file(html_file_path):
                 innerHeight = driver.execute_script("return window.innerHeight")
                 bar = progressbar.ProgressBar(max_value=scrollHeight)
                 bar.update(0)
-            except:
+            except Exception as e:
                 var = traceback.format_exc()
                 print(var)
 
@@ -2113,10 +2179,10 @@ def selenium_chrome_google_translate_html_javascript_file(html_file_path):
                     
                     try:
                         bar.update(scroll_position + scroll_offset_paragraph)    
-                    except:
+                    except Exception as e:
                         # Ignore progressbar errors at the end
                         pass
-            except:
+            except Exception as e:
                 var = traceback.format_exc()
                 print(var)
             
@@ -2138,7 +2204,7 @@ def selenium_chrome_google_translate_html_javascript_file(html_file_path):
 
             return (translation_array)
   
-        except:
+        except Exception as e:
             var = traceback.format_exc()
             print(var)
             chrome_options.add_argument("--headless=new")
@@ -2184,7 +2250,7 @@ def getDownLoadedFileNameFirefox(waitTime):
             fileName = driver.execute_script("return document.querySelector('#contentAreaDownloadsView .downloadMainArea .downloadContainer description:nth-of-type(1)').value")
             if fileName:
                 return fileName
-        except:
+        except Exception as e:
             pass
         time.sleep(2)
         if time.time() > endTime:
@@ -2209,7 +2275,7 @@ def getDownLoadedFileNameChrome(waitTime):
             if downloadPercentage == 100:
                 # return the file name once the download is completed
                 return driver.execute_script("return document.querySelector('downloads-manager').shadowRoot.querySelector('#downloadsList downloads-item').shadowRoot.querySelector('div#content  #file-link').text")
-        except:
+        except Exception as e:
             pass
         time.sleep(1)
         if time.time() > endTime:
@@ -2335,7 +2401,7 @@ def selenium_chrome_google_translate_xlsx_file(xlsx_file_path):
                     print("downloaded_xlsx_translation_path=%s" %(downloaded_xlsx_translation_path))
                     res_downloaded_xlsx_translation = True
                 
-            except:
+            except Exception as e:
                 pass
         
         if res_downloaded_xlsx_translation:
@@ -2512,7 +2578,7 @@ def selenium_chrome_deepl_log_in():
                 driver.execute_script("arguments[0].scrollIntoView();", deepl_accept_cookies_button)    
                 safe_click(driver, deepl_accept_cookies_button)
                 
-            except:
+            except Exception as e:
                 pass
 
             # Close the cookies message box if it is there
@@ -2524,7 +2590,7 @@ def selenium_chrome_deepl_log_in():
                         EC.presence_of_element_located((By.XPATH, deepl_accept_cookies_element)))
                     safe_click(driver, deepl_accept_cookies_button)
                     closed_cookies_accept_message_bool = True
-            except:
+            except Exception as e:
                 pass
                 
             try:
@@ -2534,7 +2600,7 @@ def selenium_chrome_deepl_log_in():
                 deepl_close_deepl_extension_button = WebDriverWait(driver, 0.05).until(
                     EC.presence_of_element_located((By.CSS_SELECTOR, deepl_close_deepl_extension_element)))
                 safe_click(driver, deepl_close_deepl_extension_button)
-            except:
+            except Exception as e:
                 pass
         
             # End function if no email or password are provided
@@ -2553,7 +2619,7 @@ def selenium_chrome_deepl_log_in():
                 driver.execute_script("arguments[0].scrollIntoView();", deepl_accept_cookies_button)    
                 safe_click(driver, deepl_accept_cookies_button)
                 
-            except:
+            except Exception as e:
                 pass       
             
             # Fill username 
@@ -2578,7 +2644,7 @@ def selenium_chrome_deepl_log_in():
                         EC.presence_of_element_located((By.XPATH, deepl_accept_cookies_element)))
                     safe_click(driver, deepl_accept_cookies_button)
                     closed_cookies_accept_message_bool = True
-            except:
+            except Exception as e:
                 pass
                 
             try:
@@ -2589,7 +2655,7 @@ def selenium_chrome_deepl_log_in():
                 driver.execute_script("arguments[0].scrollIntoView();", deepl_accept_cookies_button)    
                 safe_click(driver, deepl_accept_cookies_button)
                 
-            except:
+            except Exception as e:
                 pass       
             
             # Submit login
@@ -2602,7 +2668,7 @@ def selenium_chrome_deepl_log_in():
             sleep(1.5)
             try:
                 safe_click(driver, deepl_login_submit_button)
-            except:
+            except Exception as e:
                 pass
             
             try:
@@ -2614,7 +2680,7 @@ def selenium_chrome_deepl_log_in():
                 # Close the opener dialog, not required but cleaner
                 sleep(0.1)
                 safe_click(driver, deepl_login_menu_button)
-            except:
+            except Exception as e:
                 pass
             
             try:
@@ -2623,7 +2689,7 @@ def selenium_chrome_deepl_log_in():
                 deepl_plugin_dialog_button = WebDriverWait(driver, 0.05).until(
                     EC.presence_of_element_located((By.CSS_SELECTOR, deepl_plugin_dialog_element)))
                 safe_click(driver, deepl_plugin_dialog_button)
-            except:
+            except Exception as e:
                 # Just ignore if this plugin dialog does not appear
                 pass
             
@@ -2639,13 +2705,13 @@ def selenium_chrome_deepl_log_in():
                 
             return True
             
-        except:
+        except Exception as e:
             var = traceback.format_exc()
             print(var)
             print("Failed to login into Deepl, continuing without being logged on.")
             return False
 
-    except:
+    except Exception as e:
         var = traceback.format_exc()
         print(var)
         print("Failed to login into Deepl, continuing without being logged on.")
@@ -2671,7 +2737,7 @@ def selenium_chrome_perplexity_wait_log_in():
             print("✅ User is logged in perplexity.")
             return True
 
-        except:
+        except Exception as e:
             var = traceback.format_exc()
             print(var)
             
@@ -2701,20 +2767,20 @@ def selenium_chrome_deepl_log_off():
                 safe_click(driver, deepl_logout_menu_button)
                 print("\nRobot is now logged off Deepl account.")
                 
-            except:
+            except Exception as e:
                 # Just ignore if this plugin dialog does not appear
                 print("Unable to log off from Deepl, this can be ignored.")
                 pass
                 
             return True
             
-        except:
+        except Exception as e:
             var = traceback.format_exc()
             print(var)
             print("Failed of Deepl, this can be ignored")
             return False
 
-    except:
+    except Exception as e:
         var = traceback.format_exc()
         print(var)
         print("Failed of Deepl, this can be ignored")
@@ -2765,7 +2831,7 @@ def deepl_close_messages():
                 closed_cookies_accept_message_bool = True
             if "w-6" in selector:
                 close_install_extension_message_bool = True
-        except:
+        except Exception as e:
             continue
 
     # Close elements by CSS selector
@@ -2775,7 +2841,7 @@ def deepl_close_messages():
             driver.execute_script("arguments[0].scrollIntoView({block: 'start', behavior: 'auto'});", el)
             safe_click(driver, el)
             close_install_extension_message_bool = True
-        except:
+        except Exception as e:
             continue
     
     if close_install_extension_message_bool:
@@ -2800,7 +2866,7 @@ def selenium_chrome_deepl_translate(to_translate, retry_count):
     try:
         tmp_var = closed_cookies_accept_message_bool
         tmp_var = close_install_extension_message_bool
-    except:
+    except Exception as e:
         closed_cookies_accept_message_bool = False
         close_install_extension_message_bool = False
 
@@ -2877,14 +2943,14 @@ def selenium_chrome_deepl_translate(to_translate, retry_count):
                 try:
                     (driver.page_source).encode('utf-8')
                     WebDriverWait(driver, 15).until(lambda driver: driver.execute_script('return document.readyState') == 'complete')
-                except:
+                except Exception as e:
                     pass
                 
                 # Make sure the target language matches with the target language code or at least the target language name
                 try:
                     ensure_target_language(driver, dest_lang=dest_lang, dest_lang_name=dest_lang_name)
                     WebDriverWait(driver, 15).until(lambda driver: driver.execute_script('return document.readyState') == 'complete')
-                except:
+                except Exception as e:
                     pass
                     
                 translation_page_opened = True
@@ -2909,7 +2975,7 @@ def selenium_chrome_deepl_translate(to_translate, retry_count):
                 except Exception:
                     pass  
                 
-            except:
+            except Exception as e:
                 print("Waiting for https://www.deepl.com/ ...")
                 sleep(1)
             translation_page_openeing_loop_count = translation_page_openeing_loop_count - 1
@@ -2928,10 +2994,10 @@ def selenium_chrome_deepl_translate(to_translate, retry_count):
                 driver.execute_script("arguments[0].scrollIntoView();", deepl_accept_cookies_button)    
                 safe_click(driver, deepl_accept_cookies_button)
                 
-            except:
+            except Exception as e:
                 pass
             #print("Page loaded completed")
-        except:
+        except Exception as e:
             # print("Waiting for the input_element...")
             var = traceback.format_exc()
             print(var)
@@ -2964,7 +3030,7 @@ def selenium_chrome_deepl_translate(to_translate, retry_count):
                         "arguments[0].scrollIntoView({block: 'end'});",
                         copy_translation_button
                     )
-            except:
+            except Exception as e:
                 pass
             
             try:
@@ -2979,7 +3045,7 @@ def selenium_chrome_deepl_translate(to_translate, retry_count):
                 #print(f"Found xpath button: {copy_translation_element}")
                 time.sleep(0.2)
                 
-            except:
+            except Exception as e:
                 #print(f"Except loop {loop_counter_search_button}, not found xpath button: {copy_translation_element}")
                 try:
                     copy_translation_element = "#dl_translator"
@@ -2991,7 +3057,7 @@ def selenium_chrome_deepl_translate(to_translate, retry_count):
                     found_copy_button = True
                     #print(f"Found xpath button: {copy_translation_element}")
                     
-                except:
+                except Exception as e:
                     try:
                         # Version 2022-03-09
                         copy_translation_element = ".lmt__target_toolbar_right > span path:nth-child(2)"
@@ -3000,7 +3066,7 @@ def selenium_chrome_deepl_translate(to_translate, retry_count):
                         copy_translation_button = WebDriverWait(driver, 0.2).until(
                             EC.presence_of_element_located((By.XPATH, copy_translation_element)))
                         found_copy_button = True
-                    except:
+                    except Exception as e:
                         # Version 2022-03-30
                         try:
                            copy_translation_element = ".lmt__target_toolbar_right > div > span svg"
@@ -3008,7 +3074,7 @@ def selenium_chrome_deepl_translate(to_translate, retry_count):
                            copy_translation_button = WebDriverWait(driver, 0.2).until(
                                EC.presence_of_element_located((By.CSS_SELECTOR, copy_translation_element)))
                            found_copy_button = True
-                        except:
+                        except Exception as e:
                            #print("Copy button not found !!")
                            pass
             #print("Incrementing loop_counter_search_button")
@@ -3042,9 +3108,9 @@ def selenium_chrome_deepl_translate(to_translate, retry_count):
                         EC.presence_of_element_located((By.XPATH, deepl_usage_limit_reached_element)))
                     safe_click(driver, deepl_usage_limit_reached_button)
                     return False, ""
-                except:
+                except Exception as e:
                     pass
-        except:
+        except Exception as e:
             #var = traceback.format_exc()
             #print(var)
             limit_reached = False
@@ -3057,7 +3123,7 @@ def selenium_chrome_deepl_translate(to_translate, retry_count):
                 
                 limit_reached = True
                 #safe_click(driver, deepl_usage_limit_reached_button)
-            except:
+            except Exception as e:
                 
                 pass
             # Sometimes the busy element does not show up, just ignore it and continue
@@ -3068,7 +3134,7 @@ def selenium_chrome_deepl_translate(to_translate, retry_count):
                 try:
                     if deepl_nb_clear_cached_times is None:
                         deepl_nb_clear_cached_times = 0
-                except:
+                except Exception as e:
                     deepl_nb_clear_cached_times = 0
                     
                 if deepl_nb_clear_cached_times > deepl_maximum_clear_cache_retry:
@@ -3093,7 +3159,7 @@ def selenium_chrome_deepl_translate(to_translate, retry_count):
                 "arguments[0].scrollIntoView({block: 'end'});",
                 copy_translation_button
             )
-        except:
+        except Exception as e:
             pass
 
         copy_button_clicked = False
@@ -3111,7 +3177,7 @@ def selenium_chrome_deepl_translate(to_translate, retry_count):
                 # clipboard.copy('')
                 #try:
                 #    actions.move_to_element(copy_translation_button).perform()
-                #except:
+                #except Exception as e:
                 #    pass
                 sleep(0.05)
                 page_source_str = driver.page_source
@@ -3141,7 +3207,7 @@ def selenium_chrome_deepl_translate(to_translate, retry_count):
                             if block_previous_translation_percent_done != block_translation_percent_done:
                                 # print ("found percent: %s" %block_translation_percent_done)
                                 bar.update(int(block_translation_percent_done))
-                        except:
+                        except Exception as e:
                             pass
 
                     # input("of characters translated")
@@ -3171,7 +3237,7 @@ def selenium_chrome_deepl_translate(to_translate, retry_count):
                         EC.presence_of_element_located((By.XPATH, inner_html_plain_text_element)))
                     translation_from_plain_text = InnerHTMLPlainTextElement.get_attribute('innerHTML')
                     res = translation_from_plain_text
-                except:
+                except Exception as e:
                     # if we cannot find translation button with translation the use the copy button
                     # previous_clipbboard = clipboard.paste()
                     # previous_clipbboard = pyperclip.paste()
@@ -3194,7 +3260,7 @@ def selenium_chrome_deepl_translate(to_translate, retry_count):
                             else:
                                 print("Element not found")
                             res = translation_from_plain_text
-                        except:
+                        except Exception as e:
                             var = traceback.format_exc()
                             print(var)
                     
@@ -3207,7 +3273,7 @@ def selenium_chrome_deepl_translate(to_translate, retry_count):
                             warned_using_clipboard = True
                             
                             
-                    except:
+                    except Exception as e:
                         var = traceback.format_exc()
                         print(var)
                         #print("res : %s" %(res))
@@ -3241,7 +3307,7 @@ def selenium_chrome_deepl_translate(to_translate, retry_count):
                 if translated_phrases_array_len < to_translate_phrases_array_len:
                     res = ""
 
-            except:
+            except Exception as e:
                 #print(f"Found exception on loop {copy_button_clicked_loop_count}")
                 if copy_button_clicked_loop_count < 20:
                     print("Waiting for the copy button...")
@@ -3284,7 +3350,7 @@ def selenium_chrome_chatgpt_translate(to_translate, retry_count):
     try:
         tmp_var = closed_cookies_accept_message_bool
         tmp_var = close_install_extension_message_bool
-    except:
+    except Exception as e:
         closed_cookies_accept_message_bool = False
         close_install_extension_message_bool = False
 
@@ -3305,7 +3371,7 @@ def selenium_chrome_chatgpt_translate(to_translate, retry_count):
                 #sleep(1)
 
                 translation_page_opened = True
-            except:
+            except Exception as e:
                 print("Waiting for https://chatgpt.com/ ...")
                 sleep(1)
             translation_page_openeing_loop_count = translation_page_openeing_loop_count - 1
@@ -3329,7 +3395,7 @@ def selenium_chrome_chatgpt_translate(to_translate, retry_count):
             
             # Click the link
             safe_click(driver, stay_logged_out_link)
-        except:
+        except Exception as e:
             pass
 
         try:
@@ -3340,7 +3406,7 @@ def selenium_chrome_chatgpt_translate(to_translate, retry_count):
 
             # Click the link
             safe_click(driver, stay_logged_out_link)
-        except:
+        except Exception as e:
             pass
 
         try:
@@ -3416,7 +3482,7 @@ def selenium_chrome_chatgpt_translate(to_translate, retry_count):
         try:
             button = driver.find_element(By.CSS_SELECTOR, 'button[data-testid="close-button"]')
             safe_click(driver, button)
-        except:
+        except Exception as e:
             pass
 
         # Locate the button element using its attributes
@@ -3462,11 +3528,11 @@ def selenium_chrome_chatgpt_translate(to_translate, retry_count):
                     # Send PAGE_DOWN to the body (or active element)
                     driver.find_element(By.TAG_NAME, "body").send_keys(Keys.PAGE_DOWN)
                     #print("Button clicked and PAGE_DOWN sent")
-                except:
+                except Exception as e:
                     try:
                         body = driver.find_element(By.TAG_NAME, "body")
                         body.send_keys(Keys.PAGE_DOWN)
-                    except:
+                    except Exception as e:
                         #print("Cannot find html body...")
                         pass
                 
@@ -3478,7 +3544,7 @@ def selenium_chrome_chatgpt_translate(to_translate, retry_count):
 
                     # Click the link
                     safe_click(driver, stay_logged_out_link)
-                except:
+                except Exception as e:
                     pass
 
                 try:
@@ -3642,7 +3708,7 @@ def selenium_chrome_chatgpt_translate(to_translate, retry_count):
                 EC.element_to_be_clickable((By.CSS_SELECTOR, 'button[data-testid="delete-conversation-confirm-button"]'))
             )
             safe_click(driver, confirm_delete_button)
-        except:
+        except Exception as e:
             pass
         
             
@@ -3654,7 +3720,7 @@ def selenium_chrome_chatgpt_translate(to_translate, retry_count):
                 print("Chatgpt returned an error : This content may violate our usage policies.")
             else:
                 print(var)
-        except:
+        except Exception as e:
             pass
         #input("Wait")
     if res is not None and res != "":
@@ -3671,7 +3737,7 @@ def click_verify_human_checkbox_if_present(driver, timeout=50):
     try:
         WebDriverWait(driver, 20).until(EC.frame_to_be_available_and_switch_to_it((By.CSS_SELECTOR,"iframe[title='Widget containing a Cloudflare security challenge']")))
         WebDriverWait(driver, 20).until(EC.element_to_be_clickable((By.CSS_SELECTOR, "input[type='checkbox']"))).click()
-    except:
+    except Exception as e:
         print("Warning: Did not find checkbox. Continuing..."); pass
         
     return
@@ -3796,7 +3862,7 @@ def perplexity_close_messages():
                 closed_cookies_accept_message_bool = True
             if "w-6" in selector:
                 close_install_extension_message_bool = True
-        except:
+        except Exception as e:
             continue
 
     # Close elements by CSS selector
@@ -3806,7 +3872,7 @@ def perplexity_close_messages():
             driver.execute_script("arguments[0].scrollIntoView();", el)
             safe_click(driver, el)
             close_install_extension_message_bool = True
-        except:
+        except Exception as e:
             continue
     
     if close_install_extension_message_bool:
@@ -3827,7 +3893,7 @@ def selenium_webservice_perplexity_translate(to_translate, retry_count):
         response = requests.post(url, json=payload)
         translation = response.json()['translation']
         return True, translation
-    except:
+    except Exception as e:
         return False, ""
 
 
@@ -3855,7 +3921,7 @@ def selenium_chrome_perplexity_translate(to_translate, retry_count, max_try_coun
     try:
         tmp_var = closed_cookies_accept_message_bool
         tmp_var = close_install_extension_message_bool
-    except:
+    except Exception as e:
         closed_cookies_accept_message_bool = False
         close_install_extension_message_bool = False
 
@@ -3908,7 +3974,7 @@ def selenium_chrome_perplexity_translate(to_translate, retry_count, max_try_coun
             time.sleep(0.2)
             # Click using JS for maximum reliability
             driver.execute_script("arguments[0].click();", perplexity_link)
-        except:
+        except Exception as e:
             pass
         
         current_url = driver.current_url
@@ -3937,7 +4003,7 @@ def selenium_chrome_perplexity_translate(to_translate, retry_count, max_try_coun
 
             # Send text to the element
             safe_click(driver, textarea)
-        except:
+        except Exception as e:
             textarea = WebDriverWait(driver, 7).until(
                 EC.presence_of_element_located((By.XPATH, "//*[@id='ask-input']"))
             )
@@ -4027,12 +4093,12 @@ def selenium_chrome_perplexity_translate(to_translate, retry_count, max_try_coun
                                 #driver.find_element(By.TAG_NAME, "body").send_keys(Keys.PAGE_DOWN)
                                 driver.execute_script("window.scrollBy(0, window.innerHeight);")
                                 #print("Button clicked and PAGE_DOWN sent")
-                            except:
+                            except Exception as e:
                                 try:
                                     #driver.find_element(By.TAG_NAME, "body").send_keys(Keys.PAGE_DOWN)
                                     driver.execute_script("window.scrollBy(0, window.innerHeight);")
                                     #print("Button clicked and PAGE_DOWN sent")
-                                except:
+                                except Exception as e:
                                     print("Cannot find html body...")
                                     pass
                                 pass
@@ -4044,7 +4110,7 @@ def selenium_chrome_perplexity_translate(to_translate, retry_count, max_try_coun
                             #print("\n")
                             time.sleep(1)
                             break
-                    except:
+                    except Exception as e:
                         break
                 
             except NoSuchElementException:
@@ -4069,7 +4135,7 @@ def selenium_chrome_perplexity_translate(to_translate, retry_count, max_try_coun
             prose_div = WebDriverWait(driver, 2.5).until(
                 EC.presence_of_element_located((By.CSS_SELECTOR, "div.prose"))
             )
-        except:
+        except Exception as e:
             pass
 
         try:
@@ -4080,12 +4146,12 @@ def selenium_chrome_perplexity_translate(to_translate, retry_count, max_try_coun
             #driver.find_element(By.TAG_NAME, "body").send_keys(Keys.PAGE_DOWN)
             driver.execute_script("window.scrollBy(0, window.innerHeight);")
             #print("Button clicked and PAGE_DOWN sent")
-        except:
+        except Exception as e:
             try:
                 #body = driver.find_element(By.TAG_NAME, "body")
                 #body.send_keys(Keys.PAGE_DOWN)
                 driver.execute_script("window.scrollBy(0, window.innerHeight);")
-            except:
+            except Exception as e:
                 print("Cannot scroll down...")
                 pass
                                 
@@ -4095,13 +4161,13 @@ def selenium_chrome_perplexity_translate(to_translate, retry_count, max_try_coun
             prose_div = WebDriverWait(driver, 5).until(
                 EC.visibility_of_element_located((By.CSS_SELECTOR, "div.prose"))
             )
-        except:
+        except Exception as e:
             pass
         
         # Extract all visible text content
         try:
             text = prose_div.text
-        except:
+        except Exception as e:
             driver.execute_script("window.focus();")
             text = ""
 
@@ -4173,7 +4239,7 @@ def selenium_chrome_perplexity_translate(to_translate, retry_count, max_try_coun
                 EC.element_to_be_clickable((By.CSS_SELECTOR, 'button[data-testid="thread-delete-confirm"]'))
             )
             safe_click(driver, confirm_button)
-        except:
+        except Exception as e:
             print("Unable to delete conversation")
         
         # Close "Try Comet brower" annoying layer, ignore if the layer is not present
@@ -4405,8 +4471,8 @@ def selenium_chrome_machine_translate(to_translate, index):
             else:
                 translation = selenium_chrome_machine_translate_once(to_translate)
             translation_try_count = translation_try_count + 1
-    except:
-        print("Error in selenium_chrome_machine_translate function.")
+    except Exception as e:
+        print(f"Error in selenium_chrome_machine_translate: {e}"); report_crash(e, to_translate) if translation_try_count >= max_try_count else None
     return translation
     
 def initialize_translation_memory_xlsx():
@@ -4456,7 +4522,7 @@ def get_paragraph_shading_color(xml_paragraph_str):
     namespaces = {'w':'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
     try:
         namespaces = {paragraph_xml.prefix : paragraph_xml.nsmap[paragraph_xml.prefix]}
-    except:
+    except Exception as e:
         #print("Could not determine namespace")
         pass
     attrib_fill = None
@@ -4470,7 +4536,7 @@ def get_paragraph_shading_color(xml_paragraph_str):
             #print(f"attrib_color : {attrib_color}")
             #print(f"attrib_fill : {attrib_fill}")
             #print(f"attrib_val : {attrib_val}")
-        except:
+        except Exception as e:
             pass
     return attrib_fill
 
@@ -4481,7 +4547,7 @@ def get_run_shading_color(xml_run_str):
     namespaces = {'w':'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
     try:
         namespaces = {run_xml.prefix : run_xml.nsmap[run_xml.prefix]}
-    except:
+    except Exception as e:
         #print("Could not determine namespace")
         pass
     attrib_fill = None
@@ -4492,7 +4558,7 @@ def get_run_shading_color(xml_run_str):
             attrib_val = e.attrib.get('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val')
             attrib_color = e.attrib.get('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}color')
             attrib_fill = e.attrib.get('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}fill')
-        except:
+        except Exception as e:
             pass
     return attrib_fill
 
@@ -5017,7 +5083,7 @@ def read_and_parse_docx_document():
 
     try:
         table = docxdoc.tables[0]
-    except:
+    except Exception as e:
         print(f"Error: document {docxfile} does not have a table. Exiting.")
         exit(14)
     table_cells = [['' for i in range(len(table.columns))] for j in range(len(table.rows))]
@@ -5267,13 +5333,13 @@ def clean_up_previous_chrome_selenium_drivers(current_driver_full_path):
                             found_previous_chrome_driver = True
                         print(f"Removing previous chrome driver at {driver_path}")
                         os.remove(driver_path)
-                    except:
+                    except Exception as e:
                         print(f"Unable to cleanup chrome driver at {driver_path}")
                         
         if len(list_driver_path) >= 2:
             print(f"Keeping current chrome driver at {current_driver_full_path}")
                 
-    except:
+    except Exception as e:
         var = traceback.format_exc()
         print(var)
         
@@ -5303,7 +5369,7 @@ def create_webdriver():
                 driver_path = manager.service.path
                 manager.quit()
                 print(f"Using selenium chrome driver path : {driver_path}")
-            except:
+            except Exception as e:
                 pass
             
         try:
@@ -5315,7 +5381,7 @@ def create_webdriver():
                 #input("waiting for page to open")
             else:
                 driver = webdriver.Chrome(service=service, options=chrome_options)
-        except:
+        except Exception as e:
             var = traceback.format_exc()
             print(var)
             print("An error occured during launching chrome. This may happen during google chrome automatic updates or if Google Chrome is not installed.")
@@ -5423,7 +5489,7 @@ window.onload = function(){
                 tmpdir = os.environ['TMPDIR']
                 if(tmpdir is None or tmpdir == ""):
                     tmpdir = '/tmp/'
-            except:
+            except Exception as e:
                 tmpdir = '/tmp/'
             html_file_path = tmpdir + docx_file_name + '.' + str(os.getpid()) + '.' + dest_lang + '.html'
         else:
@@ -5688,7 +5754,7 @@ def google_translate_from_text_file():
     try:
         os.remove(text_file_path)
         pass
-    except:
+    except Exception as e:
         pass
 
 def google_translate_from_html_javascript():
@@ -5706,7 +5772,7 @@ def google_translate_from_html_javascript():
         #input("before remove html file")
         os.remove(html_file_path)
         pass
-    except:
+    except Exception as e:
         pass
 
     return translation_array
@@ -5724,7 +5790,7 @@ def google_translate_from_html_xlsxfile():
     try:
         os.remove(xlsx_file_full_path)
         pass
-    except:
+    except Exception as e:
         pass
 
 def translate_from_phrasesblock():
@@ -5744,7 +5810,7 @@ def translate_from_phrasesblock():
     try:
         os.remove(text_file_path)
         pass
-    except:
+    except Exception as e:
         pass
     return translation_succeded
 
@@ -5927,7 +5993,7 @@ def minimize_browser():
         #print("Minimizing browser...")
         try:
             pass # driver.minimize_window()
-        except:
+        except Exception as e:
             pass
 
 
@@ -6317,7 +6383,7 @@ def run_statistics():
             dxml = document.read('docProps/app.xml')
             uglyXml = xml.dom.minidom.parseString(dxml)
             docxfile_page_count = uglyXml.getElementsByTagName('Pages')[0].childNodes[0].nodeValue
-        except:
+        except Exception as e:
             if bool_print_stats:
                 print("Unable to get number of pages from document. You can ignore this.")
         
@@ -6332,7 +6398,7 @@ def run_statistics():
             matches = re.findall(regex, app_xml, re.MULTILINE)
             match = matches[0] if matches[0:] else [0, 0]
             page_count = match[1]
-        except:
+        except Exception as e:
             if bool_print_stats:
                 print("Unable to get number of pages from document. You can ignore this.")
         
@@ -6471,14 +6537,14 @@ def run_statistics():
                 submited_div_element = "//div[@id='form_post_submitted']"
                 submited_div = WebDriverWait(driver, 4).until(EC.presence_of_element_located((By.XPATH, submited_div_element)))
                 #print("statistics updated")
-            except:
+            except Exception as e:
                 print("Warning failed to update stats, you can ignore this.")
                 #pass
         except TimeoutException:
             print(f"Timeout: Page did not load within 10 seconds: {url}")
         except WebDriverException as e:
             print(f"WebDriver error: {e}")
-    except:
+    except Exception as e:
         
         #var = traceback.format_exc()
         #print(var)
@@ -6491,7 +6557,7 @@ def browser_fill_form_field_value(field_css_id, field_value):
     try:
         input_field = WebDriverWait(driver, 1).until(EC.presence_of_element_located((By.CSS_SELECTOR, field_css_id)))
         input_field.send_keys (field_value)
-    except:
+    except Exception as e:
         var = traceback.format_exc()
         print(var)
 
@@ -6620,7 +6686,7 @@ def get_robot_usage_comment():
                 uglyXml = xml.dom.minidom.parseString(dxml)
                 docxfile_page_count = uglyXml.getElementsByTagName('Pages')[0].childNodes[0].nodeValue
                 json_obj['docxfile_page_count'] = docxfile_page_count
-            except:
+            except Exception as e:
                 if bool_print_stats:
                     json_obj['docxfile_page_count'] = ""
 
@@ -6636,7 +6702,7 @@ def get_robot_usage_comment():
                 match = matches[0] if matches[0:] else [0, 0]
                 page_count = match[1]
                 json_obj['docxfile_page_count'] = page_count
-            except:
+            except Exception as e:
                 if bool_print_stats:
                     print("Unable to get number of pages from document. You can ignore this.")
 
@@ -6663,7 +6729,7 @@ def get_robot_usage_comment():
             try:
                 soup_div_needs_update = soup.find('div', id='needs_update')
                 str_needs_update = ''.join(map(str, soup_div_needs_update.text))
-            except:
+            except Exception as e:
                 pass
                 
             if available_updates_message != "":
@@ -6673,7 +6739,7 @@ def get_robot_usage_comment():
             return 0;
             try:
                 print(driver.capabilities['browserVersion'])
-            except:
+            except Exception as e:
                 pass
             print(driver.name)
 
@@ -6852,20 +6918,20 @@ def get_robot_usage_comment():
                 submited_div = WebDriverWait(driver, 5).until(
                     EC.presence_of_element_located((By.XPATH, submited_div_element)))
                 print("statistics updated")
-            except:
+            except Exception as e:
                 #var = traceback.format_exc()
                 #print(var)
                 print("Warning failed to get available updates status, you can ignore this.")
                 # pass
 
-        except:
+        except Exception as e:
             #var = traceback.format_exc()
             #print(var)
             print("Warning failed to get available updates status, you can ignore this.")
 
         # time.sleep(10)
 
-    except:
+    except Exception as e:
         var = traceback.format_exc()
         #print(var)
         print("Warning failed to get available updates status, you can ignore this.")
@@ -6883,16 +6949,16 @@ def save_docx_file():
     # Find valid two letter code (Norwegian is invalid nb, but should be no)
     try:
         lang_name = google_translate_lang_codes[lang_code]
-    except:
+    except Exception as e:
         try:
             lang_name = deepl_translate_lang_codes[lang_code]
             for google_lang_code in google_translate_lang_codes.keys():
                 try:
                     if deepl_translate_lang_codes[lang_code].lower() == google_translate_lang_codes[google_lang_code].lower() and lang_code != google_lang_code:
                         lang_code = google_lang_code
-                except:
+                except Exception as e:
                     pass
-        except:
+        except Exception as e:
             pass
     
     language_alpha_extension = None
@@ -6902,7 +6968,7 @@ def save_docx_file():
         lang_alpha3_code = Language.get(lang_code).to_alpha3()
         lang_alpha3b_code = Language.get(lang_code).to_alpha3(variant='B')
         pass
-    except:
+    except Exception as e:
         lang_alpha3b_code = None
 
     word_file_to_translate_save_as_path = word_file_to_translate
@@ -6928,12 +6994,144 @@ import shutil
 import time
 import platform
 
+import json
+import datetime
+import traceback
+
+def report_crash(exception, context_text=""):
+    """
+    Writes a fatal error report to last_fatal_error.json for frontend telemetry.
+    """
+    error_report = {
+        "timestamp": datetime.datetime.now().isoformat(),
+        "error_type": type(exception).__name__,
+        "message": str(exception),
+        "traceback": traceback.format_exc(),
+        "current_text_chunk_at_crash": str(context_text)[:500], # Truncate for sanity
+        "engine": globals().get("translation_engine", "Unknown")
+    }
+
+    try:
+        with open("last_fatal_error.json", "w", encoding="utf-8") as f:
+            json.dump(error_report, f, indent=4, ensure_ascii=False)
+        print("\n[CRITICAL] Fatal error logged to last_fatal_error.json")
+    except Exception as e:
+        print(f"\n[CRITICAL] Failed to write error report: {e}")
+
+    # Aggressive RAM Rescue
+    try:
+        cleanup_selenium_chrome_temp_folders()
+        if 'driver' in globals() and driver:
+            driver.quit()
+    except:
+        pass
+
+
+import json
+import datetime
+import traceback
+
+def report_crash(exception, context_text=""):
+    """
+    Writes a fatal error report to last_fatal_error.json for frontend telemetry.
+    """
+    error_report = {
+        "timestamp": datetime.datetime.now().isoformat(),
+        "error_type": type(exception).__name__,
+        "message": str(exception),
+        "traceback": traceback.format_exc(),
+        "current_text_chunk_at_crash": str(context_text)[:500], # Truncate for sanity
+        "engine": globals().get("translation_engine", "Unknown")
+    }
+
+    try:
+        with open("last_fatal_error.json", "w", encoding="utf-8") as f:
+            json.dump(error_report, f, indent=4, ensure_ascii=False)
+        print("\n[CRITICAL] Fatal error logged to last_fatal_error.json")
+    except Exception as e:
+        print(f"\n[CRITICAL] Failed to write error report: {e}")
+
+    # Aggressive RAM Rescue
+    try:
+        cleanup_selenium_chrome_temp_folders()
+        if 'driver' in globals() and driver:
+            driver.quit()
+    except Exception as e:
+        pass
+
+
 import os
 import re
 import time
 import shutil
 import psutil
 import platform
+
+import json
+import datetime
+import traceback
+
+def report_crash(exception, context_text=""):
+    """
+    Writes a fatal error report to last_fatal_error.json for frontend telemetry.
+    """
+    error_report = {
+        "timestamp": datetime.datetime.now().isoformat(),
+        "error_type": type(exception).__name__,
+        "message": str(exception),
+        "traceback": traceback.format_exc(),
+        "current_text_chunk_at_crash": str(context_text)[:500], # Truncate for sanity
+        "engine": globals().get("translation_engine", "Unknown")
+    }
+
+    try:
+        with open("last_fatal_error.json", "w", encoding="utf-8") as f:
+            json.dump(error_report, f, indent=4, ensure_ascii=False)
+        print("\n[CRITICAL] Fatal error logged to last_fatal_error.json")
+    except Exception as e:
+        print(f"\n[CRITICAL] Failed to write error report: {e}")
+
+    # Aggressive RAM Rescue
+    try:
+        cleanup_selenium_chrome_temp_folders()
+        if 'driver' in globals() and driver:
+            driver.quit()
+    except:
+        pass
+
+
+import json
+import datetime
+import traceback
+
+def report_crash(exception, context_text=""):
+    """
+    Writes a fatal error report to last_fatal_error.json for frontend telemetry.
+    """
+    error_report = {
+        "timestamp": datetime.datetime.now().isoformat(),
+        "error_type": type(exception).__name__,
+        "message": str(exception),
+        "traceback": traceback.format_exc(),
+        "current_text_chunk_at_crash": str(context_text)[:500], # Truncate for sanity
+        "engine": globals().get("translation_engine", "Unknown")
+    }
+
+    try:
+        with open("last_fatal_error.json", "w", encoding="utf-8") as f:
+            json.dump(error_report, f, indent=4, ensure_ascii=False)
+        print("\n[CRITICAL] Fatal error logged to last_fatal_error.json")
+    except Exception as e:
+        print(f"\n[CRITICAL] Failed to write error report: {e}")
+
+    # Aggressive RAM Rescue
+    try:
+        cleanup_selenium_chrome_temp_folders()
+        if 'driver' in globals() and driver:
+            driver.quit()
+    except Exception as e:
+        pass
+
 import sys
 
 import os
@@ -6942,6 +7140,72 @@ import time
 import shutil
 import psutil
 import platform
+
+import json
+import datetime
+import traceback
+
+def report_crash(exception, context_text=""):
+    """
+    Writes a fatal error report to last_fatal_error.json for frontend telemetry.
+    """
+    error_report = {
+        "timestamp": datetime.datetime.now().isoformat(),
+        "error_type": type(exception).__name__,
+        "message": str(exception),
+        "traceback": traceback.format_exc(),
+        "current_text_chunk_at_crash": str(context_text)[:500], # Truncate for sanity
+        "engine": globals().get("translation_engine", "Unknown")
+    }
+
+    try:
+        with open("last_fatal_error.json", "w", encoding="utf-8") as f:
+            json.dump(error_report, f, indent=4, ensure_ascii=False)
+        print("\n[CRITICAL] Fatal error logged to last_fatal_error.json")
+    except Exception as e:
+        print(f"\n[CRITICAL] Failed to write error report: {e}")
+
+    # Aggressive RAM Rescue
+    try:
+        cleanup_selenium_chrome_temp_folders()
+        if 'driver' in globals() and driver:
+            driver.quit()
+    except:
+        pass
+
+
+import json
+import datetime
+import traceback
+
+def report_crash(exception, context_text=""):
+    """
+    Writes a fatal error report to last_fatal_error.json for frontend telemetry.
+    """
+    error_report = {
+        "timestamp": datetime.datetime.now().isoformat(),
+        "error_type": type(exception).__name__,
+        "message": str(exception),
+        "traceback": traceback.format_exc(),
+        "current_text_chunk_at_crash": str(context_text)[:500], # Truncate for sanity
+        "engine": globals().get("translation_engine", "Unknown")
+    }
+
+    try:
+        with open("last_fatal_error.json", "w", encoding="utf-8") as f:
+            json.dump(error_report, f, indent=4, ensure_ascii=False)
+        print("\n[CRITICAL] Fatal error logged to last_fatal_error.json")
+    except Exception as e:
+        print(f"\n[CRITICAL] Failed to write error report: {e}")
+
+    # Aggressive RAM Rescue
+    try:
+        cleanup_selenium_chrome_temp_folders()
+        if 'driver' in globals() and driver:
+            driver.quit()
+    except Exception as e:
+        pass
+
 import sys
 
 def cleanup_selenium_chrome_temp_folders():
@@ -7060,7 +7324,7 @@ def main() -> int:
         try:
             driver.close()
             driver.quit()
-        except:
+        except Exception as e:
             pass
         create_webdriver()
 
@@ -7129,7 +7393,7 @@ def main() -> int:
         #print("\nDriver close time: %s (h:mm:ss.mmm)" % (driver_close_time))
         #print("\nDriver quit time: %s (h:mm:ss.mmm)" % (driver_quit_time))
         #print("\nDriver close and quit time: %s (h:mm:ss.mmm)" % (driver_close_quit_time))
-    except:
+    except Exception as e:
         var = traceback.format_exc()
         print(var)
         pass
@@ -7161,6 +7425,10 @@ def main() -> int:
     return 0
 
 if __name__ == '__main__':
-    main()  # next section explains the use of sys.exit
+    try:
+        main()
+    except Exception as e:
+        report_crash(e, "Top-level crash")
+        raise
     # Redirect all stderr output to null (silences destructor error messages)
     sys.exit(0)
