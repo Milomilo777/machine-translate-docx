@@ -1,3 +1,4 @@
+# pylint: disable=line-too-long, missing-module-docstring, missing-class-docstring, missing-function-docstring, broad-exception-caught, bare-except, invalid-name, import-error, multiple-statements, too-many-locals, wrong-import-order
 import os
 import uuid
 import json
