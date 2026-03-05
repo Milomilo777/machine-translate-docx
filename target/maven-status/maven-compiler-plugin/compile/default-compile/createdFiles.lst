@@ -1,0 +1,11 @@
+com/translationrobot/service/TranslationService.class
+com/translationrobot/repository/TranslationRepository.class
+com/translationrobot/client/GoogleTranslationClient.class
+com/translationrobot/exception/TranslationApiException.class
+com/translationrobot/model/Document.class
+com/translationrobot/model/Translation.class
+com/translationrobot/client/TranslationClient.class
+com/translationrobot/service/TranslationServiceImpl.class
+com/translationrobot/model/DocumentStatus.class
+com/translationrobot/TranslationRobotApplication.class
+com/translationrobot/repository/DocumentRepository.class

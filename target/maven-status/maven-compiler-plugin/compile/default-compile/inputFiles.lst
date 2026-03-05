@@ -1,0 +1,11 @@
+/app/src/main/java/com/translationrobot/client/TranslationClient.java
+/app/src/main/java/com/translationrobot/exception/TranslationApiException.java
+/app/src/main/java/com/translationrobot/repository/TranslationRepository.java
+/app/src/main/java/com/translationrobot/TranslationRobotApplication.java
+/app/src/main/java/com/translationrobot/service/TranslationService.java
+/app/src/main/java/com/translationrobot/model/Translation.java
+/app/src/main/java/com/translationrobot/client/GoogleTranslationClient.java
+/app/src/main/java/com/translationrobot/repository/DocumentRepository.java
+/app/src/main/java/com/translationrobot/model/DocumentStatus.java
+/app/src/main/java/com/translationrobot/model/Document.java
+/app/src/main/java/com/translationrobot/service/TranslationServiceImpl.java

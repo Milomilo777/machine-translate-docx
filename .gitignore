@@ -1,4 +1,5 @@
 lib
 samples
 github-keys
-documentation
+documentationtarget/
+.idea/
