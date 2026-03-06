@@ -598,13 +598,8 @@ parser.add_argument("--clientip", '-i', help="Client IP for statistics")
 parser.add_argument('--version', required = False, help="Show program version", action='store_true')
 parser.add_argument('--action', required=False, default='translate', help="Action: translate, polish, align")
 
-try:
-    args, unknown = parser.parse_known_args()
-except:
-    #print("Waiting for the input_element...")
-    var = traceback.format_exc()
-    print(var)
-    #input ("Type enter to continue")
+args, unknown = parser.parse_known_args()
+
 
 show_version = args.version
 silent = args.silent
@@ -3142,7 +3137,7 @@ def selenium_chrome_deepl_translate(to_translate, retry_count):
                 is_visible = driver.execute_script("""
                     const r = arguments[0].getBoundingClientRect();
                     return (r.top >= 0 && r.bottom <= window.innerHeight);
-                """, copy_translation_button)
+                """, copy_translation_button)  # pylint: disable=used-before-assignment
                 if not is_visible:
                     driver.execute_script(
                         "arguments[0].scrollIntoView({block: 'end'});",
