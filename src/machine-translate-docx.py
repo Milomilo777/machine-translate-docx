@@ -7303,35 +7303,51 @@ def process_ai_action():
     model_name = args.aimodel if args.aimodel else "gpt-5-nano"
     oai_translator = OpenAITranslator(model=model_name, filename=word_file_to_translate)
 
-    # 1. Prepare all tasks (chunks)
-    chunk_size = 15
-    tasks = []
-    for start_idx in range(1, numrows + 1, chunk_size):
-        end_idx = min(start_idx + chunk_size, numrows + 1)
-        source_dict = {}
-        target_dict = {}
+    # 1. Build Global Context (Full English Source for Model Comprehension)
+    global_context_lines = []
+    for i in range(1, numrows + 1):
+        if from_text_is_read[i] == 1 and from_text_table[i].strip():
+            global_context_lines.append(f"L{i}: {from_text_table[i].strip()}")
+    global_context_str = "\n".join(global_context_lines)
 
-        for idx in range(start_idx, end_idx):
-            if from_text_is_read[idx] == 1:
+    # 1.5 Prepare tasks with Semantic Chunking (Dynamic Boundaries)
+    tasks = []
+    curr_start = 1
+    while curr_start <= numrows:
+        if from_text_is_read[curr_start] == 0 or not from_text_table[curr_start].strip():
+            curr_start += 1
+            continue
+
+        # Target ~15 lines, but extend to find a sentence ending (.)
+        curr_end = min(curr_start + 14, numrows)
+        while curr_end < numrows and from_text_is_end_of_line_table[curr_end] == 0 and (curr_end - curr_start) < 25:
+            curr_end += 1
+
+        s_dict = {}
+        t_dict = {}
+        for idx in range(curr_start, curr_end + 1):
+            if idx <= numrows and from_text_is_read[idx] == 1:
                 src = from_text_table[idx].strip()
                 tgt = existing_target_table[idx].strip()
                 if src:
-                    source_dict[f"L{idx}"] = src
-                    target_dict[f"L{idx}"] = tgt
+                    s_dict[f"L{idx}"] = src
+                    t_dict[f"L{idx}"] = tgt
 
-        if source_dict:
-            tasks.append((start_idx, end_idx, source_dict, target_dict))
+        if s_dict:
+            # tasks.append requires end_idx to be exclusive, so we pass curr_end + 1
+            tasks.append((curr_start, curr_end + 1, s_dict, t_dict))
+        curr_start = curr_end + 1
 
     if not tasks: return
 
     # 2. Worker function for the thread pool
     def process_chunk(task_data):
         start_idx, end_idx, s_dict, t_dict = task_data
-        print(f"Processing block lines {start_idx} to {end_idx-1}...")
+        print(f"Processing semantic block lines {start_idx} to {end_idx-1}...")
         if action == "polish":
-            res_dict = oai_translator.polish_text(src_lang_name, dest_lang_name, s_dict, t_dict)
+            res_dict = oai_translator.polish_text(src_lang_name, dest_lang_name, s_dict, t_dict, global_context_str)
         elif action == "align":
-            res_dict = oai_translator.align_text(src_lang_name, dest_lang_name, s_dict, t_dict)
+            res_dict = oai_translator.align_text(src_lang_name, dest_lang_name, s_dict, t_dict, global_context_str)
         else:
             res_dict = {}
         return start_idx, end_idx, res_dict

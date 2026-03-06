@@ -250,11 +250,12 @@ class OpenAITranslator:
             with open(filepath, 'r', encoding='utf-8') as f:
                 return f.read()
 
-    def polish_text(self, src_lang_name, dest_lang_name, source_dict, target_dict):
+    def polish_text(self, src_lang_name, dest_lang_name, source_dict, target_dict, global_context=""):
         prompt_content = self._get_prompt('prompt_polish.txt', f"You are an expert editor translating from {src_lang_name} to {dest_lang_name}. Polish the translation. Return ONLY a valid JSON object where keys are line IDs and values are polished {dest_lang_name} strings.")
 
         payload = {
             "instructions": prompt_content,
+            "global_document_context": global_context,
             "source_texts": source_dict,
             "target_texts": target_dict
         }
@@ -273,11 +274,12 @@ class OpenAITranslator:
             print(f"[Error] Polish failed: {e}")
             return target_dict
 
-    def align_text(self, src_lang_name, dest_lang_name, source_dict, target_dict):
+    def align_text(self, src_lang_name, dest_lang_name, source_dict, target_dict, global_context=""):
         prompt_content = self._get_prompt('prompt_align.txt', f"You are an expert aligner translating from {src_lang_name} to {dest_lang_name}. Align the translation with the source. Return ONLY a valid JSON object where keys are line IDs and values are aligned {dest_lang_name} strings.")
 
         payload = {
             "instructions": prompt_content,
+            "global_document_context": global_context,
             "source_texts": source_dict,
             "target_texts": target_dict
         }
