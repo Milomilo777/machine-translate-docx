@@ -7291,18 +7291,21 @@ def process_ai_action():
     global src_lang_name, dest_lang_name
 
     split_translation = False
-    print(f"\n[AI LAB] Starting {action.upper()} process using OpenAI API...")
+    print(f"\n[AI LAB] Starting {action.upper()} process using OpenAI API (Multi-threaded)...")
 
     try:
         from translator import OpenAITranslator
+        import concurrent.futures
     except ImportError:
-        print("ERROR: Could not import translator.py. Make sure it is in the same folder.")
+        print("ERROR: Could not import required modules.")
         return
 
-    model_name = args.aimodel if args.aimodel else "gpt-4o"
+    model_name = args.aimodel if args.aimodel else "gpt-5-nano"
     oai_translator = OpenAITranslator(model=model_name, filename=word_file_to_translate)
 
+    # 1. Prepare all tasks (chunks)
     chunk_size = 15
+    tasks = []
     for start_idx in range(1, numrows + 1, chunk_size):
         end_idx = min(start_idx + chunk_size, numrows + 1)
         source_dict = {}
@@ -7316,19 +7319,36 @@ def process_ai_action():
                     source_dict[f"L{idx}"] = src
                     target_dict[f"L{idx}"] = tgt
 
-        if not source_dict: continue
+        if source_dict:
+            tasks.append((start_idx, end_idx, source_dict, target_dict))
 
+    if not tasks: return
+
+    # 2. Worker function for the thread pool
+    def process_chunk(task_data):
+        start_idx, end_idx, s_dict, t_dict = task_data
         print(f"Processing block lines {start_idx} to {end_idx-1}...")
         if action == "polish":
-            results_dict = oai_translator.polish_text(src_lang_name, dest_lang_name, source_dict, target_dict)
+            res_dict = oai_translator.polish_text(src_lang_name, dest_lang_name, s_dict, t_dict)
         elif action == "align":
-            results_dict = oai_translator.align_text(src_lang_name, dest_lang_name, source_dict, target_dict)
+            res_dict = oai_translator.align_text(src_lang_name, dest_lang_name, s_dict, t_dict)
         else:
-            results_dict = {}
+            res_dict = {}
+        return start_idx, end_idx, res_dict
 
+    # 3. Execute concurrently (max 5 workers to respect API rate limits)
+    all_results = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+        for result in executor.map(process_chunk, tasks):
+            all_results.append(result)
+
+    # 4. Map results back sequentially to avoid thread lock/race conditions
+    print("[AI LAB] Mapping AI results back to document...")
+    for start_idx, end_idx, results_dict in all_results:
         for idx in range(start_idx, end_idx):
             if from_text_is_read[idx] == 1:
                 key = f"L{idx}"
+                # Safe fallback if API drops a key or returns empty dictionary
                 res = results_dict.get(key, existing_target_table[idx])
                 to_text_by_phrase_separator_table[idx] = res
                 to_text_by_phrase_separator_removed_table[idx] = res
