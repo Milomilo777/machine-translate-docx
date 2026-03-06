@@ -7397,7 +7397,8 @@ def main() -> int:
 
     elapsed_time = end_time - start_time
 
-    run_statistics()
+    if action not in ["polish", "align"]:
+        run_statistics()
     save_docx_file()
     
     if viewdocx:
@@ -7419,7 +7420,8 @@ def main() -> int:
     print("\nSaved file name: %s" % (word_file_to_translate_save_as_path))
     
     
-    get_robot_usage_comment()
+    if action not in ["polish", "align"]:
+        get_robot_usage_comment()
 
     if translation_engine == 'perplexity':
         if engine_method == 'api':

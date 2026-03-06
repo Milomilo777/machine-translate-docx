@@ -138,6 +138,9 @@ class MachineTranslatorApp(ctk.CTk):
         self.log_label = ctk.CTkLabel(self.log_frame, text="Output Log", font=ctk.CTkFont(size=14, weight="bold"))
         self.log_label.grid(row=0, column=0, padx=0, pady=(0, 5), sticky="w")
 
+        self.copy_log_button = ctk.CTkButton(self.log_frame, text="Copy Log", width=80, height=24, command=self.copy_log)
+        self.copy_log_button.grid(row=0, column=0, sticky="e")
+
         self.log_textbox = ctk.CTkTextbox(self.log_frame, wrap="word", font=ctk.CTkFont(size=12))
         self.log_textbox.grid(row=1, column=0, sticky="nsew")
         self.log_textbox.configure(state="normal")
@@ -196,6 +199,11 @@ class MachineTranslatorApp(ctk.CTk):
             self.dict_entry.insert(0, filename)
             self.save_settings()
             self.log_message(f"Dictionary: {os.path.basename(filename)}")
+
+    def copy_log(self):
+        self.clipboard_clear()
+        self.clipboard_append(self.log_textbox.get("1.0", "end-1c"))
+        self.log_message("📋 Log successfully copied to clipboard!")
 
     def log_message(self, message):
         def _update():
@@ -260,7 +268,8 @@ class MachineTranslatorApp(ctk.CTk):
             "--silent", "--exitonsuccess",
             "--engine", engine_to_use,
             "--enginemethod", method_to_use,
-            "--action", action_type
+            "--action", action_type,
+            "--aimodel", "gpt-5-nano"
         ]
 
         if s_lang != "Auto": cmd.extend(["--srclang", s_lang])
