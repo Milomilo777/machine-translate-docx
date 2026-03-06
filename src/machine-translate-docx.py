@@ -12,6 +12,11 @@ warnings.filterwarnings(
 )
 
 import sys
+import os
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.abspath(os.path.join(current_dir, ".."))
+if current_dir not in sys.path: sys.path.insert(0, current_dir)
+if parent_dir not in sys.path: sys.path.insert(0, parent_dir)
 import io
 
 # If all these flags appear anywhere on the command line, exit quietly.
@@ -588,12 +593,11 @@ parser.add_argument('--viewdocx', '-l', required = False, help="Open the docx fi
 parser.add_argument('--silent', '-q', required = False, help="Silent, do not ask question and exit silently", action='store_true')
 parser.add_argument("--verbose", '-v', help="increase output verbosity", action="store_true")
 parser.add_argument("--clientip", '-i', help="Client IP for statistics")
-#parser.add_argument('--destination-file', required = True, help="Output file name")
-#args = parser.parse_args()
 parser.add_argument('--version', required = False, help="Show program version", action='store_true')
+parser.add_argument('--action', required=False, default='translate', help="Action: translate, polish, align")
 
 try:
-    args = parser.parse_args()
+    args, unknown = parser.parse_known_args()
 except:
     #print("Waiting for the input_element...")
     var = traceback.format_exc()
@@ -1062,6 +1066,7 @@ translation_errors_count = 0
 
 word_file_to_translate = args.docxfile
 
+action = getattr(args, 'action', 'translate').lower()
 viewdocx = args.viewdocx
 client_ip = args.clientip
 
@@ -5175,7 +5180,7 @@ def cell_add_paragraph(row_n, paragraph_text):
     table_cells[row_n][2] = current_cell
 
 def read_and_parse_docx_document():
-    global from_text_table
+    global from_text_table, existing_target_table, action
     global from_text_is_greyed_table
     global from_text_is_red_color_table
     global from_text_is_end_of_line_table
@@ -5252,6 +5257,7 @@ def read_and_parse_docx_document():
     rownum = 0
 
     from_text_table = [''] * (numrows + 1)
+    existing_target_table = [''] * (numrows + 1)
     from_text_is_greyed_table = [0] * (numrows + 1)
     from_text_is_red_color_table = [0] * (numrows + 1)
     from_text_is_end_of_line_table = [0] * (numrows + 1)
@@ -5390,9 +5396,14 @@ def read_and_parse_docx_document():
                             from_text_is_end_of_line_table[i - 1] = 1
 
                     from_text_table[i] = cellvalue
+                elif col_no == 3 and action in ["polish", "align"]:
+                    try:
+                        existing_target_table[i] = cell.text.replace("\n", " ").replace("\r", " ").strip()
+                    except:
+                        existing_target_table[i] = ''
                 col_no = col_no + 1
             
-            if not splitonly and i > 1:
+            if not splitonly and i > 1 and action not in ['polish', 'align']:
                 prepare_and_clear_cell_for_writing (i, '')
             from_text_is_read[i] = 1
         except Exception:
@@ -7163,6 +7174,9 @@ def save_docx_file():
             word_file_to_translate_save_as_path = re.sub("(?i).docx$", f"_{lang_alpha3b_code}.docx", word_file_to_translate)
             print(f"\nAdding file name suffix _{lang_alpha3b_code}.")
 
+    if action in ["polish", "align"]:
+        word_file_to_translate_save_as_path = word_file_to_translate_save_as_path.replace(".docx", f"_AI_{action.title()}.docx")
+
     local_time_offset()
 
     file_saved = 0
@@ -7272,6 +7286,59 @@ def cleanup_selenium_chrome_temp_folders():
 
 
 
+
+def process_ai_action():
+    global to_text_by_phrase_separator_table, to_text_by_phrase_separator_removed_table
+    global translation_result_phrase_array, translation_result_using_separator, split_translation
+    global from_text_table, existing_target_table, action, word_file_to_translate
+    global src_lang_name, dest_lang_name
+
+    split_translation = False
+    print(f"\n[AI LAB] Starting {action.upper()} process using OpenAI API...")
+
+    try:
+        from openai_translator.translator import OpenAITranslator
+    except ImportError:
+        print("ERROR: Could not import translator.py. Make sure it is in the same folder.")
+        return
+
+    model_name = getattr(args, 'aimodel', "gpt-4o")
+    if not model_name: model_name = "gpt-4o"
+    oai_translator = OpenAITranslator(model=model_name, filename=word_file_to_translate)
+
+    chunk_size = 15
+    for start_idx in range(1, numrows + 1, chunk_size):
+        end_idx = min(start_idx + chunk_size, numrows + 1)
+        source_dict = {}
+        target_dict = {}
+
+        for idx in range(start_idx, end_idx):
+            if from_text_is_read[idx] == 1:
+                src = from_text_table[idx].strip()
+                tgt = existing_target_table[idx].strip()
+                if src:
+                    source_dict[f"L{idx}"] = src
+                    target_dict[f"L{idx}"] = tgt
+
+        if not source_dict: continue
+
+        print(f"Processing block lines {start_idx} to {end_idx-1}...")
+        if action == "polish":
+            results_dict = oai_translator.polish_text(source_dict, target_dict)
+        elif action == "align":
+            results_dict = oai_translator.align_text(source_dict, target_dict)
+        else:
+            results_dict = {}
+
+        for idx in range(start_idx, end_idx):
+            if from_text_is_read[idx] == 1:
+                key = f"L{idx}"
+                res = results_dict.get(key, existing_target_table[idx])
+                to_text_by_phrase_separator_table[idx] = res
+                to_text_by_phrase_separator_removed_table[idx] = res
+                translation_result_using_separator[idx] = res
+                translation_result_phrase_array[idx] = [res]
+
 def main() -> int:
     global E_mail_str, end_time, elapsed_time, translation_engine, engine_method, tried_login_in_deepl, viewdocx, word_file_to_translate_save_as_path
     global logged_into_deepl, deepl_nb_clear_cached_times, version_checker_sleep_seconds_on_update
@@ -7293,7 +7360,11 @@ def main() -> int:
         #if not logged_into_perplexity:
         #    print("Failed to login into perplexity")
 
-    translation_succeded = translate_docx()
+    if action in ['polish', 'align']:
+        process_ai_action()
+        translation_succeded = True
+    else:
+        translation_succeded = translate_docx()
     
     if logged_into_deepl:
         selenium_chrome_deepl_log_off()
@@ -7309,14 +7380,16 @@ def main() -> int:
         create_webdriver()
 
     
-    get_translation_and_replace_after()
+    if action not in ['polish', 'align']:
+        get_translation_and_replace_after()
 
     minimize_browser()
 
     #input("before create_translation_split_prompts")
     #create_translation_split_prompts()
     #input("after create_translation_split_prompts")
-    document_split_phrases()
+    if action not in ['polish', 'align']:
+        document_split_phrases()
 
     write_destination_language_in_docx_cell()
 
