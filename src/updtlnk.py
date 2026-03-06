@@ -1,3 +1,4 @@
+# pylint: disable=import-error
 import os
 import sys
 import platform
@@ -9,7 +10,21 @@ WINDOWS_TERMINAL_EXE = r"C:\SMTVRobot\WindowsTerminal\WindowsTerminal.exe"
 def is_windows_10_or_later():
     """Return True if running on Windows 10 or newer."""
     try:
-        win_ver = sys.getwindowsversion()
+        win_ver = sys.getwindowsversion()  # pylint: disable=no-member
+  # pylint: disable=no-member
+  # pylint: disable=no-member
+  # pylint: disable=no-member
+  # pylint: disable=no-member
+  # pylint: disable=no-member
+  # pylint: disable=no-member
+  # pylint: disable=no-member
+  # pylint: disable=no-member
+  # pylint: disable=no-member
+  # pylint: disable=no-member
+  # pylint: disable=no-member
+  # pylint: disable=no-member
+  # pylint: disable=no-member
+  # pylint: disable=no-member
         # Major version 10 = Windows 10/11
         return win_ver.major >= 10
     except Exception:

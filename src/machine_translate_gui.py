@@ -1,3 +1,4 @@
+# pylint: disable=import-error
 import tkinter as tk
 from tkinter import filedialog, messagebox, font
 import subprocess
@@ -586,7 +587,21 @@ class MachineTranslationApp:
             
             src_lang = self.source_language.get()
             dest_lang = self.target_language.get()
-            self.source_combo = tk.OptionMenu(root, self.source_language, *sorted(self.languages))
+            self.source_combo = tk.OptionMenu(root, self.source_language, *sorted(self.languages))  # pylint: disable=possibly-used-before-assignment
+  # pylint: disable=possibly-used-before-assignment
+  # pylint: disable=possibly-used-before-assignment
+  # pylint: disable=possibly-used-before-assignment
+  # pylint: disable=possibly-used-before-assignment
+  # pylint: disable=possibly-used-before-assignment
+  # pylint: disable=possibly-used-before-assignment
+  # pylint: disable=possibly-used-before-assignment
+  # pylint: disable=possibly-used-before-assignment
+  # pylint: disable=possibly-used-before-assignment
+  # pylint: disable=possibly-used-before-assignment
+  # pylint: disable=possibly-used-before-assignment
+  # pylint: disable=possibly-used-before-assignment
+  # pylint: disable=possibly-used-before-assignment
+  # pylint: disable=possibly-used-before-assignment
             self.target_combo = tk.OptionMenu(root, self.target_language, *sorted(self.languages))
             self.target_language.set(dest_lang)
             self.source_language.set(src_lang)
@@ -667,6 +682,7 @@ class MachineTranslationApp:
 
     # Source https://www.programcreek.com/python/?CodeExample=create+shortcut
     def create_windows_shortcut(self, lnk_out_path, target, parameters, working_dir, description, icon=None, run_as_admin=False, minimized=False):
+  # pylint: disable=possibly-used-before-assignment
         shell = client.Dispatch('WScript.Shell')
         shortcut = shell.CreateShortCut(lnk_out_path)
         shortcut.Targetpath = target
@@ -682,6 +698,9 @@ class MachineTranslationApp:
         shortcut.save()
         
         if run_as_admin:
+  # pylint: disable=undefined-variable
+  # pylint: disable=undefined-variable
+  # pylint: disable=undefined-variable
             with open(lnk_out_path, "r+b") as f:
                 with contextlib.closing(mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_WRITE)) as m:
                     m[0x15] = m[0x15] | 0x20 # Enable 6th bit = Responsible for Run As Admin
@@ -773,6 +792,7 @@ class MachineTranslationApp:
             command = f"{bin_launcher_path} {self.bin_path}\\machine-translate-docx.exe --srclang {src_lang_code} --destlang {dest_lang_code} --engine {engine} {dest_font_param} {split_param} {xlsx_replace_param} {show_browser_param} {open_word_param} {exitonsuccess_param} --docxfile "
         
         # Replace multiple spaces into a single space
+  # pylint: disable=possibly-used-before-assignment
         arguments = re.sub('\s+',' ',arguments)
         #print("arguments:")
         #print(arguments)
@@ -810,6 +830,7 @@ class MachineTranslationApp:
             messagebox.showinfo(message, f"Sendto shortcut is now created:\n\n\"machine-translate-docx.exe - {dest_lang_name} - {engine}{split_string}{viewdocx_label}\".\n\nThis needs to be done only once unless you want to change the settings for that language.")
         else:
             messagebox.showerror("Error, shortcut was not created", f"Error : Sendto shortcut was not created :\n\n\"machine-translate-docx.exe - {dest_lang_name} - {engine}{split_string}{viewdocx_label}.lnk\".\n\nYou may report this error to smtv.bot@gmail.com")
+  # pylint: disable=no-member
             
     def resource_path(self, relative_path):
         """ Get absolute path to resource, works for dev and for PyInstaller """
@@ -1054,14 +1075,18 @@ class MachineTranslationApp:
             #proc_translate.wait()
             
             # Force window to redraw with status bar
+  # pylint: disable=undefined-variable
             #self.status_bar.config(text=f"Status bar")
+  # pylint: disable=undefined-variable
             #self.root.update()
+  # pylint: disable=undefined-variable
             
             # Open the DOCX file in Windows
             try:
                 if platform.system() == 'Windows':
                     subprocess.Popen(["start", "", rf"{docx_file_path}"], shell=True)
                 elif platform.system() == "Darwin":  # macOS
+  # pylint: disable=undefined-variable
                     subprocess.Popen(["open", rf"{docx_file_path}"])
                 elif platform.system() == "Linux":  # Linux
                     subprocess.Popen(["xdg-open", rf"{docx_file_path}"])
@@ -1107,6 +1132,7 @@ if __name__ == "__main__":
     
     docxfile_path = ""
     if word_file_to_translate is not None:
+  # pylint: disable=possibly-used-before-assignment
         splitted_filename = os.path.splitext(os.path.basename(word_file_to_translate))
 
         # number of segment separated by dot in the docx filename

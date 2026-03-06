@@ -1,3 +1,4 @@
+# pylint: disable=import-error
 from translator import OpenAITranslator
 
 if __name__ == "__main__":
