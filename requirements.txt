@@ -5,4 +5,15 @@ python-docx
 openpyxl
 lxml
 chardet
-bidi
+python-bidi
+json5
+screeninfo
+newmm-tokenizer
+tinysegmenter
+beautifulsoup4
+openai
+tiktoken
+psutil
+progressbar2
+customtkinter
+mysql-connector-python

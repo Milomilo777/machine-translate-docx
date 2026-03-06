@@ -37,7 +37,7 @@ class OpenAITranslator:
             conn = self.get_db_connection()
             if not conn:
                 print('[Warning] DB connection failed, skipping log.')
-                return response, translated_text
+                return
             cursor = conn.cursor()
             cursor.execute(
                 "INSERT INTO documents (doc_id, filename) VALUES (%s, %s)",
