@@ -1,4 +1,5 @@
 lib
 samples
 github-keys
-documentation__pycache__/
+documentation
+__pycache__/
