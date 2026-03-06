@@ -1,0 +1,55 @@
+[MASTER]
+ignore=CVS
+persistent=yes
+load-plugins=
+jobs=1
+unsafe-load-any-extension=no
+
+[MESSAGES CONTROL]
+disable=
+    E0401,  # import-error
+    E0402,  # relative-beyond-top-level
+    E1101,  # no-member
+    E1120,  # no-value-for-parameter
+    E1305,  # too-many-format-args
+    E0602,  # undefined-variable
+    E0606,  # possibly-used-before-assignment
+    E0601,  # used-before-assignment
+    E0001,  # syntax-error
+    C0414,  # import-qop
+    R1733,  # dict-iter-missing-items
+    W0622,  # redefined-outer-name
+    W0401,  # wildcard-import
+    C0413,  # wrong-import-position
+    W0614,  # unused-wildcard-import
+    W0613,  # unused-argument
+    R0913,  # too-many-arguments
+    R0917,  # too-many-positional-arguments
+    W1309,  # f-string-without-interpolation
+    R1710,  # inconsistent-return-statements
+    R0904,  # too-many-public-methods
+    W0404,  # reimported
+    C0415,  # import-outside-toplevel
+    R1705,  # no-else-return
+    W0602,  # global-variable-not-assigned
+    W0603,  # global-statement
+    C0104,  # disallowed-name
+    W0601,  # global-variable-undefined
+    R1714,  # consider-using-in
+    W3101,  # missing-timeout
+    I1101,  # c-extension-no-member
+    R0916,  # too-many-boolean-expressions
+    R1711,  # useless-return
+    C0201,  # consider-iterating-dictionary
+    W1404,  # implicit-str-concat
+    R1722,  # consider-using-sys-exit
+    W0104,  # pointless-statement
+    R1731,  # consider-using-max-builtin
+    R1716,  # chained-comparison
+    W0109,  # duplicate-key
+    C0206,  # consider-using-dict-items
+    C0412,  # ungrouped-imports
+    W1514,  # unspecified-encoding
+    R1702,  # too-many-nested-blocks
+    W0311,  # bad-indentation
+    W0101   # unreachable
