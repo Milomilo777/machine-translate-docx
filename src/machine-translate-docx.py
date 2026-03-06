@@ -17,6 +17,8 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.abspath(os.path.join(current_dir, ".."))
 if current_dir not in sys.path: sys.path.insert(0, current_dir)
 if parent_dir not in sys.path: sys.path.insert(0, parent_dir)
+openai_translator_dir = os.path.join(current_dir, "openai_translator")
+if openai_translator_dir not in sys.path: sys.path.insert(0, openai_translator_dir)
 import io
 
 # If all these flags appear anywhere on the command line, exit quietly.
@@ -7297,13 +7299,12 @@ def process_ai_action():
     print(f"\n[AI LAB] Starting {action.upper()} process using OpenAI API...")
 
     try:
-        from openai_translator.translator import OpenAITranslator
+        from translator import OpenAITranslator
     except ImportError:
         print("ERROR: Could not import translator.py. Make sure it is in the same folder.")
         return
 
-    model_name = getattr(args, 'aimodel', "gpt-4o")
-    if not model_name: model_name = "gpt-4o"
+    model_name = args.aimodel if args.aimodel else "gpt-4o"
     oai_translator = OpenAITranslator(model=model_name, filename=word_file_to_translate)
 
     chunk_size = 15
@@ -7324,9 +7325,9 @@ def process_ai_action():
 
         print(f"Processing block lines {start_idx} to {end_idx-1}...")
         if action == "polish":
-            results_dict = oai_translator.polish_text(source_dict, target_dict)
+            results_dict = oai_translator.polish_text(src_lang_name, dest_lang_name, source_dict, target_dict)
         elif action == "align":
-            results_dict = oai_translator.align_text(source_dict, target_dict)
+            results_dict = oai_translator.align_text(src_lang_name, dest_lang_name, source_dict, target_dict)
         else:
             results_dict = {}
 
@@ -7336,8 +7337,9 @@ def process_ai_action():
                 res = results_dict.get(key, existing_target_table[idx])
                 to_text_by_phrase_separator_table[idx] = res
                 to_text_by_phrase_separator_removed_table[idx] = res
-                translation_result_using_separator[idx] = res
+                translation_result_using_separator[idx] = [res]
                 translation_result_phrase_array[idx] = [res]
+
 
 def main() -> int:
     global E_mail_str, end_time, elapsed_time, translation_engine, engine_method, tried_login_in_deepl, viewdocx, word_file_to_translate_save_as_path

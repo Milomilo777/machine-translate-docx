@@ -35,6 +35,9 @@ class OpenAITranslator:
         self.doc_id = str(uuid.uuid4())
         try:
             conn = self.get_db_connection()
+            if not conn:
+                print('[Warning] DB connection failed, skipping log.')
+                return response, translated_text
             cursor = conn.cursor()
             cursor.execute(
                 "INSERT INTO documents (doc_id, filename) VALUES (%s, %s)",
@@ -49,8 +52,11 @@ class OpenAITranslator:
             except: pass
 
     def get_db_connection(self):
-        return mysql.connector.connect(**self.db_config)
-
+        try:
+            return mysql.connector.connect(**self.db_config)
+        except Exception as e:
+            print(f"[Warning] DB connection failed: {e}")
+            return None
     @staticmethod
     def estimate_tokens(text: str) -> int:
         encoding = tiktoken.get_encoding("cl100k_base")
@@ -390,6 +396,63 @@ class OpenAITranslator:
 
         return prompt
 
+
+    def _get_prompt(self, filename, default_content):
+        import os
+        if not os.path.exists(filename):
+            with open(filename, 'w', encoding='utf-8') as f:
+                f.write(default_content)
+            return default_content
+        else:
+            with open(filename, 'r', encoding='utf-8') as f:
+                return f.read()
+
+    def polish_text(self, src_lang_name, dest_lang_name, source_dict, target_dict):
+        prompt_content = self._get_prompt('prompt_polish.txt', f"You are an expert editor translating from {src_lang_name} to {dest_lang_name}. Polish the translation. Return ONLY a valid JSON object where keys are line IDs and values are polished {dest_lang_name} strings.")
+
+        payload = {
+            "instructions": prompt_content,
+            "source_texts": source_dict,
+            "target_texts": target_dict
+        }
+
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": "You are a professional editor. Always return a raw JSON object, no markdown blocks."},
+                    {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}
+                ],
+                response_format={"type": "json_object"}
+            )
+            return json.loads(response.choices[0].message.content)
+        except Exception as e:
+            print(f"[Error] Polish failed: {e}")
+            return target_dict
+
+    def align_text(self, src_lang_name, dest_lang_name, source_dict, target_dict):
+        prompt_content = self._get_prompt('prompt_align.txt', f"You are an expert aligner translating from {src_lang_name} to {dest_lang_name}. Align the translation with the source. Return ONLY a valid JSON object where keys are line IDs and values are aligned {dest_lang_name} strings.")
+
+        payload = {
+            "instructions": prompt_content,
+            "source_texts": source_dict,
+            "target_texts": target_dict
+        }
+
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": "You are a professional aligner. Always return a raw JSON object, no markdown blocks."},
+                    {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}
+                ],
+                response_format={"type": "json_object"}
+            )
+            return json.loads(response.choices[0].message.content)
+        except Exception as e:
+            print(f"[Error] Align failed: {e}")
+            return target_dict
+
     def translate(self, source_lang, dest_lang, text_to_translate):
         # Auto-create doc ID & filename if missing
         if not self.doc_id:
@@ -451,6 +514,9 @@ class OpenAITranslator:
         # Save query record
         try:
             conn = self.get_db_connection()
+            if not conn:
+                print('[Warning] DB connection failed, skipping log.')
+                return response, translated_text
             cursor = conn.cursor()
             cursor.execute(
                 """
