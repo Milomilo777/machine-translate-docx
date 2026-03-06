@@ -94,7 +94,7 @@ class MachineTranslatorApp(ctk.CTk):
 
         self.engine_label = ctk.CTkLabel(self.settings_frame, text="Translation Engine (For Raw Translation)", font=ctk.CTkFont(size=13))
         self.engine_label.grid(row=3, column=0, columnspan=2, padx=15, pady=(5, 5), sticky="w")
-        self.engine_dropdown = ctk.CTkComboBox(self.settings_frame, values=["DeepL", "Google", "Perplexity", "ChatGPT (API)", "ChatGPT (Web)"], state="readonly", height=35)
+        self.engine_dropdown = ctk.CTkComboBox(self.settings_frame, values=["DeepL", "Google", "Comet (Logged-in)", "Perplexity - Chrome", "ChatGPT (API)", "ChatGPT (Web)"], state="readonly", height=35)
         self.engine_dropdown.set("ChatGPT (API)")
         self.engine_dropdown.grid(row=4, column=0, columnspan=2, padx=15, pady=(0, 15), sticky="ew")
 
@@ -249,11 +249,18 @@ class MachineTranslatorApp(ctk.CTk):
             suffix_name = engine_selection.replace(" ", "_").replace("(", "").replace(")", "")
             if engine_selection == "DeepL": engine_to_use = "deepl"; method_to_use = "phrasesblock"
             elif engine_selection == "Google": engine_to_use = "google"; method_to_use = "javascript"
-            elif engine_selection == "Perplexity": engine_to_use = "perplexity"; method_to_use = "phrasesblock"
+            elif engine_selection == "Comet (Logged-in)": engine_to_use = "comet"; method_to_use = "phrasesblock"
+            elif engine_selection == "Perplexity - Chrome": engine_to_use = "perplexity"; method_to_use = "phrasesblock"
             elif engine_selection == "ChatGPT (API)": engine_to_use = "chatgpt"; method_to_use = "api"
             elif engine_selection == "ChatGPT (Web)": engine_to_use = "chatgpt"; method_to_use = "phrasesblock"
             else: engine_to_use = "google"; method_to_use = "javascript"
             self.log_message(f"🚀 Action: RAW TRANSLATION ({engine_selection})")
+
+        # Ensure default model is gpt-5.2-mini for AI actions
+        if action_type in ["polish", "align"]:
+            aimodel_to_use = "gpt-5.2-mini"
+        else:
+            aimodel_to_use = "gpt-5.2-mini"
 
         script_path = os.path.join("src", "machine-translate-docx.py")
         if not os.path.exists(script_path): script_path = "machine-translate-docx.py"
@@ -269,7 +276,7 @@ class MachineTranslatorApp(ctk.CTk):
             "--engine", engine_to_use,
             "--enginemethod", method_to_use,
             "--action", action_type,
-            "--aimodel", "gpt-5-nano"
+            "--aimodel", aimodel_to_use
         ]
 
         if s_lang != "Auto": cmd.extend(["--srclang", s_lang])

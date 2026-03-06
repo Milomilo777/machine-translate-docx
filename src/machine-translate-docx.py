@@ -580,7 +580,7 @@ parser = argparse.ArgumentParser()
 #parser.add_argument('--source-language', required = True, choices = Languages, help="Specify the source language!")
 parser.add_argument('--srclang', '-sl', required = False, help="Specify the default source language, en is default (hi,ja,ru,de,ru,hi,ja,in, etc)", default='en')
 parser.add_argument('--destlang', '--dl', required = False, help="Specify the destination language with 2 letter code (hi,ja,ru,de,ru,hi,ja,in, etc)")
-parser.add_argument('--engine', '-e', required = False, help="Specify the translation engine (google, deepl, yandex, chatgpt, perplexity)")
+parser.add_argument('--engine', '-e', required = False, help="Specify the translation engine (google, deepl, yandex, chatgpt, perplexity, comet)")
 parser.add_argument('--enginemethod', '-m', required = False, help="Specify the method (javascript, phrasesblock, singlephrase, xlsxfile, textfile )")
 parser.add_argument('--aimodel', '-am', required = False, help="Specify the ai model when applicable")
 parser.add_argument('--docxfile', '-d', required = False, help="Input file name")
@@ -1186,7 +1186,7 @@ if translation_engine is not None:
 else:
     translation_engine = ""
 
-if translation_engine in ['yandex', 'perplexity', 'chatgpt', 'deepl']:
+if translation_engine in ['yandex', 'perplexity', 'chatgpt', 'deepl', 'comet']:
     showbrowser = True
 elif translation_engine in ['deepl', 'chatgpt']:
     pass  # keep the value as is
@@ -1237,7 +1237,7 @@ elif translation_engine == 'chatgpt':
     else:
         engine_method = 'phrasesblock'
 
-elif translation_engine == 'perplexity':
+elif translation_engine in ['perplexity', 'comet']:
     if engine_method == 'api' or use_api == True:
         engine_method = 'api'
     elif engine_method  == 'webservice':
@@ -1257,7 +1257,7 @@ else:
     chatgpt_max_char_bloc_size_key = ['chatgpt', 'no_account','maximum_character_block']
 chatgpt_maximum_character_block = get_nested_value_from_json_array(json_configuration_array, chatgpt_max_char_bloc_size_key)
 
-if translation_engine == 'perplexity':
+if translation_engine in ['perplexity', 'comet']:
     MAX_TRANSLATION_BLOCK_SIZE = perplexity_maximum_character_block
 elif translation_engine == 'chatgpt':
     MAX_TRANSLATION_BLOCK_SIZE = chatgpt_maximum_character_block
@@ -1268,7 +1268,7 @@ else:
 # When translation engine is deepl or chatgpt : use undetected_chromedriver
 # Else, use standard selenium webdriver
 
-if translation_engine in ['perplexity', 'chatgpt'] and engine_method != "webservice":
+if translation_engine in ['perplexity', 'chatgpt', 'comet'] and engine_method != "webservice":
     import undetected_chromedriver as webdriver
 else:
     from selenium import webdriver  # regular selenium webdriver
@@ -1514,6 +1514,16 @@ if  translation_engine.lower() == "chatgpt" and False:
 
 if not showbrowser :
     chrome_options.add_argument("--headless")
+
+if translation_engine == 'comet':
+    import platform
+    if platform.system() == "Windows":
+        user_home = os.path.expanduser("~")
+        profile_path = os.path.join(user_home, "AppData", "Local", "Google", "Chrome", "User Data")
+        chrome_options.add_argument(f'--user-data-dir={profile_path}')
+        chrome_options.add_argument('--profile-directory=Default')
+        print("\n[INFO] COMET ENGINE: Attempting to use logged-in Chrome Profile.")
+        print("[WARNING] Make sure your regular Google Chrome window is CLOSED, otherwise the script will crash!\n")
     if platform.system() == "Linux":  # Linux
         chrome_options.add_argument("--disable-gpu")         # remove GPU fallback flutters
         chrome_options.add_argument("--disable-software-rasterizer")
@@ -1878,7 +1888,7 @@ def selenium_chrome_translate_maxchar_blocks():
             else:
                 return selenium_chrome_chatgpt_translate(text, attempt)
         
-        if engine == "perplexity":
+        if engine in ["perplexity", "comet"]:
             if method == "api":
                 return perplexity_api_translate(text, attempt)
             elif method == "webservice":
@@ -1967,7 +1977,7 @@ def selenium_chrome_translate_maxchar_blocks():
         
         translated_blocks.append(translated)
         
-        if i % 2 == 1 and translation_engine in ("chatgpt", "perplexity"):
+        if i % 2 == 1 and translation_engine in ("chatgpt", "perplexity", "comet"):
             print("Cleaning up cookies...")
             driver.delete_all_cookies()
     
@@ -3055,7 +3065,6 @@ def selenium_chrome_deepl_translate(to_translate, retry_count):
                     WebDriverWait(driver, 15).until(lambda driver: driver.execute_script('return document.readyState') == 'complete')
                 except:
                     pass
-                
                 # Make sure the target language matches with the target language code or at least the target language name
                 try:
                     ensure_target_language(driver, dest_lang=dest_lang, dest_lang_name=dest_lang_name)
@@ -4566,11 +4575,13 @@ def set_translation_function():
             selenium_chrome_machine_translate_once = selenium_chrome_translate_get_from_text_array
         else:
             selenium_chrome_machine_translate_once = selenium_chrome_deepl_translate
-    elif translation_engine == 'deepl':
+    elif translation_engine in ['perplexity', 'comet']:
         if engine_method == 'api':
             selenium_chrome_machine_translate_once = perplexity_api_translate 
+        elif engine_method == 'webservice':
+            selenium_chrome_machine_translate_once = selenium_webservice_perplexity_translate
         else:
-            selenium_chrome_machine_translate_once = selenium_chrome_deepl_translate
+            selenium_chrome_machine_translate_once = selenium_chrome_perplexity_translate
     elif translation_engine == 'chatgpt':
         # Same for API and web scraping
         selenium_chrome_machine_translate_once = selenium_chrome_translate_get_from_text_array
@@ -6023,7 +6034,7 @@ def translate_docx():
     if translation_engine == "chatgpt":
         # ChatGPT always uses phrase-block logic
         use_phrasesblock = True
-    elif translation_engine in ("deepl", "perplexity"):
+    elif translation_engine in ("deepl", "perplexity", "comet"):
         # Deepl & Perplexity only for these methods
         use_phrasesblock = engine_method in ("phrasesblock", "webservice")
 
@@ -7288,9 +7299,10 @@ def process_ai_action():
     global to_text_by_phrase_separator_table, to_text_by_phrase_separator_removed_table
     global translation_result_phrase_array, translation_result_using_separator, split_translation
     global from_text_table, existing_target_table, action, word_file_to_translate
-    global src_lang_name, dest_lang_name
+    global src_lang_name, dest_lang_name, str_needs_update
 
     split_translation = False
+    str_needs_update = "0" # Permanently bypass 30s update delay during AI tasks
     print(f"\n[AI LAB] Starting {action.upper()} process using OpenAI API (Multi-threaded)...")
 
     try:
@@ -7310,33 +7322,33 @@ def process_ai_action():
             global_context_lines.append(f"L{i}: {from_text_table[i].strip()}")
     global_context_str = "\n".join(global_context_lines)
 
-    # 1.5 Prepare tasks with Semantic Chunking (Dynamic Boundaries)
+    # 1.5 Dual-Path Architecture: Single-Shot (<140 active lines) vs Macro-Chunking
     tasks = []
-    curr_start = 1
-    while curr_start <= numrows:
-        if from_text_is_read[curr_start] == 0 or not from_text_table[curr_start].strip():
-            curr_start += 1
-            continue
+    total_active_rows = sum(1 for i in range(1, numrows + 1) if from_text_is_read[i] == 1 and from_text_table[i].strip())
 
-        # Target ~15 lines, but extend to find a sentence ending (.)
-        curr_end = min(curr_start + 14, numrows)
-        while curr_end < numrows and from_text_is_end_of_line_table[curr_end] == 0 and (curr_end - curr_start) < 25:
-            curr_end += 1
-
-        s_dict = {}
-        t_dict = {}
-        for idx in range(curr_start, curr_end + 1):
-            if idx <= numrows and from_text_is_read[idx] == 1:
-                src = from_text_table[idx].strip()
-                tgt = existing_target_table[idx].strip()
-                if src:
-                    s_dict[f"L{idx}"] = src
-                    t_dict[f"L{idx}"] = tgt
-
+    if total_active_rows <= 140:
+        # PATH A: Single-Shot (Highest Context Retention)
+        print(f"[AI LAB] Routing to Single-Shot Path ({total_active_rows} active lines).")
+        s_dict = {f"L{i}": from_text_table[i].strip() for i in range(1, numrows + 1) if from_text_is_read[i] == 1 and from_text_table[i].strip()}
+        t_dict = {f"L{i}": existing_target_table[i].strip() for i in range(1, numrows + 1) if from_text_is_read[i] == 1 and from_text_table[i].strip()}
         if s_dict:
-            # tasks.append requires end_idx to be exclusive, so we pass curr_end + 1
-            tasks.append((curr_start, curr_end + 1, s_dict, t_dict))
-        curr_start = curr_end + 1
+            tasks.append((1, numrows + 1, s_dict, t_dict))
+    else:
+        # PATH B: Intelligent Macro-Chunking (~150 line blocks)
+        print(f"[AI LAB] Routing to Macro-Chunking Path ({total_active_rows} active lines).")
+        curr_start = 1
+        while curr_start <= numrows:
+            if from_text_is_read[curr_start] == 0 or not from_text_table[curr_start].strip():
+                curr_start += 1
+                continue
+            curr_end = min(curr_start + 149, numrows)
+            while curr_end < numrows and from_text_is_end_of_line_table[curr_end] == 0 and (curr_end - curr_start) < 200:
+                curr_end += 1
+            s_dict = {f"L{i}": from_text_table[i].strip() for i in range(curr_start, curr_end + 1) if from_text_is_read[i] == 1 and from_text_table[i].strip()}
+            t_dict = {f"L{i}": existing_target_table[i].strip() for i in range(curr_start, curr_end + 1) if from_text_is_read[i] == 1 and from_text_table[i].strip()}
+            if s_dict:
+                tasks.append((curr_start, curr_end + 1, s_dict, t_dict))
+            curr_start = curr_end + 1
 
     if not tasks: return
 
@@ -7387,7 +7399,7 @@ def main() -> int:
     if translation_engine == 'deepl':
         logged_into_deepl = selenium_chrome_deepl_log_in()
         
-    if translation_engine == 'perplexity':
+    if translation_engine in ['perplexity', 'comet']:
         pass
         #logged_into_perplexity = selenium_chrome_perplexity_wait_log_in
         #if not logged_into_perplexity:
@@ -7459,7 +7471,7 @@ def main() -> int:
     if action not in ["polish", "align"]:
         get_robot_usage_comment()
 
-    if translation_engine == 'perplexity':
+    if translation_engine in ['perplexity', 'comet']:
         if engine_method == 'api':
             print(f"Total cost: {total_cost}")
 
