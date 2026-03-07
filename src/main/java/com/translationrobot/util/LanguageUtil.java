@@ -20,7 +20,7 @@ public class LanguageUtil {
     }
 
     public static boolean isIgnoredText(String text) {
-        if (text == null || text.isEmpty()) {
+        if (text == null || text.trim().isEmpty()) {
             return true;
         }
         return IGNORE_SET.contains(text.trim());
