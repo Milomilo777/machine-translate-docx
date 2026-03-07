@@ -7333,6 +7333,9 @@ def process_ai_action():
     global from_text_table, existing_target_table, action, word_file_to_translate
     global src_lang_name, dest_lang_name, str_needs_update
 
+    import time
+    overall_start_time = time.time()
+
     split_translation = False
     str_needs_update = "0" # Permanently bypass 30s update delay during AI tasks
     print(f"\n[AI LAB] Starting {action.upper()} process using OpenAI API (Multi-threaded)...")
@@ -7386,6 +7389,8 @@ def process_ai_action():
 
     # 2. Worker function for the thread pool
     def process_chunk(task_data):
+        import time
+        chunk_start_time = time.time()
         start_idx, end_idx, s_dict, t_dict = task_data
         print(f"Processing semantic block lines {start_idx} to {end_idx-1}...")
         if action == "polish":
@@ -7394,6 +7399,9 @@ def process_ai_action():
             res_dict = oai_translator.align_text(src_lang_name, dest_lang_name, s_dict, t_dict, global_context_str)
         else:
             res_dict = {}
+
+        elapsed = time.time() - chunk_start_time
+        print(f"[TIMER] Block {start_idx} to {end_idx-1} completed in {elapsed:.2f} seconds.")
         return start_idx, end_idx, res_dict
 
     # 3. Execute concurrently (max 5 workers to respect API rate limits)
@@ -7414,6 +7422,9 @@ def process_ai_action():
                 to_text_by_phrase_separator_removed_table[idx] = res
                 translation_result_using_separator[idx] = [res]
                 translation_result_phrase_array[idx] = [res]
+
+    total_elapsed = time.time() - overall_start_time
+    print(f"\n[TIMER] SUCCESS: Total AI processing time for the entire document: {total_elapsed:.2f} seconds.\n")
 
 
 def main() -> int:

@@ -255,7 +255,7 @@ class OpenAITranslator:
                 return f.read()
 
     def polish_text(self, src_lang_name, dest_lang_name, source_dict, target_dict, global_context=""):
-        prompt_content = self._get_prompt('prompt_polish.txt', f"You are an expert editor translating from {src_lang_name} to {dest_lang_name}. Polish the translation. Return ONLY a valid JSON object where keys are line IDs and values are polished {dest_lang_name} strings.")
+        prompt_content = self._get_prompt('prompt_polish.txt', f"You are an expert editor translating from {src_lang_name} to {dest_lang_name}. Polish the translation line by line. Return ONLY the polished plain text, with each line corresponding to the input lines in order. NO JSON. NO MARKDOWN.")
 
         payload = {
             "instructions": prompt_content,
@@ -268,12 +268,23 @@ class OpenAITranslator:
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": "You are a professional editor. Always return a raw JSON object, no markdown blocks."},
+                    {"role": "system", "content": "You are a professional editor. Return ONLY raw plain text. 1 input line = 1 output line."},
                     {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}
-                ],
-                response_format={"type": "json_object"}
+                ]
             )
-            return json.loads(response.choices[0].message.content)
+
+            # Plain text line-by-line mapping logic
+            res_dict = {}
+            response_text = response.choices[0].message.content.strip()
+            cleaned_lines = [line.strip() for line in response_text.split('\n') if line.strip()]
+            source_keys = list(source_dict.keys())
+
+            for i, key in enumerate(source_keys):
+                if i < len(cleaned_lines):
+                    res_dict[key] = cleaned_lines[i]
+                else:
+                    res_dict[key] = target_dict[key] # Safe fallback
+            return res_dict
         except Exception as e:
             print(f"[Error] Polish failed: {e}")
             return target_dict
