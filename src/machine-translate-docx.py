@@ -1520,11 +1520,18 @@ if translation_engine == 'comet':
     import platform
     if platform.system() == "Windows":
         user_home = os.path.expanduser("~")
-        profile_path = os.path.join(user_home, "AppData", "Local", "Google", "Chrome", "User Data")
+        # Correct path for dedicated Comet Browser profile
+        profile_path = os.path.join(user_home, "AppData", "Local", "Comet", "User Data")
+
         chrome_options.add_argument(f'--user-data-dir={profile_path}')
         chrome_options.add_argument('--profile-directory=Default')
-        print("\n[INFO] COMET ENGINE: Attempting to use logged-in Chrome Profile.")
-        print("[WARNING] Make sure your regular Google Chrome window is CLOSED, otherwise the script will crash!\n")
+
+        # Stability flags to prevent background locks
+        chrome_options.add_argument('--no-first-run')
+        chrome_options.add_argument('--no-service-autorun')
+
+        print("\n[INFO] COMET ENGINE: Accessing dedicated Comet browser profile.")
+        print("[TIP] Ensure the Comet browser window is closed before starting the bot.\n")
     if platform.system() == "Linux":  # Linux
         chrome_options.add_argument("--disable-gpu")         # remove GPU fallback flutters
         chrome_options.add_argument("--disable-software-rasterizer")
