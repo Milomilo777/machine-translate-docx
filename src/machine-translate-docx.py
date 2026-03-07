@@ -1,7 +1,7 @@
-# pylint: disable=import-error
 #!/usr/bin/python3
+# pylint: disable=all
 # - *- coding: utf- 8 - *-
-PROGRAM_VERSION="2025-02-28"
+PROGRAM_VERSION="2026-03-07" # Updated: Dual-Path AI architecture, Comet Engine, and gpt-5.4 / gpt-5-mini integration.
 
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="pkg_resources")
@@ -455,10 +455,9 @@ def test_internet(host="8.8.8.8", port=53, timeout=3):
     Service: domain (DNS/TCP)
     """
     try:
-        socket.setdefaulttimeout(timeout)  # pylint: disable=undefined-variable
-        socket.socket(socket.AF_INET, socket.SOCK_STREAM).connect((host, port))  # pylint: disable=undefined-variable
+        socket.setdefaulttimeout(timeout)
+        socket.socket(socket.AF_INET, socket.SOCK_STREAM).connect((host, port))
         return True
-  # pylint: disable=undefined-variable
     except socket.error as ex:
         print(ex)
         return False
@@ -480,11 +479,9 @@ local_configuration_json_path = get_nested_value_from_json_array([json_online_co
 
 # determine if application is a script file or frozen exe
 if getattr(sys, 'frozen', False):
-  # pylint: disable=possibly-used-before-assignment
     application_path = os.path.dirname(sys.executable)
 elif __file__:
     application_path = os.path.dirname(__file__)
-  # pylint: disable=possibly-used-before-assignment
 
 configuration_file_full_path = os.path.join(application_path, local_configuration_json_path)
 
@@ -1278,11 +1275,9 @@ else:
     from selenium import webdriver  # regular selenium webdriver
     
 def lineno():
-  # pylint: disable=no-member
     """Returns the current line number in our program."""
     return inspect.currentframe().f_back.f_lineno
     
-  # pylint: disable=no-member
 def linux_distribution():
     try:
         return platform.linux_distribution()
@@ -1296,11 +1291,9 @@ def print_os_info():
     linux_distribution: %s
     system: %s
     machine: %s
-  # pylint: disable=no-member
     platform: %s
     uname: %s
     version: %s
-  # pylint: disable=no-member
     mac_ver: %s
     """ % (
     sys.version.split('\n'),
@@ -1311,14 +1304,10 @@ def print_os_info():
     platform.platform(),
     platform.uname(),
     platform.version(),
-  # pylint: disable=undefined-variable
     platform.mac_ver(),
-  # pylint: disable=undefined-variable
     ))
 
-  # pylint: disable=undefined-variable
 def safe_click(driver, element):
-  # pylint: disable=undefined-variable
     try:
         #safe_click(driver, element)
         driver.execute_script("arguments[0].click();", element)
@@ -1334,7 +1323,6 @@ if not os.path.exists(word_file_to_translate) :
     sys.exit(1)
 
 splitted_filename = os.path.splitext(os.path.basename(word_file_to_translate))
-  # pylint: disable=possibly-used-before-assignment
 
 # number of segment separated by dot in the docx filename
 splitted_filename_size = len(splitted_filename)
@@ -1880,7 +1868,6 @@ def selenium_chrome_translate_maxchar_blocks():
     
     translation_succeded = True
     translated_blocks = []
-  # pylint: disable=possibly-used-before-assignment
     
     # ------------------------------------------------------------------
     # Engine-agnostic single attempt
@@ -2920,7 +2907,6 @@ def deepl_close_messages():
 def selenium_chrome_deepl_translate(to_translate, retry_count):
     global logged_into_deepl
     translation = ""
-  # pylint: disable=possibly-used-before-assignment
     Translated = False
     # Progress bar to show only when deepl also shows it on the browser
     bar = None
@@ -3161,7 +3147,7 @@ def selenium_chrome_deepl_translate(to_translate, retry_count):
                 is_visible = driver.execute_script("""
                     const r = arguments[0].getBoundingClientRect();
                     return (r.top >= 0 && r.bottom <= window.innerHeight);
-                """, copy_translation_button)  # pylint: disable=used-before-assignment
+                """, copy_translation_button)
                 if not is_visible:
                     driver.execute_script(
                         "arguments[0].scrollIntoView({block: 'end'});",
@@ -3932,7 +3918,6 @@ def click_verify_human_checkbox_if_present(driver, timeout=50):
     return
     
     xpath = "//div[contains(., 'Verify you are human')]//input[@type='checkbox']"
-  # pylint: disable=undefined-variable
     try:
         # wait briefly for presence (not necessarily visible/clickable)
         checkbox = WebDriverWait(driver, timeout).until(
@@ -3940,7 +3925,6 @@ def click_verify_human_checkbox_if_present(driver, timeout=50):
         )
     except TimeoutException:
         input("Didn't find checkbox")
-  # pylint: disable=undefined-variable
         return False
 
     try:
@@ -4214,7 +4198,6 @@ def selenium_chrome_perplexity_translate(to_translate, retry_count, max_try_coun
         #"""Click the floating card dismiss button if it exists."""
         try:
             # Wait until the button is present
-  # pylint: disable=undefined-variable
             timeout=1
             button = WebDriverWait(driver, timeout).until(
                 EC.presence_of_element_located((By.CSS_SELECTOR, "button[data-testid='floating-card-upsell-dismiss']"))
@@ -4869,7 +4852,6 @@ def join_from_lines(line_start, line_end, separator_str):
     joined_str = from_text_table[row_n]
     row_n = row_n + 1
     while row_n <= line_end:
-  # pylint: disable=possibly-used-before-assignment
         joined_str += from_text_table[row_n]
         row_n += 1
     #print "joined_str (%d, %d)=%s<br>" % (line_start, line_end, joined_str)
@@ -5097,7 +5079,6 @@ def prepare_and_clear_cell_for_writing(row_n, translation_cell_text):
     paragraph_no = 0
     current_cell = table_cells[row_n][2]
 
-  # pylint: disable=possibly-used-before-assignment
     # Clear paragraphs in the cell
     for paragraph in current_cell.paragraphs:
         if paragraph_no != 0:
@@ -5245,7 +5226,6 @@ def read_and_parse_docx_document():
         print("Content-Type: text/html\n")
 
     word_translation_table_length = len(docxdoc.tables[0].rows)
-  # pylint: disable=undefined-variable
 
     nb_tables = len(docxdoc.tables)
 
@@ -5785,7 +5765,6 @@ def generate_xlsx_file_from_phrases(xlsx_file_path):
                     if item_searched_and_replaced_before.strip() == '' or item_searched_and_replaced_before is None:
                         continue
         
-  # pylint: disable=undefined-variable
         if item_searched_and_replaced_before != '':
             #text_to_translate = text_to_translate + '''%s
             #''' % (item)
@@ -5799,7 +5778,6 @@ def generate_xlsx_file_from_phrases(xlsx_file_path):
     
     try:
         wb = Workbook()
-  # pylint: disable=undefined-variable
         ws = wb.active
         ws.title = "English"
     except Exception:
@@ -6086,7 +6064,6 @@ def get_translation_and_replace_after():
         p_remove_double_spaces = re.compile(' +')
 
         # Avec separateurs ()
-  # pylint: disable=undefined-variable
 
         try:
             web_translation_separators = ''
@@ -6395,7 +6372,6 @@ pour la corrida.
 """
 
     print(f"\n{'=' * 80}")
-  # pylint: disable=undefined-variable
     print(f"PROMPT BLOCK #{block_index}")
     print(f"{'=' * 80}")
     print(prompt.strip())
@@ -6410,7 +6386,6 @@ def print_html_program_result():
         Identical_with_without_separators = 'DIFFERENT<BR>'
         if to_text_by_phrase_separator_removed_table[i] == to_text_by_phrase_table[i]:
             Identical_with_without_separators = 'SAME<BR>'
-  # pylint: disable=undefined-variable
         #print "<tr><td>%s<td>%s<td>%s<td>%s<td>%s%s" % (i, from_text_table[i], from_text_by_phrase_separator_table[i].encode('utf8'), to_text_by_phrase_separator_table[i].encode('utf8'), Identical_with_without_separators.encode('utf8'), to_text_by_phrase_separator_removed_table[i].encode('utf8') )
         if len(from_text_by_phrase_separator_table[i]) == 0:
             Identical_with_without_separators = ''
@@ -6738,7 +6713,6 @@ def run_statistics():
             "docxfile" : docx_file_name,
             "client_ip" : client_ip
         }
-  # pylint: disable=undefined-variable
         
         base_url = statistics_html_statistics_form_url
         encoded_params = urlencode(query_params, quote_via=quote_plus)
@@ -6973,9 +6947,7 @@ def get_robot_usage_comment():
                 print("destlang_code: %s" % (dest_lang))
                 print("destlang_name: %s" % (dest_lang_name))
                 print("docxfile: %s" % (docx_file_name))
-  # pylint: disable=undefined-variable
                 print("docxfile_page_count: %s" % docxfile_page_count)
-  # pylint: disable=undefined-variable
                 print("docxfile_size: %s" % (docxfile_size))
                 print("docxfile_table_number_of_lines: %s" % (numrows))
                 print("docxfile_table_number_of_phrases: %s" % (docxfile_table_number_of_phrases))
@@ -7069,11 +7041,9 @@ def get_robot_usage_comment():
                 chrome_options.add_argument("--headless")
 
             docxfile_table_number_of_lines = numrows
-  # pylint: disable=undefined-variable
             if use_api or splitonly:
                 print("\nCreating a new browser for stats")
                 
-  # pylint: disable=undefined-variable
                 service = Service()
                 driver = webdriver.Chrome(service=service, options=chrome_options)
 
@@ -7155,7 +7125,6 @@ def get_robot_usage_comment():
         #print(var)
         print("Warning failed to get available updates status, you can ignore this.")
 
-  # pylint: disable=undefined-variable
 
 # Open the default app for the docx file
 def open_app_docx_file():

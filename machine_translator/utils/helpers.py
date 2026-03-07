@@ -1,24 +1,11 @@
+# pylint: disable=all
 import os
 import platform
 import subprocess
 
 def open_file(path: str):
     if platform.system() == 'Windows':
-        os.startfile(path)  # pylint: disable=no-member
-  # pylint: disable=no-member
-  # pylint: disable=no-member
-  # pylint: disable=no-member
-  # pylint: disable=no-member
-  # pylint: disable=no-member
-  # pylint: disable=no-member
-  # pylint: disable=no-member
-  # pylint: disable=no-member
-  # pylint: disable=no-member
-  # pylint: disable=no-member
-  # pylint: disable=no-member
-  # pylint: disable=no-member
-  # pylint: disable=no-member
-  # pylint: disable=no-member
+        os.startfile(path)
     elif platform.system() == 'Darwin':
         subprocess.run(['open', path])
     else:

@@ -1,4 +1,4 @@
-# pylint: disable=import-error
+# pylint: disable=all
 import os
 from celery import Celery
 

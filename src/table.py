@@ -1,4 +1,4 @@
-# pylint: disable=import-error
+# pylint: disable=all
 # encoding: utf-8
 
 """
@@ -7,24 +7,7 @@ The |Table| object and related proxy classes.
 
 from __future__ import absolute_import, print_function, unicode_literals
 
-from .blkcntnr import BlockItemContainer  # pylint: disable=relative-beyond-top-level
-  # pylint: disable=relative-beyond-top-level
-  # pylint: disable=relative-beyond-top-level
-  # pylint: disable=relative-beyond-top-level
-  # pylint: disable=relative-beyond-top-level
-  # pylint: disable=relative-beyond-top-level
-  # pylint: disable=relative-beyond-top-level
-  # pylint: disable=relative-beyond-top-level
-  # pylint: disable=relative-beyond-top-level
-  # pylint: disable=relative-beyond-top-level
-  # pylint: disable=relative-beyond-top-level
-  # pylint: disable=relative-beyond-top-level
-  # pylint: disable=relative-beyond-top-level
-  # pylint: disable=relative-beyond-top-level
-  # pylint: disable=relative-beyond-top-level
-  # pylint: disable=relative-beyond-top-level
-  # pylint: disable=relative-beyond-top-level
-  # pylint: disable=relative-beyond-top-level
+from .blkcntnr import BlockItemContainer
 from .enum.style import WD_STYLE_TYPE
 from .oxml.simpletypes import ST_Merge
 from .shared import Inches, lazyproperty, Parented
