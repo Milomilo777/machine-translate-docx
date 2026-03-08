@@ -1526,6 +1526,18 @@ if translation_engine == 'comet':
         chrome_options.add_argument(f'--user-data-dir={profile_path}')
         chrome_options.add_argument('--profile-directory=Default')
 
+        comet_candidates = [
+            os.path.join(user_home, 'AppData', 'Local', 'Comet', 'Application', 'comet.exe'),
+            r'C:\Program Files\Comet\Application\comet.exe',
+            r'C:\Program Files (x86)\Comet\Application\comet.exe',
+        ]
+        comet_binary = next((c for c in comet_candidates if os.path.exists(c)), None)
+        if comet_binary:
+            chrome_options.binary_location = comet_binary
+            print(f'[INFO] Comet binary: {comet_binary}')
+        else:
+            print('[WARNING] Comet browser not found. Check installation.')
+
         # Stability flags to prevent background locks
         chrome_options.add_argument('--no-first-run')
         chrome_options.add_argument('--no-service-autorun')
