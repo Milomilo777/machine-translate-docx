@@ -1,4 +1,3 @@
-# pylint: disable=all
 from abc import ABC, abstractmethod
 from typing import List, Optional
 
