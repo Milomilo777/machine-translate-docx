@@ -109,7 +109,7 @@ class OpenAITranslator:
         lines = text.split("\n")
         numbered_lines = [f"Line {i+1}: {line}" for i, line in enumerate(lines)]
         numbered_text = "\n".join(numbered_lines)
-        
+
         prompt = (
             f"You are a professional subtitling translator.\n"
             f"Your task is to translate {source_lang} into high-quality {dest_lang} suitable for television subtitles.\n"

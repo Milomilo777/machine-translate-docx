@@ -3053,7 +3053,7 @@ def selenium_chrome_deepl_translate(to_translate, retry_count):
                     WebDriverWait(driver, 15).until(lambda driver: driver.execute_script('return document.readyState') == 'complete')
                 except:
                     pass
-                
+
                 # Make sure the target language matches with the target language code or at least the target language name
                 try:
                     ensure_target_language(driver, dest_lang=dest_lang, dest_lang_name=dest_lang_name)
