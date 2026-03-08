@@ -293,9 +293,9 @@ class OpenAITranslator:
         # Load raw instructions from the prompt file
         prompt_content = self._get_prompt('prompt_align.txt', "You are a strict JSON Router for Subtitle Alignment.")
 
+        # global_context excluded — aligner is a structural JSON router only
         payload = {
             "instructions": prompt_content,
-            "global_document_context": global_context,
             "source_texts": source_dict,
             "target_texts": target_dict
         }
@@ -312,7 +312,16 @@ class OpenAITranslator:
             )
 
             try:
-                return json.loads(response.choices[0].message.content)
+                raw = json.loads(response.choices[0].message.content)
+                if not isinstance(raw, dict) or not raw:
+                    print("[Align] Warning: empty or non-dict result, using fallback.")
+                    return target_dict
+                raw.pop('_reasoning', None)
+                for key in source_dict:
+                    if key not in raw:
+                        print(f"[Align] Warning: missing key '{key}', restored from target.")
+                        raw[key] = target_dict.get(key, '')
+                return raw
             except json.JSONDecodeError as json_err:
                 print(f"[Error] Align failed due to JSON decoding error: {json_err}")
                 print(f"[Fallback] Executing safe KEEP_SEPARATE bypass.")
