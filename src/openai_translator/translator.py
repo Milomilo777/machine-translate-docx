@@ -245,31 +245,40 @@ class OpenAITranslator:
 
     def _get_prompt(self, filename, default_content):
         import os
-        filepath = os.path.join(os.path.dirname(os.path.abspath(__file__)), filename)
-        if not os.path.exists(filepath):
-            with open(filepath, 'w', encoding='utf-8') as f:
-                f.write(default_content)
+        filepath = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), filename
+        )
+        try:
+            if not os.path.exists(filepath):
+                with open(filepath, 'w', encoding='utf-8') as f:
+                    f.write(default_content)
+                return default_content
+            with open(filepath, 'r', encoding='utf-8-sig') as f:
+                content = f.read()
+            content = content.replace('\x00', '')
+            content = content.replace('\r\n', '\n')
+            content = content.replace('\r', '\n')
+            if not content.strip():
+                print(f'[Warning] {filename} is empty, using default.')
+                return default_content
+            return content
+        except Exception as e:
+            print(f'[Warning] Could not load {filename}: {e}. Using default.')
             return default_content
-        else:
-            with open(filepath, 'r', encoding='utf-8') as f:
-                return f.read()
 
     def polish_text(self, src_lang_name, dest_lang_name, source_dict, target_dict, global_context=""):
         prompt_content = self._get_prompt('prompt_polish.txt', f"You are an expert editor translating from {src_lang_name} to {dest_lang_name}. Polish the translation line by line. Return ONLY the polished plain text, with each line corresponding to the input lines in order. NO JSON. NO MARKDOWN.")
 
-        payload = {
-            "instructions": prompt_content,
-            "global_document_context": global_context,
-            "source_texts": source_dict,
-            "target_texts": target_dict
-        }
 
         try:
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": "You are a professional editor. Return ONLY raw plain text. 1 input line = 1 output line."},
-                    {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}
+                    {"role": "system", "content": prompt_content},
+                    {"role": "user", "content": json.dumps({
+                        "source_texts": source_dict,
+                        "target_texts": target_dict
+                    }, ensure_ascii=False)}
                 ]
             )
 
@@ -293,20 +302,17 @@ class OpenAITranslator:
         # Load raw instructions from the prompt file
         prompt_content = self._get_prompt('prompt_align.txt', "You are a strict JSON Router for Subtitle Alignment.")
 
-        # global_context excluded — aligner is a structural JSON router only
-        payload = {
-            "instructions": prompt_content,
-            "source_texts": source_dict,
-            "target_texts": target_dict
-        }
 
         try:
             response = self.client.chat.completions.create(
                 model=self.model,
                 temperature=0,
                 messages=[
-                    {"role": "system", "content": "You are a strict JSON Router for Subtitle Alignment. Always return a raw JSON object, no markdown blocks."},
-                    {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}
+                    {"role": "system", "content": prompt_content},
+                    {"role": "user", "content": json.dumps({
+                        "source_texts": source_dict,
+                        "target_texts": target_dict
+                    }, ensure_ascii=False)}
                 ],
                 response_format={"type": "json_object"}
             )
@@ -365,7 +371,7 @@ class OpenAITranslator:
         response_json = response.model_dump()
 
         print("response:")
-        print(json.dumps(response_json, indent=4))
+        print(json.dumps(response_json, indent=4, ensure_ascii=False))
         print("--end of response--")
 
         cost_info = self.calculate_openai_cost(response_json)
@@ -405,8 +411,8 @@ class OpenAITranslator:
                 (
                     self.doc_id,
                     self.model,
-                    json.dumps(prompt),
-                    json.dumps(response_json),
+                    json.dumps(prompt, ensure_ascii=False),
+                    json.dumps(response_json, ensure_ascii=False),
                     elapsed_time,
                     cost_info["prompt_tokens"],
                     cost_info["completion_tokens"],
