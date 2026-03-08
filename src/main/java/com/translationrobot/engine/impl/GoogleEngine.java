@@ -32,25 +32,35 @@ public class GoogleEngine implements TranslationEngine {
     public TranslationResponse translate(String sourceLang, String targetLang, String text) {
         long startTime = System.currentTimeMillis();
 
-        String url = "https://translation.googleapis.com/language/translate/v2?key=" + apiKey;
-
         try {
-            // Simplified for demonstration. In a real scenario, proper URL encoding and JSON body building are required.
-            // Using a simple POST with JSON payload for v2 API
-            String requestBody = String.format("{\"q\":\"%s\", \"source\":\"%s\", \"target\":\"%s\", \"format\":\"text\"}",
-                                               text.replace("\"", "\\\"").replace("\n", "\\n"), sourceLang, targetLang);
+            String url = String.format("https://translate.googleapis.com/translate_a/single?client=gtx&sl=%s&tl=%s&dt=t",
+                    sourceLang, targetLang);
 
-            ResponseEntity<String> responseEntity = restTemplate.postForEntity(url, requestBody, String.class);
+            org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
+            headers.set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36");
+            headers.setContentType(org.springframework.http.MediaType.APPLICATION_FORM_URLENCODED);
+
+            org.springframework.util.MultiValueMap<String, String> map = new org.springframework.util.LinkedMultiValueMap<>();
+            map.add("q", text);
+
+            org.springframework.http.HttpEntity<org.springframework.util.MultiValueMap<String, String>> entity = new org.springframework.http.HttpEntity<>(map, headers);
+
+            ResponseEntity<String> responseEntity = restTemplate.postForEntity(url, entity, String.class);
             JsonNode root = objectMapper.readTree(responseEntity.getBody());
-            String translatedText = root.path("data").path("translations").get(0).path("translatedText").asText();
+
+            StringBuilder translatedText = new StringBuilder();
+            if (root.isArray() && root.get(0).isArray()) {
+                for (JsonNode phraseNode : root.get(0)) {
+                    translatedText.append(phraseNode.get(0).asText());
+                }
+            }
 
             long endTime = System.currentTimeMillis();
             double executionTimeSec = (endTime - startTime) / 1000.0;
 
-            // Google Cloud Translation API pricing is typically per character, not token, but we set 0s for parity if tokens are unavailable
-            return new TranslationResponse(translatedText, 0, 0, 0.0, executionTimeSec);
+            return new TranslationResponse(translatedText.toString(), 0, 0, 0.0, executionTimeSec);
         } catch (Exception e) {
-            throw new RuntimeException("Error communicating with Google Translate API", e);
+            throw new RuntimeException("Error communicating with free Google Translate API: " + e.getMessage(), e);
         }
     }
 }

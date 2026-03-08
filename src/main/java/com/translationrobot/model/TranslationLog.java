@@ -26,16 +26,18 @@ public class TranslationLog {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    @Column(name = "doc_id", length = 255)
+    @Column(name = "doc_id", length = 1024)
     private String docId;
 
     @Column(name = "model_name")
     private String modelName;
 
-    @Column(name = "prompt_json")
+    @jakarta.persistence.Lob
+    @Column(name = "prompt_json", columnDefinition="TEXT")
     private String promptJson;
 
-    @Column(name = "response_json")
+    @jakarta.persistence.Lob
+    @Column(name = "response_json", columnDefinition="TEXT")
     private String responseJson;
 
     @Column(name = "execution_time_sec")

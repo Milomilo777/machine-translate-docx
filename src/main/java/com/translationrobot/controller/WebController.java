@@ -41,7 +41,7 @@ public class WebController {
             File tempFile = File.createTempFile("upload-", ".docx");
             file.transferTo(tempFile);
 
-            EngineType engine = EngineType.valueOf(engineStr.toUpperCase());
+            EngineType engine = EngineType.fromString(engineStr);
 
             // Wait for translation to complete. It throws exceptions if something goes wrong.
             orchestrator.runTranslationJob(tempFile.getAbsolutePath(), engine, sourceLang, targetLang);

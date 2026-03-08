@@ -33,8 +33,25 @@ public class ChatGptEngine implements TranslationEngine {
     private final ObjectMapper objectMapper;
     private String baseUrl = "https://api.openai.com";
 
-    public ChatGptEngine(@Value("${openai.api.key:}") String apiKey) {
-        this.apiKey = apiKey;
+    private final java.util.concurrent.Semaphore rateLimiter = new java.util.concurrent.Semaphore(5);
+
+    public ChatGptEngine(@Value("${openai.api.key:}") String propertyKey) {
+        String envKey = System.getenv("OPENAI_API_KEY");
+
+        // Priority Chain: 1. Application Properties 2. Environment Variable
+        String selectedKey = (propertyKey != null && !propertyKey.trim().isEmpty()) ? propertyKey : envKey;
+
+        if (selectedKey != null) {
+            // Triple-Lock Clean-up: trim and remove quotes, remove double "Bearer "
+            selectedKey = selectedKey.trim().replace("\"", "");
+            if (selectedKey.toLowerCase().startsWith("bearer ")) {
+                selectedKey = selectedKey.substring(7).trim();
+            }
+        } else {
+            selectedKey = ""; // Prevent null pointer if no key provided
+        }
+
+        this.apiKey = selectedKey;
         this.restTemplate = new RestTemplate();
         this.objectMapper = new ObjectMapper();
     }
@@ -46,60 +63,79 @@ public class ChatGptEngine implements TranslationEngine {
 
     @Override
     public TranslationResponse translate(String sourceLang, String targetLang, String text) {
-        long startTime = System.currentTimeMillis();
-        String prompt = PromptBuilderUtil.buildTranslationPrompt(sourceLang, targetLang, text);
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.setBearerAuth(apiKey);
-
-        ObjectNode requestBody = objectMapper.createObjectNode();
-        requestBody.put("model", "gpt-4o"); // or whatever default model
-
-        ArrayNode messages = requestBody.putArray("messages");
-
-        ObjectNode systemMessage = messages.addObject();
-        systemMessage.put("role", "system");
-        systemMessage.put("content", "You are a professional subtitling translator.");
-
-        ObjectNode userMessage = messages.addObject();
-        userMessage.put("role", "user");
-        userMessage.put("content", prompt);
-
-        HttpEntity<String> entity = new HttpEntity<>(requestBody.toString(), headers);
+        try {
+            rateLimiter.acquire();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("Thread interrupted while waiting for rate limiter", e);
+        }
 
         try {
-            ResponseEntity<String> response = restTemplate.postForEntity(
-                    baseUrl + "/v1/chat/completions",
-                    entity,
-                    String.class
-            );
+            long startTime = System.currentTimeMillis();
+            String prompt = PromptBuilderUtil.buildTranslationPrompt(sourceLang, targetLang, text);
 
-            JsonNode responseJson = objectMapper.readTree(response.getBody());
-            String translatedText = responseJson.path("choices").get(0).path("message").path("content").asText();
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.set("Authorization", "Bearer " + apiKey);
 
-            // Sanitize output
-            translatedText = translatedText.replaceAll("\\n+", "\n");
+            ObjectNode requestBody = objectMapper.createObjectNode();
+            requestBody.put("model", "gpt-4o"); // or whatever default model
 
-            // Line Mismatch Check
-            String[] inputLines = text.split("\n");
-            String[] outputLines = translatedText.split("\n");
-            if (inputLines.length != outputLines.length) {
-                System.out.println("[WARNING] Line count mismatch! Input lines: " + inputLines.length + " vs Output lines: " + outputLines.length);
+            ArrayNode messages = requestBody.putArray("messages");
+
+            ObjectNode systemMessage = messages.addObject();
+            systemMessage.put("role", "system");
+            systemMessage.put("content", "You are a professional subtitling translator.");
+
+            ObjectNode userMessage = messages.addObject();
+            userMessage.put("role", "user");
+            userMessage.put("content", prompt);
+
+            HttpEntity<String> entity = new HttpEntity<>(requestBody.toString(), headers);
+
+            try {
+                ResponseEntity<String> response = restTemplate.postForEntity(
+                        baseUrl + "/v1/chat/completions",
+                        entity,
+                        String.class
+                );
+
+                JsonNode responseJson = objectMapper.readTree(response.getBody());
+                String translatedText = responseJson.path("choices").get(0).path("message").path("content").asText();
+
+                // Sanitize output
+                translatedText = translatedText.replaceAll("\\n+", "\n");
+
+                // Line Mismatch Check
+                String[] inputLines = text.split("\n");
+                String[] outputLines = translatedText.split("\n");
+                if (inputLines.length != outputLines.length) {
+                    System.out.println("[WARNING] Line count mismatch! Input lines: " + inputLines.length + " vs Output lines: " + outputLines.length);
+                }
+
+                int inputTokens = responseJson.path("usage").path("prompt_tokens").asInt(0);
+                int outputTokens = responseJson.path("usage").path("completion_tokens").asInt(0);
+                String responseModel = responseJson.path("model").asText("");
+
+                double totalCostUsd = calculateCost(responseModel, inputTokens, outputTokens);
+
+                long endTime = System.currentTimeMillis();
+                double executionTimeSec = (endTime - startTime) / 1000.0;
+
+                return new TranslationResponse(translatedText, inputTokens, outputTokens, totalCostUsd, executionTimeSec);
+            } catch (org.springframework.web.client.HttpStatusCodeException e) {
+                String responseBody = e.getResponseBodyAsString();
+                String excerpt = responseBody.length() > 500 ? responseBody.substring(0, 500) : responseBody;
+                System.out.println("[ERROR] OpenAI API HTTP " + e.getStatusCode() + ". Body excerpt: " + excerpt);
+                throw new RuntimeException("OpenAI API Error: " + excerpt, e);
+            } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+                System.out.println("[ERROR] OpenAI API JSON Parsing failed.");
+                throw new RuntimeException("Failed to parse OpenAI JSON response.", e);
+            } catch (Exception e) {
+                throw new RuntimeException("Error communicating with OpenAI API", e);
             }
-
-            int inputTokens = responseJson.path("usage").path("prompt_tokens").asInt(0);
-            int outputTokens = responseJson.path("usage").path("completion_tokens").asInt(0);
-            String responseModel = responseJson.path("model").asText("");
-
-            double totalCostUsd = calculateCost(responseModel, inputTokens, outputTokens);
-
-            long endTime = System.currentTimeMillis();
-            double executionTimeSec = (endTime - startTime) / 1000.0;
-
-            return new TranslationResponse(translatedText, inputTokens, outputTokens, totalCostUsd, executionTimeSec);
-        } catch (Exception e) {
-            throw new RuntimeException("Error communicating with OpenAI API", e);
+        } finally {
+            rateLimiter.release();
         }
     }
 

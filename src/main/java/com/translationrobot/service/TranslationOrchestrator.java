@@ -88,60 +88,60 @@ public class TranslationOrchestrator {
                         response = engine.translate(srcLang, destLang, combinedText);
                         break;
                     } catch (Exception e) {
-                        log.warn("Translation attempt {} failed: {}", attempt, e.getMessage());
+                        String errorDetails = e.getMessage();
+                        if (e instanceof org.springframework.web.client.HttpStatusCodeException httpException) {
+                            errorDetails += " | Response Body: " + httpException.getResponseBodyAsString();
+                        } else if (e.getCause() instanceof org.springframework.web.client.HttpStatusCodeException httpCause) {
+                            errorDetails += " | Response Body: " + httpCause.getResponseBodyAsString();
+                        }
+
+                        log.error("Translation attempt {} failed. Error details: {}", attempt, errorDetails, e);
                         if (attempt == maxRetries) {
-                            throw new RuntimeException("Translation failed after " + maxRetries + " attempts", e);
+                            log.error("All translation attempts failed. Falling back to placeholders to prevent process crash.");
+
+                            // Apply graceful placeholder trap
+                            for (TranslationRow row : toTranslate) {
+                                row.setTargetText("[Translation Failed] " + row.getSourceData().getText());
+                            }
+
+                            // Exit translation block early, but allow writing to continue
+                            break;
                         }
                         try {
                             Thread.sleep(2000);
                         } catch (InterruptedException ie) {
                             Thread.currentThread().interrupt();
-                            throw new RuntimeException("Retry interrupted", ie);
+                            log.error("Retry interrupted", ie);
+                            break;
                         }
                     }
                 }
 
-                if (response == null) {
-                    throw new RuntimeException("Translation failed, response is null");
-                }
+                if (response != null) {
+                    // e) Map the returned lines back to the correct rows
+                    String[] translatedLines = response.translatedText().split("\n");
 
-                // e) Map the returned lines back to the correct rows
-                String[] translatedLines = response.translatedText().split("\n");
+                    if (translatedLines.length != toTranslate.size()) {
+                        log.warn("[WARNING] Line mismatch detected. Expected {}, got {}. Applying graceful degradation fallback.", toTranslate.size(), translatedLines.length);
+                        String combinedRawTranslation = String.join("\n", translatedLines);
 
-                if (translatedLines.length != toTranslate.size()) {
-                    log.warn("[WARNING] Line mismatch detected. Expected {}, got {}. Applying graceful degradation fallback.", toTranslate.size(), translatedLines.length);
-                    String combinedRawTranslation = String.join("\n", translatedLines);
-
-                    for (int i = 0; i < toTranslate.size(); i++) {
-                        TranslationRow row = toTranslate.get(i);
-                        if (i == 0) {
-                            row.setTargetText("[SMTV_REVIEW_NEEDED: LINE MISMATCH] \n" + combinedRawTranslation);
-                        } else {
-                            row.setTargetText("[LLM_SKIPPED] " + row.getSourceData().getText());
+                        for (int i = 0; i < toTranslate.size(); i++) {
+                            TranslationRow row = toTranslate.get(i);
+                            if (i == 0) {
+                                row.setTargetText("[SMTV_REVIEW_NEEDED: LINE MISMATCH] \n" + combinedRawTranslation);
+                            } else {
+                                row.setTargetText("[LLM_SKIPPED] " + row.getSourceData().getText());
+                            }
                         }
-                    }
-                } else {
-                    for (int i = 0; i < toTranslate.size(); i++) {
-                        toTranslate.get(i).setTargetText(translatedLines[i]);
+                    } else {
+                        for (int i = 0; i < toTranslate.size(); i++) {
+                            toTranslate.get(i).setTargetText(translatedLines[i]);
+                        }
                     }
                 }
             } finally {
                 if (response != null) {
-                    // d) Save the execution metrics even if mapping failed
-                    TranslationLog tLog = TranslationLog.builder()
-                            .docId(filePath) // Using filePath as docId for now
-                            .modelName(engineType.name())
-                            .promptJson("prompt_stub")
-                            .responseJson("response_stub")
-                            .inputTokens(response.inputTokens())
-                            .outputTokens(response.outputTokens())
-                            .totalTokens(response.inputTokens() + response.outputTokens())
-                            .costUsd(response.totalCostUsd())
-                            .executionTimeSec(response.executionTimeSec())
-                            .build();
-                    translationLogRepository.save(tLog);
-
-                    System.out.printf("Total cost in USD: %.6f%n", response.totalCostUsd());
+                    safeLogTranslation(filePath, engineType, response);
                 }
             }
         }
@@ -149,5 +149,27 @@ public class TranslationOrchestrator {
         // f) Write translated DOCX
         String newFilePath = docxWriterService.writeTranslatedDocx(filePath, rows, destLang);
         System.out.println("Saved file name: " + newFilePath);
+    }
+
+    private void safeLogTranslation(String filePath, EngineType engineType, TranslationResponse response) {
+        try {
+            // d) Save the execution metrics non-blockingly
+            TranslationLog tLog = TranslationLog.builder()
+                    .docId(filePath) // Using filePath as docId for now
+                    .modelName(engineType.name())
+                    .promptJson("prompt_stub")
+                    .responseJson("response_stub")
+                    .inputTokens(response.inputTokens())
+                    .outputTokens(response.outputTokens())
+                    .totalTokens(response.inputTokens() + response.outputTokens())
+                    .costUsd(response.totalCostUsd())
+                    .executionTimeSec(response.executionTimeSec())
+                    .build();
+            translationLogRepository.save(tLog);
+
+            System.out.printf("Total cost in USD: %.6f%n", response.totalCostUsd());
+        } catch (Exception e) {
+            log.error("NON-BLOCKING DB ERROR: Failed to save translation log to database for file {}. Translation process will continue. Reason: {}", filePath, e.getMessage(), e);
+        }
     }
 }

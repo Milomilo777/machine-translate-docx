@@ -34,31 +34,39 @@ public class DeepLEngine implements TranslationEngine {
     public TranslationResponse translate(String sourceLang, String targetLang, String text) {
         long startTime = System.currentTimeMillis();
 
-        String url = "https://api-free.deepl.com/v2/translate"; // Note: change to api.deepl.com for pro
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.set("Authorization", "DeepL-Auth-Key " + apiKey);
-        headers.set("Content-Type", "application/json");
-
-        String requestBody = String.format("{\"text\":[\"%s\"], \"source_lang\":\"%s\", \"target_lang\":\"%s\"}",
-                                           text.replace("\"", "\\\"").replace("\n", "\\n"),
-                                           sourceLang.toUpperCase(),
-                                           targetLang.toUpperCase());
-
-        HttpEntity<String> entity = new HttpEntity<>(requestBody, headers);
+        // Unofficial Free DeepL Web Endpoint structure (mimicking frontend requests)
+        // Warning: these endpoints may break; consider using an unofficial library if stability is needed.
+        String url = "https://www2.deepl.com/jsonrpc?method=LMT_handle_texts";
 
         try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("Content-Type", "application/json");
+            headers.set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36");
+
+            // Extremely simplified approximation of the internal JSON-RPC payload
+            // used by DeepL's web interface. Real implementation often requires complex hashing (like `id` and `timestamp`).
+            int id = (int) (Math.random() * 100000000);
+            String requestBody = String.format("{\"jsonrpc\":\"2.0\",\"method\":\"LMT_handle_texts\",\"id\":%d,\"params\":{\"texts\":[{\"text\":\"%s\",\"requestAlternatives\":3}],\"lang\":{\"target_lang\":\"%s\",\"source_lang_user_selected\":\"%s\"}}}",
+                    id, text.replace("\"", "\\\"").replace("\n", "\\n"), targetLang.toUpperCase(), sourceLang.toUpperCase());
+
+            HttpEntity<String> entity = new HttpEntity<>(requestBody, headers);
+
             ResponseEntity<String> responseEntity = restTemplate.postForEntity(url, entity, String.class);
             JsonNode root = objectMapper.readTree(responseEntity.getBody());
-            String translatedText = root.path("translations").get(0).path("text").asText();
+
+            String translatedText = "";
+            if (root.has("result") && root.get("result").has("texts") && root.get("result").get("texts").isArray()) {
+                 translatedText = root.get("result").get("texts").get(0).get("text").asText();
+            } else {
+                 throw new RuntimeException("Unexpected response structure: " + responseEntity.getBody());
+            }
 
             long endTime = System.currentTimeMillis();
             double executionTimeSec = (endTime - startTime) / 1000.0;
 
-            // DeepL pricing is per character, dummy token values here
             return new TranslationResponse(translatedText, 0, 0, 0.0, executionTimeSec);
         } catch (Exception e) {
-            throw new RuntimeException("Error communicating with DeepL API", e);
+            throw new RuntimeException("Error communicating with free DeepL Web API: " + e.getMessage(), e);
         }
     }
 }
