@@ -290,7 +290,8 @@ class OpenAITranslator:
             return target_dict
 
     def align_text(self, src_lang_name, dest_lang_name, source_dict, target_dict, global_context=""):
-        prompt_content = self._get_prompt('prompt_align.txt', f"You are an expert aligner translating from {src_lang_name} to {dest_lang_name}. Align the translation with the source. Return ONLY a valid JSON object where keys are line IDs and values are aligned {dest_lang_name} strings.")
+        # Load raw instructions from the prompt file
+        prompt_content = self._get_prompt('prompt_align.txt', "You are a strict JSON Router for Subtitle Alignment.")
 
         payload = {
             "instructions": prompt_content,
@@ -302,13 +303,21 @@ class OpenAITranslator:
         try:
             response = self.client.chat.completions.create(
                 model=self.model,
+                temperature=0,
                 messages=[
-                    {"role": "system", "content": "You are a professional aligner. Always return a raw JSON object, no markdown blocks."},
+                    {"role": "system", "content": "You are a strict JSON Router for Subtitle Alignment. Always return a raw JSON object, no markdown blocks."},
                     {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}
                 ],
                 response_format={"type": "json_object"}
             )
-            return json.loads(response.choices[0].message.content)
+
+            try:
+                return json.loads(response.choices[0].message.content)
+            except json.JSONDecodeError as json_err:
+                print(f"[Error] Align failed due to JSON decoding error: {json_err}")
+                print(f"[Fallback] Executing safe KEEP_SEPARATE bypass.")
+                return target_dict
+
         except Exception as e:
             print(f"[Error] Align failed: {e}")
             return target_dict

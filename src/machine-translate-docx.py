@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 # pylint: disable=all
 # - *- coding: utf- 8 - *-
-PROGRAM_VERSION="2026-03-07" # Updated: Dual-Path AI architecture, Comet Engine, and gpt-5.4 / gpt-5-mini integration.
+PROGRAM_VERSION="2026-03-07-v5.1" # Updated: V5.1 Subtitle Alignment Engine, temperature=0, math-duplication, json fallback, Comet Engine, gpt-5.4/mini integration.
 
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="pkg_resources")
