@@ -129,7 +129,18 @@ class MachineTranslatorApp(ctk.CTk):
         self.btn_align = ctk.CTkButton(self.action_frame, text="3. Align & Double (AI)", height=45, fg_color="#27ae60", hover_color="#2ecc71", font=ctk.CTkFont(size=15, weight="bold"), command=lambda: self.run_action("align"))
         self.btn_align.grid(row=1, column=1, sticky="ew")
 
-        self.operation_buttons = [self.btn_translate, self.btn_polish, self.btn_align]
+        self.btn_pipeline = ctk.CTkButton(
+            self.action_frame,
+            text="🔁 Run Full Pipeline  (1 → 2 → 3)",
+            height=50,
+            fg_color="#e67e22",
+            hover_color="#f39c12",
+            font=ctk.CTkFont(size=15, weight="bold"),
+            command=self.run_pipeline
+        )
+        self.btn_pipeline.grid(row=2, column=0, columnspan=2, pady=(10, 0), sticky="ew")
+
+        self.operation_buttons = [self.btn_translate, self.btn_polish, self.btn_align, self.btn_pipeline]
 
         self.log_frame = ctk.CTkFrame(self, fg_color="transparent")
         self.log_frame.grid(row=6, column=0, padx=20, pady=(10, 20), sticky="nsew")
@@ -219,6 +230,72 @@ class MachineTranslatorApp(ctk.CTk):
                 self.log_message("\n🛑 Process Stopped!")
             except Exception as e:
                 self.log_message(f"⚠️ Error stopping: {e}")
+
+    def run_pipeline(self):
+        file_path = self.file_entry.get().strip()
+        if not file_path or not os.path.exists(file_path):
+            self.log_message("⚠️ Please select a valid DOCX file first.")
+            return
+        self.toggle_buttons_state("disabled")
+        threading.Thread(target=self._pipeline_worker, args=(file_path,), daemon=True).start()
+
+    def _pipeline_worker(self, file_path):
+        stages = [
+            ("translate", "Stage 1/3: Translate (Raw)"),
+            ("polish",    "Stage 2/3: Polish"),
+            ("align",     "Stage 3/3: Align & Double"),
+        ]
+        current_file = file_path
+        final_file = None
+        d_lang = self.lang_map.get(self.dest_lang_dropdown.get(), "fa")
+        script_path = os.path.join("src", "machine-translate-docx.py")
+        if not os.path.exists(script_path):
+            script_path = "machine-translate-docx.py"
+
+        for action, label in stages:
+            self.log_message(f"\n{'━'*40}")
+            self.log_message(f"🔄 Pipeline {label}")
+            self.log_message(f"{'━'*40}")
+            aimodel = "gpt-5-mini" if action in ["polish", "align"] else "gpt-5.4"
+            cmd = [
+                sys.executable, script_path,
+                "--docxfile", current_file,
+                "--destlang", d_lang,
+                "--silent", "--exitonsuccess",
+                "--engine", "chatgpt",
+                "--enginemethod", "api",
+                "--action", action,
+                "--aimodel", aimodel,
+            ]
+            saved_filename = None
+            process = subprocess.Popen(
+                cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                stdin=subprocess.PIPE, text=True, bufsize=1,
+                encoding="utf-8", errors="replace", cwd=os.getcwd()
+            )
+            self.current_process = process
+            for line in process.stdout:
+                stripped = line.strip()
+                if stripped:
+                    self.log_message(stripped)
+                if "Saved file name:" in stripped:
+                    _, _, path_part = stripped.partition("Saved file name:")
+                    if path_part.strip():
+                        saved_filename = path_part.strip()
+            process.wait()
+            if process.returncode != 0:
+                self.log_message(f"\n❌ Pipeline stopped at {label}")
+                self.after(0, lambda: self.toggle_buttons_state("normal"))
+                return
+            if saved_filename and os.path.exists(saved_filename):
+                current_file = saved_filename
+                final_file = saved_filename
+
+        self.log_message(f"\n{'━'*40}")
+        self.log_message("✅ Full Pipeline Complete!")
+        if final_file:
+            self.log_message(f"📄 Final output: {os.path.basename(final_file)}")
+        self.after(0, lambda: self.toggle_buttons_state("normal"))
 
     def toggle_buttons_state(self, state):
         for btn in self.operation_buttons:
