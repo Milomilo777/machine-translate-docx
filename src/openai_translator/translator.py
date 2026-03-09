@@ -325,7 +325,6 @@ class OpenAITranslator:
         try:
             response = self.client.chat.completions.create(
                 model=self.model,
-                temperature=0,
                 messages=[
                     {"role": "system", "content": prompt_content},
                     {"role": "user", "content": json.dumps({
