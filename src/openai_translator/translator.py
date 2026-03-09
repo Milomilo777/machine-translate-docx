@@ -286,6 +286,10 @@ class OpenAITranslator:
             res_dict = {}
             response_text = response.choices[0].message.content.strip()
             cleaned_lines = [line.strip() for line in response_text.split('\n') if line.strip()]
+            source_lines = list(source_dict.values())
+            cleaned_lines, warn = self.repair_lines(source_lines, cleaned_lines, "Polish")
+            if warn == "FAILED":
+                return target_dict
             source_keys = list(source_dict.keys())
 
             for i, key in enumerate(source_keys):
@@ -327,6 +331,13 @@ class OpenAITranslator:
                     if key not in raw:
                         print(f"[Align] Warning: missing key '{key}', restored from target.")
                         raw[key] = target_dict.get(key, '')
+                if len(raw) != len(source_dict):
+                    print(f"⚠️ [Align] Key count mismatch after repair "
+                          f"(expected {len(source_dict)}, got {len(raw)}). "
+                          f"Filling remaining from target.")
+                    for key in source_dict:
+                        if key not in raw:
+                            raw[key] = target_dict.get(key, '')
                 return raw
             except json.JSONDecodeError as json_err:
                 print(f"[Error] Align failed due to JSON decoding error: {json_err}")
@@ -336,6 +347,32 @@ class OpenAITranslator:
         except Exception as e:
             print(f"[Error] Align failed: {e}")
             return target_dict
+
+    @staticmethod
+    def repair_lines(source_lines, output_lines, context=""):
+        """
+        Aligns output_lines count to source_lines count.
+        Returns (repaired_lines, warning_level)
+        warning_level: None | "WARNING" | "CRITICAL" | "FAILED"
+        """
+        src_count = len(source_lines)
+        out_count = len(output_lines)
+        diff = abs(src_count - out_count)
+        if diff == 0:
+            return output_lines, None
+        tag = f"[{context}] " if context else ""
+        if diff > 10:
+            print(f"❌ {tag}STAGE FAILED: line mismatch too large "
+                  f"(expected {src_count}, got {out_count}). Returning original.")
+            return source_lines, "FAILED"
+        level = "CRITICAL" if diff > 2 else "WARNING"
+        print(f"⚠️ {tag}{level}: line mismatch "
+              f"(expected {src_count}, got {out_count}). Auto-repairing.")
+        if out_count > src_count:
+            repaired = output_lines[:src_count]
+        else:
+            repaired = output_lines + source_lines[out_count:]
+        return repaired, level
 
     def translate(self, source_lang, dest_lang, text_to_translate):
         # Auto-create doc ID & filename if missing
@@ -363,8 +400,8 @@ class OpenAITranslator:
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": "You are a professional translator."},
-                    {"role": "user", "content": prompt}
+                    {"role": "system", "content": prompt},
+                    {"role": "user",   "content": text_to_translate}
                 ]
             )
         elapsed_time = time.time() - start_time
@@ -384,16 +421,10 @@ class OpenAITranslator:
         # Validate line counts
         in_lines = text_to_translate.split("\n")
         out_lines = translated_text.split("\n")
-
-        if len(in_lines) != len(out_lines):
-            print("[WARNING] Line count mismatch!")
-            print(f"Input lines: {len(in_lines)}, Output lines: {len(out_lines)}")
-            out_lines = "\n".join(out_lines)
-            if len(out_lines) > len(in_lines):
-                print("Error in openai translation, too many lines")
-            else:
-                print("Error in openai translation, too few lines")
-            translated_text = out_lines
+        out_lines, warn = self.repair_lines(in_lines, out_lines, "Translate")
+        if warn == "FAILED":
+            return response, text_to_translate
+        translated_text = "\n".join(out_lines)
 
         # Save query record
         try:
