@@ -232,10 +232,10 @@ class OpenAITranslator:
         )
 
         if dest_lang.lower() == "persian":
-            template = self._get_prompt('prompt_EN2FA.txt', default_fa)
+            template = self._get_prompt('prompt_Persian.txt', default_fa)
             prompt = template.replace("{lines_count}", str(len(lines)))
         else:
-            template = self._get_prompt('prompt_universal.txt', default_universal)
+            template = self._get_prompt('prompt_Universal.txt', default_universal)
             prompt = template.replace("{source_lang}", source_lang).replace("{dest_lang}", dest_lang).replace("{lines_count}", str(len(lines)))
 
         prompt += f"\nHere is the text to translate:\n{numbered_text}\n"
@@ -245,25 +245,40 @@ class OpenAITranslator:
 
     def _get_prompt(self, filename, default_content):
         import os
-        filepath = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)), filename
-        )
+        # Search order: root/prompts/ first, then next to translator.py
+        base = os.path.dirname(os.path.abspath(__file__))
+        candidates = [
+            os.path.normpath(os.path.join(base, '..', '..', 'prompts', filename)),
+            os.path.normpath(os.path.join(base, filename)),
+        ]
+        filepath = None
+        for candidate in candidates:
+            if os.path.exists(candidate):
+                filepath = candidate
+                break
+
         try:
-            if not os.path.exists(filepath):
+            if filepath is None:
+                # File not found — write default to root/prompts/
+                filepath = candidates[0]
+                os.makedirs(os.path.dirname(filepath), exist_ok=True)
                 with open(filepath, 'w', encoding='utf-8') as f:
                     f.write(default_content)
+                print(f'[Prompt] Created default: {filepath}')
                 return default_content
+
             with open(filepath, 'r', encoding='utf-8-sig') as f:
                 content = f.read()
             content = content.replace('\x00', '')
             content = content.replace('\r\n', '\n')
             content = content.replace('\r', '\n')
             if not content.strip():
-                print(f'[Warning] {filename} is empty, using default.')
+                print(f'[Prompt] Warning: {filename} is empty, using default.')
                 return default_content
             return content
+
         except Exception as e:
-            print(f'[Warning] Could not load {filename}: {e}. Using default.')
+            print(f'[Prompt] Warning: Could not load {filename}: {e}. Using default.')
             return default_content
 
     def polish_text(self, src_lang_name, dest_lang_name, source_dict, target_dict, global_context=""):
@@ -304,7 +319,7 @@ class OpenAITranslator:
 
     def align_text(self, src_lang_name, dest_lang_name, source_dict, target_dict, global_context=""):
         # Load raw instructions from the prompt file
-        prompt_content = self._get_prompt('prompt_align.txt', "You are a strict JSON Router for Subtitle Alignment.")
+        prompt_content = self._get_prompt('prompt_split_double.txt', "You are a strict JSON Router for Subtitle Alignment.")
 
 
         try:

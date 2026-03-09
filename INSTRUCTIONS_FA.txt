@@ -9,7 +9,3 @@
 ۴. فایل خود را انتخاب کنید، گزینه "fa" (فارسی) را به عنوان زبان مقصد انتخاب کرده و روی دکمه Translate کلیک کنید.
 
 ۵. فایل ترجمه‌شده در پوشه اصلی ذخیره خواهد شد.
-
-
-لینک مکالمات با معمارارشد و پرامپت های جولز
-https://www.perplexity.ai/search/ykh-prmpt-nhyy-drm-my-khwhm-nq-PcaTFmoKRAuzS9f_sbF0gQ?sm=d
