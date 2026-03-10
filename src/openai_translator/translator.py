@@ -300,7 +300,7 @@ class OpenAITranslator:
             # Plain text line-by-line mapping logic
             res_dict = {}
             response_text = response.choices[0].message.content.strip()
-            cleaned_lines = [line.strip() for line in response_text.split('\n') if line.strip()]
+            cleaned_lines = [line.strip() for line in response_text.split('\n')]
             source_lines = list(source_dict.values())
             cleaned_lines, warn = self.repair_lines(source_lines, cleaned_lines, "Polish")
             if warn == "FAILED":
@@ -340,7 +340,9 @@ class OpenAITranslator:
                 if not isinstance(raw, dict) or not raw:
                     print("[Align] Warning: empty or non-dict result, using fallback.")
                     return target_dict
-                raw.pop('_reasoning', None)
+                for k in list(raw.keys()):
+                    if k.startswith('_'):
+                        raw.pop(k)
                 for key in source_dict:
                     if key not in raw:
                         print(f"[Align] Warning: missing key '{key}', restored from target.")
