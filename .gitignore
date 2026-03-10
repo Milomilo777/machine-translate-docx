@@ -1,4 +1,13 @@
 lib
 samples
 github-keys
-documentation__pycache__/
+documentation
+__pycache__/
+
+__pycache__/
+*.pyc
+*.pyo
+tests/fixtures/*.docx
+tests/fixtures/*.pdf
+.DS_Store
+Thumbs.db
