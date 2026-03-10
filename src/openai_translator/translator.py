@@ -9,6 +9,12 @@ from openai import OpenAI
 import re
 
 class OpenAITranslator:
+
+    MIN_PROMPT_BYTES = 200
+    # Files below this size are placeholder stubs — fall through to universal.
+    # A real prompt always exceeds 200 bytes.
+    # The standard placeholder comment line is ~65 bytes, safely below threshold.
+
     def __init__(self, model="gpt-5.4", filename=None):
         self.model = model
         self.api_key = os.environ.get("OPENAI_API_KEY")
@@ -58,6 +64,122 @@ class OpenAITranslator:
         except Exception as e:
             print(f"[Warning] DB connection failed: {e}")
             return None
+
+    @staticmethod
+    def _sanitize_lang_name(lang_name: str) -> str:
+        import re
+        safe = lang_name.strip()
+        safe = re.sub(r'[^\w\s-]', '', safe)
+        safe = re.sub(r'\s+', '_', safe)
+        safe = safe.strip('_')
+        if not safe:
+            raise ValueError(f"Invalid language name: {lang_name!r}")
+        return safe
+
+    def _get_prompt_for_lang(
+        self,
+        stage_base: str,
+        dest_lang_name: str,
+        default: str
+    ) -> tuple[str, str]:
+        """
+        File-first, Code-fallback prompt routing.
+        Returns: (prompt_content, source_label)
+          source_label in {'lang_specific', 'universal', 'hardcoded'}
+
+        Priority:
+          1. prompts/{SafeLang}_{stage_base}_prompt.txt  (>= MIN_PROMPT_BYTES)
+          2. prompts/prompt_{stage_base}.txt
+          3. default string
+        """
+        from pathlib import Path
+        prompts_dir = Path(__file__).parent.parent.parent / 'prompts'
+        safe_lang = self._sanitize_lang_name(dest_lang_name)
+
+        lang_path = prompts_dir / f"{safe_lang}_{stage_base}_prompt.txt"
+        base_path = prompts_dir / f"prompt_{stage_base}.txt"
+
+        try:
+            if lang_path.exists():
+                if lang_path.stat().st_size >= self.MIN_PROMPT_BYTES:
+                    content = lang_path.read_text(encoding='utf-8')
+                    print(f"[Prompt] {stage_base}: LANG-SPECIFIC"
+                          f" → {lang_path.name}")
+                    return content, 'lang_specific'
+                else:
+                    print(f"[Prompt] {stage_base}: PLACEHOLDER (stub)"
+                          f" → {lang_path.name} — falling through to universal")
+
+            if base_path.exists():
+                content = base_path.read_text(encoding='utf-8')
+                print(f"[Prompt] {stage_base}: UNIVERSAL → {base_path.name}")
+                return content, 'universal'
+
+            print(f"[Prompt] {stage_base}: HARDCODED fallback"
+                  f" (looked for {lang_path.name} and {base_path.name})")
+            return default, 'hardcoded'
+
+        except (OSError, PermissionError) as e:
+            print(f"[Prompt] {stage_base}: FILE ERROR ({e})"
+                  f" — using hardcoded")
+            return default, 'hardcoded'
+
+    @staticmethod
+    def _build_lang_block(src_lang: str, dest_lang: str, stage: str) -> str:
+        """
+        Returns language rule block for injection into universal prompts ONLY.
+        stage: 'polish' | 'split_double'
+        """
+        dest = dest_lang.strip().lower()
+
+        LANG_RULES = {
+            'polish': {
+                'persian': (
+                    "LANGUAGE_RULES [Persian — فارسی]:\n"
+                    "- Heavy verbs: می‌باشد→است | می‌نمایند→می‌کنند"
+                    " | می‌گردد→می‌شود | اقدام نمود→اقدام کرد\n"
+                    "- Connectors: به منظورِ→برایِ | در راستایِ→برایِ"
+                    " | جهتِ→برایِ\n"
+                    "- FORBIDDEN: توسط — recast all passives as active\n"
+                    "- Semicolons: ALL (؛) → (،) — no exceptions\n"
+                    "- Ezafe: silent ه → هٔ (never ه‌ی)\n"
+                    "- No Oxford comma before و\n"
+                ),
+                '_default': (
+                    "LANGUAGE_RULES [{dest_lang}]:\n"
+                    "- Prefer active voice over passive constructions\n"
+                    "- Replace heavy or bureaucratic verbs with"
+                    " simpler equivalents\n"
+                    "- Use natural punctuation conventions for {dest_lang}\n"
+                    "- Maintain register appropriate to subtitle context\n"
+                ),
+            },
+            'split_double': {
+                'persian': (
+                    "BRIDGE_SIGNALS [Persian — فارسی]:\n"
+                    "- Merge triggers: line ends ، OR next starts with"
+                    " و | اما | که | تا | چون | زیرا\n"
+                    "- Spiritual bias: short devotional lines prefer"
+                    " DOUBLE_MERGED\n"
+                    "- RTL script: character count is visual width\n"
+                ),
+                '_default': (
+                    "BRIDGE_SIGNALS [{dest_lang}]:\n"
+                    "- Merge triggers: line ends with comma OR next starts"
+                    " with conjunction\n"
+                    "- Use natural connector conventions for {dest_lang}\n"
+                ),
+            },
+        }
+
+        rules = LANG_RULES.get(stage, {})
+        template = rules.get(dest, rules.get('_default', ''))
+        return (
+            template
+            .replace('{dest_lang}', dest_lang)
+            .replace('{src_lang}', src_lang)
+        )
+
     @staticmethod
     def estimate_tokens(text: str) -> int:
         encoding = tiktoken.get_encoding("cl100k_base")
@@ -282,10 +404,26 @@ class OpenAITranslator:
             return default_content
 
     def polish_text(self, src_lang_name, dest_lang_name, source_dict, target_dict, global_context=""):
-        prompt_content = self._get_prompt('prompt_polish.txt', f"You are an expert editor translating from {src_lang_name} to {dest_lang_name}. Polish the translation line by line. Return ONLY the polished plain text, with each line corresponding to the input lines in order. NO JSON. NO MARKDOWN.")
+        DEFAULT_POLISH_PROMPT = f"You are an expert editor translating from {src_lang_name} to {dest_lang_name}. Polish the translation line by line. Return ONLY the polished plain text, with each line corresponding to the input lines in order. NO JSON. NO MARKDOWN."
+        prompt_content, prompt_source = self._get_prompt_for_lang(
+            stage_base='polish',
+            dest_lang_name=dest_lang_name,
+            default=DEFAULT_POLISH_PROMPT
+        )
         lines_count = len(source_dict)
-        prompt_content = prompt_content.replace('{lines_count}', str(lines_count))
-
+        prompt_content = (
+            prompt_content
+            .replace('{lines_count}', str(lines_count))
+            .replace('{source_lang}', src_lang_name)
+            .replace('{dest_lang}', dest_lang_name)
+        )
+        if prompt_source == 'universal':
+            lang_block = self._build_lang_block(
+                src_lang_name, dest_lang_name, 'polish'
+            )
+            prompt_content = prompt_content.replace(
+                '{language_rules}', lang_block
+            )
         try:
             response = self.client.chat.completions.create(
                 model=self.model,
@@ -322,10 +460,24 @@ class OpenAITranslator:
             return target_dict
 
     def align_text(self, src_lang_name, dest_lang_name, source_dict, target_dict, global_context=""):
-        # Load raw instructions from the prompt file
-        prompt_content = self._get_prompt('prompt_split_double.txt', "You are a strict JSON Router for Subtitle Alignment.")
-
-
+        DEFAULT_ALIGN_PROMPT = "You are a strict JSON Router for Subtitle Alignment."
+        prompt_content, prompt_source = self._get_prompt_for_lang(
+            stage_base='split_double',
+            dest_lang_name=dest_lang_name,
+            default=DEFAULT_ALIGN_PROMPT
+        )
+        prompt_content = (
+            prompt_content
+            .replace('{source_lang}', src_lang_name)
+            .replace('{dest_lang}', dest_lang_name)
+        )
+        if prompt_source == 'universal':
+            lang_block = self._build_lang_block(
+                src_lang_name, dest_lang_name, 'split_double'
+            )
+            prompt_content = prompt_content.replace(
+                '{language_rules}', lang_block
+            )
         try:
             response = self.client.chat.completions.create(
                 model=self.model,
