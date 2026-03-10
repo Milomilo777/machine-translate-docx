@@ -351,7 +351,7 @@ class MachineTranslationApp:
         self.engine_label = tk.Label(root, text="Engine")
         self.engine_label.grid(row=6, column=0)
 
-        engines = ["Deepl", "Google","Perplexity", "Chatgpt"]
+        engines = ["google", "deepl", "chatgpt-api", "chatgpt-web", "perplexity-web"]
         self.engine = tk.StringVar(root)
         self.engine.set(engines[0])
         self.engine_combo = tk.OptionMenu(root, self.engine, *engines)
@@ -611,25 +611,25 @@ class MachineTranslationApp:
             
     def auto_select_engine(self, *args):
         # Always-available engines
-        engines = ["Chatgpt", "Google", "Perplexity"]
+        engines = ["google", "deepl", "chatgpt-api", "chatgpt-web", "perplexity-web"]
         
         # Add Deepl only if both source & target are supported
         if (self.source_language.get() in self.deepl_languages and
             self.target_language.get() in self.deepl_languages):
-            engines.append("Deepl")
-            self.engine.set("Deepl")
+
+            self.engine.set("deepl")
             self.show_browser_var.set(True)
             self.show_browser_checkbox.config(state="disabled")
         else:
             # Force Google if Deepl is not available
-            self.engine.set("Google")
+            self.engine.set("google")
             self.show_browser_var.set(False)
             self.show_browser_checkbox.config(state="normal")
             if self.source_language.get() not in self.deepl_languages:
                 self.target_language.set(self.languages[0])
         
         # ✅ Sort the engines alphabetically (case-insensitive)
-        engines = sorted(engines, key=str.lower)
+        #engines = sorted(engines, key=str.lower)
         
         # Update OptionMenu with the new engine list
         menu = self.engine_combo["menu"]
@@ -650,15 +650,15 @@ class MachineTranslationApp:
             self.font_var.set("")
             
     def update_show_browser(self, *args):
-        if self.engine.get() == "Deepl" or self.engine.get() == "Perplexity":
-            self.show_browser_var.set(True)
+        engine_val = self.engine.get()
+        if engine_val == "chatgpt-api":
             self.show_browser_checkbox.config(state="disabled")
-        elif self.engine.get() == "Google":
             self.show_browser_var.set(False)
+        else:
             self.show_browser_checkbox.config(state="normal")
     
     def show_browser_message(self, *args):
-        if self.show_browser_var.get() and self.engine.get() == "Google":
+        if self.show_browser_var.get() and self.engine.get() == "google":
             message = ("When translating using Google engine, do not interact with the browser " 
                 "when it is visible or the translation will likely fail.")
             result = messagebox.askokcancel("Browser Interaction Notice", message)
@@ -773,7 +773,7 @@ class MachineTranslationApp:
             command = f"{bin_launcher_path} {self.bin_path}\\machine-translate-docx.exe --srclang {src_lang_code} --destlang {dest_lang_code} --engine {engine} {dest_font_param} {split_param} {xlsx_replace_param} {show_browser_param} {open_word_param} {exitonsuccess_param} --docxfile "
         
         # Replace multiple spaces into a single space
-        arguments = re.sub('\s+',' ',arguments)
+        arguments = re.sub(r"\s+"," ",arguments)
         #print("arguments:")
         #print(arguments)
         

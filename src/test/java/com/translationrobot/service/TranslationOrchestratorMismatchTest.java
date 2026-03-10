@@ -50,7 +50,7 @@ class TranslationOrchestratorMismatchTest {
     void testGracefulDegradationOnLineMismatch() {
         // Arrange
         String filePath = "test.docx";
-        EngineType engineType = EngineType.CHATGPT;
+        EngineType engineType = EngineType.CHATGPT_API;
         String srcLang = "en";
         String destLang = "fa";
 

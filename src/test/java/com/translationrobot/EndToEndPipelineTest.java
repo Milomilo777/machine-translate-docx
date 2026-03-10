@@ -94,7 +94,7 @@ public class EndToEndPipelineTest {
                 .thenReturn(new TranslationResponse("سلام دنیا", 1000, 500, 0.00625, 1.0));
 
         // 3. Execute
-        orchestrator.runTranslationJob(tempFilePath, EngineType.CHATGPT, "en", "fa");
+        orchestrator.runTranslationJob(tempFilePath, EngineType.CHATGPT_API, "en", "fa");
 
         // 4. Assert File I/O
         File outFile = new File(outFilePath);

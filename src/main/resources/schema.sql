@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS documents (
 
 CREATE TABLE IF NOT EXISTS queries (
     id VARCHAR(36) PRIMARY KEY,
-    doc_id VARCHAR(36),
+    doc_id VARCHAR(2048),
     model_name VARCHAR(50),
     prompt_json TEXT,
     response_json TEXT,

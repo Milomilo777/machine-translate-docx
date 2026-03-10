@@ -44,14 +44,22 @@ public class WebController {
             EngineType engine = EngineType.fromString(engineStr);
 
             // Wait for translation to complete. It throws exceptions if something goes wrong.
-            orchestrator.runTranslationJob(tempFile.getAbsolutePath(), engine, sourceLang, targetLang);
+            try {
+                orchestrator.runTranslationJob(tempFile.getAbsolutePath(), engine, sourceLang, targetLang);
+            } catch (Exception e) {
+                return ResponseEntity.status(500)
+                        .body((Resource) new org.springframework.core.io.ByteArrayResource(
+                                ("{\"success\":false,\"error\":\"" + e.getMessage() + "\"}").getBytes()));
+            }
 
             String outFilename = tempFile.getName().replace(".docx", "_" + targetLang.toUpperCase() + ".docx");
             Path outPath = Paths.get(System.getProperty("java.io.tmpdir")).resolve(outFilename).normalize();
 
-            // Create a dummy file if it's a test to prevent 500 when UrlResource doesn't exist
-            if (System.getProperty("java.io.tmpdir") != null && !outPath.toFile().exists()) {
-                outPath.toFile().createNewFile();
+            File outFile = outPath.toFile();
+            if (!outFile.exists() || outFile.length() < 500) {
+                return ResponseEntity.status(500)
+                        .body((Resource) new org.springframework.core.io.ByteArrayResource(
+                                "{\"success\":false,\"error\":\"Output file missing or empty\"}".getBytes()));
             }
 
             Resource resource = new UrlResource(outPath.toUri());

@@ -15,6 +15,10 @@ import org.springframework.web.client.RestTemplate;
 @Component
 public class YandexEngine implements TranslationEngine {
 
+    // DISABLED ENGINE — Preserved for future use.
+    // To re-enable: set ENABLED = true
+    private static final boolean ENABLED = false;
+
     private final String apiKey;
     private final String folderId;
     private final RestTemplate restTemplate;
@@ -35,6 +39,10 @@ public class YandexEngine implements TranslationEngine {
 
     @Override
     public TranslationResponse translate(String sourceLang, String targetLang, String text) {
+        if (!ENABLED) {
+            throw new UnsupportedOperationException(
+                "Yandex engine is preserved but disabled in this build.");
+        }
         long startTime = System.currentTimeMillis();
 
         String url = "https://translate.api.cloud.yandex.net/translate/v2/translate";

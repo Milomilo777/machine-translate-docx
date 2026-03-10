@@ -39,5 +39,27 @@ start javaw -jar target\translation-robot.jar
 ## Authentication & Engine Configuration
 The engine has been architecturally designed to support free and community-driven endpoints.
 - **ChatGPT (API)**: Reads `OPENAI_API_KEY` directly from the OS Windows Environment Variables (Priority 1).
-  - **Emergency Hardcoding:** If you cannot set Environment Variables, you can open `src/main/resources/application.properties` and add your key like so: `openai.api.key=sk-proj-YOUR_KEY_HERE`. The application applies a "Triple-Lock" cleanup to remove accidental quotes or duplicate `Bearer` prefixes.
+  - **Emergency Hardcoding:** If your Windows environment refuses to expose the variable cleanly (e.g. injecting literal `${OPENAI_API_KEY}` placeholders), you must edit `ChatGptEngine.java` and change the `MANUAL_API_KEY` constant from `"EMPTY"` to your actual key (e.g. `"sk-proj-..."`). The application applies a "Triple-Lock" cleanup to remove accidental quotes or duplicate `Bearer` prefixes.
 - **Google / DeepL**: Refactored to use unofficial free web APIs via web-scraping-style raw HTTP requests, meaning official API keys are no longer required to translate documents using these engines.
+
+### Translation Engines / موتورهای ترجمه
+
+| Engine | Type | Status | Notes |
+|--------|------|--------|-------|
+| google | Web (free) | ✅ Active | No API key needed |
+| deepl | Web (free) | ✅ Active | No API key needed |
+| chatgpt-api | OpenAI API | ✅ Active | Requires OPENAI_API_KEY |
+| chatgpt-web | Web (free) | ✅ Active | Requires Chrome browser |
+| perplexity-web | Web (free) | ✅ Active | Requires Chrome browser |
+| yandex | Web | 🔘 Disabled | Preserved for future use |
+
+---
+
+| موتور | نوع | وضعیت | توضیح |
+|-------|-----|--------|-------|
+| google | وب رایگان | ✅ فعال | نیاز به کلید API ندارد |
+| deepl | وب رایگان | ✅ فعال | نیاز به کلید API ندارد |
+| chatgpt-api | OpenAI API | ✅ فعال | نیاز به OPENAI_API_KEY دارد |
+| chatgpt-web | وب رایگان | ✅ فعال | نیاز به مرورگر Chrome دارد |
+| perplexity-web | وب رایگان | ✅ فعال | نیاز به مرورگر Chrome دارد |
+| yandex | وب | 🔘 غیرفعال | برای استفاده آینده نگهداری می‌شود |

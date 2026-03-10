@@ -29,7 +29,7 @@ public class TranslationCliRunner implements CommandLineRunner {
             String filePath = null;
             String destLang = "fa"; // default
             String sourceLang = "en"; // default
-            EngineType engine = EngineType.CHATGPT; // default
+            EngineType engine = EngineType.CHATGPT_API; // default
 
             // Manual space-separated argument parsing
             for (int i = 0; i < args.length; i++) {
@@ -40,10 +40,18 @@ public class TranslationCliRunner implements CommandLineRunner {
                     destLang = args[i + 1];
                     i++;
                 } else if ("--engine".equalsIgnoreCase(args[i]) && i + 1 < args.length) {
+                    String engineArgValue = args[i + 1];
                     try {
-                        engine = EngineType.valueOf(args[i + 1].toUpperCase());
+                        engine = EngineType.fromString(engineArgValue);
                     } catch (IllegalArgumentException e) {
-                        System.out.println("[WARNING] Unknown engine: " + args[i + 1] + ". Defaulting to CHATGPT.");
+                        System.err.println("Unknown engine: " + engineArgValue);
+                        System.exit(1);
+                    }
+                    if (engine == EngineType.YANDEX ||
+                        engine == EngineType.GOOGLE_API ||
+                        engine == EngineType.DEEPL_API) {
+                        System.err.println("Engine " + engine.name() + " is disabled in this build.");
+                        System.exit(2);
                     }
                     i++;
                 }
@@ -53,10 +61,18 @@ public class TranslationCliRunner implements CommandLineRunner {
                 } else if (i == 1 && !args[i].startsWith("--")) {
                     destLang = args[i];
                 } else if (i == 2 && !args[i].startsWith("--")) {
+                    String engineArgValue = args[i];
                     try {
-                        engine = EngineType.valueOf(args[i].toUpperCase());
+                        engine = EngineType.fromString(engineArgValue);
                     } catch (IllegalArgumentException e) {
-                        // Ignore
+                        System.err.println("Unknown engine: " + engineArgValue);
+                        System.exit(1);
+                    }
+                    if (engine == EngineType.YANDEX ||
+                        engine == EngineType.GOOGLE_API ||
+                        engine == EngineType.DEEPL_API) {
+                        System.err.println("Engine " + engine.name() + " is disabled in this build.");
+                        System.exit(2);
                     }
                 }
             }

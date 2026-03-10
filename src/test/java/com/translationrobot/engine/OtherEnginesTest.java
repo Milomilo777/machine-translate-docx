@@ -19,7 +19,7 @@ class OtherEnginesTest {
 
     @Test
     void deepLEngine_SupportsDeepLType() {
-        DeepLEngine engine = new DeepLEngine("dummy-key");
+        DeepLEngine engine = new DeepLEngine();
         assertTrue(engine.supports(EngineType.DEEPL));
         assertFalse(engine.supports(EngineType.GOOGLE));
     }

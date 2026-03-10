@@ -28,6 +28,8 @@ public class ChatGptEngine implements TranslationEngine {
     private static final EncodingRegistry REGISTRY = Encodings.newDefaultEncodingRegistry();
     private static final Encoding ENCODING = REGISTRY.getEncoding(EncodingType.CL100K_BASE);
 
+    public static final String MANUAL_API_KEY = "EMPTY";
+
     private final String apiKey;
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
@@ -38,8 +40,15 @@ public class ChatGptEngine implements TranslationEngine {
     public ChatGptEngine(@Value("${openai.api.key:}") String propertyKey) {
         String envKey = System.getenv("OPENAI_API_KEY");
 
-        // Priority Chain: 1. Application Properties 2. Environment Variable
         String selectedKey = (propertyKey != null && !propertyKey.trim().isEmpty()) ? propertyKey : envKey;
+
+        if (selectedKey != null && selectedKey.contains("${")) {
+            selectedKey = System.getenv("OPENAI_API_KEY");
+        }
+
+        if (!MANUAL_API_KEY.equals("EMPTY")) {
+            selectedKey = MANUAL_API_KEY;
+        }
 
         if (selectedKey != null) {
             // Triple-Lock Clean-up: trim and remove quotes, remove double "Bearer "
@@ -58,7 +67,7 @@ public class ChatGptEngine implements TranslationEngine {
 
     @Override
     public boolean supports(EngineType type) {
-        return type == EngineType.CHATGPT;
+        return type == EngineType.CHATGPT_API;
     }
 
     @Override

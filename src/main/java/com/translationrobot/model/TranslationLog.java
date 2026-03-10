@@ -26,7 +26,7 @@ public class TranslationLog {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    @Column(name = "doc_id", length = 1024)
+    @Column(name = "doc_id", length = 2048)
     private String docId;
 
     @Column(name = "model_name")
