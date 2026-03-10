@@ -283,7 +283,8 @@ class OpenAITranslator:
 
     def polish_text(self, src_lang_name, dest_lang_name, source_dict, target_dict, global_context=""):
         prompt_content = self._get_prompt('prompt_polish.txt', f"You are an expert editor translating from {src_lang_name} to {dest_lang_name}. Polish the translation line by line. Return ONLY the polished plain text, with each line corresponding to the input lines in order. NO JSON. NO MARKDOWN.")
-
+        lines_count = len(source_dict)
+        prompt_content = prompt_content.replace('{lines_count}', str(lines_count))
 
         try:
             response = self.client.chat.completions.create(
@@ -302,7 +303,10 @@ class OpenAITranslator:
             response_text = response.choices[0].message.content.strip()
             cleaned_lines = [line.strip() for line in response_text.split('\n')]
             source_lines = list(source_dict.values())
-            cleaned_lines, warn = self.repair_lines(source_lines, cleaned_lines, "Polish")
+            fallback_lines = list(target_dict.values())
+            cleaned_lines, warn = self.repair_lines(
+                source_lines, cleaned_lines, "Polish", fallback=fallback_lines
+            )
             if warn == "FAILED":
                 return target_dict
             source_keys = list(source_dict.keys())
@@ -365,7 +369,7 @@ class OpenAITranslator:
             return target_dict
 
     @staticmethod
-    def repair_lines(source_lines, output_lines, context=""):
+    def repair_lines(source_lines, output_lines, context="", fallback=None):
         """
         Aligns output_lines count to source_lines count.
         Returns (repaired_lines, warning_level)
@@ -384,10 +388,12 @@ class OpenAITranslator:
         level = "CRITICAL" if diff > 2 else "WARNING"
         print(f"⚠️ {tag}{level}: line mismatch "
               f"(expected {src_count}, got {out_count}). Auto-repairing.")
+
+        pad_source = fallback if fallback else source_lines
         if out_count > src_count:
             repaired = output_lines[:src_count]
         else:
-            repaired = output_lines + source_lines[out_count:]
+            repaired = output_lines + pad_source[out_count:]
         return repaired, level
 
     def translate(self, source_lang, dest_lang, text_to_translate):
