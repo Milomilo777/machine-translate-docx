@@ -126,21 +126,35 @@ class MachineTranslatorApp(ctk.CTk):
         self.btn_polish = ctk.CTkButton(self.action_frame, text="2. Polish Translation (AI)", height=45, fg_color="#8e44ad", hover_color="#9b59b6", font=ctk.CTkFont(size=15, weight="bold"), command=lambda: self.run_action("polish"))
         self.btn_polish.grid(row=1, column=0, padx=(0, 10), sticky="ew")
 
-        self.btn_align = ctk.CTkButton(self.action_frame, text="3. Align & Double (AI)", height=45, fg_color="#27ae60", hover_color="#2ecc71", font=ctk.CTkFont(size=15, weight="bold"), command=lambda: self.run_action("align"))
+        self.btn_align = ctk.CTkButton(self.action_frame, text="3. Align (AI)", height=45, fg_color="#27ae60", hover_color="#2ecc71", font=ctk.CTkFont(size=15, weight="bold"), command=lambda: self.run_action("align"))
         self.btn_align.grid(row=1, column=1, sticky="ew")
+
+        self.btn_double = ctk.CTkButton(
+            self.action_frame,
+            text="4. Double (AI)",
+            height=45,
+            fg_color="#1a7a45",
+            hover_color="#1e9e58",
+            font=ctk.CTkFont(size=15, weight="bold"),
+            command=lambda: self.run_action("double")
+        )
+        self.btn_double.grid(
+            row=2, column=0, columnspan=2,
+            padx=5, pady=(10, 0), sticky="ew"
+        )
 
         self.btn_pipeline = ctk.CTkButton(
             self.action_frame,
-            text="🔁 Run Full Pipeline  (1 → 2 → 3)",
+            text="🔁 Run Full Pipeline  (1 → 2 → 3 → 4)",
             height=50,
             fg_color="#e67e22",
             hover_color="#f39c12",
             font=ctk.CTkFont(size=15, weight="bold"),
             command=self.run_pipeline
         )
-        self.btn_pipeline.grid(row=2, column=0, columnspan=2, pady=(10, 0), sticky="ew")
+        self.btn_pipeline.grid(row=3, column=0, columnspan=2, pady=(10, 0), sticky="ew")
 
-        self.operation_buttons = [self.btn_translate, self.btn_polish, self.btn_align, self.btn_pipeline]
+        self.operation_buttons = [self.btn_translate, self.btn_polish, self.btn_align, self.btn_double, self.btn_pipeline]
 
         self.log_frame = ctk.CTkFrame(self, fg_color="transparent")
         self.log_frame.grid(row=6, column=0, padx=20, pady=(10, 20), sticky="nsew")
@@ -241,9 +255,10 @@ class MachineTranslatorApp(ctk.CTk):
 
     def _pipeline_worker(self, file_path):
         stages = [
-            ("translate", "Stage 1/3: Translate (Raw)"),
-            ("polish",    "Stage 2/3: Polish"),
-            ("align",     "Stage 3/3: Align & Double"),
+            ("translate", "Stage 1/4: Translate (Raw)"),
+            ("polish",    "Stage 2/4: Polish"),
+            ("align",     "Stage 3/4: Align"),
+            ("double",    "Stage 4/4: Double"),
         ]
         current_file = file_path
         final_file = None
@@ -256,7 +271,7 @@ class MachineTranslatorApp(ctk.CTk):
             self.log_message(f"\n{'━'*40}")
             self.log_message(f"🔄 Pipeline {label}")
             self.log_message(f"{'━'*40}")
-            aimodel = "gpt-5-mini" if action in ["polish", "align"] else "gpt-5.4"
+            aimodel = "gpt-5-mini" if action in ["polish", "align", "double"] else "gpt-5.4"
             cmd = [
                 sys.executable, script_path,
                 "--docxfile", current_file,
@@ -318,7 +333,7 @@ class MachineTranslatorApp(ctk.CTk):
 
         engine_selection = self.engine_dropdown.get()
 
-        if action_type in ["polish", "align"]:
+        if action_type in ["polish", "align", "double"]:
             engine_to_use = "chatgpt"
             method_to_use = "api"
             suffix_name = f"AI_{action_type.title()}"
@@ -335,7 +350,7 @@ class MachineTranslatorApp(ctk.CTk):
             self.log_message(f"🚀 Action: RAW TRANSLATION ({engine_selection})")
 
         # Ensure default model is gpt-5-mini for AI actions, and gpt-5.4 for raw translation
-        if action_type in ["polish", "align"]:
+        if action_type in ["polish", "align", "double"]:
             aimodel_to_use = "gpt-5-mini"
         else:
             aimodel_to_use = "gpt-5.4"
