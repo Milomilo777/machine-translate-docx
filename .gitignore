@@ -11,3 +11,7 @@ tests/fixtures/*.docx
 tests/fixtures/*.pdf
 .DS_Store
 Thumbs.db
+
+.env
+shared_data/
+*.log

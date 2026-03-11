@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+*.pyo
+.env
+.git
+.gitignore
+*.log
+fix01*.py
+fix02*.py
+final_fix*.txt
+format_fix*.py
+tests/
+docs/
+*.docx
+*.xlsx
+shared_data/
