@@ -8,6 +8,14 @@ import mysql.connector
 from openai import OpenAI
 import re
 
+def find_paragraph_boundary(line_keys, target_texts,
+                            ideal_end, min_end=10):
+    for i in range(ideal_end, min_end, -1):
+        key = line_keys[i]
+        if str(target_texts.get(key, "")).strip() == "":
+            return i
+    return ideal_end
+
 class OpenAITranslator:
     def __init__(self, model="gpt-5.4", filename=None):
         self.model = model
@@ -323,7 +331,54 @@ class OpenAITranslator:
 
     def align_text(self, src_lang_name, dest_lang_name, source_dict, target_dict, global_context=""):
         # Load raw instructions from the prompt file
-        prompt_content = self._get_prompt('prompt_split_double.txt', "You are a strict JSON Router for Subtitle Alignment.")
+        prompt_content = self._get_prompt('prompt_align.txt', "You are a strict JSON Router for Subtitle Alignment.")
+
+
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": prompt_content},
+                    {"role": "user", "content": json.dumps({
+                        "source_texts": source_dict,
+                        "target_texts": target_dict
+                    }, ensure_ascii=False)}
+                ],
+                response_format={"type": "json_object"}
+            )
+
+            try:
+                raw = json.loads(response.choices[0].message.content)
+                if not isinstance(raw, dict) or not raw:
+                    print("[Align] Warning: empty or non-dict result, using fallback.")
+                    return target_dict
+                for k in list(raw.keys()):
+                    if k.startswith('_'):
+                        raw.pop(k)
+                for key in source_dict:
+                    if key not in raw:
+                        print(f"[Align] Warning: missing key '{key}', restored from target.")
+                        raw[key] = target_dict.get(key, '')
+                if len(raw) != len(source_dict):
+                    print(f"⚠️ [Align] Key count mismatch after repair "
+                          f"(expected {len(source_dict)}, got {len(raw)}). "
+                          f"Filling remaining from target.")
+                    for key in source_dict:
+                        if key not in raw:
+                            raw[key] = target_dict.get(key, '')
+                return raw
+            except json.JSONDecodeError as json_err:
+                print(f"[Error] Align failed due to JSON decoding error: {json_err}")
+                print(f"[Fallback] Executing safe KEEP_SEPARATE bypass.")
+                return target_dict
+
+        except Exception as e:
+            print(f"[Error] Align failed: {e}")
+            return target_dict
+
+    def double_text(self, src_lang_name, dest_lang_name, source_dict, target_dict, global_context=""):
+        # Load raw instructions from the prompt file
+        prompt_content = self._get_prompt('prompt_double.txt', "PLACEHOLDER: prompt_double.txt not found.")
 
 
         try:
