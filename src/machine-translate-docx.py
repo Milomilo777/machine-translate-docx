@@ -1526,18 +1526,6 @@ if translation_engine == 'comet':
         chrome_options.add_argument(f'--user-data-dir={profile_path}')
         chrome_options.add_argument('--profile-directory=Default')
 
-        comet_candidates = [
-            os.path.join(user_home, 'AppData', 'Local', 'Comet', 'Application', 'comet.exe'),
-            r'C:\Program Files\Comet\Application\comet.exe',
-            r'C:\Program Files (x86)\Comet\Application\comet.exe',
-        ]
-        comet_binary = next((c for c in comet_candidates if os.path.exists(c)), None)
-        if comet_binary:
-            chrome_options.binary_location = comet_binary
-            print(f'[INFO] Comet binary: {comet_binary}')
-        else:
-            print('[WARNING] Comet browser not found. Check installation.')
-
         # Stability flags to prevent background locks
         chrome_options.add_argument('--no-first-run')
         chrome_options.add_argument('--no-service-autorun')
@@ -7203,7 +7191,10 @@ def save_docx_file():
             print(f"\nAdding file name suffix _{lang_alpha3b_code}.")
 
     if action in ["polish", "align"]:
-        word_file_to_translate_save_as_path = word_file_to_translate_save_as_path.replace(".docx", f"_AI_{action.title()}.docx")
+        if action == "polish" and "_AI_Polish" not in word_file_to_translate_save_as_path:
+            word_file_to_translate_save_as_path = word_file_to_translate_save_as_path.replace(".docx", "_AI_Polish.docx")
+        elif action == "align" and "_AI_Align" not in word_file_to_translate_save_as_path:
+            word_file_to_translate_save_as_path = word_file_to_translate_save_as_path.replace(".docx", "_AI_Align.docx")
 
     local_time_offset()
 

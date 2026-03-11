@@ -287,7 +287,7 @@ class MachineTranslatorApp(ctk.CTk):
                 self.log_message(f"\n❌ Pipeline stopped at {label}")
                 self.after(0, lambda: self.toggle_buttons_state("normal"))
                 return
-            if saved_filename and os.path.exists(saved_filename):
+            if saved_filename:
                 current_file = saved_filename
                 final_file = saved_filename
 
