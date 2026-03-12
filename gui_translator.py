@@ -271,7 +271,7 @@ class MachineTranslatorApp(ctk.CTk):
             self.log_message(f"\n{'━'*40}")
             self.log_message(f"🔄 Pipeline {label}")
             self.log_message(f"{'━'*40}")
-            aimodel = "gpt-5-mini" if action in ["polish", "align", "double"] else "gpt-5.4"
+            aimodel = "gpt-4o" if action == "polish" else ("gpt-5-mini" if action in ["align", "double"] else "gpt-5.4")
             cmd = [
                 sys.executable, script_path,
                 "--docxfile", current_file,
@@ -350,7 +350,9 @@ class MachineTranslatorApp(ctk.CTk):
             self.log_message(f"🚀 Action: RAW TRANSLATION ({engine_selection})")
 
         # Ensure default model is gpt-5-mini for AI actions, and gpt-5.4 for raw translation
-        if action_type in ["polish", "align", "double"]:
+        if action_type == "polish":
+            aimodel_to_use = "gpt-4o"
+        elif action_type in ["align", "double"]:
             aimodel_to_use = "gpt-5-mini"
         else:
             aimodel_to_use = "gpt-5.4"

@@ -22,6 +22,71 @@ openai_translator_dir = os.path.join(current_dir, "openai_translator")
 if openai_translator_dir not in sys.path: sys.path.insert(0, openai_translator_dir)
 import io
 
+PROMPT_VERSION = "v3.2"
+
+import time
+import random
+
+REQUEST_TIMEOUT_SEC = 180
+MAX_RETRIES         = 2       # total attempts = 3
+RETRY_DELAY_SEC     = 5
+
+def call_block_with_retry(block_id, block_lines, func, *args, logger=None, **kwargs):
+    last_error = None
+
+    def log(msg):
+        print(msg)
+
+    def is_valid_json_response(res):
+        return res is not None
+
+    for attempt in range(MAX_RETRIES + 1):
+        try:
+            result = func(*args, **kwargs)
+
+            if is_valid_json_response(result):
+                if logger:
+                    logger.log_block_end(
+                        block_id, "SUCCESS",
+                        attempt_count=attempt + 1)
+                return result
+
+            last_error = "invalid JSON response"
+            log(f"[ParseError] Block {block_id} | "
+                f"Attempt {attempt+1}/{MAX_RETRIES+1}")
+
+        except TimeoutError:
+            last_error = f"timeout after {REQUEST_TIMEOUT_SEC}s"
+            log(f"[Timeout] Block {block_id} | "
+                f"Attempt {attempt+1}/{MAX_RETRIES+1} | "
+                f"{REQUEST_TIMEOUT_SEC}s exceeded")
+
+        except Exception as e:
+            err_str = str(e).lower()
+            if any(x in err_str for x in
+                   ("401", "403", "invalid api key", "quota")):
+                log(f"[FatalAPIError] Block {block_id} | {e} | "
+                    f"Not retrying.")
+                last_error = str(e)
+                break
+
+            last_error = str(e)
+            log(f"[APIError] Block {block_id} | "
+                f"Attempt {attempt+1}/{MAX_RETRIES+1} | {e}")
+
+        if attempt < MAX_RETRIES:
+            time.sleep(RETRY_DELAY_SEC)
+
+    log(f"[Failed] Block {block_id} | "
+        f"All {MAX_RETRIES+1} attempts exhausted. "
+        f"Lines left unchanged. Last error: {last_error}")
+    if logger:
+        logger.log_block_end(
+            block_id, "FAILED",
+            attempt_count=MAX_RETRIES + 1,
+            error=last_error)
+    return None
+
 # If all these flags appear anywhere on the command line, exit quietly.
 UNWANTED_FLAGS = {"-B", "-S", "-E", "-s", "-c"}
 
@@ -31,12 +96,30 @@ if UNWANTED_FLAGS.issubset(set(sys.argv[1:])):
         c_index = sys.argv.index("-c")
         if c_index + 1 < len(sys.argv):
             # There *is* an argument after -c; likely the resource_tracker helper
-            sys.exit(0)
+
+    try:
+        if 'logger' in globals() and logger:
+            logger.save()
+    except:
+        pass
+    sys.exit(0)
         # If -c is the last token (rare/invalid), still exit if you want:
-        # sys.exit(0)
+        #
+    try:
+        if 'logger' in globals() and logger:
+            logger.save()
+    except:
+        pass
+    sys.exit(0)
     except ValueError:
         # -c not found (shouldn't happen when issubset passed), but just in case:
-        sys.exit(0)
+
+    try:
+        if 'logger' in globals() and logger:
+            logger.save()
+    except:
+        pass
+    sys.exit(0)
     
 # For bidirectional text display right to left and left to right
 from bidi.algorithm import get_display
@@ -597,7 +680,7 @@ parser.add_argument('--silent', '-q', required = False, help="Silent, do not ask
 parser.add_argument("--verbose", '-v', help="increase output verbosity", action="store_true")
 parser.add_argument("--clientip", '-i', help="Client IP for statistics")
 parser.add_argument('--version', required = False, help="Show program version", action='store_true')
-parser.add_argument('--action', required=False, default='translate', help="Action: translate, polish, align, double")
+parser.add_argument('--action', required=False, default='translate', help="Action: translate, polish, align")
 
 args, unknown = parser.parse_known_args()
 
@@ -610,6 +693,12 @@ if show_version:
     print("Program version: %s\n" % (PROGRAM_VERSION))
     if not silent:
         input("\nEnter to close program")
+
+    try:
+        if 'logger' in globals() and logger:
+            logger.save()
+    except:
+        pass
     sys.exit(0)
 
 if args.docxfile is None:
@@ -620,6 +709,12 @@ if args.docxfile is None:
         input("\nEnter to close program")
     else:
         print("Program ended with errors")
+
+    try:
+        if 'logger' in globals() and logger:
+            logger.save()
+    except:
+        pass
     sys.exit(1)
 
 use_html = False
@@ -1252,7 +1347,7 @@ if engine_method == 'webservice':
     showbrowser = False
 
 if translation_engine == 'chatgpt' and engine_method == 'api':
-    from openai_translator import OpenAITranslator, find_paragraph_boundary
+    from openai_translator import OpenAITranslator
     chatgpt_max_char_bloc_size_key = ['chatgpt', 'api','maximum_character_block']
 else:
     chatgpt_max_char_bloc_size_key = ['chatgpt', 'no_account','maximum_character_block']
@@ -1320,6 +1415,12 @@ def safe_click(driver, element):
 
 if not os.path.exists(word_file_to_translate) :
     print("ERROR: File not found: %s" % (word_file_to_translate))
+
+    try:
+        if 'logger' in globals() and logger:
+            logger.save()
+    except:
+        pass
     sys.exit(1)
 
 splitted_filename = os.path.splitext(os.path.basename(word_file_to_translate))
@@ -1345,7 +1446,13 @@ if word_file_to_translate_extension == ".docx":
             input("Enter to close program")
         else:
             print("Program ended with errors")
-        sys.exit(2)
+
+    try:
+        if 'logger' in globals() and logger:
+            logger.save()
+    except:
+        pass
+    sys.exit(2)
     styles = docxdoc.styles
     
     if dest_lang_tag != '':
@@ -2125,7 +2232,13 @@ def selenium_chrome_google_translate_text_file(text_file_path):
         print("Error getting google translation from text file.")
         var = traceback.format_exc()
         print(var)
-        sys.exit(7)
+
+    try:
+        if 'logger' in globals() and logger:
+            logger.save()
+    except:
+        pass
+    sys.exit(7)
     return translation_array
     
     
@@ -2488,7 +2601,13 @@ def selenium_chrome_google_translate_xlsx_file(xlsx_file_path):
         print("Error getting google translation from text file.")
         var = traceback.format_exc()
         print(var)
-        sys.exit(8)
+
+    try:
+        if 'logger' in globals() and logger:
+            logger.save()
+    except:
+        pass
+    sys.exit(8)
     return translation_array
 
 
@@ -2549,7 +2668,13 @@ def selenium_chrome_yandex_translate(to_translate):
     except Exception:
         var = traceback.format_exc()
         print(var)
-        sys.exit(9)
+
+    try:
+        if 'logger' in globals() and logger:
+            logger.save()
+    except:
+        pass
+    sys.exit(9)
     return translation
 
 def remove_span_tag(text):  
@@ -3486,7 +3611,13 @@ def selenium_chrome_deepl_translate(to_translate, retry_count):
         var = traceback.format_exc()
         print(var)
         sleep(1)
-        # sys.exit(0)
+        #
+    try:
+        if 'logger' in globals() and logger:
+            logger.save()
+    except:
+        pass
+    sys.exit(0)
     if res == "":
         return False, ""
     else:
@@ -4426,7 +4557,13 @@ def selenium_chrome_perplexity_translate(to_translate, retry_count, max_try_coun
         var = traceback.format_exc()
         print(var)
         sleep(1)
-        # sys.exit(0)
+        #
+    try:
+        if 'logger' in globals() and logger:
+            logger.save()
+    except:
+        pass
+    sys.exit(0)
     if translation != "":
         return True, translation
     else:
@@ -4562,7 +4699,13 @@ AFTERTEXTTOTRANSLATE"""
         var = traceback.format_exc()
         print(var)
         sleep(1)
-        # sys.exit(0)
+        #
+    try:
+        if 'logger' in globals() and logger:
+            logger.save()
+    except:
+        pass
+    sys.exit(0)
     return True, res
 
 
@@ -5268,7 +5411,13 @@ def read_and_parse_docx_document():
             input("Enter to close program")
         else:
             print("Program ended with errors")
-        sys.exit(11)
+
+    try:
+        if 'logger' in globals() and logger:
+            logger.save()
+    except:
+        pass
+    sys.exit(11)
 
     rownum = 0
 
@@ -5566,7 +5715,13 @@ def create_webdriver():
             if not exitonsuccess:
                 input("Enter to close program")
             
-            sys.exit(12)
+
+    try:
+        if 'logger' in globals() and logger:
+            logger.save()
+    except:
+        pass
+    sys.exit(12)
         
         print("\nChrome started using driver at %s\n" % (driver.service.path))
 
@@ -5797,7 +5952,13 @@ def generate_xlsx_file_from_phrases(xlsx_file_path):
             input("Enter to close program")
         else:
             print("Program ended with errors")
-        sys.exit(13)
+
+    try:
+        if 'logger' in globals() and logger:
+            logger.save()
+    except:
+        pass
+    sys.exit(13)
     
     index_current_row = 1
     max_col_length = 0
@@ -6398,7 +6559,13 @@ def print_html_program_result():
             Identical_with_without_separators = ''
         if use_html :
             print("<tr><td>%d<td>'%s'<td>%s<td>%s<td>%s<td>%s%s" % (i, from_text_table[i], translation_result_using_separator[i].encode('utf8'), to_text_by_phrase_separator_table[i].encode('utf8'), to_text_by_phrase_table[i].encode('utf8'), Identical_with_without_separators.encode('utf8'), to_text_by_phrase_table[i].encode('utf8') ))
-        #sys.exit(0)
+        #
+    try:
+        if 'logger' in globals() and logger:
+            logger.save()
+    except:
+        pass
+    sys.exit(0)
 
     if use_html :
         print("</table><br>elapsedtime = ", elapsedtime)
@@ -7191,10 +7358,7 @@ def save_docx_file():
             print(f"\nAdding file name suffix _{lang_alpha3b_code}.")
 
     if action in ["polish", "align"]:
-        if action == "polish" and "_AI_Polish" not in word_file_to_translate_save_as_path:
-            word_file_to_translate_save_as_path = word_file_to_translate_save_as_path.replace(".docx", "_AI_Polish.docx")
-        elif action == "align" and "_AI_Align" not in word_file_to_translate_save_as_path:
-            word_file_to_translate_save_as_path = word_file_to_translate_save_as_path.replace(".docx", "_AI_Align.docx")
+        word_file_to_translate_save_as_path = word_file_to_translate_save_as_path.replace(".docx", f"_AI_{action.title()}.docx")
 
     local_time_offset()
 
@@ -7329,6 +7493,20 @@ def process_ai_action():
     model_name = args.aimodel if args.aimodel else "gpt-5-nano"
     oai_translator = OpenAITranslator(model=model_name, filename=word_file_to_translate)
 
+    from api_logger import APILogger
+    global logger
+    output_file_path = word_file_to_translate.replace('.docx', f'_AI_{action.title()}.docx')
+    logger = APILogger(
+        doc_name       = os.path.basename(word_file_to_translate),
+        action         = action,
+        engine         = translation_engine,
+        model          = model_name,
+        prompt_version = PROMPT_VERSION,
+        output_path    = output_file_path
+    )
+    import os
+    logger.set_api_key(os.environ.get("OPENAI_API_KEY", ""))
+
     # 1. Build Global Context (Full English Source for Model Comprehension)
     global_context_lines = []
     for i in range(1, numrows + 1):
@@ -7348,21 +7526,55 @@ def process_ai_action():
         if s_dict:
             tasks.append((1, numrows + 1, s_dict, t_dict))
     else:
-        # PATH B: Intelligent Macro-Chunking (~150 line blocks)
+        # PATH B: Intelligent Macro-Chunking
         print(f"[AI LAB] Routing to Macro-Chunking Path ({total_active_rows} active lines).")
-        curr_start = 1
-        while curr_start <= numrows:
-            if from_text_is_read[curr_start] == 0 or not from_text_table[curr_start].strip():
-                curr_start += 1
+
+        CHUNK_SOFT_LIMIT = 60
+        CHUNK_HARD_LIMIT = 80
+
+        def is_natural_boundary(target_line: str) -> bool:
+            if target_line is None:
+                return True
+            stripped = target_line.strip()
+            if stripped == "":
+                return True
+            core = stripped.rstrip('»"\'')
+            if core and core[-1] in (".", "!", "?", "؟", "۔"):
+                return True
+            return False
+
+        line_keys = [f"L{i}" for i in range(1, numrows + 1) if from_text_is_read[i] == 1 and from_text_table[i].strip()]
+        sorted_line_keys = sorted(
+            line_keys,
+            key=lambda k: int(k.lstrip("L"))
+        )
+
+        blocks = []
+        current_block = []
+
+        for line_key in sorted_line_keys:
+            current_block.append(line_key)
+            size = len(current_block)
+
+            if size < CHUNK_SOFT_LIMIT:
                 continue
-            curr_end = min(curr_start + 149, numrows)
-            while curr_end < numrows and from_text_is_end_of_line_table[curr_end] == 0 and (curr_end - curr_start) < 200:
-                curr_end += 1
-            s_dict = {f"L{i}": from_text_table[i].strip() for i in range(curr_start, curr_end + 1) if from_text_is_read[i] == 1 and from_text_table[i].strip()}
-            t_dict = {f"L{i}": existing_target_table[i].strip() for i in range(curr_start, curr_end + 1) if from_text_is_read[i] == 1 and from_text_table[i].strip()}
-            if s_dict:
-                tasks.append((curr_start, curr_end + 1, s_dict, t_dict))
-            curr_start = curr_end + 1
+
+            idx = int(line_key.lstrip("L"))
+            target_text = existing_target_table[idx] if idx < len(existing_target_table) else ""
+
+            if is_natural_boundary(target_text) or size >= CHUNK_HARD_LIMIT:
+                blocks.append(current_block)
+                current_block = []
+
+        if current_block:
+            blocks.append(current_block)
+
+        for b in blocks:
+            start_idx = int(b[0].lstrip("L"))
+            end_idx = int(b[-1].lstrip("L")) + 1
+            s_dict = {k: from_text_table[int(k.lstrip("L"))].strip() for k in b}
+            t_dict = {k: existing_target_table[int(k.lstrip("L"))].strip() for k in b}
+            tasks.append((start_idx, end_idx, s_dict, t_dict))
 
     if not tasks: return
 
@@ -7373,11 +7585,15 @@ def process_ai_action():
         start_idx, end_idx, s_dict, t_dict = task_data
         print(f"Processing semantic block lines {start_idx} to {end_idx-1}...")
         if action == "polish":
-            res_dict = oai_translator.polish_text(src_lang_name, dest_lang_name, s_dict, t_dict, global_context_str)
+            res_dict = call_block_with_retry(f"{start_idx}-{end_idx-1}", s_dict, oai_translator.polish_text, src_lang_name, dest_lang_name, s_dict, t_dict, global_context_str, logger=logger, block_id=f"{start_idx}-{end_idx-1}")
         elif action == "align":
-            res_dict = oai_translator.align_text(src_lang_name, dest_lang_name, s_dict, t_dict, global_context_str)
+            res_dict = call_block_with_retry(f"{start_idx}-{end_idx-1}", s_dict, oai_translator.align_text, src_lang_name, dest_lang_name, s_dict, t_dict, global_context_str, logger=logger, block_id=f"{start_idx}-{end_idx-1}")
+        elif action == "double":
+            res_dict = call_block_with_retry(f"{start_idx}-{end_idx-1}", s_dict, oai_translator.double_text, src_lang_name, dest_lang_name, s_dict, t_dict, global_context_str, logger=logger, block_id=f"{start_idx}-{end_idx-1}")
         else:
             res_dict = {}
+        if res_dict is None:
+            res_dict = t_dict
 
         elapsed = time.time() - chunk_start_time
         print(f"[TIMER] Block {start_idx} to {end_idx-1} completed in {elapsed:.2f} seconds.")
@@ -7385,7 +7601,7 @@ def process_ai_action():
 
     # 3. Execute concurrently (max 5 workers to respect API rate limits)
     all_results = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
         for result in executor.map(process_chunk, tasks):
             all_results.append(result)
 
@@ -7549,4 +7765,10 @@ def main() -> int:
 if __name__ == '__main__':
     main()  # next section explains the use of sys.exit
     # Redirect all stderr output to null (silences destructor error messages)
+
+    try:
+        if 'logger' in globals() and logger:
+            logger.save()
+    except:
+        pass
     sys.exit(0)

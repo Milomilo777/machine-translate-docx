@@ -7,6 +7,10 @@ import tiktoken
 import mysql.connector
 from openai import OpenAI
 import re
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from api_logger import APILogger
+
 
 def find_paragraph_boundary(line_keys, target_texts,
                             ideal_end, min_end=10):
@@ -289,11 +293,17 @@ class OpenAITranslator:
             print(f'[Prompt] Warning: Could not load {filename}: {e}. Using default.')
             return default_content
 
-    def polish_text(self, src_lang_name, dest_lang_name, source_dict, target_dict, global_context=""):
+    def polish_text(self, src_lang_name, dest_lang_name, source_dict, target_dict, global_context="", logger: "APILogger | None" = None, block_id=None):
         prompt_content = self._get_prompt('prompt_polish.txt', f"You are an expert editor translating from {src_lang_name} to {dest_lang_name}. Polish the translation line by line. Return ONLY the polished plain text, with each line corresponding to the input lines in order. NO JSON. NO MARKDOWN.")
         lines_count = len(source_dict)
         prompt_content = prompt_content.replace('{lines_count}', str(lines_count))
 
+        if logger and block_id:
+            try:
+                line_nums = [int(k.lstrip('L')) for k in source_dict.keys()]
+                logger.log_block_start(block_id, min(line_nums), max(line_nums), 0)
+            except:
+                logger.log_block_start(block_id, 0, 0, 0)
         try:
             response = self.client.chat.completions.create(
                 model=self.model,
@@ -329,11 +339,17 @@ class OpenAITranslator:
             print(f"[Error] Polish failed: {e}")
             return target_dict
 
-    def align_text(self, src_lang_name, dest_lang_name, source_dict, target_dict, global_context=""):
+    def align_text(self, src_lang_name, dest_lang_name, source_dict, target_dict, global_context="", logger: "APILogger | None" = None, block_id=None):
         # Load raw instructions from the prompt file
         prompt_content = self._get_prompt('prompt_align.txt', "You are a strict JSON Router for Subtitle Alignment.")
 
 
+        if logger and block_id:
+            try:
+                line_nums = [int(k.lstrip('L')) for k in source_dict.keys()]
+                logger.log_block_start(block_id, min(line_nums), max(line_nums), 0)
+            except:
+                logger.log_block_start(block_id, 0, 0, 0)
         try:
             response = self.client.chat.completions.create(
                 model=self.model,
@@ -376,11 +392,17 @@ class OpenAITranslator:
             print(f"[Error] Align failed: {e}")
             return target_dict
 
-    def double_text(self, src_lang_name, dest_lang_name, source_dict, target_dict, global_context=""):
+    def double_text(self, src_lang_name, dest_lang_name, source_dict, target_dict, global_context="", logger: "APILogger | None" = None, block_id=None):
         # Load raw instructions from the prompt file
         prompt_content = self._get_prompt('prompt_double.txt', "PLACEHOLDER: prompt_double.txt not found.")
 
 
+        if logger and block_id:
+            try:
+                line_nums = [int(k.lstrip('L')) for k in source_dict.keys()]
+                logger.log_block_start(block_id, min(line_nums), max(line_nums), 0)
+            except:
+                logger.log_block_start(block_id, 0, 0, 0)
         try:
             response = self.client.chat.completions.create(
                 model=self.model,
