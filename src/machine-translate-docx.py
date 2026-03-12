@@ -597,7 +597,7 @@ parser.add_argument('--silent', '-q', required = False, help="Silent, do not ask
 parser.add_argument("--verbose", '-v', help="increase output verbosity", action="store_true")
 parser.add_argument("--clientip", '-i', help="Client IP for statistics")
 parser.add_argument('--version', required = False, help="Show program version", action='store_true')
-parser.add_argument('--action', required=False, default='translate', help="Action: translate, polish, align")
+parser.add_argument('--action', required=False, default='translate', help="Action: translate, polish, align, double")
 
 args, unknown = parser.parse_known_args()
 
@@ -1252,7 +1252,7 @@ if engine_method == 'webservice':
     showbrowser = False
 
 if translation_engine == 'chatgpt' and engine_method == 'api':
-    from openai_translator import OpenAITranslator
+    from openai_translator import OpenAITranslator, find_paragraph_boundary
     chatgpt_max_char_bloc_size_key = ['chatgpt', 'api','maximum_character_block']
 else:
     chatgpt_max_char_bloc_size_key = ['chatgpt', 'no_account','maximum_character_block']
