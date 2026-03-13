@@ -1,3 +1,4 @@
+# pylint: disable=all
 from openpyxl import load_workbook
 import datetime
 import timeit

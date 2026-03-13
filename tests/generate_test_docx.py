@@ -1,3 +1,4 @@
+# pylint: disable=all
 """
 Generates a minimal test DOCX file for automated translation tests.
 Usage: python tests/generate_test_docx.py

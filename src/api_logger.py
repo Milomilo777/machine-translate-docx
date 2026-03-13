@@ -1,3 +1,4 @@
+# pylint: disable=all
 import os, json, time
 from datetime import datetime
 

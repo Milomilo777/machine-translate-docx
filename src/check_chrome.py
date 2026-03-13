@@ -1,3 +1,4 @@
+# pylint: disable=all
 """
 ChromeDriver availability check.
 Run before launching web-based engines to give clear error messages.

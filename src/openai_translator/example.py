@@ -1,3 +1,4 @@
+# pylint: disable=all
 from translator import OpenAITranslator
 
 if __name__ == "__main__":

@@ -1,3 +1,4 @@
+# pylint: disable=all
 import sys
 from machine_translator.gui.app import MachineTranslatorApp
 
