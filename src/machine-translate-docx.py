@@ -636,14 +636,18 @@ filename = getframeinfo(cf).filename
 
 start_time = datetime.datetime.now()
 
-for m in get_monitors():
-    #print(str(m))
-    break
+try:
+    for m in get_monitors():
+        pass
+except Exception:
+    pass
 
 parser = argparse.ArgumentParser()
 
 #parser = argparse.ArgumentParser(description = "Translate everything!")
 #parser.add_argument('--source-language', required = True, choices = Languages, help="Specify the source language!")
+# NOTE: Legacy GUI compat; DO NOT remove.
+# COMPAT: --srclang is the required source language parameter for GUI.
 parser.add_argument('--srclang', '-sl', required = False, help="Specify the default source language, en is default (hi,ja,ru,de,ru,hi,ja,in, etc)", default='en')
 parser.add_argument('--destlang', '--dl', required = False, help="Specify the destination language with 2 letter code (hi,ja,ru,de,ru,hi,ja,in, etc)")
 parser.add_argument('--engine', '-e', required = False, help="Specify the translation engine (google, deepl, yandex, chatgpt, perplexity, comet)")
@@ -662,7 +666,7 @@ parser.add_argument('--silent', '-q', required = False, help="Silent, do not ask
 parser.add_argument("--verbose", '-v', help="increase output verbosity", action="store_true")
 parser.add_argument("--clientip", '-i', help="Client IP for statistics")
 parser.add_argument('--version', required = False, help="Show program version", action='store_true')
-parser.add_argument('--action', required=False, default='translate', help="Action: translate, polish, align")
+parser.add_argument('--action', required=False, default='translate', help="Action: translate, polish, align, double")
 
 args, unknown = parser.parse_known_args()
 
@@ -1429,12 +1433,13 @@ if word_file_to_translate_extension == ".docx":
         else:
             print("Program ended with errors")
 
-    try:
-        if 'logger' in globals() and logger:
-            logger.save()
-    except:
-        pass
-    sys.exit(2)
+        # FIX: Move sys.exit(2) and logger save to inside the exception block to prevent early shutdown
+        try:
+            if 'logger' in globals() and logger:
+                logger.save()
+        except:
+            pass
+        sys.exit(2)
     styles = docxdoc.styles
     
     if dest_lang_tag != '':
