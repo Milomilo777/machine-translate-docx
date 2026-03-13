@@ -214,7 +214,6 @@ from timeit import default_timer as timer
 import re
 import inspect
 
-from xlsx_translation_memory import xlsx_translation_memory
 
 import html
 
@@ -4770,13 +4769,14 @@ def selenium_chrome_machine_translate(to_translate, index):
     
 def initialize_translation_memory_xlsx():
     global xtm
-    # If --xlsxreplacefile was provided in the command line
+    if action in ['polish', 'align', 'double']:
+        xtm = None
+        return
+    from xlsx_translation_memory import xlsx_translation_memory
     if xlsxreplacefile is not None:
-        print("xlsxreplacefile: %s" % (xlsxreplacefile))
-        xtm = xlsx_translation_memory.xlsx_translation_memory(xlsxreplacefile)
-        print("")
+        xtm = xlsx_translation_memory(xlsxreplacefile)
     else:
-        xtm = xlsx_translation_memory.xlsx_translation_memory(None)
+        xtm = xlsx_translation_memory(None)
 
 
 def is_end_of_line(line):
