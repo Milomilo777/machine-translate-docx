@@ -91,33 +91,16 @@ def call_block_with_retry(block_id, block_lines, func, *args, logger=None, **kwa
 UNWANTED_FLAGS = {"-B", "-S", "-E", "-s", "-c"}
 
 if UNWANTED_FLAGS.issubset(set(sys.argv[1:])):
-    # Optional extra safety: ensure there's something after -c (the inline code)
     try:
         c_index = sys.argv.index("-c")
         if c_index + 1 < len(sys.argv):
-            # There *is* an argument after -c; likely the resource_tracker helper
-
-    try:
-        if 'logger' in globals() and logger:
-            logger.save()
-    except:
+            pass  # argument after -c exists (resource_tracker helper)
+    except (ValueError, IndexError):
         pass
-    sys.exit(0)
-        # If -c is the last token (rare/invalid), still exit if you want:
-        #
     try:
         if 'logger' in globals() and logger:
             logger.save()
-    except:
-        pass
-    sys.exit(0)
-    except ValueError:
-        # -c not found (shouldn't happen when issubset passed), but just in case:
-
-    try:
-        if 'logger' in globals() and logger:
-            logger.save()
-    except:
+    except Exception:
         pass
     sys.exit(0)
     
@@ -5561,7 +5544,7 @@ def read_and_parse_docx_document():
                             from_text_is_end_of_line_table[i - 1] = 1
 
                     from_text_table[i] = cellvalue
-                elif col_no == 3 and action in ["polish", "align"]:
+                elif col_no == 3 and action in ["polish", "align", "double"]:
                     try:
                         existing_target_table[i] = cell.text.replace("\n", " ").replace("\r", " ").strip()
                     except:
@@ -5716,12 +5699,12 @@ def create_webdriver():
                 input("Enter to close program")
             
 
-    try:
-        if 'logger' in globals() and logger:
-            logger.save()
-    except:
-        pass
-    sys.exit(12)
+        try:
+            if "logger" in globals() and logger:
+                logger.save()
+        except:
+            pass
+        sys.exit(12)
         
         print("\nChrome started using driver at %s\n" % (driver.service.path))
 
@@ -7357,7 +7340,7 @@ def save_docx_file():
             word_file_to_translate_save_as_path = re.sub("(?i).docx$", f"_{lang_alpha3b_code}.docx", word_file_to_translate)
             print(f"\nAdding file name suffix _{lang_alpha3b_code}.")
 
-    if action in ["polish", "align"]:
+    if action in ["polish", "align", "double"]:
         word_file_to_translate_save_as_path = word_file_to_translate_save_as_path.replace(".docx", f"_AI_{action.title()}.docx")
 
     local_time_offset()
@@ -7490,7 +7473,15 @@ def process_ai_action():
         print("ERROR: Could not import required modules.")
         return
 
-    model_name = args.aimodel if args.aimodel else "gpt-5-nano"
+    if args.aimodel:
+        model_name = args.aimodel
+    else:
+        if action in ["align", "double"]:
+            model_name = "gpt-5-mini"
+        elif action == "polish":
+            model_name = "gpt-4o"
+        else:
+            model_name = "gpt-5.4"
     oai_translator = OpenAITranslator(model=model_name, filename=word_file_to_translate)
 
     from api_logger import APILogger
@@ -7643,7 +7634,7 @@ def main() -> int:
         #if not logged_into_perplexity:
         #    print("Failed to login into perplexity")
 
-    if action in ['polish', 'align']:
+    if action in ['polish', 'align', 'double']:
         process_ai_action()
         translation_succeded = True
     else:
