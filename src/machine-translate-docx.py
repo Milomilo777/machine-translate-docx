@@ -7504,11 +7504,11 @@ def process_ai_action():
         start_idx, end_idx, s_dict, t_dict = task_data
         print(f"Processing semantic block lines {start_idx} to {end_idx-1}...")
         if action == "polish":
-            res_dict = call_block_with_retry(f"{start_idx}-{end_idx-1}", s_dict, oai_translator.polish_text, src_lang_name, dest_lang_name, s_dict, t_dict, global_context_str, logger=logger, block_id=f"{start_idx}-{end_idx-1}")
+            res_dict = call_block_with_retry(f"{start_idx}-{end_idx-1}", s_dict, oai_translator.polish_text, src_lang_name, dest_lang_name, s_dict, t_dict, global_context_str, logger=logger)
         elif action == "align":
-            res_dict = call_block_with_retry(f"{start_idx}-{end_idx-1}", s_dict, oai_translator.align_text, src_lang_name, dest_lang_name, s_dict, t_dict, global_context_str, logger=logger, block_id=f"{start_idx}-{end_idx-1}")
+            res_dict = call_block_with_retry(f"{start_idx}-{end_idx-1}", s_dict, oai_translator.align_text, src_lang_name, dest_lang_name, s_dict, t_dict, global_context_str, logger=logger)
         elif action == "double":
-            res_dict = call_block_with_retry(f"{start_idx}-{end_idx-1}", s_dict, oai_translator.double_text, src_lang_name, dest_lang_name, s_dict, t_dict, global_context_str, logger=logger, block_id=f"{start_idx}-{end_idx-1}")
+            res_dict = call_block_with_retry(f"{start_idx}-{end_idx-1}", s_dict, oai_translator.double_text, src_lang_name, dest_lang_name, s_dict, t_dict, global_context_str, logger=logger)
         else:
             res_dict = {}
         if res_dict is None:

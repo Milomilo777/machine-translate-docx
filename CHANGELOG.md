@@ -39,3 +39,8 @@
 **What changed:** Phase 8: Replaced BundleManager initialization to force absolute pathing and physical directory creation. Added explicit stdout tracing when logs are written.
 **Why:** Because previous pathing fell back on implicit cwd assumptions when arguments were passed, which resulted in lost PyInstaller files.
 **Files touched:** src/diagnostics/bundle_manager.py, CHANGELOG.md
+
+### [2026-03-14] Branch: fix/typeerror-block-id-v9 — TypeError Fix
+**What changed:** Phase 9: Fixed TypeError in process_chunk by removing duplicate block_id parameter in call_block_with_retry.
+**Why:** The `block_id` was being redundantly passed as both a positional and keyword argument in multi-threading setups for the AI pipelines, crashing the pipelines prior to API interaction.
+**Files touched:** src/machine-translate-docx.py, CHANGELOG.md
