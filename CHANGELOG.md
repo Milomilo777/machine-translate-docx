@@ -54,3 +54,8 @@
 **What changed:** Unified Fixes: Added Double pipeline doc saving, Fixed XTM NoneType crash, Implemented Enterprise Log Retention (60-day/1000-file GC) and Semantic Trace Naming with Success/Fail flags.
 **Why:** To establish a fully automated, self-pruning telemetry system that scales reliably for continuous CI execution while capturing raw output explicitly marked by JSON fallback states.
 **Files touched:** src/diagnostics/bundle_manager.py, src/openai_translator/translator.py, CHANGELOG.md
+
+### [2026-03-14] Branch: feature/ai-localization-lab-10415451625341488816 — Stabilization Merge
+**What changed:** Consolidated all enterprise diagnostics, PyInstaller path fixes, and pipeline isolation logic into the AI Localization Lab feature branch.
+**Why:** To ensure the core localization logic inherits the robust, absolute-pathing diagnostic system and doesn't suffer from pipeline scope shadowing or PyInstaller volatile directory failures.
+**Files touched:** CHANGELOG.md
