@@ -14,6 +14,7 @@ warnings.filterwarnings(
 
 import sys
 import os
+from diagnostics.bundle_manager import DiagnosticBundleManager
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.abspath(os.path.join(current_dir, ".."))
 if current_dir not in sys.path: sys.path.insert(0, current_dir)
@@ -28,6 +29,7 @@ import time
 import random
 
 REQUEST_TIMEOUT_SEC = 180
+diagnostic_bundle_manager = DiagnosticBundleManager()
 MAX_RETRIES         = 2       # total attempts = 3
 RETRY_DELAY_SEC     = 5
 
@@ -1382,7 +1384,7 @@ def safe_click(driver, element):
 
 if not os.path.exists(word_file_to_translate) :
     print("ERROR: File not found: %s" % (word_file_to_translate))
-
+    diagnostic_bundle_manager.create_bundle(file_name=word_file_to_translate, stage="init", error="File not found")
     sys.exit(1)
 
 splitted_filename = os.path.splitext(os.path.basename(word_file_to_translate))
@@ -2189,7 +2191,7 @@ def selenium_chrome_google_translate_text_file(text_file_path):
         print("Error getting google translation from text file.")
         var = traceback.format_exc()
         print(var)
-
+        diagnostic_bundle_manager.create_bundle(file_name="google_translate_text", stage="google_translate_text_file", error=var)
         sys.exit(7)
     return translation_array
     
@@ -2553,7 +2555,7 @@ def selenium_chrome_google_translate_xlsx_file(xlsx_file_path):
         print("Error getting google translation from text file.")
         var = traceback.format_exc()
         print(var)
-
+        diagnostic_bundle_manager.create_bundle(file_name="google_translate_html", stage="google_translate_html_javascript_file", error=var)
         sys.exit(8)
     return translation_array
 
@@ -2615,7 +2617,7 @@ def selenium_chrome_yandex_translate(to_translate):
     except Exception:
         var = traceback.format_exc()
         print(var)
-
+        diagnostic_bundle_manager.create_bundle(file_name="yandex_translation", stage="yandex_translate", error=var, payload={"text_to_translate": to_translate})
         sys.exit(9)
     return translation
 

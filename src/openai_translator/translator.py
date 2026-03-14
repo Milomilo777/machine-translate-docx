@@ -7,6 +7,7 @@ import tiktoken
 import mysql.connector
 from openai import OpenAI
 import re
+from diagnostics.bundle_manager import DiagnosticBundleManager
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from api_logger import APILogger
@@ -27,6 +28,7 @@ class OpenAITranslator:
         if not self.api_key:
             raise ValueError("OPENAI_API_KEY not set in environment")
         self.client = OpenAI(api_key=self.api_key)
+        self.bundle_manager = DiagnosticBundleManager()
 
         # DB config from environment
         self.db_config = {
@@ -337,6 +339,7 @@ class OpenAITranslator:
             return res_dict
         except Exception as e:
             print(f"[Error] Polish failed: {e}")
+            self.bundle_manager.create_bundle(file_name=self.filename, stage="polish", error=e, payload={"source_dict": source_dict, "target_dict": target_dict}, state={"doc_id": self.doc_id}, trace_id=self.doc_id)
             return target_dict
 
     def align_text(self, src_lang_name, dest_lang_name, source_dict, target_dict, global_context="", logger: "APILogger | None" = None, block_id=None):
@@ -386,10 +389,12 @@ class OpenAITranslator:
             except json.JSONDecodeError as json_err:
                 print(f"[Error] Align failed due to JSON decoding error: {json_err}")
                 print(f"[Fallback] Executing safe KEEP_SEPARATE bypass.")
+                self.bundle_manager.create_bundle(file_name=self.filename, stage="align_json", error=json_err, payload={"source_dict": source_dict, "target_dict": target_dict}, state={"doc_id": self.doc_id}, trace_id=self.doc_id)
                 return target_dict
 
         except Exception as e:
             print(f"[Error] Align failed: {e}")
+            self.bundle_manager.create_bundle(file_name=self.filename, stage="align", error=e, payload={"source_dict": source_dict, "target_dict": target_dict}, state={"doc_id": self.doc_id}, trace_id=self.doc_id)
             return target_dict
 
     def double_text(self, src_lang_name, dest_lang_name, source_dict, target_dict, global_context="", logger: "APILogger | None" = None, block_id=None):
@@ -437,12 +442,14 @@ class OpenAITranslator:
                             raw[key] = target_dict.get(key, '')
                 return raw
             except json.JSONDecodeError as json_err:
-                print(f"[Error] Align failed due to JSON decoding error: {json_err}")
+                print(f"[Error] Double failed due to JSON decoding error: {json_err}")
                 print(f"[Fallback] Executing safe KEEP_SEPARATE bypass.")
+                self.bundle_manager.create_bundle(file_name=self.filename, stage="double_json", error=json_err, payload={"source_dict": source_dict, "target_dict": target_dict}, state={"doc_id": self.doc_id}, trace_id=self.doc_id)
                 return target_dict
 
         except Exception as e:
-            print(f"[Error] Align failed: {e}")
+            print(f"[Error] Double failed: {e}")
+            self.bundle_manager.create_bundle(file_name=self.filename, stage="double", error=e, payload={"source_dict": source_dict, "target_dict": target_dict}, state={"doc_id": self.doc_id}, trace_id=self.doc_id)
             return target_dict
 
     @staticmethod
@@ -487,22 +494,27 @@ class OpenAITranslator:
         print(f"Estimated number of input tokens: {input_tokens}")
 
         start_time = time.time()
-        if "pro" in self.model:
-            response = self.client.responses.create(
-                model=self.model,
-                input=[
-                    {"role": "system", "content": "You are a professional translator."},
-                    {"role": "user", "content": prompt}
-                ]
-            )
-        else:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": prompt},
-                    {"role": "user",   "content": text_to_translate}
-                ]
-            )
+        try:
+            if "pro" in self.model:
+                response = self.client.responses.create(
+                    model=self.model,
+                    input=[
+                        {"role": "system", "content": "You are a professional translator."},
+                        {"role": "user", "content": prompt}
+                    ]
+                )
+            else:
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[
+                        {"role": "system", "content": prompt},
+                        {"role": "user",   "content": text_to_translate}
+                    ]
+                )
+        except Exception as e:
+            print(f"[Error] Translate API failed: {e}")
+            self.bundle_manager.create_bundle(file_name=self.filename, stage="translate", error=e, payload={"text_to_translate": text_to_translate}, state={"doc_id": self.doc_id}, trace_id=self.doc_id)
+            return None, text_to_translate
         elapsed_time = time.time() - start_time
         response_json = response.model_dump()
 
