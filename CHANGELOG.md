@@ -34,3 +34,8 @@
 **What changed:** Fixed PyInstaller volatile directory bug in bundle_manager. Fixed empty raw_response telemetry bug in align and double pipelines.
 **Why:** To ensure logs are not permanently deleted when the PyInstaller GUI exits (`_MEIPASS` temp folder destruction), and to ensure `response_text` is assigned *before* `json.loads` so parsing failures actually log the LLM output instead of empty strings.
 **Files touched:** src/diagnostics/bundle_manager.py, src/openai_translator/translator.py, CHANGELOG.md
+
+### [2026-03-14] Branch: fix/forced-directory-creation-v8 — EMERGENCY FIX
+**What changed:** Phase 8: Replaced BundleManager initialization to force absolute pathing and physical directory creation. Added explicit stdout tracing when logs are written.
+**Why:** Because previous pathing fell back on implicit cwd assumptions when arguments were passed, which resulted in lost PyInstaller files.
+**Files touched:** src/diagnostics/bundle_manager.py, CHANGELOG.md

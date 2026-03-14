@@ -8,7 +8,11 @@ from datetime import datetime
 import copy
 
 class DiagnosticBundleManager:
-    def __init__(self, base_log_dir="logs"):
+    def __init__(self, base_log_dir=None):
+        import sys
+        import os
+
+        # 1. Determine Absolute Project Root
         if getattr(sys, 'frozen', False):
             # Running as compiled PyInstaller executable
             project_root = os.path.dirname(sys.executable)
@@ -17,8 +21,16 @@ class DiagnosticBundleManager:
             current_dir = os.path.dirname(os.path.abspath(__file__))
             project_root = os.path.abspath(os.path.join(current_dir, "..", ".."))
 
+        # 2. Hardcode the base_log_dir
         self.base_log_dir = os.path.join(project_root, "logs")
         self.max_retention = 50
+
+        # 3. FORCE Physical Directory Creation
+        try:
+            os.makedirs(self.base_log_dir, exist_ok=True)
+            print(f"\n[DIAGNOSTICS_LOCKED] Logs directory successfully forced at: {self.base_log_dir}\n")
+        except Exception as e:
+            print(f"\n[DIAGNOSTICS_FATAL] Failed to create logs directory at {self.base_log_dir}. Error: {e}\n")
 
     def _redact_sensitive_info(self, data):
         """Redact sensitive data like API keys from dictionaries/lists recursively."""
@@ -159,5 +171,6 @@ class DiagnosticBundleManager:
             trace_file = os.path.join(trace_dir, f"trace_{action}_{timestamp}.json")
             with open(trace_file, 'w', encoding='utf-8') as f:
                 json.dump(trace_data, f, ensure_ascii=False, indent=4)
+            print(f"[TRACE_SAVED] Execution trace written to: {trace_file}")
         except Exception as e:
             print(f"Failed to create execution trace: {e}")
