@@ -19,3 +19,8 @@
 **What changed:** Fixed OS shadowing bug, Enforced Excel TM isolation for Polish/Align/Double pipelines, Fixed TM class instantiation, and disabled blocking GitHub CI workflows.
 **Why:** To resolve PR blockers resulting from unbound local variables, strict adherence to isolation requirements in subsequent translation phases, and deprecated Node.js GitHub actions.
 **Files touched:** src/machine-translate-docx.py, .github/workflows/ (deleted), CHANGELOG.md
+
+### [2026-03-14] Branch: feature/telemetry-integration-v5 — Telemetry Integration & Silent Failure Tracking
+**What changed:** Fixed action routing for double pipeline, integrated bundle manager into OpenAI translator for silent failure tracking. Captured `response_text` and mismatch states directly into diagnostic logs.
+**Why:** To ensure we can debug why `json.loads` or `repair_lines` fail natively on intermediate pipelines instead of relying solely on successful `target_dict` fallbacks which masked underlying structural prompt issues.
+**Files touched:** src/machine-translate-docx.py, src/openai_translator/translator.py, CHANGELOG.md

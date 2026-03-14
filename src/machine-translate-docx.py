@@ -5495,7 +5495,7 @@ def read_and_parse_docx_document():
                         existing_target_table[i] = ''
                 col_no = col_no + 1
             
-            if not splitonly and i > 1 and action not in ['polish', 'align']:
+            if not splitonly and i > 1 and action not in ['polish', 'align', 'double']:
                 prepare_and_clear_cell_for_writing (i, '')
             from_text_is_read[i] = 1
         except Exception:
