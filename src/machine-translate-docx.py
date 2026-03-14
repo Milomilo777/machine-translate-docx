@@ -97,12 +97,7 @@ if UNWANTED_FLAGS.issubset(set(sys.argv[1:])):
             pass  # argument after -c exists (resource_tracker helper)
     except (ValueError, IndexError):
         pass
-    try:
-        if 'logger' in globals() and logger:
-            logger.save()
-    except Exception:
-        pass
-    sys.exit(0)
+        sys.exit(0)
     
 # For bidirectional text display right to left and left to right
 from bidi.algorithm import get_display
@@ -676,12 +671,7 @@ if show_version:
     if not silent:
         input("\nEnter to close program")
 
-    try:
-        if 'logger' in globals() and logger:
-            logger.save()
-    except:
-        pass
-    sys.exit(0)
+        sys.exit(0)
 
 if args.docxfile is None:
     parser.print_help()
@@ -692,12 +682,7 @@ if args.docxfile is None:
     else:
         print("Program ended with errors")
 
-    try:
-        if 'logger' in globals() and logger:
-            logger.save()
-    except:
-        pass
-    sys.exit(1)
+        sys.exit(1)
 
 use_html = False
 
@@ -1398,11 +1383,6 @@ def safe_click(driver, element):
 if not os.path.exists(word_file_to_translate) :
     print("ERROR: File not found: %s" % (word_file_to_translate))
 
-    try:
-        if 'logger' in globals() and logger:
-            logger.save()
-    except:
-        pass
     sys.exit(1)
 
 splitted_filename = os.path.splitext(os.path.basename(word_file_to_translate))
@@ -1429,12 +1409,7 @@ if word_file_to_translate_extension == ".docx":
         else:
             print("Program ended with errors")
 
-    try:
-        if 'logger' in globals() and logger:
-            logger.save()
-    except:
-        pass
-    sys.exit(2)
+        sys.exit(2)
     styles = docxdoc.styles
     
     if dest_lang_tag != '':
@@ -2215,12 +2190,7 @@ def selenium_chrome_google_translate_text_file(text_file_path):
         var = traceback.format_exc()
         print(var)
 
-    try:
-        if 'logger' in globals() and logger:
-            logger.save()
-    except:
-        pass
-    sys.exit(7)
+        sys.exit(7)
     return translation_array
     
     
@@ -2584,12 +2554,7 @@ def selenium_chrome_google_translate_xlsx_file(xlsx_file_path):
         var = traceback.format_exc()
         print(var)
 
-    try:
-        if 'logger' in globals() and logger:
-            logger.save()
-    except:
-        pass
-    sys.exit(8)
+        sys.exit(8)
     return translation_array
 
 
@@ -2651,12 +2616,7 @@ def selenium_chrome_yandex_translate(to_translate):
         var = traceback.format_exc()
         print(var)
 
-    try:
-        if 'logger' in globals() and logger:
-            logger.save()
-    except:
-        pass
-    sys.exit(9)
+        sys.exit(9)
     return translation
 
 def remove_span_tag(text):  
@@ -3594,11 +3554,6 @@ def selenium_chrome_deepl_translate(to_translate, retry_count):
         print(var)
         sleep(1)
         #
-    try:
-        if 'logger' in globals() and logger:
-            logger.save()
-    except:
-        pass
     sys.exit(0)
     if res == "":
         return False, ""
@@ -4540,11 +4495,6 @@ def selenium_chrome_perplexity_translate(to_translate, retry_count, max_try_coun
         print(var)
         sleep(1)
         #
-    try:
-        if 'logger' in globals() and logger:
-            logger.save()
-    except:
-        pass
     sys.exit(0)
     if translation != "":
         return True, translation
@@ -4682,11 +4632,6 @@ AFTERTEXTTOTRANSLATE"""
         print(var)
         sleep(1)
         #
-    try:
-        if 'logger' in globals() and logger:
-            logger.save()
-    except:
-        pass
     sys.exit(0)
     return True, res
 
@@ -5395,12 +5340,7 @@ def read_and_parse_docx_document():
         else:
             print("Program ended with errors")
 
-    try:
-        if 'logger' in globals() and logger:
-            logger.save()
-    except:
-        pass
-    sys.exit(11)
+        sys.exit(11)
 
     rownum = 0
 
@@ -5699,12 +5639,7 @@ def create_webdriver():
                 input("Enter to close program")
             
 
-        try:
-            if "logger" in globals() and logger:
-                logger.save()
-        except:
-            pass
-        sys.exit(12)
+            sys.exit(12)
         
         print("\nChrome started using driver at %s\n" % (driver.service.path))
 
@@ -5936,12 +5871,7 @@ def generate_xlsx_file_from_phrases(xlsx_file_path):
         else:
             print("Program ended with errors")
 
-    try:
-        if 'logger' in globals() and logger:
-            logger.save()
-    except:
-        pass
-    sys.exit(13)
+        sys.exit(13)
     
     index_current_row = 1
     max_col_length = 0
@@ -6543,11 +6473,6 @@ def print_html_program_result():
         if use_html :
             print("<tr><td>%d<td>'%s'<td>%s<td>%s<td>%s<td>%s%s" % (i, from_text_table[i], translation_result_using_separator[i].encode('utf8'), to_text_by_phrase_separator_table[i].encode('utf8'), to_text_by_phrase_table[i].encode('utf8'), Identical_with_without_separators.encode('utf8'), to_text_by_phrase_table[i].encode('utf8') ))
         #
-    try:
-        if 'logger' in globals() and logger:
-            logger.save()
-    except:
-        pass
     sys.exit(0)
 
     if use_html :
@@ -7757,9 +7682,4 @@ if __name__ == '__main__':
     main()  # next section explains the use of sys.exit
     # Redirect all stderr output to null (silences destructor error messages)
 
-    try:
-        if 'logger' in globals() and logger:
-            logger.save()
-    except:
-        pass
     sys.exit(0)
