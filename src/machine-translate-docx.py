@@ -4716,14 +4716,16 @@ def selenium_chrome_machine_translate(to_translate, index):
     
 def initialize_translation_memory_xlsx():
     global xtm
+    # Strict isolation: Excel TM is ONLY for 'translate' action.
     if action in ['polish', 'align', 'double']:
         xtm = None
         return
+
     from xlsx_translation_memory import xlsx_translation_memory
     if xlsxreplacefile is not None:
-        xtm = xlsx_translation_memory(xlsxreplacefile)
+        xtm = xlsx_translation_memory.xlsx_translation_memory(xlsxreplacefile)
     else:
-        xtm = xlsx_translation_memory(None)
+        xtm = xlsx_translation_memory.xlsx_translation_memory(None)
 
 
 def is_end_of_line(line):
@@ -7422,7 +7424,6 @@ def process_ai_action():
         prompt_version = PROMPT_VERSION,
         output_path    = output_file_path
     )
-    import os
     logger.set_api_key(os.environ.get("OPENAI_API_KEY", ""))
 
     # 1. Build Global Context (Full English Source for Model Comprehension)
@@ -7581,7 +7582,7 @@ def main() -> int:
         create_webdriver()
 
     
-    if action not in ['polish', 'align']:
+    if action not in ['polish', 'align', 'double']:
         get_translation_and_replace_after()
 
     minimize_browser()
@@ -7589,7 +7590,7 @@ def main() -> int:
     #input("before create_translation_split_prompts")
     #create_translation_split_prompts()
     #input("after create_translation_split_prompts")
-    if action not in ['polish', 'align']:
+    if action not in ['polish', 'align', 'double']:
         document_split_phrases()
 
     write_destination_language_in_docx_cell()
@@ -7601,7 +7602,7 @@ def main() -> int:
 
     elapsed_time = end_time - start_time
 
-    if action not in ["polish", "align"]:
+    if action not in ["polish", "align", "double"]:
         run_statistics()
     save_docx_file()
     
@@ -7624,7 +7625,7 @@ def main() -> int:
     print("\nSaved file name: %s" % (word_file_to_translate_save_as_path))
     
     
-    if action not in ["polish", "align"]:
+    if action not in ["polish", "align", "double"]:
         get_robot_usage_comment()
 
     if translation_engine in ['perplexity', 'comet']:

@@ -14,3 +14,8 @@
 **What changed:** Implemented trace IDs linked to documents to unify pipeline logs, standardized JSON schema attributes, and improved secret redaction to use `***`.
 **Why:** To ensure future telemetry tool integrations and observability dashboards can parse the logs natively.
 **Files touched:** src/diagnostics/bundle_manager.py, src/openai_translator/translator.py, docs/diagnostics.md, CHANGELOG.md
+
+### [2026-03-14] Branch: fix/pipeline-isolation-v4 — Architecture Fixes
+**What changed:** Fixed OS shadowing bug, Enforced Excel TM isolation for Polish/Align/Double pipelines, Fixed TM class instantiation, and disabled blocking GitHub CI workflows.
+**Why:** To resolve PR blockers resulting from unbound local variables, strict adherence to isolation requirements in subsequent translation phases, and deprecated Node.js GitHub actions.
+**Files touched:** src/machine-translate-docx.py, .github/workflows/ (deleted), CHANGELOG.md
