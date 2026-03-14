@@ -23,7 +23,7 @@ class DiagnosticBundleManager:
 
         # 2. Hardcode the base_log_dir
         self.base_log_dir = os.path.join(project_root, "logs")
-        self.max_retention = 50
+        self.max_retention = 100
 
         # 3. FORCE Physical Directory Creation
         try:
@@ -152,7 +152,7 @@ class DiagnosticBundleManager:
             print(f"[DiagnosticBundleManager] Failed to create bundle: {e}")
             return None
 
-    def create_execution_trace(self, file_name, action, payload, raw_response, parsed_result):
+    def create_execution_trace(self, file_name, action, payload, raw_response, parsed_result, status="SUCCESS"):
         try:
             import json, os, datetime
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -162,6 +162,7 @@ class DiagnosticBundleManager:
 
             trace_data = {
                 "file_name": safe_file_name,
+                "status": status,
                 "timestamp": timestamp,
                 "action": action,
                 "payload": payload,
@@ -169,9 +170,35 @@ class DiagnosticBundleManager:
                 "parsed_result": parsed_result
             }
 
-            trace_file = os.path.join(trace_dir, f"trace_{safe_file_name}_{action}_{timestamp}.json")
+            counter = len([name for name in os.listdir(trace_dir) if os.path.isfile(os.path.join(trace_dir, name))]) + 1
+            trace_file = os.path.join(trace_dir, f"{counter:04d}_{safe_file_name}_{action}_{timestamp}_[{status}].json")
             with open(trace_file, 'w', encoding='utf-8') as f:
                 json.dump(trace_data, f, ensure_ascii=False, indent=4)
             print(f"[TRACE_SAVED] Execution trace written to: {trace_file}")
+            self._run_garbage_collector()
         except Exception as e:
             print(f"Failed to create execution trace: {e}")
+
+    def _run_garbage_collector(self):
+        try:
+            import time, os
+            cutoff = time.time() - (60 * 24 * 60 * 60) # 60 days
+            all_traces = []
+            for root, _, files in os.walk(self.base_log_dir):
+                for f in files:
+                    if f.endswith('.json') and ('_[SUCCESS]' in f or '_[FAILED]' in f):
+                        all_traces.append(os.path.join(root, f))
+
+            kept_traces = []
+            for trace in all_traces:
+                if os.path.getmtime(trace) < cutoff:
+                    os.remove(trace)
+                else:
+                    kept_traces.append(trace)
+
+            if len(kept_traces) > 1000:
+                kept_traces.sort(key=os.path.getmtime)
+                for trace in kept_traces[:-1000]:
+                    os.remove(trace)
+        except Exception as e:
+            print(f"[GC Error] {e}")

@@ -49,3 +49,8 @@
 **What changed:** Phase 10: Injected filenames into trace logs, added 'double' action to document saving flow, and fixed end-of-run XTM NoneType crash.
 **Why:** To ensure tracing outputs are correctly identifiable per document and stop unconditional post-run XTM reports from crashing AI pipelines where `xtm` was explicitly evaluated to `None`.
 **Files touched:** src/diagnostics/bundle_manager.py, src/machine-translate-docx.py, CHANGELOG.md
+
+### [2026-03-14] Branch: feature/enterprise-logging-and-fixes-v11 — Enterprise Logging
+**What changed:** Unified Fixes: Added Double pipeline doc saving, Fixed XTM NoneType crash, Implemented Enterprise Log Retention (60-day/1000-file GC) and Semantic Trace Naming with Success/Fail flags.
+**Why:** To establish a fully automated, self-pruning telemetry system that scales reliably for continuous CI execution while capturing raw output explicitly marked by JSON fallback states.
+**Files touched:** src/diagnostics/bundle_manager.py, src/openai_translator/translator.py, CHANGELOG.md
