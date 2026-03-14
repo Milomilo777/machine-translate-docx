@@ -7,6 +7,7 @@ import tiktoken
 import mysql.connector
 from openai import OpenAI
 import re
+from diagnostics.bundle_manager import DiagnosticBundleManager
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from api_logger import APILogger
@@ -27,6 +28,7 @@ class OpenAITranslator:
         if not self.api_key:
             raise ValueError("OPENAI_API_KEY not set in environment")
         self.client = OpenAI(api_key=self.api_key)
+        self.bundle_manager = DiagnosticBundleManager()
 
         # DB config from environment
         self.db_config = {
@@ -304,6 +306,7 @@ class OpenAITranslator:
                 logger.log_block_start(block_id, min(line_nums), max(line_nums), 0)
             except:
                 logger.log_block_start(block_id, 0, 0, 0)
+        response_text = ""
         try:
             response = self.client.chat.completions.create(
                 model=self.model,
@@ -326,6 +329,15 @@ class OpenAITranslator:
                 source_lines, cleaned_lines, "Polish", fallback=fallback_lines
             )
             if warn == "FAILED":
+                self.bundle_manager.create_bundle(
+                    file_name=self.filename,
+                    stage="polish_mismatch",
+                    error="Line count mismatch FAILED",
+                    payload={"source_dict": source_dict, "target_dict": target_dict, "response_text": response_text},
+                    state={"doc_id": self.doc_id},
+                    trace_id=self.doc_id
+                )
+                self.bundle_manager.create_execution_trace(self.filename, "polish", {"source_dict": source_dict, "target_dict": target_dict}, response_text, target_dict, status="FAILED")
                 return target_dict
             source_keys = list(source_dict.keys())
 
@@ -334,9 +346,12 @@ class OpenAITranslator:
                     res_dict[key] = cleaned_lines[i]
                 else:
                     res_dict[key] = target_dict[key] # Safe fallback
+            self.bundle_manager.create_execution_trace(self.filename, "polish", {"source_dict": source_dict, "target_dict": target_dict}, response_text, res_dict, status="SUCCESS")
             return res_dict
         except Exception as e:
             print(f"[Error] Polish failed: {e}")
+            self.bundle_manager.create_bundle(file_name=self.filename, stage="polish", error=e, payload={"source_dict": source_dict, "target_dict": target_dict, "response_text": response_text}, state={"doc_id": self.doc_id}, trace_id=self.doc_id)
+            self.bundle_manager.create_execution_trace(self.filename, "polish", {"source_dict": source_dict, "target_dict": target_dict}, response_text, target_dict, status="FAILED")
             return target_dict
 
     def align_text(self, src_lang_name, dest_lang_name, source_dict, target_dict, global_context="", logger: "APILogger | None" = None, block_id=None):
@@ -350,6 +365,7 @@ class OpenAITranslator:
                 logger.log_block_start(block_id, min(line_nums), max(line_nums), 0)
             except:
                 logger.log_block_start(block_id, 0, 0, 0)
+        response_text = ""
         try:
             response = self.client.chat.completions.create(
                 model=self.model,
@@ -362,9 +378,9 @@ class OpenAITranslator:
                 ],
                 response_format={"type": "json_object"}
             )
-
+            response_text = response.choices[0].message.content  # CRITICAL ASSIGNMENT
             try:
-                raw = json.loads(response.choices[0].message.content)
+                raw = json.loads(response_text)
                 if not isinstance(raw, dict) or not raw:
                     print("[Align] Warning: empty or non-dict result, using fallback.")
                     return target_dict
@@ -382,14 +398,19 @@ class OpenAITranslator:
                     for key in source_dict:
                         if key not in raw:
                             raw[key] = target_dict.get(key, '')
+                self.bundle_manager.create_execution_trace(self.filename, "align", {"source_dict": source_dict, "target_dict": target_dict}, response_text, raw, status="SUCCESS")
                 return raw
             except json.JSONDecodeError as json_err:
                 print(f"[Error] Align failed due to JSON decoding error: {json_err}")
                 print(f"[Fallback] Executing safe KEEP_SEPARATE bypass.")
+                self.bundle_manager.create_bundle(file_name=self.filename, stage="align_json", error=json_err, payload={"source_dict": source_dict, "target_dict": target_dict, "response_text": response_text}, state={"doc_id": self.doc_id}, trace_id=self.doc_id)
+                self.bundle_manager.create_execution_trace(self.filename, "align", {"source_dict": source_dict, "target_dict": target_dict}, response_text, target_dict, status="FAILED")
                 return target_dict
 
         except Exception as e:
             print(f"[Error] Align failed: {e}")
+            self.bundle_manager.create_bundle(file_name=self.filename, stage="align", error=e, payload={"source_dict": source_dict, "target_dict": target_dict, "response_text": response_text}, state={"doc_id": self.doc_id}, trace_id=self.doc_id)
+            self.bundle_manager.create_execution_trace(self.filename, "align", {"source_dict": source_dict, "target_dict": target_dict}, response_text, target_dict, status="FAILED")
             return target_dict
 
     def double_text(self, src_lang_name, dest_lang_name, source_dict, target_dict, global_context="", logger: "APILogger | None" = None, block_id=None):
@@ -403,6 +424,7 @@ class OpenAITranslator:
                 logger.log_block_start(block_id, min(line_nums), max(line_nums), 0)
             except:
                 logger.log_block_start(block_id, 0, 0, 0)
+        response_text = ""
         try:
             response = self.client.chat.completions.create(
                 model=self.model,
@@ -415,9 +437,9 @@ class OpenAITranslator:
                 ],
                 response_format={"type": "json_object"}
             )
-
+            response_text = response.choices[0].message.content  # CRITICAL ASSIGNMENT
             try:
-                raw = json.loads(response.choices[0].message.content)
+                raw = json.loads(response_text)
                 if not isinstance(raw, dict) or not raw:
                     print("[Align] Warning: empty or non-dict result, using fallback.")
                     return target_dict
@@ -435,14 +457,19 @@ class OpenAITranslator:
                     for key in source_dict:
                         if key not in raw:
                             raw[key] = target_dict.get(key, '')
+                self.bundle_manager.create_execution_trace(self.filename, "double", {"source_dict": source_dict, "target_dict": target_dict}, response_text, raw, status="SUCCESS")
                 return raw
             except json.JSONDecodeError as json_err:
-                print(f"[Error] Align failed due to JSON decoding error: {json_err}")
+                print(f"[Error] Double failed due to JSON decoding error: {json_err}")
                 print(f"[Fallback] Executing safe KEEP_SEPARATE bypass.")
+                self.bundle_manager.create_bundle(file_name=self.filename, stage="double_json", error=json_err, payload={"source_dict": source_dict, "target_dict": target_dict, "response_text": response_text}, state={"doc_id": self.doc_id}, trace_id=self.doc_id)
+                self.bundle_manager.create_execution_trace(self.filename, "double", {"source_dict": source_dict, "target_dict": target_dict}, response_text, target_dict, status="FAILED")
                 return target_dict
 
         except Exception as e:
-            print(f"[Error] Align failed: {e}")
+            print(f"[Error] Double failed: {e}")
+            self.bundle_manager.create_bundle(file_name=self.filename, stage="double", error=e, payload={"source_dict": source_dict, "target_dict": target_dict, "response_text": response_text}, state={"doc_id": self.doc_id}, trace_id=self.doc_id)
+            self.bundle_manager.create_execution_trace(self.filename, "double", {"source_dict": source_dict, "target_dict": target_dict}, response_text, target_dict, status="FAILED")
             return target_dict
 
     @staticmethod
@@ -487,22 +514,27 @@ class OpenAITranslator:
         print(f"Estimated number of input tokens: {input_tokens}")
 
         start_time = time.time()
-        if "pro" in self.model:
-            response = self.client.responses.create(
-                model=self.model,
-                input=[
-                    {"role": "system", "content": "You are a professional translator."},
-                    {"role": "user", "content": prompt}
-                ]
-            )
-        else:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": prompt},
-                    {"role": "user",   "content": text_to_translate}
-                ]
-            )
+        try:
+            if "pro" in self.model:
+                response = self.client.responses.create(
+                    model=self.model,
+                    input=[
+                        {"role": "system", "content": "You are a professional translator."},
+                        {"role": "user", "content": prompt}
+                    ]
+                )
+            else:
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[
+                        {"role": "system", "content": prompt},
+                        {"role": "user",   "content": text_to_translate}
+                    ]
+                )
+        except Exception as e:
+            print(f"[Error] Translate API failed: {e}")
+            self.bundle_manager.create_bundle(file_name=self.filename, stage="translate", error=e, payload={"text_to_translate": text_to_translate}, state={"doc_id": self.doc_id}, trace_id=self.doc_id)
+            return None, text_to_translate
         elapsed_time = time.time() - start_time
         response_json = response.model_dump()
 

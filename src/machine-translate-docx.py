@@ -14,6 +14,7 @@ warnings.filterwarnings(
 
 import sys
 import os
+from diagnostics.bundle_manager import DiagnosticBundleManager
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.abspath(os.path.join(current_dir, ".."))
 if current_dir not in sys.path: sys.path.insert(0, current_dir)
@@ -28,6 +29,7 @@ import time
 import random
 
 REQUEST_TIMEOUT_SEC = 180
+diagnostic_bundle_manager = DiagnosticBundleManager()
 MAX_RETRIES         = 2       # total attempts = 3
 RETRY_DELAY_SEC     = 5
 
@@ -1382,7 +1384,7 @@ def safe_click(driver, element):
 
 if not os.path.exists(word_file_to_translate) :
     print("ERROR: File not found: %s" % (word_file_to_translate))
-
+    diagnostic_bundle_manager.create_bundle(file_name=word_file_to_translate, stage="init", error="File not found")
     sys.exit(1)
 
 splitted_filename = os.path.splitext(os.path.basename(word_file_to_translate))
@@ -2189,7 +2191,7 @@ def selenium_chrome_google_translate_text_file(text_file_path):
         print("Error getting google translation from text file.")
         var = traceback.format_exc()
         print(var)
-
+        diagnostic_bundle_manager.create_bundle(file_name="google_translate_text", stage="google_translate_text_file", error=var)
         sys.exit(7)
     return translation_array
     
@@ -2553,7 +2555,7 @@ def selenium_chrome_google_translate_xlsx_file(xlsx_file_path):
         print("Error getting google translation from text file.")
         var = traceback.format_exc()
         print(var)
-
+        diagnostic_bundle_manager.create_bundle(file_name="google_translate_html", stage="google_translate_html_javascript_file", error=var)
         sys.exit(8)
     return translation_array
 
@@ -2615,7 +2617,7 @@ def selenium_chrome_yandex_translate(to_translate):
     except Exception:
         var = traceback.format_exc()
         print(var)
-
+        diagnostic_bundle_manager.create_bundle(file_name="yandex_translation", stage="yandex_translate", error=var, payload={"text_to_translate": to_translate})
         sys.exit(9)
     return translation
 
@@ -4714,14 +4716,16 @@ def selenium_chrome_machine_translate(to_translate, index):
     
 def initialize_translation_memory_xlsx():
     global xtm
+    # Strict isolation: Excel TM is ONLY for 'translate' action.
     if action in ['polish', 'align', 'double']:
         xtm = None
         return
+
     from xlsx_translation_memory import xlsx_translation_memory
     if xlsxreplacefile is not None:
-        xtm = xlsx_translation_memory(xlsxreplacefile)
+        xtm = xlsx_translation_memory.xlsx_translation_memory(xlsxreplacefile)
     else:
-        xtm = xlsx_translation_memory(None)
+        xtm = xlsx_translation_memory.xlsx_translation_memory(None)
 
 
 def is_end_of_line(line):
@@ -5491,7 +5495,7 @@ def read_and_parse_docx_document():
                         existing_target_table[i] = ''
                 col_no = col_no + 1
             
-            if not splitonly and i > 1 and action not in ['polish', 'align']:
+            if not splitonly and i > 1 and action not in ['polish', 'align', 'double']:
                 prepare_and_clear_cell_for_writing (i, '')
             from_text_is_read[i] = 1
         except Exception:
@@ -7420,7 +7424,6 @@ def process_ai_action():
         prompt_version = PROMPT_VERSION,
         output_path    = output_file_path
     )
-    import os
     logger.set_api_key(os.environ.get("OPENAI_API_KEY", ""))
 
     # 1. Build Global Context (Full English Source for Model Comprehension)
@@ -7501,11 +7504,11 @@ def process_ai_action():
         start_idx, end_idx, s_dict, t_dict = task_data
         print(f"Processing semantic block lines {start_idx} to {end_idx-1}...")
         if action == "polish":
-            res_dict = call_block_with_retry(f"{start_idx}-{end_idx-1}", s_dict, oai_translator.polish_text, src_lang_name, dest_lang_name, s_dict, t_dict, global_context_str, logger=logger, block_id=f"{start_idx}-{end_idx-1}")
+            res_dict = call_block_with_retry(f"{start_idx}-{end_idx-1}", s_dict, oai_translator.polish_text, src_lang_name, dest_lang_name, s_dict, t_dict, global_context_str, logger=logger)
         elif action == "align":
-            res_dict = call_block_with_retry(f"{start_idx}-{end_idx-1}", s_dict, oai_translator.align_text, src_lang_name, dest_lang_name, s_dict, t_dict, global_context_str, logger=logger, block_id=f"{start_idx}-{end_idx-1}")
+            res_dict = call_block_with_retry(f"{start_idx}-{end_idx-1}", s_dict, oai_translator.align_text, src_lang_name, dest_lang_name, s_dict, t_dict, global_context_str, logger=logger)
         elif action == "double":
-            res_dict = call_block_with_retry(f"{start_idx}-{end_idx-1}", s_dict, oai_translator.double_text, src_lang_name, dest_lang_name, s_dict, t_dict, global_context_str, logger=logger, block_id=f"{start_idx}-{end_idx-1}")
+            res_dict = call_block_with_retry(f"{start_idx}-{end_idx-1}", s_dict, oai_translator.double_text, src_lang_name, dest_lang_name, s_dict, t_dict, global_context_str, logger=logger)
         else:
             res_dict = {}
         if res_dict is None:
@@ -7579,7 +7582,7 @@ def main() -> int:
         create_webdriver()
 
     
-    if action not in ['polish', 'align']:
+    if action not in ['polish', 'align', 'double']:
         get_translation_and_replace_after()
 
     minimize_browser()
@@ -7587,7 +7590,7 @@ def main() -> int:
     #input("before create_translation_split_prompts")
     #create_translation_split_prompts()
     #input("after create_translation_split_prompts")
-    if action not in ['polish', 'align']:
+    if action not in ['polish', 'align', 'double']:
         document_split_phrases()
 
     write_destination_language_in_docx_cell()
@@ -7599,7 +7602,7 @@ def main() -> int:
 
     elapsed_time = end_time - start_time
 
-    if action not in ["polish", "align"]:
+    if action not in ["polish", "align", "double"]:
         run_statistics()
     save_docx_file()
     
@@ -7610,7 +7613,7 @@ def main() -> int:
 
     elapsed_time = end_time - start_time
 
-    if xlsxreplacefile is not None:
+    if xlsxreplacefile is not None and xtm is not None:
         xtm.print_replaced_items_number_of_replacements('before')
         xtm.print_replaced_items_number_of_replacements('after')
         xtm.print_do_not_split_number_of_matches('keep_on_same_line')
@@ -7622,7 +7625,7 @@ def main() -> int:
     print("\nSaved file name: %s" % (word_file_to_translate_save_as_path))
     
     
-    if action not in ["polish", "align"]:
+    if action not in ["polish", "align", "double"]:
         get_robot_usage_comment()
 
     if translation_engine in ['perplexity', 'comet']:
