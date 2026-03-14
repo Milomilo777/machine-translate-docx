@@ -378,9 +378,9 @@ class OpenAITranslator:
                 ],
                 response_format={"type": "json_object"}
             )
-
+            response_text = response.choices[0].message.content  # CRITICAL ASSIGNMENT
             try:
-                raw = json.loads(response.choices[0].message.content)
+                raw = json.loads(response_text)
                 if not isinstance(raw, dict) or not raw:
                     print("[Align] Warning: empty or non-dict result, using fallback.")
                     return target_dict
@@ -437,9 +437,9 @@ class OpenAITranslator:
                 ],
                 response_format={"type": "json_object"}
             )
-
+            response_text = response.choices[0].message.content  # CRITICAL ASSIGNMENT
             try:
-                raw = json.loads(response.choices[0].message.content)
+                raw = json.loads(response_text)
                 if not isinstance(raw, dict) or not raw:
                     print("[Align] Warning: empty or non-dict result, using fallback.")
                     return target_dict

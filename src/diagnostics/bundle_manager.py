@@ -1,4 +1,5 @@
 import os
+import sys
 import json
 import time
 import uuid
@@ -8,8 +9,14 @@ import copy
 
 class DiagnosticBundleManager:
     def __init__(self, base_log_dir="logs"):
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        project_root = os.path.abspath(os.path.join(current_dir, "..", ".."))
+        if getattr(sys, 'frozen', False):
+            # Running as compiled PyInstaller executable
+            project_root = os.path.dirname(sys.executable)
+        else:
+            # Running from source (.py)
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            project_root = os.path.abspath(os.path.join(current_dir, "..", ".."))
+
         self.base_log_dir = os.path.join(project_root, "logs")
         self.max_retention = 50
 

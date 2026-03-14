@@ -29,3 +29,8 @@
 **What changed:** Fixed relative pathing for logs directory using absolute `__file__` paths. Implemented Universal Execution Tracing to capture raw LLM outputs for every pipeline.
 **Why:** To ensure logs are predictably located when executing via the GUI out of various CWD states, and to record complete audit trails mapping inputs, prompts, raw JSON string outputs, and safely parsed dictionaries for LLM deterministic debugging.
 **Files touched:** src/diagnostics/bundle_manager.py, src/openai_translator/translator.py, CHANGELOG.md
+
+### [2026-03-14] Branch: fix/pyinstaller-telemetry-v7 — PyInstaller Temp Folder & Telemetry Fix
+**What changed:** Fixed PyInstaller volatile directory bug in bundle_manager. Fixed empty raw_response telemetry bug in align and double pipelines.
+**Why:** To ensure logs are not permanently deleted when the PyInstaller GUI exits (`_MEIPASS` temp folder destruction), and to ensure `response_text` is assigned *before* `json.loads` so parsing failures actually log the LLM output instead of empty strings.
+**Files touched:** src/diagnostics/bundle_manager.py, src/openai_translator/translator.py, CHANGELOG.md
