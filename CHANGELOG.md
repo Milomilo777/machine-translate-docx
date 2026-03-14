@@ -24,3 +24,8 @@
 **What changed:** Fixed action routing for double pipeline, integrated bundle manager into OpenAI translator for silent failure tracking. Captured `response_text` and mismatch states directly into diagnostic logs.
 **Why:** To ensure we can debug why `json.loads` or `repair_lines` fail natively on intermediate pipelines instead of relying solely on successful `target_dict` fallbacks which masked underlying structural prompt issues.
 **Files touched:** src/machine-translate-docx.py, src/openai_translator/translator.py, CHANGELOG.md
+
+### [2026-03-14] Branch: feature/universal-execution-tracing-v6 — Universal Execution Tracing
+**What changed:** Fixed relative pathing for logs directory using absolute `__file__` paths. Implemented Universal Execution Tracing to capture raw LLM outputs for every pipeline.
+**Why:** To ensure logs are predictably located when executing via the GUI out of various CWD states, and to record complete audit trails mapping inputs, prompts, raw JSON string outputs, and safely parsed dictionaries for LLM deterministic debugging.
+**Files touched:** src/diagnostics/bundle_manager.py, src/openai_translator/translator.py, CHANGELOG.md

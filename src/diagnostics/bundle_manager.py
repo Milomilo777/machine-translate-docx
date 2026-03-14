@@ -8,7 +8,9 @@ import copy
 
 class DiagnosticBundleManager:
     def __init__(self, base_log_dir="logs"):
-        self.base_log_dir = base_log_dir
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.abspath(os.path.join(current_dir, "..", ".."))
+        self.base_log_dir = os.path.join(project_root, "logs")
         self.max_retention = 50
 
     def _redact_sensitive_info(self, data):
@@ -130,3 +132,25 @@ class DiagnosticBundleManager:
             # Failsafe, don't crash the main process if logging fails
             print(f"[DiagnosticBundleManager] Failed to create bundle: {e}")
             return None
+
+    def create_execution_trace(self, file_name, action, payload, raw_response, parsed_result):
+        try:
+            import json, os, datetime
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            safe_file_name = os.path.basename(file_name)
+            trace_dir = os.path.join(self.base_log_dir, f"{safe_file_name}_traces")
+            os.makedirs(trace_dir, exist_ok=True)
+
+            trace_data = {
+                "timestamp": timestamp,
+                "action": action,
+                "payload": payload,
+                "raw_response": raw_response,
+                "parsed_result": parsed_result
+            }
+
+            trace_file = os.path.join(trace_dir, f"trace_{action}_{timestamp}.json")
+            with open(trace_file, 'w', encoding='utf-8') as f:
+                json.dump(trace_data, f, ensure_ascii=False, indent=4)
+        except Exception as e:
+            print(f"Failed to create execution trace: {e}")

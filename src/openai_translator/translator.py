@@ -337,6 +337,7 @@ class OpenAITranslator:
                     state={"doc_id": self.doc_id},
                     trace_id=self.doc_id
                 )
+                self.bundle_manager.create_execution_trace(self.filename, "polish", {"source_dict": source_dict, "target_dict": target_dict}, response_text, target_dict)
                 return target_dict
             source_keys = list(source_dict.keys())
 
@@ -345,10 +346,12 @@ class OpenAITranslator:
                     res_dict[key] = cleaned_lines[i]
                 else:
                     res_dict[key] = target_dict[key] # Safe fallback
+            self.bundle_manager.create_execution_trace(self.filename, "polish", {"source_dict": source_dict, "target_dict": target_dict}, response_text, res_dict)
             return res_dict
         except Exception as e:
             print(f"[Error] Polish failed: {e}")
             self.bundle_manager.create_bundle(file_name=self.filename, stage="polish", error=e, payload={"source_dict": source_dict, "target_dict": target_dict, "response_text": response_text}, state={"doc_id": self.doc_id}, trace_id=self.doc_id)
+            self.bundle_manager.create_execution_trace(self.filename, "polish", {"source_dict": source_dict, "target_dict": target_dict}, response_text, target_dict)
             return target_dict
 
     def align_text(self, src_lang_name, dest_lang_name, source_dict, target_dict, global_context="", logger: "APILogger | None" = None, block_id=None):
@@ -395,16 +398,19 @@ class OpenAITranslator:
                     for key in source_dict:
                         if key not in raw:
                             raw[key] = target_dict.get(key, '')
+                self.bundle_manager.create_execution_trace(self.filename, "align", {"source_dict": source_dict, "target_dict": target_dict}, response_text, raw)
                 return raw
             except json.JSONDecodeError as json_err:
                 print(f"[Error] Align failed due to JSON decoding error: {json_err}")
                 print(f"[Fallback] Executing safe KEEP_SEPARATE bypass.")
                 self.bundle_manager.create_bundle(file_name=self.filename, stage="align_json", error=json_err, payload={"source_dict": source_dict, "target_dict": target_dict, "response_text": response_text}, state={"doc_id": self.doc_id}, trace_id=self.doc_id)
+                self.bundle_manager.create_execution_trace(self.filename, "align", {"source_dict": source_dict, "target_dict": target_dict}, response_text, target_dict)
                 return target_dict
 
         except Exception as e:
             print(f"[Error] Align failed: {e}")
             self.bundle_manager.create_bundle(file_name=self.filename, stage="align", error=e, payload={"source_dict": source_dict, "target_dict": target_dict, "response_text": response_text}, state={"doc_id": self.doc_id}, trace_id=self.doc_id)
+            self.bundle_manager.create_execution_trace(self.filename, "align", {"source_dict": source_dict, "target_dict": target_dict}, response_text, target_dict)
             return target_dict
 
     def double_text(self, src_lang_name, dest_lang_name, source_dict, target_dict, global_context="", logger: "APILogger | None" = None, block_id=None):
@@ -451,16 +457,19 @@ class OpenAITranslator:
                     for key in source_dict:
                         if key not in raw:
                             raw[key] = target_dict.get(key, '')
+                self.bundle_manager.create_execution_trace(self.filename, "double", {"source_dict": source_dict, "target_dict": target_dict}, response_text, raw)
                 return raw
             except json.JSONDecodeError as json_err:
                 print(f"[Error] Double failed due to JSON decoding error: {json_err}")
                 print(f"[Fallback] Executing safe KEEP_SEPARATE bypass.")
                 self.bundle_manager.create_bundle(file_name=self.filename, stage="double_json", error=json_err, payload={"source_dict": source_dict, "target_dict": target_dict, "response_text": response_text}, state={"doc_id": self.doc_id}, trace_id=self.doc_id)
+                self.bundle_manager.create_execution_trace(self.filename, "double", {"source_dict": source_dict, "target_dict": target_dict}, response_text, target_dict)
                 return target_dict
 
         except Exception as e:
             print(f"[Error] Double failed: {e}")
             self.bundle_manager.create_bundle(file_name=self.filename, stage="double", error=e, payload={"source_dict": source_dict, "target_dict": target_dict, "response_text": response_text}, state={"doc_id": self.doc_id}, trace_id=self.doc_id)
+            self.bundle_manager.create_execution_trace(self.filename, "double", {"source_dict": source_dict, "target_dict": target_dict}, response_text, target_dict)
             return target_dict
 
     @staticmethod
