@@ -161,6 +161,7 @@ class DiagnosticBundleManager:
             os.makedirs(trace_dir, exist_ok=True)
 
             trace_data = {
+                "file_name": safe_file_name,
                 "timestamp": timestamp,
                 "action": action,
                 "payload": payload,
@@ -168,7 +169,7 @@ class DiagnosticBundleManager:
                 "parsed_result": parsed_result
             }
 
-            trace_file = os.path.join(trace_dir, f"trace_{action}_{timestamp}.json")
+            trace_file = os.path.join(trace_dir, f"trace_{safe_file_name}_{action}_{timestamp}.json")
             with open(trace_file, 'w', encoding='utf-8') as f:
                 json.dump(trace_data, f, ensure_ascii=False, indent=4)
             print(f"[TRACE_SAVED] Execution trace written to: {trace_file}")

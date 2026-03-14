@@ -7613,7 +7613,7 @@ def main() -> int:
 
     elapsed_time = end_time - start_time
 
-    if xlsxreplacefile is not None:
+    if xlsxreplacefile is not None and xtm is not None:
         xtm.print_replaced_items_number_of_replacements('before')
         xtm.print_replaced_items_number_of_replacements('after')
         xtm.print_do_not_split_number_of_matches('keep_on_same_line')

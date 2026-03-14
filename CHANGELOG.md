@@ -44,3 +44,8 @@
 **What changed:** Phase 9: Fixed TypeError in process_chunk by removing duplicate block_id parameter in call_block_with_retry.
 **Why:** The `block_id` was being redundantly passed as both a positional and keyword argument in multi-threading setups for the AI pipelines, crashing the pipelines prior to API interaction.
 **Files touched:** src/machine-translate-docx.py, CHANGELOG.md
+
+### [2026-03-14] Branch: fix/unified-pipeline-finish-v10 — Trace Identification & Pipeline Finishes
+**What changed:** Phase 10: Injected filenames into trace logs, added 'double' action to document saving flow, and fixed end-of-run XTM NoneType crash.
+**Why:** To ensure tracing outputs are correctly identifiable per document and stop unconditional post-run XTM reports from crashing AI pipelines where `xtm` was explicitly evaluated to `None`.
+**Files touched:** src/diagnostics/bundle_manager.py, src/machine-translate-docx.py, CHANGELOG.md
