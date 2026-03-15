@@ -1,0 +1,25 @@
+LAYER 1 — Dependency Chain: CLEAR
+
+LAYER 2 — Reverse Impact:
+Findings: The instruction requires modifying `src/machine-translate-docx.py` to add `align_double` to action checks where `['polish', 'align', 'double']` exists. However, there are multiple legacy instances where `action not in ['polish', 'align']` is checked (e.g., lines 5494, 7582, 7590, 7602, 7625). If `align_double` is not added to those negative checks (or if those checks weren't already updated for `double` previously), `align_double` will mistakenly trigger legacy translation behaviors (like `get_translation_and_replace_after()` and `run_statistics()`). The directive specifically states "Scope: All existing action routing for polish, align, double — only ADD align_double". So those lines must be updated too.
+
+LAYER 3 — Signature Mismatch: CLEAR
+
+LAYER 4 — Import and Namespace: CLEAR
+
+LAYER 5 — Control Flow Gap:
+Findings: As found in Layer 2, if `align_double` is not appended to the `action not in [...]` checks, the pipeline will execute unwanted mechanical translation operations (like `document_split_phrases` or `run_statistics`) which are normally bypassed for AI actions, potentially crashing or corrupting the document.
+
+LAYER 6 — Data Contract: CLEAR
+
+LAYER 7 — Edge Cases: CLEAR
+
+LAYER 8 — Test Breakage:
+Findings: UNTESTED. Existing tests check `align_text` and `polish_text`, but no tests exist yet for `align_double_text`. Adding it shouldn't break existing tests since it's an isolated method, but it is untested.
+
+LAYER 9 — Out-of-Scope Required Changes:
+Findings: `src/machine-translate-docx.py`, lines 5494, 7582, 7590, 7602, 7625: The `action not in ['polish', 'align']` conditions (which already missed `double` from a prior task) MUST be updated to include `align_double` (and `double`) to prevent mechanical translation logic from erroneously firing during the hybrid action.
+
+OVERALL RISK: HIGH
+READY TO PROCEED: NO
+IF NO: The instruction mandates adding `align_double` to routing, but `double` itself was missed in several `action not in [...]` checks in previous PRs. Adding `align_double` strictly to the positive `action in ['polish', 'align', 'double']` checks as listed in the spec will still leave `align_double` vulnerable to falling through the negative checks. Do you want me to update the negative `action not in` checks as well to include `align_double` (and `double`)?

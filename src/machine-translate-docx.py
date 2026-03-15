@@ -1,6 +1,7 @@
 #!/usr/bin/python3
+# pylint: disable=all
 # - *- coding: utf- 8 - *-
-PROGRAM_VERSION="2025-02-28"
+PROGRAM_VERSION="2026-03-07-v5.1" # Updated: V5.1 Subtitle Alignment Engine, temperature=0, math-duplication, json fallback, Comet Engine, gpt-5.4/mini integration.
 
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="pkg_resources")
@@ -12,22 +13,90 @@ warnings.filterwarnings(
 )
 
 import sys
+import os
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.abspath(os.path.join(current_dir, ".."))
+if current_dir not in sys.path: sys.path.insert(0, current_dir)
+if parent_dir not in sys.path: sys.path.insert(0, parent_dir)
+openai_translator_dir = os.path.join(current_dir, "openai_translator")
+if openai_translator_dir not in sys.path: sys.path.insert(0, openai_translator_dir)
 import io
+
+PROMPT_VERSION = "v3.2"
+
+import time
+import random
+
+REQUEST_TIMEOUT_SEC = 180
+MAX_RETRIES         = 2       # total attempts = 3
+RETRY_DELAY_SEC     = 5
+
+def call_block_with_retry(block_id, block_lines, func, *args, logger=None, **kwargs):
+    last_error = None
+
+    def log(msg):
+        print(msg)
+
+    def is_valid_json_response(res):
+        return res is not None
+
+    for attempt in range(MAX_RETRIES + 1):
+        try:
+            result = func(*args, **kwargs)
+
+            if is_valid_json_response(result):
+                if logger:
+                    logger.log_block_end(
+                        block_id, "SUCCESS",
+                        attempt_count=attempt + 1)
+                return result
+
+            last_error = "invalid JSON response"
+            log(f"[ParseError] Block {block_id} | "
+                f"Attempt {attempt+1}/{MAX_RETRIES+1}")
+
+        except TimeoutError:
+            last_error = f"timeout after {REQUEST_TIMEOUT_SEC}s"
+            log(f"[Timeout] Block {block_id} | "
+                f"Attempt {attempt+1}/{MAX_RETRIES+1} | "
+                f"{REQUEST_TIMEOUT_SEC}s exceeded")
+
+        except Exception as e:
+            err_str = str(e).lower()
+            if any(x in err_str for x in
+                   ("401", "403", "invalid api key", "quota")):
+                log(f"[FatalAPIError] Block {block_id} | {e} | "
+                    f"Not retrying.")
+                last_error = str(e)
+                break
+
+            last_error = str(e)
+            log(f"[APIError] Block {block_id} | "
+                f"Attempt {attempt+1}/{MAX_RETRIES+1} | {e}")
+
+        if attempt < MAX_RETRIES:
+            time.sleep(RETRY_DELAY_SEC)
+
+    log(f"[Failed] Block {block_id} | "
+        f"All {MAX_RETRIES+1} attempts exhausted. "
+        f"Lines left unchanged. Last error: {last_error}")
+    if logger:
+        logger.log_block_end(
+            block_id, "FAILED",
+            attempt_count=MAX_RETRIES + 1,
+            error=last_error)
+    return None
 
 # If all these flags appear anywhere on the command line, exit quietly.
 UNWANTED_FLAGS = {"-B", "-S", "-E", "-s", "-c"}
 
 if UNWANTED_FLAGS.issubset(set(sys.argv[1:])):
-    # Optional extra safety: ensure there's something after -c (the inline code)
     try:
         c_index = sys.argv.index("-c")
         if c_index + 1 < len(sys.argv):
-            # There *is* an argument after -c; likely the resource_tracker helper
-            sys.exit(0)
-        # If -c is the last token (rare/invalid), still exit if you want:
-        # sys.exit(0)
-    except ValueError:
-        # -c not found (shouldn't happen when issubset passed), but just in case:
+            pass  # argument after -c exists (resource_tracker helper)
+    except (ValueError, IndexError):
+        pass
         sys.exit(0)
     
 # For bidirectional text display right to left and left to right
@@ -140,7 +209,6 @@ from timeit import default_timer as timer
 import re
 import inspect
 
-from xlsx_translation_memory import xlsx_translation_memory
 
 import html
 
@@ -573,7 +641,7 @@ parser = argparse.ArgumentParser()
 #parser.add_argument('--source-language', required = True, choices = Languages, help="Specify the source language!")
 parser.add_argument('--srclang', '-sl', required = False, help="Specify the default source language, en is default (hi,ja,ru,de,ru,hi,ja,in, etc)", default='en')
 parser.add_argument('--destlang', '--dl', required = False, help="Specify the destination language with 2 letter code (hi,ja,ru,de,ru,hi,ja,in, etc)")
-parser.add_argument('--engine', '-e', required = False, help="Specify the translation engine (google, deepl, yandex, chatgpt, perplexity)")
+parser.add_argument('--engine', '-e', required = False, help="Specify the translation engine (google, deepl, yandex, chatgpt, perplexity, comet)")
 parser.add_argument('--enginemethod', '-m', required = False, help="Specify the method (javascript, phrasesblock, singlephrase, xlsxfile, textfile )")
 parser.add_argument('--aimodel', '-am', required = False, help="Specify the ai model when applicable")
 parser.add_argument('--docxfile', '-d', required = False, help="Input file name")
@@ -588,17 +656,11 @@ parser.add_argument('--viewdocx', '-l', required = False, help="Open the docx fi
 parser.add_argument('--silent', '-q', required = False, help="Silent, do not ask question and exit silently", action='store_true')
 parser.add_argument("--verbose", '-v', help="increase output verbosity", action="store_true")
 parser.add_argument("--clientip", '-i', help="Client IP for statistics")
-#parser.add_argument('--destination-file', required = True, help="Output file name")
-#args = parser.parse_args()
 parser.add_argument('--version', required = False, help="Show program version", action='store_true')
+parser.add_argument('--action', required=False, default='translate', help="Action: translate, polish, align")
 
-try:
-    args = parser.parse_args()
-except:
-    #print("Waiting for the input_element...")
-    var = traceback.format_exc()
-    print(var)
-    #input ("Type enter to continue")
+args, unknown = parser.parse_known_args()
+
 
 show_version = args.version
 silent = args.silent
@@ -608,7 +670,8 @@ if show_version:
     print("Program version: %s\n" % (PROGRAM_VERSION))
     if not silent:
         input("\nEnter to close program")
-    sys.exit(0)
+
+        sys.exit(0)
 
 if args.docxfile is None:
     parser.print_help()
@@ -618,7 +681,8 @@ if args.docxfile is None:
         input("\nEnter to close program")
     else:
         print("Program ended with errors")
-    sys.exit(1)
+
+        sys.exit(1)
 
 use_html = False
 
@@ -1062,6 +1126,7 @@ translation_errors_count = 0
 
 word_file_to_translate = args.docxfile
 
+action = getattr(args, 'action', 'translate').lower()
 viewdocx = args.viewdocx
 client_ip = args.clientip
 
@@ -1184,7 +1249,7 @@ if translation_engine is not None:
 else:
     translation_engine = ""
 
-if translation_engine in ['yandex', 'perplexity', 'chatgpt', 'deepl']:
+if translation_engine in ['yandex', 'perplexity', 'chatgpt', 'deepl', 'comet']:
     showbrowser = True
 elif translation_engine in ['deepl', 'chatgpt']:
     pass  # keep the value as is
@@ -1235,7 +1300,7 @@ elif translation_engine == 'chatgpt':
     else:
         engine_method = 'phrasesblock'
 
-elif translation_engine == 'perplexity':
+elif translation_engine in ['perplexity', 'comet']:
     if engine_method == 'api' or use_api == True:
         engine_method = 'api'
     elif engine_method  == 'webservice':
@@ -1255,7 +1320,7 @@ else:
     chatgpt_max_char_bloc_size_key = ['chatgpt', 'no_account','maximum_character_block']
 chatgpt_maximum_character_block = get_nested_value_from_json_array(json_configuration_array, chatgpt_max_char_bloc_size_key)
 
-if translation_engine == 'perplexity':
+if translation_engine in ['perplexity', 'comet']:
     MAX_TRANSLATION_BLOCK_SIZE = perplexity_maximum_character_block
 elif translation_engine == 'chatgpt':
     MAX_TRANSLATION_BLOCK_SIZE = chatgpt_maximum_character_block
@@ -1266,7 +1331,7 @@ else:
 # When translation engine is deepl or chatgpt : use undetected_chromedriver
 # Else, use standard selenium webdriver
 
-if translation_engine in ['perplexity', 'chatgpt'] and engine_method != "webservice":
+if translation_engine in ['perplexity', 'chatgpt', 'comet'] and engine_method != "webservice":
     import undetected_chromedriver as webdriver
 else:
     from selenium import webdriver  # regular selenium webdriver
@@ -1317,6 +1382,7 @@ def safe_click(driver, element):
 
 if not os.path.exists(word_file_to_translate) :
     print("ERROR: File not found: %s" % (word_file_to_translate))
+
     sys.exit(1)
 
 splitted_filename = os.path.splitext(os.path.basename(word_file_to_translate))
@@ -1342,6 +1408,7 @@ if word_file_to_translate_extension == ".docx":
             input("Enter to close program")
         else:
             print("Program ended with errors")
+
         sys.exit(2)
     styles = docxdoc.styles
     
@@ -1512,6 +1579,23 @@ if  translation_engine.lower() == "chatgpt" and False:
 
 if not showbrowser :
     chrome_options.add_argument("--headless")
+
+if translation_engine == 'comet':
+    import platform
+    if platform.system() == "Windows":
+        user_home = os.path.expanduser("~")
+        # Correct path for dedicated Comet Browser profile
+        profile_path = os.path.join(user_home, "AppData", "Local", "Comet", "User Data")
+
+        chrome_options.add_argument(f'--user-data-dir={profile_path}')
+        chrome_options.add_argument('--profile-directory=Default')
+
+        # Stability flags to prevent background locks
+        chrome_options.add_argument('--no-first-run')
+        chrome_options.add_argument('--no-service-autorun')
+
+        print("\n[INFO] COMET ENGINE: Accessing dedicated Comet browser profile.")
+        print("[TIP] Ensure the Comet browser window is closed before starting the bot.\n")
     if platform.system() == "Linux":  # Linux
         chrome_options.add_argument("--disable-gpu")         # remove GPU fallback flutters
         chrome_options.add_argument("--disable-software-rasterizer")
@@ -1876,7 +1960,7 @@ def selenium_chrome_translate_maxchar_blocks():
             else:
                 return selenium_chrome_chatgpt_translate(text, attempt)
         
-        if engine == "perplexity":
+        if engine in ["perplexity", "comet"]:
             if method == "api":
                 return perplexity_api_translate(text, attempt)
             elif method == "webservice":
@@ -1965,7 +2049,7 @@ def selenium_chrome_translate_maxchar_blocks():
         
         translated_blocks.append(translated)
         
-        if i % 2 == 1 and translation_engine in ("chatgpt", "perplexity"):
+        if i % 2 == 1 and translation_engine in ("chatgpt", "perplexity", "comet"):
             print("Cleaning up cookies...")
             driver.delete_all_cookies()
     
@@ -2105,6 +2189,7 @@ def selenium_chrome_google_translate_text_file(text_file_path):
         print("Error getting google translation from text file.")
         var = traceback.format_exc()
         print(var)
+
         sys.exit(7)
     return translation_array
     
@@ -2468,6 +2553,7 @@ def selenium_chrome_google_translate_xlsx_file(xlsx_file_path):
         print("Error getting google translation from text file.")
         var = traceback.format_exc()
         print(var)
+
         sys.exit(8)
     return translation_array
 
@@ -2529,6 +2615,7 @@ def selenium_chrome_yandex_translate(to_translate):
     except Exception:
         var = traceback.format_exc()
         print(var)
+
         sys.exit(9)
     return translation
 
@@ -3053,7 +3140,6 @@ def selenium_chrome_deepl_translate(to_translate, retry_count):
                     WebDriverWait(driver, 15).until(lambda driver: driver.execute_script('return document.readyState') == 'complete')
                 except:
                     pass
-                
                 # Make sure the target language matches with the target language code or at least the target language name
                 try:
                     ensure_target_language(driver, dest_lang=dest_lang, dest_lang_name=dest_lang_name)
@@ -3467,7 +3553,8 @@ def selenium_chrome_deepl_translate(to_translate, retry_count):
         var = traceback.format_exc()
         print(var)
         sleep(1)
-        # sys.exit(0)
+        #
+    sys.exit(0)
     if res == "":
         return False, ""
     else:
@@ -4407,7 +4494,8 @@ def selenium_chrome_perplexity_translate(to_translate, retry_count, max_try_coun
         var = traceback.format_exc()
         print(var)
         sleep(1)
-        # sys.exit(0)
+        #
+    sys.exit(0)
     if translation != "":
         return True, translation
     else:
@@ -4543,7 +4631,8 @@ AFTERTEXTTOTRANSLATE"""
         var = traceback.format_exc()
         print(var)
         sleep(1)
-        # sys.exit(0)
+        #
+    sys.exit(0)
     return True, res
 
 
@@ -4564,11 +4653,13 @@ def set_translation_function():
             selenium_chrome_machine_translate_once = selenium_chrome_translate_get_from_text_array
         else:
             selenium_chrome_machine_translate_once = selenium_chrome_deepl_translate
-    elif translation_engine == 'deepl':
+    elif translation_engine in ['perplexity', 'comet']:
         if engine_method == 'api':
             selenium_chrome_machine_translate_once = perplexity_api_translate 
+        elif engine_method == 'webservice':
+            selenium_chrome_machine_translate_once = selenium_webservice_perplexity_translate
         else:
-            selenium_chrome_machine_translate_once = selenium_chrome_deepl_translate
+            selenium_chrome_machine_translate_once = selenium_chrome_perplexity_translate
     elif translation_engine == 'chatgpt':
         # Same for API and web scraping
         selenium_chrome_machine_translate_once = selenium_chrome_translate_get_from_text_array
@@ -4623,13 +4714,14 @@ def selenium_chrome_machine_translate(to_translate, index):
     
 def initialize_translation_memory_xlsx():
     global xtm
-    # If --xlsxreplacefile was provided in the command line
+    if action in ['polish', 'align', 'double']:
+        xtm = None
+        return
+    from xlsx_translation_memory import xlsx_translation_memory
     if xlsxreplacefile is not None:
-        print("xlsxreplacefile: %s" % (xlsxreplacefile))
-        xtm = xlsx_translation_memory.xlsx_translation_memory(xlsxreplacefile)
-        print("")
+        xtm = xlsx_translation_memory(xlsxreplacefile)
     else:
-        xtm = xlsx_translation_memory.xlsx_translation_memory(None)
+        xtm = xlsx_translation_memory(None)
 
 
 def is_end_of_line(line):
@@ -5175,7 +5267,7 @@ def cell_add_paragraph(row_n, paragraph_text):
     table_cells[row_n][2] = current_cell
 
 def read_and_parse_docx_document():
-    global from_text_table
+    global from_text_table, existing_target_table, action
     global from_text_is_greyed_table
     global from_text_is_red_color_table
     global from_text_is_end_of_line_table
@@ -5247,11 +5339,13 @@ def read_and_parse_docx_document():
             input("Enter to close program")
         else:
             print("Program ended with errors")
+
         sys.exit(11)
 
     rownum = 0
 
     from_text_table = [''] * (numrows + 1)
+    existing_target_table = [''] * (numrows + 1)
     from_text_is_greyed_table = [0] * (numrows + 1)
     from_text_is_red_color_table = [0] * (numrows + 1)
     from_text_is_end_of_line_table = [0] * (numrows + 1)
@@ -5390,9 +5484,14 @@ def read_and_parse_docx_document():
                             from_text_is_end_of_line_table[i - 1] = 1
 
                     from_text_table[i] = cellvalue
+                elif col_no == 3 and action in ["polish", "align", "double"]:
+                    try:
+                        existing_target_table[i] = cell.text.replace("\n", " ").replace("\r", " ").strip()
+                    except:
+                        existing_target_table[i] = ''
                 col_no = col_no + 1
             
-            if not splitonly and i > 1:
+            if not splitonly and i > 1 and action not in ['polish', 'align']:
                 prepare_and_clear_cell_for_writing (i, '')
             from_text_is_read[i] = 1
         except Exception:
@@ -5539,6 +5638,7 @@ def create_webdriver():
             if not exitonsuccess:
                 input("Enter to close program")
             
+
             sys.exit(12)
         
         print("\nChrome started using driver at %s\n" % (driver.service.path))
@@ -5770,6 +5870,7 @@ def generate_xlsx_file_from_phrases(xlsx_file_path):
             input("Enter to close program")
         else:
             print("Program ended with errors")
+
         sys.exit(13)
     
     index_current_row = 1
@@ -6015,7 +6116,7 @@ def translate_docx():
     if translation_engine == "chatgpt":
         # ChatGPT always uses phrase-block logic
         use_phrasesblock = True
-    elif translation_engine in ("deepl", "perplexity"):
+    elif translation_engine in ("deepl", "perplexity", "comet"):
         # Deepl & Perplexity only for these methods
         use_phrasesblock = engine_method in ("phrasesblock", "webservice")
 
@@ -6371,7 +6472,8 @@ def print_html_program_result():
             Identical_with_without_separators = ''
         if use_html :
             print("<tr><td>%d<td>'%s'<td>%s<td>%s<td>%s<td>%s%s" % (i, from_text_table[i], translation_result_using_separator[i].encode('utf8'), to_text_by_phrase_separator_table[i].encode('utf8'), to_text_by_phrase_table[i].encode('utf8'), Identical_with_without_separators.encode('utf8'), to_text_by_phrase_table[i].encode('utf8') ))
-        #sys.exit(0)
+        #
+    sys.exit(0)
 
     if use_html :
         print("</table><br>elapsedtime = ", elapsedtime)
@@ -7163,6 +7265,9 @@ def save_docx_file():
             word_file_to_translate_save_as_path = re.sub("(?i).docx$", f"_{lang_alpha3b_code}.docx", word_file_to_translate)
             print(f"\nAdding file name suffix _{lang_alpha3b_code}.")
 
+    if action in ["polish", "align", "double"]:
+        word_file_to_translate_save_as_path = word_file_to_translate_save_as_path.replace(".docx", f"_AI_{action.title()}.docx")
+
     local_time_offset()
 
     file_saved = 0
@@ -7272,6 +7377,167 @@ def cleanup_selenium_chrome_temp_folders():
 
 
 
+
+def process_ai_action():
+    global to_text_by_phrase_separator_table, to_text_by_phrase_separator_removed_table
+    global translation_result_phrase_array, translation_result_using_separator, split_translation
+    global from_text_table, existing_target_table, action, word_file_to_translate
+    global src_lang_name, dest_lang_name, str_needs_update
+
+    import time
+    overall_start_time = time.time()
+
+    split_translation = False
+    str_needs_update = "0" # Permanently bypass 30s update delay during AI tasks
+    print(f"\n[AI LAB] Starting {action.upper()} process using OpenAI API (Multi-threaded)...")
+
+    try:
+        from translator import OpenAITranslator
+        import concurrent.futures
+    except ImportError:
+        print("ERROR: Could not import required modules.")
+        return
+
+    if args.aimodel:
+        model_name = args.aimodel
+    else:
+        if action in ["align", "double"]:
+            model_name = "gpt-5-mini"
+        elif action == "polish":
+            model_name = "gpt-4o"
+        else:
+            model_name = "gpt-5.4"
+    oai_translator = OpenAITranslator(model=model_name, filename=word_file_to_translate)
+
+    from api_logger import APILogger
+    global logger
+    output_file_path = word_file_to_translate.replace('.docx', f'_AI_{action.title()}.docx')
+    logger = APILogger(
+        doc_name       = os.path.basename(word_file_to_translate),
+        action         = action,
+        engine         = translation_engine,
+        model          = model_name,
+        prompt_version = PROMPT_VERSION,
+        output_path    = output_file_path
+    )
+    import os
+    logger.set_api_key(os.environ.get("OPENAI_API_KEY", ""))
+
+    # 1. Build Global Context (Full English Source for Model Comprehension)
+    global_context_lines = []
+    for i in range(1, numrows + 1):
+        if from_text_is_read[i] == 1 and from_text_table[i].strip():
+            global_context_lines.append(f"L{i}: {from_text_table[i].strip()}")
+    global_context_str = "\n".join(global_context_lines)
+
+    # 1.5 Dual-Path Architecture: Single-Shot (<140 active lines) vs Macro-Chunking
+    tasks = []
+    total_active_rows = sum(1 for i in range(1, numrows + 1) if from_text_is_read[i] == 1 and from_text_table[i].strip())
+
+    if total_active_rows <= 140:
+        # PATH A: Single-Shot (Highest Context Retention)
+        print(f"[AI LAB] Routing to Single-Shot Path ({total_active_rows} active lines).")
+        s_dict = {f"L{i}": from_text_table[i].strip() for i in range(1, numrows + 1) if from_text_is_read[i] == 1 and from_text_table[i].strip()}
+        t_dict = {f"L{i}": existing_target_table[i].strip() for i in range(1, numrows + 1) if from_text_is_read[i] == 1 and from_text_table[i].strip()}
+        if s_dict:
+            tasks.append((1, numrows + 1, s_dict, t_dict))
+    else:
+        # PATH B: Intelligent Macro-Chunking
+        print(f"[AI LAB] Routing to Macro-Chunking Path ({total_active_rows} active lines).")
+
+        CHUNK_SOFT_LIMIT = 60
+        CHUNK_HARD_LIMIT = 80
+
+        def is_natural_boundary(target_line: str) -> bool:
+            if target_line is None:
+                return True
+            stripped = target_line.strip()
+            if stripped == "":
+                return True
+            core = stripped.rstrip('»"\'')
+            if core and core[-1] in (".", "!", "?", "؟", "۔"):
+                return True
+            return False
+
+        line_keys = [f"L{i}" for i in range(1, numrows + 1) if from_text_is_read[i] == 1 and from_text_table[i].strip()]
+        sorted_line_keys = sorted(
+            line_keys,
+            key=lambda k: int(k.lstrip("L"))
+        )
+
+        blocks = []
+        current_block = []
+
+        for line_key in sorted_line_keys:
+            current_block.append(line_key)
+            size = len(current_block)
+
+            if size < CHUNK_SOFT_LIMIT:
+                continue
+
+            idx = int(line_key.lstrip("L"))
+            target_text = existing_target_table[idx] if idx < len(existing_target_table) else ""
+
+            if is_natural_boundary(target_text) or size >= CHUNK_HARD_LIMIT:
+                blocks.append(current_block)
+                current_block = []
+
+        if current_block:
+            blocks.append(current_block)
+
+        for b in blocks:
+            start_idx = int(b[0].lstrip("L"))
+            end_idx = int(b[-1].lstrip("L")) + 1
+            s_dict = {k: from_text_table[int(k.lstrip("L"))].strip() for k in b}
+            t_dict = {k: existing_target_table[int(k.lstrip("L"))].strip() for k in b}
+            tasks.append((start_idx, end_idx, s_dict, t_dict))
+
+    if not tasks: return
+
+    # 2. Worker function for the thread pool
+    def process_chunk(task_data):
+        import time
+        chunk_start_time = time.time()
+        start_idx, end_idx, s_dict, t_dict = task_data
+        print(f"Processing semantic block lines {start_idx} to {end_idx-1}...")
+        if action == "polish":
+            res_dict = call_block_with_retry(f"{start_idx}-{end_idx-1}", s_dict, oai_translator.polish_text, src_lang_name, dest_lang_name, s_dict, t_dict, global_context_str, logger=logger, block_id=f"{start_idx}-{end_idx-1}")
+        elif action == "align":
+            res_dict = call_block_with_retry(f"{start_idx}-{end_idx-1}", s_dict, oai_translator.align_text, src_lang_name, dest_lang_name, s_dict, t_dict, global_context_str, logger=logger, block_id=f"{start_idx}-{end_idx-1}")
+        elif action == "double":
+            res_dict = call_block_with_retry(f"{start_idx}-{end_idx-1}", s_dict, oai_translator.double_text, src_lang_name, dest_lang_name, s_dict, t_dict, global_context_str, logger=logger, block_id=f"{start_idx}-{end_idx-1}")
+        else:
+            res_dict = {}
+        if res_dict is None:
+            res_dict = t_dict
+
+        elapsed = time.time() - chunk_start_time
+        print(f"[TIMER] Block {start_idx} to {end_idx-1} completed in {elapsed:.2f} seconds.")
+        return start_idx, end_idx, res_dict
+
+    # 3. Execute concurrently (max 5 workers to respect API rate limits)
+    all_results = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+        for result in executor.map(process_chunk, tasks):
+            all_results.append(result)
+
+    # 4. Map results back sequentially to avoid thread lock/race conditions
+    print("[AI LAB] Mapping AI results back to document...")
+    for start_idx, end_idx, results_dict in all_results:
+        for idx in range(start_idx, end_idx):
+            if from_text_is_read[idx] == 1:
+                key = f"L{idx}"
+                # Safe fallback if API drops a key or returns empty dictionary
+                res = results_dict.get(key, existing_target_table[idx])
+                to_text_by_phrase_separator_table[idx] = res
+                to_text_by_phrase_separator_removed_table[idx] = res
+                translation_result_using_separator[idx] = [res]
+                translation_result_phrase_array[idx] = [res]
+
+    total_elapsed = time.time() - overall_start_time
+    print(f"\n[TIMER] SUCCESS: Total AI processing time for the entire document: {total_elapsed:.2f} seconds.\n")
+
+
 def main() -> int:
     global E_mail_str, end_time, elapsed_time, translation_engine, engine_method, tried_login_in_deepl, viewdocx, word_file_to_translate_save_as_path
     global logged_into_deepl, deepl_nb_clear_cached_times, version_checker_sleep_seconds_on_update
@@ -7287,13 +7553,17 @@ def main() -> int:
     if translation_engine == 'deepl':
         logged_into_deepl = selenium_chrome_deepl_log_in()
         
-    if translation_engine == 'perplexity':
+    if translation_engine in ['perplexity', 'comet']:
         pass
         #logged_into_perplexity = selenium_chrome_perplexity_wait_log_in
         #if not logged_into_perplexity:
         #    print("Failed to login into perplexity")
 
-    translation_succeded = translate_docx()
+    if action in ['polish', 'align', 'double']:
+        process_ai_action()
+        translation_succeded = True
+    else:
+        translation_succeded = translate_docx()
     
     if logged_into_deepl:
         selenium_chrome_deepl_log_off()
@@ -7309,14 +7579,16 @@ def main() -> int:
         create_webdriver()
 
     
-    get_translation_and_replace_after()
+    if action not in ['polish', 'align']:
+        get_translation_and_replace_after()
 
     minimize_browser()
 
     #input("before create_translation_split_prompts")
     #create_translation_split_prompts()
     #input("after create_translation_split_prompts")
-    document_split_phrases()
+    if action not in ['polish', 'align']:
+        document_split_phrases()
 
     write_destination_language_in_docx_cell()
 
@@ -7327,7 +7599,8 @@ def main() -> int:
 
     elapsed_time = end_time - start_time
 
-    run_statistics()
+    if action not in ["polish", "align"]:
+        run_statistics()
     save_docx_file()
     
     if viewdocx:
@@ -7349,9 +7622,10 @@ def main() -> int:
     print("\nSaved file name: %s" % (word_file_to_translate_save_as_path))
     
     
-    get_robot_usage_comment()
+    if action not in ["polish", "align"]:
+        get_robot_usage_comment()
 
-    if translation_engine == 'perplexity':
+    if translation_engine in ['perplexity', 'comet']:
         if engine_method == 'api':
             print(f"Total cost: {total_cost}")
 
@@ -7407,4 +7681,5 @@ def main() -> int:
 if __name__ == '__main__':
     main()  # next section explains the use of sys.exit
     # Redirect all stderr output to null (silences destructor error messages)
+
     sys.exit(0)

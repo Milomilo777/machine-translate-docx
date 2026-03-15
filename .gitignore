@@ -2,3 +2,16 @@ lib
 samples
 github-keys
 documentation
+__pycache__/
+
+__pycache__/
+*.pyc
+*.pyo
+tests/fixtures/*.docx
+tests/fixtures/*.pdf
+.DS_Store
+Thumbs.db
+
+.env
+shared_data/
+*.log
