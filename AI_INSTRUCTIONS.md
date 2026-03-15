@@ -11,6 +11,7 @@ YANDEX, GOOGLE_API, DEEPL_API
 - Web UI (index.ejs + WebController) = production server interface
 - BOTH must always work
 - NEVER deprecate or remove Python GUI — required for desktop testing
+- Repository architecture is hybrid Python + Java, not Java-only
 
 ## Immutable stdout Contracts (never change these exact strings)
   "Saved file name: "

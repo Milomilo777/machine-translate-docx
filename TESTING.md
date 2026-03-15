@@ -1,6 +1,6 @@
 # The Enterprise Testing Matrix
 
-This project adheres to a 10-layer Quality Assurance and Security strategy to ensure absolute robustness.
+This hybrid Python/Java project adheres to a 10-layer Quality Assurance and Security strategy to ensure absolute robustness.
 
 ## Layers
 

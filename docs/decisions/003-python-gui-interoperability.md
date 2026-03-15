@@ -1,7 +1,7 @@
 # ADR 003: Python GUI Interoperability
 
 ## Context
-The legacy Python GUI (`gui_translator.py`) invokes the translation logic as a sub-process and parses its standard output (`stdout`) to track progress and extract the final file path. It is extremely fragile to unexpected output formatting.
+The Python desktop GUI (`src\machine_translate_gui.py`) invokes the translation logic as a sub-process and parses its standard output (`stdout`) to track progress and extract the final file path. It is extremely fragile to unexpected output formatting.
 
 ## Decision
 To prevent integration breakages:

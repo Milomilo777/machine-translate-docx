@@ -1,18 +1,18 @@
-# Enterprise SMTV Translation Engine
+# Enterprise SMTV Hybrid Translation Platform
 
 ## Database-Safe Architecture & Dual Entry
 This system operates via a decoupled, resilient architecture specifically designed to handle massive multi-page DOCX documents and deeply nested technical/spiritual queries without risking rollback/overflow:
 - **Non-blocking Logging:** Database operations (saving translation metrics and query structures) are completely asynchronous and isolated. If a metric fails to write due to long file paths (e.g. Windows Temp paths on Dell Vostros), it does not halt the underlying DOCX translation process.
 - **Dual Architecture:**
 This system operates symmetrically via two primary entry points:
-1. **Headless CLI Backend:** Acts as the high-performance sub-process for the legacy Python GUI, parsing strict `args[]` arrays.
-2. **Standalone Web Server:** Exposes a Spring Boot `WebController` handling multipart uploads from a modern `index.ejs` static frontend.
+1. **Headless CLI Backend:** Acts as the high-performance sub-process backend for the primary Python desktop GUI, parsing strict `args[]` arrays.
+2. **Standalone Web Server:** Exposes a Spring Boot `WebController` handling multipart uploads from a static HTML frontend as the server interface.
 
 ## Architecture Diagram
 ```mermaid
 graph TD;
-    A[Python GUI] -->|CLI args| B[Java CLI Runner]
-    C[Browser index.html] -->|Multipart| D[WebController]
+    A[Python Desktop GUI] -->|CLI args| B[Java CLI Runner]
+    C[Static HTML Web UI] -->|Multipart| D[WebController]
     B --> E[TranslationOrchestrator]
     D --> E
     E --> F[DocxParserService]
