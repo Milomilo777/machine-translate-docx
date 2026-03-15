@@ -1,7 +1,0 @@
-feat(logger): capture 7 new diagnostic fields per block
-
-- Added internal block runtime tracking via `self._block_runtime`
-- Captured token usage, retry failures, timestamps, and echo status
-- Injected `model_name`, `chunk_size`, `block_start_time`, `block_elapsed_sec`, `attempt_count`, `is_echo`, `lines_total`, `lines_changed_count`, `token_usage`, and `failed_attempts_log` in `log_block_end()` output
-- Modified translator pipelines (polish, align, double) to report API token usage and outcome diffs
-- Intercepted timeout/exception failures in `machine-translate-docx.py` via `log_block_attempt`

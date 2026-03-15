@@ -28,7 +28,7 @@ PROMPT_VERSION = "v3.2"
 import time
 import random
 
-REQUEST_TIMEOUT_SEC = 180
+REQUEST_TIMEOUT_SEC = 90
 diagnostic_bundle_manager = DiagnosticBundleManager()
 MAX_RETRIES         = 2       # total attempts = 3
 RETRY_DELAY_SEC     = 5
@@ -7473,8 +7473,8 @@ def process_ai_action():
         # PATH B: Intelligent Macro-Chunking
         print(f"[AI LAB] Routing to Macro-Chunking Path ({total_active_rows} active lines).")
 
-        CHUNK_SOFT_LIMIT = 60
-        CHUNK_HARD_LIMIT = 80
+        CHUNK_SOFT_LIMIT = 45 if action == "align" else 60
+        CHUNK_HARD_LIMIT = 60 if action == "align" else 80
 
         def is_natural_boundary(target_line: str) -> bool:
             if target_line is None:
