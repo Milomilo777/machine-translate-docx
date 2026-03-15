@@ -20,7 +20,6 @@ class APILogger:
             "status":         "RUNNING"
         }
         self.blocks = []
-        self._block_runtime = {}
 
     def set_api_key(self, api_key: str):
         try:
@@ -31,16 +30,6 @@ class APILogger:
     def log_block_start(self, block_id: int, line_start: int,
                         line_end: int, input_tokens: int = 0):
         try:
-            self._block_runtime[block_id] = {
-                "start_time": time.time(),
-                "start_timestamp": datetime.now().strftime("%Y%m%d_%H%M%S"),
-                "failed_attempts_log": [],
-                "token_usage": None,
-                "is_echo": None,
-                "lines_total": None,
-                "lines_changed_count": None,
-                "model_name": None,
-            }
             self.blocks.append({
                 "block_id":     block_id,
                 "lines":        f"{line_start}-{line_end}",
@@ -52,58 +41,6 @@ class APILogger:
                 "attempt_count": 1,
                 "error":        None
             })
-        except Exception:
-            pass
-
-
-    def log_block_attempt(self, block_id, attempt_n, error_type, error_msg, elapsed_sec):
-        """Called once per FAILED retry attempt, before the next retry starts."""
-        try:
-            if block_id not in self._block_runtime:
-                self._block_runtime[block_id] = {"failed_attempts_log": []}
-            entry = {
-                "attempt": attempt_n,
-                "error_type": error_type,
-                "error_msg": str(error_msg)[:300],
-                "elapsed_sec": round(elapsed_sec, 2)
-            }
-            self._block_runtime[block_id].setdefault("failed_attempts_log", []).append(entry)
-        except Exception:
-            pass
-
-    def log_block_token_usage(self, block_id, prompt_tokens, completion_tokens,
-                               total_tokens, cost_usd, model_name=None):
-        """Called once per successful API call from translator.py."""
-        try:
-            if block_id not in self._block_runtime:
-                self._block_runtime[block_id] = {}
-            self._block_runtime[block_id]["token_usage"] = {
-                "prompt_tokens": prompt_tokens,
-                "completion_tokens": completion_tokens,
-                "total_tokens": total_tokens,
-                "cost_usd": round(cost_usd, 6)
-            }
-            if model_name:
-                self._block_runtime[block_id]["model_name"] = model_name
-        except Exception:
-            pass
-
-    def log_block_result_data(self, block_id, target_dict, parsed_result):
-        """Called after parsing API result in translator.py."""
-        try:
-            if block_id not in self._block_runtime:
-                self._block_runtime[block_id] = {}
-            if not isinstance(target_dict, dict) or not isinstance(parsed_result, dict):
-                return
-            lines_total = len(target_dict)
-            lines_changed = sum(
-                1 for k in target_dict
-                if parsed_result.get(k, target_dict[k]) != target_dict[k]
-            )
-            is_echo = (lines_changed == 0)
-            self._block_runtime[block_id]["lines_total"] = lines_total
-            self._block_runtime[block_id]["lines_changed_count"] = lines_changed
-            self._block_runtime[block_id]["is_echo"] = is_echo
         except Exception:
             pass
 
@@ -126,21 +63,7 @@ class APILogger:
                 block["output_tokens"] = output_tokens
                 block["attempt_count"] = attempt_count
                 block["error"]         = error
-
-                runtime = self._block_runtime.get(block_id, {})
-                block["model_name"] = runtime.get("model_name")
-                block["chunk_size"] = runtime.get("lines_total")
-                block["block_start_time"] = runtime.get("start_timestamp")
-                block["block_elapsed_sec"] = round(time.time() - runtime.get("start_time", time.time()), 2)
-                block["attempt_count"] = attempt_count
-                block["is_echo"] = runtime.get("is_echo")
-                block["lines_total"] = runtime.get("lines_total")
-                block["lines_changed_count"] = runtime.get("lines_changed_count")
-                block["token_usage"] = runtime.get("token_usage")
-                block["failed_attempts_log"] = runtime.get("failed_attempts_log", [])
-
                 del block["_started_ts"]   # remove internal field
-                self._block_runtime.pop(block_id, None)
         except Exception:
             pass
 

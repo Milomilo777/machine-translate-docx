@@ -15,6 +15,3 @@ Thumbs.db
 .env
 shared_data/
 *.log
-
-# Diagnostic logs
-logs/

@@ -1,9 +1,7 @@
 #!/usr/bin/python3
 # pylint: disable=all
 # - *- coding: utf- 8 - *-
-PROGRAM_VERSION="2026-03-15-v5.2" # Updated: V5.1 Subtitle Alignment Engine, temperature=0, math-duplication, json fallback, Comet Engine, gpt-5.4/mini integration.
-# [2026-03-15] v5.2 — Output filename: remove duplicate + language prefix from pipe suffix
-# [2026-03-15] v5.2 — Replace sequential block loop with ThreadPoolExecutor (max_workers=3)
+PROGRAM_VERSION="2026-03-07-v5.1" # Updated: V5.1 Subtitle Alignment Engine, temperature=0, math-duplication, json fallback, Comet Engine, gpt-5.4/mini integration.
 
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="pkg_resources")
@@ -16,7 +14,6 @@ warnings.filterwarnings(
 
 import sys
 import os
-from diagnostics.bundle_manager import DiagnosticBundleManager
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.abspath(os.path.join(current_dir, ".."))
 if current_dir not in sys.path: sys.path.insert(0, current_dir)
@@ -30,8 +27,7 @@ PROMPT_VERSION = "v3.2"
 import time
 import random
 
-REQUEST_TIMEOUT_SEC = 90
-diagnostic_bundle_manager = DiagnosticBundleManager()
+REQUEST_TIMEOUT_SEC = 180
 MAX_RETRIES         = 2       # total attempts = 3
 RETRY_DELAY_SEC     = 5
 
@@ -45,7 +41,6 @@ def call_block_with_retry(block_id, block_lines, func, *args, logger=None, **kwa
         return res is not None
 
     for attempt in range(MAX_RETRIES + 1):
-        attempt_start_time = time.time()
         try:
             result = func(*args, **kwargs)
 
@@ -65,18 +60,6 @@ def call_block_with_retry(block_id, block_lines, func, *args, logger=None, **kwa
             log(f"[Timeout] Block {block_id} | "
                 f"Attempt {attempt+1}/{MAX_RETRIES+1} | "
                 f"{REQUEST_TIMEOUT_SEC}s exceeded")
-            try:
-                if logger and attempt < MAX_RETRIES:
-                    attempt_elapsed = round(time.time() - attempt_start_time, 2)
-                    logger.log_block_attempt(
-                        block_id,
-                        attempt_n=attempt + 1,
-                        error_type="TimeoutError",
-                        error_msg=str(last_error),
-                        elapsed_sec=attempt_elapsed
-                    )
-            except Exception:
-                pass
 
         except Exception as e:
             err_str = str(e).lower()
@@ -90,18 +73,6 @@ def call_block_with_retry(block_id, block_lines, func, *args, logger=None, **kwa
             last_error = str(e)
             log(f"[APIError] Block {block_id} | "
                 f"Attempt {attempt+1}/{MAX_RETRIES+1} | {e}")
-            try:
-                if logger and attempt < MAX_RETRIES:
-                    attempt_elapsed = round(time.time() - attempt_start_time, 2)
-                    logger.log_block_attempt(
-                        block_id,
-                        attempt_n=attempt + 1,
-                        error_type=type(e).__name__,
-                        error_msg=str(last_error),
-                        elapsed_sec=attempt_elapsed
-                    )
-            except Exception:
-                pass
 
         if attempt < MAX_RETRIES:
             time.sleep(RETRY_DELAY_SEC)
@@ -172,7 +143,6 @@ import zipfile
 import xml.dom.minidom
 # used to get elements in XML, shading in docx for example
 from lxml import etree
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # This library automatically downloads chrome driver
 # pyderman was replaced with webdriver_manager
@@ -1412,7 +1382,7 @@ def safe_click(driver, element):
 
 if not os.path.exists(word_file_to_translate) :
     print("ERROR: File not found: %s" % (word_file_to_translate))
-    diagnostic_bundle_manager.create_bundle(file_name=word_file_to_translate, stage="init", error="File not found")
+
     sys.exit(1)
 
 splitted_filename = os.path.splitext(os.path.basename(word_file_to_translate))
@@ -2219,7 +2189,7 @@ def selenium_chrome_google_translate_text_file(text_file_path):
         print("Error getting google translation from text file.")
         var = traceback.format_exc()
         print(var)
-        diagnostic_bundle_manager.create_bundle(file_name="google_translate_text", stage="google_translate_text_file", error=var)
+
         sys.exit(7)
     return translation_array
     
@@ -2583,7 +2553,7 @@ def selenium_chrome_google_translate_xlsx_file(xlsx_file_path):
         print("Error getting google translation from text file.")
         var = traceback.format_exc()
         print(var)
-        diagnostic_bundle_manager.create_bundle(file_name="google_translate_html", stage="google_translate_html_javascript_file", error=var)
+
         sys.exit(8)
     return translation_array
 
@@ -2645,7 +2615,7 @@ def selenium_chrome_yandex_translate(to_translate):
     except Exception:
         var = traceback.format_exc()
         print(var)
-        diagnostic_bundle_manager.create_bundle(file_name="yandex_translation", stage="yandex_translate", error=var, payload={"text_to_translate": to_translate})
+
         sys.exit(9)
     return translation
 
@@ -4744,16 +4714,14 @@ def selenium_chrome_machine_translate(to_translate, index):
     
 def initialize_translation_memory_xlsx():
     global xtm
-    # Strict isolation: Excel TM is ONLY for 'translate' action.
     if action in ['polish', 'align', 'double']:
         xtm = None
         return
-
     from xlsx_translation_memory import xlsx_translation_memory
     if xlsxreplacefile is not None:
-        xtm = xlsx_translation_memory.xlsx_translation_memory(xlsxreplacefile)
+        xtm = xlsx_translation_memory(xlsxreplacefile)
     else:
-        xtm = xlsx_translation_memory.xlsx_translation_memory(None)
+        xtm = xlsx_translation_memory(None)
 
 
 def is_end_of_line(line):
@@ -5523,7 +5491,7 @@ def read_and_parse_docx_document():
                         existing_target_table[i] = ''
                 col_no = col_no + 1
             
-            if not splitonly and i > 1 and action not in ['polish', 'align', 'double']:
+            if not splitonly and i > 1 and action not in ['polish', 'align']:
                 prepare_and_clear_cell_for_writing (i, '')
             from_text_is_read[i] = 1
         except Exception:
@@ -7289,18 +7257,16 @@ def save_docx_file():
         lang_alpha3b_code = None
 
     word_file_to_translate_save_as_path = word_file_to_translate
+    if lang_alpha3b_code is not None:
+        find_alpha3_code_suffix = f"(?i)_{lang_alpha3b_code}.docx$"
+        if not re.search(find_alpha3_code_suffix, word_file_to_translate):
+            word_file_to_translate_save_as_path = re.sub("(?i)_{lang_alpha3b_code}.docx$", f".docx", word_file_to_translate)
+            lang_alpha3b_code = lang_alpha3b_code.upper()
+            word_file_to_translate_save_as_path = re.sub("(?i).docx$", f"_{lang_alpha3b_code}.docx", word_file_to_translate)
+            print(f"\nAdding file name suffix _{lang_alpha3b_code}.")
 
     if action in ["polish", "align", "double"]:
-        # Pipe suffix: action name only, no lang code, no duplication.
-        word_file_to_translate_save_as_path = re.sub(r"(?i)\.docx$", f"_{action.title()}.docx", word_file_to_translate)
-    else:
-        if lang_alpha3b_code is not None:
-            find_alpha3_code_suffix = f"(?i)_{lang_alpha3b_code}.docx$"
-            if not re.search(find_alpha3_code_suffix, word_file_to_translate):
-                word_file_to_translate_save_as_path = re.sub(f"(?i)_{lang_alpha3b_code}.docx$", f".docx", word_file_to_translate)
-                lang_alpha3b_code = lang_alpha3b_code.upper()
-                word_file_to_translate_save_as_path = re.sub(r"(?i)\.docx$", f"_{lang_alpha3b_code}.docx", word_file_to_translate)
-                print(f"\nAdding file name suffix _{lang_alpha3b_code}.")
+        word_file_to_translate_save_as_path = word_file_to_translate_save_as_path.replace(".docx", f"_AI_{action.title()}.docx")
 
     local_time_offset()
 
@@ -7445,8 +7411,7 @@ def process_ai_action():
 
     from api_logger import APILogger
     global logger
-    # Pipe suffix: action name only, no lang code, no duplication.
-    output_file_path = re.sub(r"(?i)\.docx$", f"_{action.title()}.docx", word_file_to_translate)
+    output_file_path = word_file_to_translate.replace('.docx', f'_AI_{action.title()}.docx')
     logger = APILogger(
         doc_name       = os.path.basename(word_file_to_translate),
         action         = action,
@@ -7455,6 +7420,7 @@ def process_ai_action():
         prompt_version = PROMPT_VERSION,
         output_path    = output_file_path
     )
+    import os
     logger.set_api_key(os.environ.get("OPENAI_API_KEY", ""))
 
     # 1. Build Global Context (Full English Source for Model Comprehension)
@@ -7479,8 +7445,8 @@ def process_ai_action():
         # PATH B: Intelligent Macro-Chunking
         print(f"[AI LAB] Routing to Macro-Chunking Path ({total_active_rows} active lines).")
 
-        CHUNK_SOFT_LIMIT = 45 if action == "align" else 60
-        CHUNK_HARD_LIMIT = 60 if action == "align" else 80
+        CHUNK_SOFT_LIMIT = 60
+        CHUNK_HARD_LIMIT = 80
 
         def is_natural_boundary(target_line: str) -> bool:
             if target_line is None:
@@ -7535,11 +7501,11 @@ def process_ai_action():
         start_idx, end_idx, s_dict, t_dict = task_data
         print(f"Processing semantic block lines {start_idx} to {end_idx-1}...")
         if action == "polish":
-            res_dict = call_block_with_retry(f"{start_idx}-{end_idx-1}", s_dict, oai_translator.polish_text, src_lang_name, dest_lang_name, s_dict, t_dict, global_context_str, logger=logger)
+            res_dict = call_block_with_retry(f"{start_idx}-{end_idx-1}", s_dict, oai_translator.polish_text, src_lang_name, dest_lang_name, s_dict, t_dict, global_context_str, logger=logger, block_id=f"{start_idx}-{end_idx-1}")
         elif action == "align":
-            res_dict = call_block_with_retry(f"{start_idx}-{end_idx-1}", s_dict, oai_translator.align_text, src_lang_name, dest_lang_name, s_dict, t_dict, global_context_str, logger=logger)
+            res_dict = call_block_with_retry(f"{start_idx}-{end_idx-1}", s_dict, oai_translator.align_text, src_lang_name, dest_lang_name, s_dict, t_dict, global_context_str, logger=logger, block_id=f"{start_idx}-{end_idx-1}")
         elif action == "double":
-            res_dict = call_block_with_retry(f"{start_idx}-{end_idx-1}", s_dict, oai_translator.double_text, src_lang_name, dest_lang_name, s_dict, t_dict, global_context_str, logger=logger)
+            res_dict = call_block_with_retry(f"{start_idx}-{end_idx-1}", s_dict, oai_translator.double_text, src_lang_name, dest_lang_name, s_dict, t_dict, global_context_str, logger=logger, block_id=f"{start_idx}-{end_idx-1}")
         else:
             res_dict = {}
         if res_dict is None:
@@ -7549,17 +7515,11 @@ def process_ai_action():
         print(f"[TIMER] Block {start_idx} to {end_idx-1} completed in {elapsed:.2f} seconds.")
         return start_idx, end_idx, res_dict
 
-    # ── Parallel block fetch (max 3 concurrent API calls) ──────────
-    # max_workers=3: safe for OpenAI Tier-1 (500 RPM).
-    # Increase to 5 only after confirming Tier-2 access.
+    # 3. Execute concurrently (max 5 workers to respect API rate limits)
     all_results = []
-    with ThreadPoolExecutor(max_workers=3) as _executor:
-        _futures = [
-            _executor.submit(process_chunk, task)
-            for task in tasks
-        ]
-        all_results = [f.result() for f in _futures]
-    # ────────────────────────────────────────────────────────────────
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+        for result in executor.map(process_chunk, tasks):
+            all_results.append(result)
 
     # 4. Map results back sequentially to avoid thread lock/race conditions
     print("[AI LAB] Mapping AI results back to document...")
@@ -7619,7 +7579,7 @@ def main() -> int:
         create_webdriver()
 
     
-    if action not in ['polish', 'align', 'double']:
+    if action not in ['polish', 'align']:
         get_translation_and_replace_after()
 
     minimize_browser()
@@ -7627,7 +7587,7 @@ def main() -> int:
     #input("before create_translation_split_prompts")
     #create_translation_split_prompts()
     #input("after create_translation_split_prompts")
-    if action not in ['polish', 'align', 'double']:
+    if action not in ['polish', 'align']:
         document_split_phrases()
 
     write_destination_language_in_docx_cell()
@@ -7639,7 +7599,7 @@ def main() -> int:
 
     elapsed_time = end_time - start_time
 
-    if action not in ["polish", "align", "double"]:
+    if action not in ["polish", "align"]:
         run_statistics()
     save_docx_file()
     
@@ -7650,7 +7610,7 @@ def main() -> int:
 
     elapsed_time = end_time - start_time
 
-    if xlsxreplacefile is not None and xtm is not None:
+    if xlsxreplacefile is not None:
         xtm.print_replaced_items_number_of_replacements('before')
         xtm.print_replaced_items_number_of_replacements('after')
         xtm.print_do_not_split_number_of_matches('keep_on_same_line')
@@ -7662,7 +7622,7 @@ def main() -> int:
     print("\nSaved file name: %s" % (word_file_to_translate_save_as_path))
     
     
-    if action not in ["polish", "align", "double"]:
+    if action not in ["polish", "align"]:
         get_robot_usage_comment()
 
     if translation_engine in ['perplexity', 'comet']:
