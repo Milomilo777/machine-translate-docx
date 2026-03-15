@@ -117,7 +117,7 @@ public class EndToEndPipelineTest {
         List<TranslationLog> logs = logRepo.findAll();
         assertEquals(1, logs.size(), "Should have exactly one log entry");
         assertEquals(0.00625, logs.get(0).getCostUsd(), 0.00001, "Cost USD should match exactly");
-        assertEquals("CHATGPT", logs.get(0).getModelName());
+        assertEquals("CHATGPT_API", logs.get(0).getModelName());
     }
 
     @AfterEach

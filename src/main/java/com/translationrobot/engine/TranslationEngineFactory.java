@@ -15,6 +15,12 @@ public class TranslationEngineFactory {
     }
 
     public TranslationEngine getEngine(EngineType type) {
+        if (type == EngineType.YANDEX ||
+                type == EngineType.GOOGLE_API ||
+                type == EngineType.DEEPL_API) {
+            throw new IllegalArgumentException("Engine " + type.name() + " is disabled in this build.");
+        }
+
         return engines.stream()
                 .filter(engine -> engine.supports(type))
                 .findFirst()

@@ -3,10 +3,11 @@ package com.translationrobot.engine;
 import com.translationrobot.engine.impl.DeepLEngine;
 import com.translationrobot.engine.impl.GoogleEngine;
 import com.translationrobot.model.EngineType;
-import com.translationrobot.model.TranslationResponse;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class OtherEnginesTest {
 
@@ -22,6 +23,11 @@ class OtherEnginesTest {
         DeepLEngine engine = new DeepLEngine();
         assertTrue(engine.supports(EngineType.DEEPL));
         assertFalse(engine.supports(EngineType.GOOGLE));
+    }
+
+    @Test
+    void engineType_FromString_ChatGpt_ShouldMapToChatGptWeb() {
+        assertEquals(EngineType.CHATGPT_WEB, EngineType.fromString("chatgpt"));
     }
 
     // Since we don't have empty string bypass IN the engine itself (it's in the Orchestrator),

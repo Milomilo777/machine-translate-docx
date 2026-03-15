@@ -31,56 +31,54 @@ public class TranslationCliRunner implements CommandLineRunner {
             String sourceLang = "en"; // default
             EngineType engine = EngineType.CHATGPT_API; // default
 
+            int positionalIndex = 0;
+
             // Manual space-separated argument parsing
             for (int i = 0; i < args.length; i++) {
-                if ("--docxfile".equalsIgnoreCase(args[i]) && i + 1 < args.length) {
+                String arg = args[i];
+
+                if ("--docxfile".equalsIgnoreCase(arg) && i + 1 < args.length) {
                     filePath = args[i + 1];
                     i++;
-                } else if ("--target_lang".equalsIgnoreCase(args[i]) && i + 1 < args.length) {
+                } else if ("--destlang".equalsIgnoreCase(arg) && i + 1 < args.length) {
                     destLang = args[i + 1];
                     i++;
-                } else if ("--engine".equalsIgnoreCase(args[i]) && i + 1 < args.length) {
-                    String engineArgValue = args[i + 1];
-                    try {
-                        engine = EngineType.fromString(engineArgValue);
-                    } catch (IllegalArgumentException e) {
-                        System.err.println("Unknown engine: " + engineArgValue);
-                        System.exit(1);
-                    }
-                    if (engine == EngineType.YANDEX ||
-                        engine == EngineType.GOOGLE_API ||
-                        engine == EngineType.DEEPL_API) {
-                        System.err.println("Engine " + engine.name() + " is disabled in this build.");
-                        System.exit(2);
-                    }
+                } else if ("--target_lang".equalsIgnoreCase(arg) && i + 1 < args.length) {
+                    destLang = args[i + 1];
                     i++;
-                }
-                // Add fallback for positional arguments if python passes them without flags
-                else if (i == 0 && !args[i].startsWith("--")) {
-                    filePath = args[i];
-                } else if (i == 1 && !args[i].startsWith("--")) {
-                    destLang = args[i];
-                } else if (i == 2 && !args[i].startsWith("--")) {
-                    String engineArgValue = args[i];
-                    try {
-                        engine = EngineType.fromString(engineArgValue);
-                    } catch (IllegalArgumentException e) {
-                        System.err.println("Unknown engine: " + engineArgValue);
-                        System.exit(1);
+                } else if ("--srclang".equalsIgnoreCase(arg) && i + 1 < args.length) {
+                    sourceLang = args[i + 1];
+                    i++;
+                } else if ("--engine".equalsIgnoreCase(arg) && i + 1 < args.length) {
+                    engine = parseEngineOrExit(args[i + 1]);
+                    i++;
+                } else if ("--split".equalsIgnoreCase(arg)
+                        || "--showbrowser".equalsIgnoreCase(arg)
+                        || "--exitonsuccess".equalsIgnoreCase(arg)
+                        || "--viewdocx".equalsIgnoreCase(arg)
+                        || "-l".equalsIgnoreCase(arg)) {
+                    // Explicitly tolerate Python-only boolean flags
+                } else if ("--xlsxreplacefile".equalsIgnoreCase(arg) && i + 1 < args.length) {
+                    i++;
+                } else if ("--destfont".equalsIgnoreCase(arg) && i + 1 < args.length) {
+                    i++;
+                } else if (!arg.startsWith("--") && !arg.startsWith("-")) {
+                    // Add fallback for positional arguments if python passes them without flags
+                    if (positionalIndex == 0 && filePath == null) {
+                        filePath = arg;
+                    } else if (positionalIndex == 1) {
+                        destLang = arg;
+                    } else if (positionalIndex == 2) {
+                        engine = parseEngineOrExit(arg);
                     }
-                    if (engine == EngineType.YANDEX ||
-                        engine == EngineType.GOOGLE_API ||
-                        engine == EngineType.DEEPL_API) {
-                        System.err.println("Engine " + engine.name() + " is disabled in this build.");
-                        System.exit(2);
-                    }
+                    positionalIndex++;
                 }
             }
 
             if (filePath == null) {
                 System.out.println("Usage: java -jar app.jar --docxfile <path> --target_lang <code> --engine <engine>");
-                SpringApplication.exit(context, () -> 1);
-                System.exit(1);
+                exitApplication(1);
+                return;
             }
 
             System.out.println("=========================================");
@@ -91,12 +89,32 @@ public class TranslationCliRunner implements CommandLineRunner {
 
             System.out.println("[Success] Translation job completed.");
 
-            SpringApplication.exit(context, () -> 0);
-            System.exit(0);
+            exitApplication(0);
         } catch (Throwable t) {
             System.err.println("FATAL ERROR: " + t.getMessage());
-            SpringApplication.exit(context, () -> 1);
-            System.exit(1);
+            exitApplication(1);
         }
+    }
+
+    EngineType parseEngineOrExit(String engineArgValue) {
+        try {
+            EngineType parsedEngine = EngineType.fromString(engineArgValue);
+            if (parsedEngine == EngineType.YANDEX ||
+                    parsedEngine == EngineType.GOOGLE_API ||
+                    parsedEngine == EngineType.DEEPL_API) {
+                System.err.println("Engine " + parsedEngine.name() + " is disabled in this build.");
+                exitApplication(2);
+            }
+            return parsedEngine;
+        } catch (IllegalArgumentException e) {
+            System.err.println("Unknown engine: " + engineArgValue);
+            exitApplication(1);
+            return EngineType.CHATGPT_API;
+        }
+    }
+
+    void exitApplication(int code) {
+        SpringApplication.exit(context, () -> code);
+        System.exit(code);
     }
 }

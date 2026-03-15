@@ -22,7 +22,7 @@ public enum EngineType {
             case "deepl" -> DEEPL;
             case "chatgpt-api", "chatgpt_api" -> CHATGPT_API;
             case "chatgpt-web", "chatgpt_web" -> CHATGPT_WEB;
-            case "chatgpt" -> CHATGPT_API;
+            case "chatgpt" -> CHATGPT_WEB;
             case "perplexity-web", "perplexity_web" -> PERPLEXITY_WEB;
             case "perplexity" -> PERPLEXITY_WEB;
             case "yandex" -> YANDEX;
