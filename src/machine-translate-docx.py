@@ -1,7 +1,9 @@
 #!/usr/bin/python3
 # pylint: disable=all
 # - *- coding: utf- 8 - *-
-PROGRAM_VERSION="2026-03-07-v5.1" # Updated: V5.1 Subtitle Alignment Engine, temperature=0, math-duplication, json fallback, Comet Engine, gpt-5.4/mini integration.
+PROGRAM_VERSION="2026-03-15-v5.2" # Updated: V5.1 Subtitle Alignment Engine, temperature=0, math-duplication, json fallback, Comet Engine, gpt-5.4/mini integration.
+# [2026-03-15] v5.2 — Output filename: remove duplicate + language prefix from pipe suffix
+# [2026-03-15] v5.2 — Replace sequential block loop with ThreadPoolExecutor (max_workers=3)
 
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="pkg_resources")
@@ -28,7 +30,7 @@ PROMPT_VERSION = "v3.2"
 import time
 import random
 
-REQUEST_TIMEOUT_SEC = 180
+REQUEST_TIMEOUT_SEC = 90
 diagnostic_bundle_manager = DiagnosticBundleManager()
 MAX_RETRIES         = 2       # total attempts = 3
 RETRY_DELAY_SEC     = 5
@@ -43,6 +45,7 @@ def call_block_with_retry(block_id, block_lines, func, *args, logger=None, **kwa
         return res is not None
 
     for attempt in range(MAX_RETRIES + 1):
+        attempt_start_time = time.time()
         try:
             result = func(*args, **kwargs)
 
@@ -62,6 +65,18 @@ def call_block_with_retry(block_id, block_lines, func, *args, logger=None, **kwa
             log(f"[Timeout] Block {block_id} | "
                 f"Attempt {attempt+1}/{MAX_RETRIES+1} | "
                 f"{REQUEST_TIMEOUT_SEC}s exceeded")
+            try:
+                if logger and attempt < MAX_RETRIES:
+                    attempt_elapsed = round(time.time() - attempt_start_time, 2)
+                    logger.log_block_attempt(
+                        block_id,
+                        attempt_n=attempt + 1,
+                        error_type="TimeoutError",
+                        error_msg=str(last_error),
+                        elapsed_sec=attempt_elapsed
+                    )
+            except Exception:
+                pass
 
         except Exception as e:
             err_str = str(e).lower()
@@ -75,6 +90,18 @@ def call_block_with_retry(block_id, block_lines, func, *args, logger=None, **kwa
             last_error = str(e)
             log(f"[APIError] Block {block_id} | "
                 f"Attempt {attempt+1}/{MAX_RETRIES+1} | {e}")
+            try:
+                if logger and attempt < MAX_RETRIES:
+                    attempt_elapsed = round(time.time() - attempt_start_time, 2)
+                    logger.log_block_attempt(
+                        block_id,
+                        attempt_n=attempt + 1,
+                        error_type=type(e).__name__,
+                        error_msg=str(last_error),
+                        elapsed_sec=attempt_elapsed
+                    )
+            except Exception:
+                pass
 
         if attempt < MAX_RETRIES:
             time.sleep(RETRY_DELAY_SEC)
@@ -145,6 +172,7 @@ import zipfile
 import xml.dom.minidom
 # used to get elements in XML, shading in docx for example
 from lxml import etree
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # This library automatically downloads chrome driver
 # pyderman was replaced with webdriver_manager
@@ -7261,16 +7289,18 @@ def save_docx_file():
         lang_alpha3b_code = None
 
     word_file_to_translate_save_as_path = word_file_to_translate
-    if lang_alpha3b_code is not None:
-        find_alpha3_code_suffix = f"(?i)_{lang_alpha3b_code}.docx$"
-        if not re.search(find_alpha3_code_suffix, word_file_to_translate):
-            word_file_to_translate_save_as_path = re.sub("(?i)_{lang_alpha3b_code}.docx$", f".docx", word_file_to_translate)
-            lang_alpha3b_code = lang_alpha3b_code.upper()
-            word_file_to_translate_save_as_path = re.sub("(?i).docx$", f"_{lang_alpha3b_code}.docx", word_file_to_translate)
-            print(f"\nAdding file name suffix _{lang_alpha3b_code}.")
 
     if action in ["polish", "align", "double"]:
-        word_file_to_translate_save_as_path = word_file_to_translate_save_as_path.replace(".docx", f"_AI_{action.title()}.docx")
+        # Pipe suffix: action name only, no lang code, no duplication.
+        word_file_to_translate_save_as_path = re.sub(r"(?i)\.docx$", f"_{action.title()}.docx", word_file_to_translate)
+    else:
+        if lang_alpha3b_code is not None:
+            find_alpha3_code_suffix = f"(?i)_{lang_alpha3b_code}.docx$"
+            if not re.search(find_alpha3_code_suffix, word_file_to_translate):
+                word_file_to_translate_save_as_path = re.sub(f"(?i)_{lang_alpha3b_code}.docx$", f".docx", word_file_to_translate)
+                lang_alpha3b_code = lang_alpha3b_code.upper()
+                word_file_to_translate_save_as_path = re.sub(r"(?i)\.docx$", f"_{lang_alpha3b_code}.docx", word_file_to_translate)
+                print(f"\nAdding file name suffix _{lang_alpha3b_code}.")
 
     local_time_offset()
 
@@ -7415,7 +7445,8 @@ def process_ai_action():
 
     from api_logger import APILogger
     global logger
-    output_file_path = word_file_to_translate.replace('.docx', f'_AI_{action.title()}.docx')
+    # Pipe suffix: action name only, no lang code, no duplication.
+    output_file_path = re.sub(r"(?i)\.docx$", f"_{action.title()}.docx", word_file_to_translate)
     logger = APILogger(
         doc_name       = os.path.basename(word_file_to_translate),
         action         = action,
@@ -7448,8 +7479,8 @@ def process_ai_action():
         # PATH B: Intelligent Macro-Chunking
         print(f"[AI LAB] Routing to Macro-Chunking Path ({total_active_rows} active lines).")
 
-        CHUNK_SOFT_LIMIT = 60
-        CHUNK_HARD_LIMIT = 80
+        CHUNK_SOFT_LIMIT = 45 if action == "align" else 60
+        CHUNK_HARD_LIMIT = 60 if action == "align" else 80
 
         def is_natural_boundary(target_line: str) -> bool:
             if target_line is None:
@@ -7518,11 +7549,17 @@ def process_ai_action():
         print(f"[TIMER] Block {start_idx} to {end_idx-1} completed in {elapsed:.2f} seconds.")
         return start_idx, end_idx, res_dict
 
-    # 3. Execute concurrently (max 5 workers to respect API rate limits)
+    # ── Parallel block fetch (max 3 concurrent API calls) ──────────
+    # max_workers=3: safe for OpenAI Tier-1 (500 RPM).
+    # Increase to 5 only after confirming Tier-2 access.
     all_results = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-        for result in executor.map(process_chunk, tasks):
-            all_results.append(result)
+    with ThreadPoolExecutor(max_workers=3) as _executor:
+        _futures = [
+            _executor.submit(process_chunk, task)
+            for task in tasks
+        ]
+        all_results = [f.result() for f in _futures]
+    # ────────────────────────────────────────────────────────────────
 
     # 4. Map results back sequentially to avoid thread lock/race conditions
     print("[AI LAB] Mapping AI results back to document...")

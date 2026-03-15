@@ -318,6 +318,20 @@ class OpenAITranslator:
                     }, ensure_ascii=False)}
                 ]
             )
+            try:
+                if logger and block_id and hasattr(response, 'usage') and response.usage:
+                    usage = response.usage
+                    cost_info = OpenAITranslator.calculate_openai_cost(response.model_dump())
+                    logger.log_block_token_usage(
+                        block_id,
+                        prompt_tokens=getattr(usage, 'prompt_tokens', 0),
+                        completion_tokens=getattr(usage, 'completion_tokens', 0),
+                        total_tokens=getattr(usage, 'total_tokens', 0),
+                        cost_usd=cost_info.get('total_cost_usd', 0.0),
+                        model_name=self.model
+                    )
+            except Exception:
+                pass
 
             # Plain text line-by-line mapping logic
             res_dict = {}
@@ -378,9 +392,28 @@ class OpenAITranslator:
                 ],
                 response_format={"type": "json_object"}
             )
+            try:
+                if logger and block_id and hasattr(response, 'usage') and response.usage:
+                    usage = response.usage
+                    cost_info = OpenAITranslator.calculate_openai_cost(response.model_dump())
+                    logger.log_block_token_usage(
+                        block_id,
+                        prompt_tokens=getattr(usage, 'prompt_tokens', 0),
+                        completion_tokens=getattr(usage, 'completion_tokens', 0),
+                        total_tokens=getattr(usage, 'total_tokens', 0),
+                        cost_usd=cost_info.get('total_cost_usd', 0.0),
+                        model_name=self.model
+                    )
+            except Exception:
+                pass
             response_text = response.choices[0].message.content  # CRITICAL ASSIGNMENT
             try:
                 raw = json.loads(response_text)
+                try:
+                    if logger and block_id:
+                        logger.log_block_result_data(block_id, target_dict, raw)
+                except Exception:
+                    pass
                 if not isinstance(raw, dict) or not raw:
                     print("[Align] Warning: empty or non-dict result, using fallback.")
                     return target_dict
@@ -437,9 +470,28 @@ class OpenAITranslator:
                 ],
                 response_format={"type": "json_object"}
             )
+            try:
+                if logger and block_id and hasattr(response, 'usage') and response.usage:
+                    usage = response.usage
+                    cost_info = OpenAITranslator.calculate_openai_cost(response.model_dump())
+                    logger.log_block_token_usage(
+                        block_id,
+                        prompt_tokens=getattr(usage, 'prompt_tokens', 0),
+                        completion_tokens=getattr(usage, 'completion_tokens', 0),
+                        total_tokens=getattr(usage, 'total_tokens', 0),
+                        cost_usd=cost_info.get('total_cost_usd', 0.0),
+                        model_name=self.model
+                    )
+            except Exception:
+                pass
             response_text = response.choices[0].message.content  # CRITICAL ASSIGNMENT
             try:
                 raw = json.loads(response_text)
+                try:
+                    if logger and block_id:
+                        logger.log_block_result_data(block_id, target_dict, raw)
+                except Exception:
+                    pass
                 if not isinstance(raw, dict) or not raw:
                     print("[Align] Warning: empty or non-dict result, using fallback.")
                     return target_dict
