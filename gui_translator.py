@@ -142,6 +142,19 @@ class MachineTranslatorApp(ctk.CTk):
             row=2, column=0, columnspan=2,
             padx=5, pady=(10, 0), sticky="ew"
         )
+        self.btn_align_double = ctk.CTkButton(
+            self.action_frame,
+            text="5. align + double (AI)",
+            height=45,
+            fg_color="#1a5276",
+            hover_color="#1f618d",
+            font=ctk.CTkFont(size=15, weight="bold"),
+            command=lambda: self.run_action("align_double")
+        )
+        self.btn_align_double.grid(
+            row=3, column=0, columnspan=2, padx=5, pady=(10, 0), sticky="ew"
+        )
+
 
         self.btn_pipeline = ctk.CTkButton(
             self.action_frame,
@@ -152,9 +165,9 @@ class MachineTranslatorApp(ctk.CTk):
             font=ctk.CTkFont(size=15, weight="bold"),
             command=self.run_pipeline
         )
-        self.btn_pipeline.grid(row=3, column=0, columnspan=2, pady=(10, 0), sticky="ew")
+        self.btn_pipeline.grid(row=4, column=0, columnspan=2, pady=(10, 0), sticky="ew")
 
-        self.operation_buttons = [self.btn_translate, self.btn_polish, self.btn_align, self.btn_double, self.btn_pipeline]
+        self.operation_buttons = [self.btn_translate, self.btn_polish, self.btn_align, self.btn_double, self.btn_align_double, self.btn_pipeline]
 
         self.log_frame = ctk.CTkFrame(self, fg_color="transparent")
         self.log_frame.grid(row=6, column=0, padx=20, pady=(10, 20), sticky="nsew")
@@ -333,7 +346,7 @@ class MachineTranslatorApp(ctk.CTk):
 
         engine_selection = self.engine_dropdown.get()
 
-        if action_type in ["polish", "align", "double"]:
+        if action_type in ["polish", "align", "double", "align_double"]:
             engine_to_use = "chatgpt"
             method_to_use = "api"
             suffix_name = f"AI_{action_type.title()}"
@@ -352,7 +365,7 @@ class MachineTranslatorApp(ctk.CTk):
         # Ensure default model is gpt-5-mini for AI actions, and gpt-5.4 for raw translation
         if action_type == "polish":
             aimodel_to_use = "gpt-4o"
-        elif action_type in ["align", "double"]:
+        elif action_type in ["align", "double", "align_double"]:
             aimodel_to_use = "gpt-5-mini"
         else:
             aimodel_to_use = "gpt-5.4"
