@@ -43,6 +43,7 @@ def call_block_with_retry(block_id, block_lines, func, *args, logger=None, **kwa
         return res is not None
 
     for attempt in range(MAX_RETRIES + 1):
+        attempt_start_time = time.time()
         try:
             result = func(*args, **kwargs)
 
@@ -62,6 +63,18 @@ def call_block_with_retry(block_id, block_lines, func, *args, logger=None, **kwa
             log(f"[Timeout] Block {block_id} | "
                 f"Attempt {attempt+1}/{MAX_RETRIES+1} | "
                 f"{REQUEST_TIMEOUT_SEC}s exceeded")
+            try:
+                if logger and attempt < MAX_RETRIES:
+                    attempt_elapsed = round(time.time() - attempt_start_time, 2)
+                    logger.log_block_attempt(
+                        block_id,
+                        attempt_n=attempt + 1,
+                        error_type="TimeoutError",
+                        error_msg=str(last_error),
+                        elapsed_sec=attempt_elapsed
+                    )
+            except Exception:
+                pass
 
         except Exception as e:
             err_str = str(e).lower()
@@ -75,6 +88,18 @@ def call_block_with_retry(block_id, block_lines, func, *args, logger=None, **kwa
             last_error = str(e)
             log(f"[APIError] Block {block_id} | "
                 f"Attempt {attempt+1}/{MAX_RETRIES+1} | {e}")
+            try:
+                if logger and attempt < MAX_RETRIES:
+                    attempt_elapsed = round(time.time() - attempt_start_time, 2)
+                    logger.log_block_attempt(
+                        block_id,
+                        attempt_n=attempt + 1,
+                        error_type=type(e).__name__,
+                        error_msg=str(last_error),
+                        elapsed_sec=attempt_elapsed
+                    )
+            except Exception:
+                pass
 
         if attempt < MAX_RETRIES:
             time.sleep(RETRY_DELAY_SEC)
