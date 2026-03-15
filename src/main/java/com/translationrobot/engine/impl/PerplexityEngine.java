@@ -22,6 +22,8 @@ import java.util.concurrent.ThreadLocalRandom;
 @Component
 public class PerplexityEngine implements TranslationEngine {
 
+    private static final java.util.concurrent.Semaphore RATE_LIMITER = new java.util.concurrent.Semaphore(1);
+
     public PerplexityEngine() {
         // No-arg constructor
     }
@@ -38,74 +40,85 @@ public class PerplexityEngine implements TranslationEngine {
 
     @Override
     public TranslationResponse translate(String sourceLang, String targetLang, String text) {
-        long startTime = System.currentTimeMillis();
+        try {
+            RATE_LIMITER.acquire();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("Thread interrupted while waiting for rate limiter", e);
+        }
 
-        int attempts = 0;
-        while (attempts < 3) {
-            WebDriver driver = null;
-            try {
-                ChromeOptions options = new ChromeOptions();
-                options.addArguments("--disable-blink-features=AutomationControlled");
-                options.setExperimentalOption("excludeSwitches",
-                        Collections.singletonList("enable-automation"));
-                options.addArguments("user-agent=Mozilla/5.0 (Windows NT 10.0; " +
-                        "Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) " +
-                        "Chrome/122.0.0.0 Safari/537.36");
+        try {
+            long startTime = System.currentTimeMillis();
 
-                driver = new ChromeDriver(options);
-                randomDelay();
-                driver.get("https://www.perplexity.ai");
-                randomDelay();
-
-                String prompt = "Translate to " + targetLang +
-                        ". Reply with translation only:\n" + text;
-
-                WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(15));
-                WebElement textarea = wait.until(
-                        ExpectedConditions.presenceOfElementLocated(
-                                By.cssSelector("textarea[placeholder]")));
-
-                new Actions(driver).click(textarea)
-                        .sendKeys(textarea, prompt).perform();
-                randomDelay();
-                textarea.sendKeys(Keys.RETURN);
-
-                WebDriverWait longWait = new WebDriverWait(driver,
-                        Duration.ofSeconds(45));
-                longWait.until(ExpectedConditions.presenceOfElementLocated(
-                        By.cssSelector("div.prose")));
-
-                WebElement response = driver.findElement(
-                        By.cssSelector("div.prose"));
-                String result = response.getText();
-                randomDelay();
-
-                long endTime = System.currentTimeMillis();
-                double executionTimeSec = (endTime - startTime) / 1000.0;
-
-                return new TranslationResponse(result, 0, 0, 0.0, executionTimeSec);
-
-            } catch (Exception e) {
-                attempts++;
-                if (attempts >= 3) {
-                    throw new RuntimeException(
-                            "Perplexity-Web: failed after 3 retries. " +
-                                    "Last error: " + e.getMessage());
-                }
+            int attempts = 0;
+            while (attempts < 3) {
+                WebDriver driver = null;
                 try {
-                    Thread.sleep(45000);
-                } catch (InterruptedException ie) {
-                    Thread.currentThread().interrupt();
-                    throw new RuntimeException("Interrupted during wait", ie);
-                }
-            } finally {
-                if (driver != null) {
+                    ChromeOptions options = new ChromeOptions();
+                    options.addArguments("--disable-blink-features=AutomationControlled");
+                    options.setExperimentalOption("excludeSwitches",
+                            Collections.singletonList("enable-automation"));
+                    options.addArguments("user-agent=Mozilla/5.0 (Windows NT 10.0; " +
+                            "Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) " +
+                            "Chrome/122.0.0.0 Safari/537.36");
+
+                    driver = new ChromeDriver(options);
+                    randomDelay();
+                    driver.get("https://www.perplexity.ai");
+                    randomDelay();
+
+                    String prompt = "Translate to " + targetLang +
+                            ". Reply with translation only:\n" + text;
+
+                    WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(15));
+                    WebElement textarea = wait.until(
+                            ExpectedConditions.presenceOfElementLocated(
+                                    By.cssSelector("textarea[placeholder]")));
+
+                    new Actions(driver).click(textarea)
+                            .sendKeys(textarea, prompt).perform();
+                    randomDelay();
+                    textarea.sendKeys(Keys.RETURN);
+
+                    WebDriverWait longWait = new WebDriverWait(driver,
+                            Duration.ofSeconds(45));
+                    longWait.until(ExpectedConditions.presenceOfElementLocated(
+                            By.cssSelector("div.prose")));
+
+                    WebElement response = driver.findElement(
+                            By.cssSelector("div.prose"));
+                    String result = response.getText();
+                    randomDelay();
+
+                    long endTime = System.currentTimeMillis();
+                    double executionTimeSec = (endTime - startTime) / 1000.0;
+
+                    return new TranslationResponse(result, 0, 0, 0.0, executionTimeSec);
+
+                } catch (Exception e) {
+                    attempts++;
+                    if (attempts >= 3) {
+                        throw new RuntimeException(
+                                "Perplexity-Web: failed after 3 retries. " +
+                                        "Last error: " + e.getMessage());
+                    }
                     try {
-                        driver.quit();
-                    } catch (Exception ignored) {}
+                        Thread.sleep(45000);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        throw new RuntimeException("Interrupted during wait", ie);
+                    }
+                } finally {
+                    if (driver != null) {
+                        try {
+                            driver.quit();
+                        } catch (Exception ignored) {}
+                    }
                 }
             }
+            return null;
+        } finally {
+            RATE_LIMITER.release();
         }
-        return null;
     }
 }

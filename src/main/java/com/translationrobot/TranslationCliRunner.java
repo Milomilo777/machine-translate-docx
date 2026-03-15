@@ -58,10 +58,14 @@ public class TranslationCliRunner implements CommandLineRunner {
                         || "--viewdocx".equalsIgnoreCase(arg)
                         || "-l".equalsIgnoreCase(arg)) {
                     // Explicitly tolerate Python-only boolean flags
-                } else if ("--xlsxreplacefile".equalsIgnoreCase(arg) && i + 1 < args.length) {
-                    i++;
-                } else if ("--destfont".equalsIgnoreCase(arg) && i + 1 < args.length) {
-                    i++;
+                } else if ("--xlsxreplacefile".equalsIgnoreCase(arg)) {
+                    if (i + 1 < args.length && !args[i + 1].startsWith("-")) {
+                        i++;
+                    }
+                } else if ("--destfont".equalsIgnoreCase(arg)) {
+                    if (i + 1 < args.length && !args[i + 1].startsWith("-")) {
+                        i++;
+                    }
                 } else if (!arg.startsWith("--") && !arg.startsWith("-")) {
                     // Add fallback for positional arguments if python passes them without flags
                     if (positionalIndex == 0 && filePath == null) {
@@ -104,6 +108,7 @@ public class TranslationCliRunner implements CommandLineRunner {
                     parsedEngine == EngineType.DEEPL_API) {
                 System.err.println("Engine " + parsedEngine.name() + " is disabled in this build.");
                 exitApplication(2);
+                return parsedEngine;
             }
             return parsedEngine;
         } catch (IllegalArgumentException e) {

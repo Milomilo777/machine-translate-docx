@@ -48,6 +48,7 @@ public class WebController {
                 orchestrator.runTranslationJob(tempFile.getAbsolutePath(), engine, sourceLang, targetLang);
             } catch (Exception e) {
                 return ResponseEntity.status(500)
+                        .contentType(MediaType.APPLICATION_JSON)
                         .body((Resource) new org.springframework.core.io.ByteArrayResource(
                                 ("{\"success\":false,\"error\":\"" + e.getMessage() + "\"}").getBytes()));
             }
@@ -58,6 +59,7 @@ public class WebController {
             File outFile = outPath.toFile();
             if (!outFile.exists() || outFile.length() < 500) {
                 return ResponseEntity.status(500)
+                        .contentType(MediaType.APPLICATION_JSON)
                         .body((Resource) new org.springframework.core.io.ByteArrayResource(
                                 "{\"success\":false,\"error\":\"Output file missing or empty\"}".getBytes()));
             }

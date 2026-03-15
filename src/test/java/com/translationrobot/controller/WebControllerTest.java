@@ -2,6 +2,7 @@ package com.translationrobot.controller;
 
 import com.translationrobot.model.EngineType;
 import com.translationrobot.service.TranslationOrchestrator;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -10,8 +11,12 @@ import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.io.File;
+import java.io.FileOutputStream;
+import java.nio.charset.StandardCharsets;
+
 import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doAnswer;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -33,16 +38,24 @@ class WebControllerTest {
                 "dummy content".getBytes()
         );
 
-        doNothing().when(orchestrator).runTranslationJob(anyString(), any(EngineType.class), anyString(), anyString());
+        doAnswer(invocation -> {
+            String tempInputPath = invocation.getArgument(0, String.class);
+            String outputPath = tempInputPath.replace(".docx", "_FA.docx");
+            File outputFile = new File(outputPath);
 
-        // In MockMvc, a multipart request needs the file name to match the controller's @RequestParam("file").
-        // We already named it "file" in the MockMultipartFile constructor above.
+            byte[] content = "x".repeat(600).getBytes(StandardCharsets.UTF_8);
+            try (FileOutputStream fos = new FileOutputStream(outputFile)) {
+                fos.write(content);
+            }
+
+            return null;
+        }).when(orchestrator).runTranslationJob(anyString(), any(EngineType.class), anyString(), anyString());
 
         mockMvc.perform(multipart("/translate")
                         .file(file)
                         .param("sourceLang", "en")
                         .param("targetLang", "fa")
-                        .param("engine", "CHATGPT")
+                        .param("engine", "chatgpt-api")
                         .param("split", "false"))
                 .andExpect(status().isOk())
                 .andExpect(header().exists("Content-Disposition"));
@@ -53,7 +66,27 @@ class WebControllerTest {
         mockMvc.perform(multipart("/translate")
                         .param("sourceLang", "en")
                         .param("targetLang", "fa")
-                        .param("engine", "CHATGPT"))
+                        .param("engine", "chatgpt-api"))
                 .andExpect(status().isBadRequest());
+    }
+
+    @AfterEach
+    void cleanUpTempFiles() {
+        File tempDir = new File(System.getProperty("java.io.tmpdir"));
+        File[] files = tempDir.listFiles();
+
+        if (files == null) {
+            return;
+        }
+
+        for (File file : files) {
+            try {
+                String name = file.getName();
+                if (name.startsWith("upload-") && name.endsWith("_FA.docx")) {
+                    file.delete();
+                }
+            } catch (Exception ignored) {
+            }
+        }
     }
 }

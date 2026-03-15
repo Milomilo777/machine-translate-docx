@@ -6,6 +6,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.ApplicationContext;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.*;
 
 class TranslationCliRunnerTest {
@@ -33,7 +34,7 @@ class TranslationCliRunnerTest {
         );
 
         verify(orchestrator).runTranslationJob("C:/tmp/in.docx", EngineType.CHATGPT_API, "en", "fa");
-        verify(runner).exitApplication(0);
+        assertEquals(0, runner.exitCode);
     }
 
     @Test
@@ -48,7 +49,7 @@ class TranslationCliRunnerTest {
         );
 
         verify(orchestrator).runTranslationJob("C:/tmp/in.docx", EngineType.CHATGPT_WEB, "en", "fa");
-        verify(runner).exitApplication(0);
+        assertEquals(0, runner.exitCode);
     }
 
     @Test
@@ -69,7 +70,7 @@ class TranslationCliRunnerTest {
         );
 
         verify(orchestrator).runTranslationJob("C:/tmp/in.docx", EngineType.DEEPL, "en", "fa");
-        verify(runner).exitApplication(0);
+        assertEquals(0, runner.exitCode);
     }
 
     @Test
@@ -81,10 +82,29 @@ class TranslationCliRunnerTest {
         );
 
         verify(orchestrator, never()).runTranslationJob(anyString(), any(EngineType.class), anyString(), anyString());
-        verify(runner).exitApplication(1);
+        assertEquals(1, runner.exitCode);
+    }
+
+    @Test
+    void missingOptionalValueFlags_DoNotStealFollowingArgs() {
+        doNothing().when(orchestrator).runTranslationJob(anyString(), any(EngineType.class), anyString(), anyString());
+
+        runner.run(
+                "--xlsxreplacefile",
+                "--destfont",
+                "--srclang", "en",
+                "--destlang", "fa",
+                "--engine", "deepl",
+                "--docxfile", "C:/tmp/in.docx"
+        );
+
+        verify(orchestrator).runTranslationJob("C:/tmp/in.docx", EngineType.DEEPL, "en", "fa");
+        assertEquals(0, runner.exitCode);
     }
 
     static class TestableTranslationCliRunner extends TranslationCliRunner {
+
+        Integer exitCode;
 
         TestableTranslationCliRunner(TranslationOrchestrator orchestrator, ApplicationContext context) {
             super(orchestrator, context);
@@ -92,7 +112,7 @@ class TranslationCliRunnerTest {
 
         @Override
         void exitApplication(int code) {
-            // no-op for tests
+            this.exitCode = code;
         }
     }
 }

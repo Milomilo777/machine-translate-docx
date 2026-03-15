@@ -8,7 +8,7 @@ YANDEX, GOOGLE_API, DEEPL_API
 
 ## GUI Policy
 - Python tkinter GUI (machine_translate_gui.py) = primary desktop interface
-- Web UI (index.ejs + WebController) = production server interface
+- Web UI (static HTML + WebController) = production server interface
 - BOTH must always work
 - NEVER deprecate or remove Python GUI — required for desktop testing
 - Repository architecture is hybrid Python + Java, not Java-only
@@ -43,7 +43,7 @@ YANDEX، GOOGLE_API، DEEPL_API
 
 ## سیاست رابط کاربری
 - Python tkinter GUI (machine_translate_gui.py) = رابط اصلی دسکتاپ
-- Web UI (index.ejs + WebController) = رابط سرور تولید
+- Web UI (static HTML + WebController) = رابط سرور تولید
 - هر دو باید همیشه کار کنند
 - GUI پایتون را هرگز deprecated یا حذف نکنید
 
