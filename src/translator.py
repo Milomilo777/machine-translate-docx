@@ -375,16 +375,17 @@ class OpenAITranslator:
                     if k.startswith('_'):
                         raw.pop(k)
                 for key in source_dict:
-                    if key not in raw:
-                        print(f"[Align] Warning: missing key '{key}', restored from target.")
-                        raw[key] = target_dict.get(key, '')
+                    if key not in raw or not str(raw.get(key, "")).strip():
+                        original = target_dict.get(key, "")
+                        raw[key] = original if str(original).strip() else ""
                 if len(raw) != len(source_dict):
                     print(f"⚠️ [Align] Key count mismatch after repair "
                           f"(expected {len(source_dict)}, got {len(raw)}). "
                           f"Filling remaining from target.")
                     for key in source_dict:
-                        if key not in raw:
-                            raw[key] = target_dict.get(key, '')
+                        if key not in raw or not str(raw.get(key, "")).strip():
+                            original = target_dict.get(key, "")
+                            raw[key] = original if str(original).strip() else ""
                 return raw
             except json.JSONDecodeError as json_err:
                 print(f"[Error] Align failed due to JSON decoding error: {json_err}")
@@ -430,16 +431,17 @@ class OpenAITranslator:
                     if k.startswith('_'):
                         raw.pop(k)
                 for key in source_dict:
-                    if key not in raw:
-                        print(f"[Align] Warning: missing key '{key}', restored from target.")
-                        raw[key] = target_dict.get(key, '')
+                    if key not in raw or not str(raw.get(key, "")).strip():
+                        original = target_dict.get(key, "")
+                        raw[key] = original if str(original).strip() else ""
                 if len(raw) != len(source_dict):
                     print(f"⚠️ [Align] Key count mismatch after repair "
                           f"(expected {len(source_dict)}, got {len(raw)}). "
                           f"Filling remaining from target.")
                     for key in source_dict:
-                        if key not in raw:
-                            raw[key] = target_dict.get(key, '')
+                        if key not in raw or not str(raw.get(key, "")).strip():
+                            original = target_dict.get(key, "")
+                            raw[key] = original if str(original).strip() else ""
                 return raw
             except json.JSONDecodeError as json_err:
                 print(f"[Error] Double failed due to JSON decoding error: {json_err}")
