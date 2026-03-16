@@ -1014,13 +1014,13 @@ use_translation_api = False
 line_separator_str = ' '
 #line_separator_nospace_str = '()'
 line_separator_nospace_str = '()'
-line_separator_regex_str = ' ?\(\) ?'
+line_separator_regex_str = r' ?\(\) ?'
 
 #pp = pprint.PrettyPrinter(indent=4)
 
 # ... = \u2026 Horizontal ellipsis
 # ”  = \u201D Right double quotation mark
-eol_array = ['\. {0,}$', '\! {0,}$', '\? {0,}$',  '[\.\!\?\'] ?["”\'\)] {0,}$', u'\u2026 {0,}$',
+eol_array = ['\\. {0,}$', '\\! {0,}$', '\\? {0,}$',  "[\\.!\\?'] ?[\"”'\\)] {0,}$", '… {0,}$',
     '। {0,}$', # Hindi period
     '。 {0,}$', '？ {0,}$', '！ {0,}$', # Chinese and Japanese period
     '։ {0,}$', #ARMENIAN FULL STOP	U+0589	ARMENIAN FULL STOP	
@@ -1103,8 +1103,8 @@ eol_array = ['\. {0,}$', '\! {0,}$', '\? {0,}$',  '[\.\!\?\'] ?["”\'\)] {0,}$'
     '！ {0,}$', #FULLWIDTH EXCLAMATION MARK	U+FF01	FULLWIDTH EXCLAMATION MARK	
     '！ {0,}$', #FULLWIDTH EXCLAMATION MARK	U+FF01	FULLWIDTH EXCLAMATION MARK	
     '; {0,}$', #question mark, greek	U+003B	SEMICOLON	
-    '\; {0,}$', #greek question mark	U+003B	SEMICOLON	
-    '\? {0,}$', #QUESTION MARK	U+003F	QUESTION MARK	
+    '\\; {0,}$', #greek question mark	U+003B	SEMICOLON	
+    '\\? {0,}$', #QUESTION MARK	U+003F	QUESTION MARK	
     '¿ {0,}$', #INVERTED QUESTION MARK	U+00BF	INVERTED QUESTION MARK	
     '¿ {0,}$', #question mark, turned	U+00BF	INVERTED QUESTION MARK	
     '¿ {0,}$', #QUESTION MARK, INVERTED	U+00BF	INVERTED QUESTION MARK	
@@ -1139,7 +1139,7 @@ eol_array = ['\. {0,}$', '\! {0,}$', '\? {0,}$',  '[\.\!\?\'] ?["”\'\)] {0,}$'
     '﹖ {0,}$', #SMALL QUESTION MARK	U+FE56	SMALL QUESTION MARK	
     '？ {0,}$', #FULLWIDTH QUESTION MARK	U+FF1F	FULLWIDTH QUESTION MARK	
 ]
-eol_conditional_array = ['\" {0,}$', u'\u201D {0,}$', u'\)']
+eol_conditional_array = ['" {0,}$', '” {0,}$', '\\)']
 bol_array = ['^[A-Z]']
 
 html_file_path = ''
@@ -1487,7 +1487,10 @@ print("Split: %s" %(split_translation))
 print("Splitonly: %s" %(splitonly))
 
 
-tmx_file_path = "%s\%s_%s.tmx" % (os.path.dirname(word_file_to_translate), os.path.splitext(os.path.basename(word_file_to_translate))[0],dest_lang)
+tmx_file_path = os.path.join(
+    os.path.dirname(word_file_to_translate),
+    f"{os.path.splitext(os.path.basename(word_file_to_translate))[0]}_{dest_lang}.tmx"
+)
 #print(tmx_file_path)
 
 
@@ -5454,9 +5457,9 @@ def read_and_parse_docx_document():
         col_no = 1
         row_n = i + 1
         
-        p_remove_pause = re.compile('(?i)<pause>')
-        p_remove_double_spaces = re.compile(' +')
-        p_remove_parenthesis_spaces = re.compile('\( +')
+        p_remove_pause = re.compile(r'(?i)<pause>')
+        p_remove_double_spaces = re.compile(r' +')
+        p_remove_parenthesis_spaces = re.compile(r'\( +')
         
         try:
             for j, cell in enumerate(row.cells):
