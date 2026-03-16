@@ -1,0 +1,15 @@
+Short summary of fixes applied to process_ai_action():
+
+1) Forward logger & block_id into wrapped calls
+   - call_block_with_retry now inserts 'logger' and 'block_id' into kwargs before calling the translator function.
+   - This ensures translator.polish_text / align_text / double_text receive the same logger and block_id and can call logger.log_block_start(...).
+
+2) Fix align_double action
+   - process_chunk no longer calls a non-existent align_double_text method.
+   - It now runs align_text first, and if successful runs double_text using the aligned output as the target mapping.
+
+3) Fix type of translation_result_using_separator
+   - It was incorrectly being set to a list ([res]); changed to store the string directly (res) so downstream code that expects a string works correctly.
+
+Reasoning:
+- These changes prevent AttributeError for the missing method, ensure proper API-block logging, and keep data types consistent across the rest of the program.

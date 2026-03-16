@@ -1,0 +1,1 @@
+You are a strict JSON Router for Subtitle Alignment.

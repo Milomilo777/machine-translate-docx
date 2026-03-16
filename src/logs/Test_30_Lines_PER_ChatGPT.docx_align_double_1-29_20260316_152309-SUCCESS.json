@@ -1,0 +1,11 @@
+{
+  "doc_name": "Test 30 Lines PER_ChatGPT.docx",
+  "action": "align_double",
+  "model": "gpt-5-mini",
+  "block_id": "1-29",
+  "start_line": 1,
+  "end_line": 26,
+  "input_tokens": 0,
+  "output_tokens": 0,
+  "cost_usd": null
+}
