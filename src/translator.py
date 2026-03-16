@@ -386,6 +386,13 @@ class OpenAITranslator:
                         if key not in raw or not str(raw.get(key, "")).strip():
                             original = target_dict.get(key, "")
                             raw[key] = original if str(original).strip() else ""
+                if logger and block_id:
+                    logger.log_block_end(
+                        block_id, "SUCCESS",
+                        attempt_count=1,
+                        input_tokens=getattr(response.usage, "prompt_tokens", 0),
+                        output_tokens=getattr(response.usage, "completion_tokens", 0)
+                    )
                 return raw
             except json.JSONDecodeError as json_err:
                 print(f"[Error] Align failed due to JSON decoding error: {json_err}")
@@ -442,6 +449,13 @@ class OpenAITranslator:
                         if key not in raw or not str(raw.get(key, "")).strip():
                             original = target_dict.get(key, "")
                             raw[key] = original if str(original).strip() else ""
+                if logger and block_id:
+                    logger.log_block_end(
+                        block_id, "SUCCESS",
+                        attempt_count=1,
+                        input_tokens=getattr(response.usage, "prompt_tokens", 0),
+                        output_tokens=getattr(response.usage, "completion_tokens", 0)
+                    )
                 return raw
             except json.JSONDecodeError as json_err:
                 print(f"[Error] Double failed due to JSON decoding error: {json_err}")

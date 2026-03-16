@@ -7521,7 +7521,8 @@ def process_ai_action():
 
     from api_logger import APILogger
     global logger
-    output_file_path = word_file_to_translate.replace('.docx', f'_AI_{action.title()}.docx')
+    base_ai_input_path = re.sub(r'_AI_[A-Za-z_]+', '', word_file_to_translate, flags=re.IGNORECASE)
+    output_file_path = base_ai_input_path.replace('.docx', f'_AI_{action.title()}.docx')
     _ai_output_path = output_file_path
     logger = APILogger(
         doc_name       = os.path.basename(word_file_to_translate),
@@ -7650,9 +7651,14 @@ def process_ai_action():
                 if aligned is None:
                     res_dict = t_dict
                 else:
+                    # Ensure blank or empty aligned rows fall back to original target text
+                    merged = {k: (v if str(v).strip() else t_dict.get(k, "")) for k, v in aligned.items()}
+                    for k in s_dict:
+                        if k not in merged:
+                            merged[k] = t_dict.get(k, "")
                     res_dict = call_block_with_retry(
                         block_id, s_dict, oai_translator.double_text,
-                        src_lang_name, dest_lang_name, s_dict, aligned, global_context_str,
+                        src_lang_name, dest_lang_name, s_dict, merged, global_context_str,
                         logger=logger
                     )
             else:

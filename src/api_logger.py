@@ -45,6 +45,7 @@ class APILogger:
             pass
 
     def log_block_end(self, block_id: int, status: str,
+                      input_tokens: int = 0,
                       output_tokens: int = 0,
                       attempt_count: int = 1,
                       error: str = None):
@@ -60,6 +61,7 @@ class APILogger:
                 block["status"]        = status
                 block["duration_sec"]  = round(
                     time.time() - block["_started_ts"], 2)
+                block["input_tokens"]  = input_tokens
                 block["output_tokens"] = output_tokens
                 block["attempt_count"] = attempt_count
                 block["error"]         = error
