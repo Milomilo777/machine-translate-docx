@@ -42,7 +42,7 @@ def call_block_with_retry(block_id, block_lines, func, *args, logger=None, **kwa
 
     for attempt in range(MAX_RETRIES + 1):
         try:
-            result = func(*args, **kwargs)
+            result = func(*args, logger=logger, **kwargs)
 
             if is_valid_json_response(result):
                 if logger:
@@ -5484,7 +5484,7 @@ def read_and_parse_docx_document():
                             from_text_is_end_of_line_table[i - 1] = 1
 
                     from_text_table[i] = cellvalue
-                elif col_no == 3 and action in ["polish", "align", "double"]:
+                elif col_no == 3 and action in ["polish", "align", "double", "align_double"]:
                     try:
                         existing_target_table[i] = cell.text.replace("\n", " ").replace("\r", " ").strip()
                     except:
@@ -7265,7 +7265,7 @@ def save_docx_file():
             word_file_to_translate_save_as_path = re.sub("(?i).docx$", f"_{lang_alpha3b_code}.docx", word_file_to_translate)
             print(f"\nAdding file name suffix _{lang_alpha3b_code}.")
 
-    if action in ["polish", "align", "double"]:
+    if action in ["polish", "align", "double", "align_double"]:
         word_file_to_translate_save_as_path = word_file_to_translate_save_as_path.replace(".docx", f"_AI_{action.title()}.docx")
 
     local_time_offset()
@@ -7401,7 +7401,7 @@ def process_ai_action():
     if args.aimodel:
         model_name = args.aimodel
     else:
-        if action in ["align", "double"]:
+        if action in ["align", "double", "align_double"]:
             model_name = "gpt-5-mini"
         elif action == "polish":
             model_name = "gpt-4o"
@@ -7501,11 +7501,13 @@ def process_ai_action():
         start_idx, end_idx, s_dict, t_dict = task_data
         print(f"Processing semantic block lines {start_idx} to {end_idx-1}...")
         if action == "polish":
-            res_dict = call_block_with_retry(f"{start_idx}-{end_idx-1}", s_dict, oai_translator.polish_text, src_lang_name, dest_lang_name, s_dict, t_dict, global_context_str, logger=logger, block_id=f"{start_idx}-{end_idx-1}")
+            res_dict = call_block_with_retry(f"{start_idx}-{end_idx-1}", s_dict, oai_translator.polish_text, src_lang_name, dest_lang_name, s_dict, t_dict, global_context_str, logger=logger, blockid=f"{start_idx}-{end_idx-1}")
         elif action == "align":
-            res_dict = call_block_with_retry(f"{start_idx}-{end_idx-1}", s_dict, oai_translator.align_text, src_lang_name, dest_lang_name, s_dict, t_dict, global_context_str, logger=logger, block_id=f"{start_idx}-{end_idx-1}")
+            res_dict = call_block_with_retry(f"{start_idx}-{end_idx-1}", s_dict, oai_translator.align_text, src_lang_name, dest_lang_name, s_dict, t_dict, global_context_str, logger=logger, blockid=f"{start_idx}-{end_idx-1}")
         elif action == "double":
-            res_dict = call_block_with_retry(f"{start_idx}-{end_idx-1}", s_dict, oai_translator.double_text, src_lang_name, dest_lang_name, s_dict, t_dict, global_context_str, logger=logger, block_id=f"{start_idx}-{end_idx-1}")
+            res_dict = call_block_with_retry(f"{start_idx}-{end_idx-1}", s_dict, oai_translator.double_text, src_lang_name, dest_lang_name, s_dict, t_dict, global_context_str, logger=logger, blockid=f"{start_idx}-{end_idx-1}")
+        elif action == 'align_double':
+            res_dict = call_block_with_retry(f"{start_idx}-{end_idx-1}", s_dict, oai_translator.align_double_text, src_lang_name, dest_lang_name, s_dict, t_dict, global_context_str, logger=logger, blockid=f"{start_idx}-{end_idx-1}")
         else:
             res_dict = {}
         if res_dict is None:
@@ -7559,7 +7561,7 @@ def main() -> int:
         #if not logged_into_perplexity:
         #    print("Failed to login into perplexity")
 
-    if action in ['polish', 'align', 'double']:
+    if action in ['polish', 'align', 'double', 'align_double']:
         process_ai_action()
         translation_succeded = True
     else:

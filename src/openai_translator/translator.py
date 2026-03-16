@@ -445,6 +445,57 @@ class OpenAITranslator:
             print(f"[Error] Align failed: {e}")
             return target_dict
 
+
+    def align_double_text(self, srclangname, destlangname, sourcedict, targetdict,
+                          globalcontext, logger: 'APILogger' = None, blockid=None):
+        promptcontent = self._get_prompt(
+            'prompt_align_double.txt',
+            'PLACEHOLDER: prompt_align_double.txt not found.'
+        )
+        if logger and blockid:
+            try:
+                linenums = [int(k.lstrip('L')) for k in sourcedict.keys()]
+                logger.log_block_start(blockid, min(linenums), max(linenums), 0)
+            except:
+                logger.log_block_start(blockid, 0, 0, 0)
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": promptcontent},
+                    {"role": "user",   "content": json.dumps({
+                        "source_texts": sourcedict,
+                        "target_texts": targetdict
+                    }, ensure_ascii=False)}
+                ],
+                response_format={"type": "json_object"}
+            )
+            try:
+                raw = json.loads(response.choices[0].message.content)
+                if not isinstance(raw, dict) or not raw:
+                    print("AlignDouble Warning: empty or non-dict result, using fallback.")
+                    return targetdict
+                for k in list(raw.keys()):
+                    if k.startswith('_'):
+                        raw.pop(k)
+                for key in sourcedict:
+                    if key not in raw:
+                        print(f"AlignDouble Warning: missing key {key}, restored from target.")
+                        raw[key] = targetdict.get(key, '')
+                if len(raw) != len(sourcedict):
+                    print(f"AlignDouble Key count mismatch: "
+                          f"expected {len(sourcedict)}, got {len(raw)}. Filling from target.")
+                    for key in sourcedict:
+                        if key not in raw:
+                            raw[key] = targetdict.get(key, '')
+                return raw
+            except json.JSONDecodeError as jsonerr:
+                print(f"Error AlignDouble failed due to JSON decoding error: {jsonerr}")
+                return targetdict
+        except Exception as e:
+            print(f"Error AlignDouble failed: {e}")
+            return targetdict
+
     @staticmethod
     def repair_lines(source_lines, output_lines, context="", fallback=None):
         """
