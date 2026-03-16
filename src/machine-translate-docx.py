@@ -5570,7 +5570,7 @@ def read_and_parse_docx_document():
                         existing_target_table[i] = ''
                 col_no = col_no + 1
             
-            if not splitonly and i > 1 and action not in ['polish', 'align']:
+            if not splitonly and i > 1 and action not in ['polish', 'align', 'double', 'align_double']:
                 prepare_and_clear_cell_for_writing (i, '')
             from_text_is_read[i] = 1
         except Exception:
@@ -7743,7 +7743,7 @@ def main() -> int:
         create_webdriver()
 
     
-    if action not in ['polish', 'align']:
+    if action not in ['polish', 'align', 'double', 'align_double']:
         get_translation_and_replace_after()
 
     minimize_browser()
@@ -7751,7 +7751,7 @@ def main() -> int:
     #input("before create_translation_split_prompts")
     #create_translation_split_prompts()
     #input("after create_translation_split_prompts")
-    if action not in ['polish', 'align']:
+    if action not in ['polish', 'align', 'double', 'align_double']:
         document_split_phrases()
 
     write_destination_language_in_docx_cell()
@@ -7763,7 +7763,7 @@ def main() -> int:
 
     elapsed_time = end_time - start_time
 
-    if action not in ["polish", "align"]:
+    if action not in ["polish", "align", "double", "align_double"]:
         run_statistics()
     save_docx_file()
     
@@ -7786,7 +7786,7 @@ def main() -> int:
     print("\nSaved file name: %s" % (word_file_to_translate_save_as_path))
     
     
-    if action not in ["polish", "align"]:
+    if action not in ["polish", "align", "double", "align_double"]:
         get_robot_usage_comment()
 
     if translation_engine in ['perplexity', 'comet']:
@@ -7801,7 +7801,8 @@ def main() -> int:
         if driver is not None:
             driver.close()
         driver_after_close_time = datetime.datetime.now()
-        driver.quit()
+        if driver is not None:
+            driver.quit()
         
         driver_after_quit_time = datetime.datetime.now()
 
