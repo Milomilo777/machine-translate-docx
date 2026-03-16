@@ -1139,7 +1139,7 @@ eol_array = ['\\. {0,}$', '\\! {0,}$', '\\? {0,}$',  "[\\.!\\?'] ?[\"”'\\)] {0
     '﹖ {0,}$', #SMALL QUESTION MARK	U+FE56	SMALL QUESTION MARK	
     '？ {0,}$', #FULLWIDTH QUESTION MARK	U+FF1F	FULLWIDTH QUESTION MARK	
 ]
-eol_conditional_array = ['" {0,}$', '” {0,}$', '\\)']
+eol_conditional_array = [r'" {0,}$', r'” {0,}$', r'\)']
 bol_array = ['^[A-Z]']
 
 html_file_path = ''
