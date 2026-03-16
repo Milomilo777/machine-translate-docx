@@ -5198,8 +5198,8 @@ def generate_tmx_file():
             phrase_separator_removed_str = ''
 
             p_remove_separator = re.compile(line_separator_regex_str)
-            p_remove_double_spaces = re.compile(' +')
-            p_remove_parenthesis_spaces = re.compile('\( +')
+            p_remove_double_spaces = re.compile(r' +')
+            p_remove_parenthesis_spaces = re.compile(r'\( +')
 
             item = from_text_by_phrase_table[i]
             item_escaped = from_text_by_phrase_table[i].replace("&", "&amp;")
