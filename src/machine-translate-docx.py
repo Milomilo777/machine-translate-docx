@@ -7322,7 +7322,19 @@ def open_app_docx_file():
         print("Warning, unable to open file %s." % (word_file_to_translate_save_as_path))
 def save_docx_file():
     global docxdoc, word_file_to_translate, word_file_to_translate_save_as_path
-    
+    global _ai_output_path
+
+    # If an AI worker produced an immediate output path, save that file right away
+    if _ai_output_path and action in ["polish", "align", "double", "align_double"]:
+        word_file_to_translate_save_as_path = _ai_output_path
+        try:
+            docxdoc.save(word_file_to_translate_save_as_path)
+            print("AI action file saved")
+        except Exception as e:
+            print(f"Error saving AI action file: {e}")
+        _ai_output_path = None
+        return
+
     lang_name = ""
     lang_code = dest_lang
     
@@ -7478,6 +7490,7 @@ def process_ai_action():
     global translation_result_phrase_array, translation_result_using_separator, split_translation
     global from_text_table, existing_target_table, action, word_file_to_translate
     global src_lang_name, dest_lang_name, str_needs_update
+    global _ai_output_path
 
     overall_start_time = time.time()
 
@@ -7506,6 +7519,7 @@ def process_ai_action():
     from api_logger import APILogger
     global logger
     output_file_path = word_file_to_translate.replace('.docx', f'_AI_{action.title()}.docx')
+    _ai_output_path = output_file_path
     logger = APILogger(
         doc_name       = os.path.basename(word_file_to_translate),
         action         = action,
