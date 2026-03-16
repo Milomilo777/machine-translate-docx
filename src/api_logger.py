@@ -63,7 +63,55 @@ class APILogger:
                 block["output_tokens"] = output_tokens
                 block["attempt_count"] = attempt_count
                 block["error"]         = error
-                del block["_started_ts"]   # remove internal field
+
+                # Extract start/end lines if present (stored as "start-end")
+                start_line = None
+                end_line = None
+                lines_str = block.get("lines", "")
+                try:
+                    if isinstance(lines_str, str) and "-" in lines_str:
+                        parts = lines_str.split("-", 1)
+                        start_line = int(parts[0]) if parts[0].isdigit() else None
+                        end_line = int(parts[1]) if parts[1].isdigit() else None
+                except Exception:
+                    start_line = None
+                    end_line = None
+
+                # remove internal field if present
+                try:
+                    del block["_started_ts"]
+                except Exception:
+                    pass
+
+                # JSON fallback: always attempt to write a per-block summary to ./logs/
+                # Do this for successful blocks; wrap in try/except so it never crashes.
+                try:
+                    if status == "SUCCESS":
+                        payload = {
+                            "doc_name": self.meta.get("doc_name"),
+                            "action": self.meta.get("action"),
+                            "model": self.meta.get("model"),
+                            "block_id": block_id,
+                            "start_line": start_line,
+                            "end_line": end_line,
+                            "input_tokens": block.get("input_tokens", 0),
+                            "output_tokens": block.get("output_tokens", 0),
+                            # cost may not be available in this logger; include if present, else None
+                            "cost_usd": self.meta.get("total_cost_usd", None)
+                        }
+                        base_dir = os.path.dirname(os.path.abspath(__file__))
+                        logs_dir = os.path.join(base_dir, "logs")
+                        os.makedirs(logs_dir, exist_ok=True)
+                        ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+                        doc = (self.meta.get("doc_name") or "unknown").replace(" ", "_")
+                        act = (self.meta.get("action") or "unknown").replace(" ", "_")
+                        filename = f"{doc}_{act}_{block_id}_{ts}-SUCCESS.json"
+                        file_path = os.path.join(logs_dir, filename)
+                        with open(file_path, "w", encoding="utf-8") as fh:
+                            json.dump(payload, fh, ensure_ascii=False, indent=2)
+                except Exception:
+                    # Never allow logging fallback to raise
+                    pass
         except Exception:
             pass
 
