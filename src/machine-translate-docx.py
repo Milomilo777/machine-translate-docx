@@ -18,18 +18,19 @@ import io
 UNWANTED_FLAGS = {"-B", "-S", "-E", "-s", "-c"}
 
 if UNWANTED_FLAGS.issubset(set(sys.argv[1:])):
-    # Optional extra safety: ensure there's something after -c (the inline code)
     try:
         c_index = sys.argv.index("-c")
         if c_index + 1 < len(sys.argv):
-            # There *is* an argument after -c; likely the resource_tracker helper
-            sys.exit(0)
-        # If -c is the last token (rare/invalid), still exit if you want:
-        # sys.exit(0)
-    except ValueError:
-        # -c not found (shouldn't happen when issubset passed), but just in case:
-        sys.exit(0)
-    
+            pass  # argument after -c exists (resource_tracker helper)
+    except (ValueError, IndexError):
+        pass
+    try:
+        if 'logger' in globals() and logger:
+            logger.save()
+    except Exception:
+        pass
+    sys.exit(0)
+
 # For bidirectional text display right to left and left to right
 from bidi.algorithm import get_display
 
@@ -140,7 +141,6 @@ from timeit import default_timer as timer
 import re
 import inspect
 
-from xlsx_translation_memory import xlsx_translation_memory
 
 import html
 
@@ -169,6 +169,33 @@ import signal
 import atexit
 
 import random
+
+def get_max_workers(total_blocks):
+    if total_blocks <= 6:    return total_blocks
+    elif total_blocks <= 12: return 5
+    elif total_blocks <= 20: return 4
+    else:                    return 3
+
+def call_with_retry(func, *args, max_retries=3,
+                    label="block", **kwargs):
+    import random
+    import time
+    for attempt in range(max_retries):
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            err = str(e)
+            is_last = attempt == max_retries - 1
+            if is_last:
+                print(f"[AI LAB] {label} failed after "
+                      f"{max_retries} attempts: {err[:80]}")
+                return None
+            wait = (2 ** attempt) + random.uniform(0, 1)
+            reason = ("rate-limit" if "429" in err
+                      else "error")
+            print(f"[AI LAB] {label} retry {attempt+1}"
+                  f" ({reason}) in {wait:.1f}s")
+            time.sleep(wait)
 
 # Track the child processes
 def kill_child_process():
@@ -1249,7 +1276,7 @@ if engine_method == 'webservice':
     showbrowser = False
 
 if translation_engine == 'chatgpt' and engine_method == 'api':
-    from openai_translator import OpenAITranslator
+    from openai_translator.translator import OpenAITranslator, find_paragraph_boundary
     chatgpt_max_char_bloc_size_key = ['chatgpt', 'api','maximum_character_block']
 else:
     chatgpt_max_char_bloc_size_key = ['chatgpt', 'no_account','maximum_character_block']
@@ -3053,7 +3080,7 @@ def selenium_chrome_deepl_translate(to_translate, retry_count):
                     WebDriverWait(driver, 15).until(lambda driver: driver.execute_script('return document.readyState') == 'complete')
                 except:
                     pass
-                
+
                 # Make sure the target language matches with the target language code or at least the target language name
                 try:
                     ensure_target_language(driver, dest_lang=dest_lang, dest_lang_name=dest_lang_name)
@@ -4623,13 +4650,14 @@ def selenium_chrome_machine_translate(to_translate, index):
     
 def initialize_translation_memory_xlsx():
     global xtm
-    # If --xlsxreplacefile was provided in the command line
+    if action in ['polish', 'align', 'double', 'align_double']:
+        xtm = None
+        return
+    from xlsx_translation_memory import xlsx_translation_memory
     if xlsxreplacefile is not None:
-        print("xlsxreplacefile: %s" % (xlsxreplacefile))
-        xtm = xlsx_translation_memory.xlsx_translation_memory(xlsxreplacefile)
-        print("")
+        xtm = xlsx_translation_memory(xlsxreplacefile)
     else:
-        xtm = xlsx_translation_memory.xlsx_translation_memory(None)
+        xtm = xlsx_translation_memory(None)
 
 
 def is_end_of_line(line):

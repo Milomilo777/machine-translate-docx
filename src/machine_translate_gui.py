@@ -1037,6 +1037,17 @@ class MachineTranslationApp:
         return command
 
     def translate(self):
+        from check_chrome import check_chrome
+        engine_val = self.engine.get()
+        if engine_val != "chatgpt-api":
+            if not check_chrome():
+                messagebox.showerror(
+                    "Chrome Not Found",
+                    "Google Chrome is required for this engine.\n"
+                    "Please install Chrome and try again.\n\n"
+                    "Download: https://www.google.com/chrome/"
+                )
+                return
         
         command = self.make_translate_command(for_service_template=False)
         
