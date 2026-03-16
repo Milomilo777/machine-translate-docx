@@ -13,6 +13,7 @@ class APILogger:
             "engine":         engine,
             "model":          model,
             "prompt_version": prompt_version,
+            "output_path":    output_path,
             "api_key_last4":  "",
             "started_at":     datetime.utcnow().isoformat() + "Z",
             "ended_at":       None,
@@ -101,8 +102,8 @@ class APILogger:
                             # cost may not be available in this logger; include if present, else None
                             "cost_usd": self.meta.get("total_cost_usd", None)
                         }
-                        base_dir = os.path.dirname(os.path.abspath(__file__))
-                        logs_dir = os.path.join(base_dir, "logs")
+                        _out = self.meta.get("output_path") or __file__
+                        logs_dir = os.path.join(os.path.dirname(os.path.abspath(_out)), "logs")
                         os.makedirs(logs_dir, exist_ok=True)
                         ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
                         doc = (self.meta.get("doc_name") or "unknown").replace(" ", "_")

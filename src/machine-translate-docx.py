@@ -7312,7 +7312,7 @@ def open_app_docx_file():
     
     try:
         if platform.system() == 'Windows':
-            subprocess.Popen(["start", "", word_file_to_translate_save_as_path], shell=True)
+            subprocess.Popen(['explorer', '/select,', os.path.abspath(word_file_to_translate_save_as_path)])
         elif platform.system() == "Darwin":  # macOS
             subprocess.Popen(["open", word_file_to_translate_save_as_path])
         elif platform.system() == "Linux":  # Linux
@@ -7521,7 +7521,8 @@ def process_ai_action():
 
     from api_logger import APILogger
     global logger
-    base_ai_input_path = re.sub(r'_AI_[A-Za-z_]+', '', word_file_to_translate, flags=re.IGNORECASE)
+    _ai_idx = word_file_to_translate.upper().rfind('_AI_')
+    base_ai_input_path = (word_file_to_translate[:_ai_idx] + '.docx') if _ai_idx > 0 else word_file_to_translate
     output_file_path = base_ai_input_path.replace('.docx', f'_AI_{action.title()}.docx')
     _ai_output_path = output_file_path
     logger = APILogger(
@@ -7532,6 +7533,9 @@ def process_ai_action():
         prompt_version = PROMPT_VERSION,
         output_path    = output_file_path
     )
+    # Persist output_path into logger metadata so fallback per-block JSON logs
+    # will be written next to the output document (not the source).
+    logger.meta["output_path"] = output_file_path
     logger.set_api_key(os.environ.get("OPENAI_API_KEY", ""))
 
     # 1. Build Global Context (Full English Source for Model Comprehension)
@@ -7794,7 +7798,8 @@ def main() -> int:
         print("\nClosing chrome browser...")
         
         driver_before_close_time = datetime.datetime.now()
-        driver.close()
+        if driver is not None:
+            driver.close()
         driver_after_close_time = datetime.datetime.now()
         driver.quit()
         
