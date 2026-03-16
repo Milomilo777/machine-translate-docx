@@ -23,6 +23,7 @@ if openai_translator_dir not in sys.path: sys.path.insert(0, openai_translator_d
 import io
 
 PROMPT_VERSION = "v3.2"
+_ai_output_path = None
 
 import time
 import random
