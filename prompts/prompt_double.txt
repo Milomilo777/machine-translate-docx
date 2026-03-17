@@ -1,0 +1,4 @@
+PLACEHOLDER — Real prompt will be provided by architect.
+Do NOT use in production.
+Task: Merge adjacent Persian lines using bridge words.
+Return valid JSON with same keys as source_texts.
