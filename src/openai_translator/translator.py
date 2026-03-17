@@ -472,11 +472,23 @@ class OpenAITranslator:
             )
             try:
                 raw = json.loads(response.choices[0].message.content)
-                print(f"[AlignDouble KEY DEBUG] raw keys: {list(raw.keys())[:5]}")
-                raw = raw["output_texts"]
-                print(f"[AlignDouble EXTRACT] output_texts keys: {list(raw.keys())[:5]}")
+                if isinstance(raw, dict):
+                    print(f"[AlignDouble KEY DEBUG] raw keys: {list(raw.keys())[:5]}")
+                    if "output_texts" in raw and isinstance(raw["output_texts"], dict):
+                        raw = raw["output_texts"]
+                        print(f"[AlignDouble EXTRACT] output_texts keys: {list(raw.keys())[:5]}")
                 if not isinstance(raw, dict) or not raw:
                     print("AlignDouble Warning: empty or non-dict result, using fallback.")
+                    if logger and blockid:
+                        try:
+                            logger.log_block_end(
+                                blockid, "FAILED",
+                                attempt_count=1,
+                                input_tokens=getattr(response.usage, "prompt_tokens", 0) if hasattr(response, "usage") else 0,
+                                output_tokens=getattr(response.usage, "completion_tokens", 0) if hasattr(response, "usage") else 0
+                            )
+                        except Exception:
+                            pass
                     return targetdict
                 for k in list(raw.keys()):
                     if k.startswith('_'):
@@ -504,9 +516,29 @@ class OpenAITranslator:
                 return raw
             except json.JSONDecodeError as jsonerr:
                 print(f"Error AlignDouble failed due to JSON decoding error: {jsonerr}")
+                if logger and blockid:
+                    try:
+                        logger.log_block_end(
+                            blockid, "FAILED",
+                            attempt_count=1,
+                            input_tokens=getattr(response.usage, "prompt_tokens", 0) if 'response' in locals() and hasattr(response, "usage") else 0,
+                            output_tokens=getattr(response.usage, "completion_tokens", 0) if 'response' in locals() and hasattr(response, "usage") else 0
+                        )
+                    except Exception:
+                        pass
                 return targetdict
         except Exception as e:
             print(f"Error AlignDouble failed: {e}")
+            if logger and blockid:
+                try:
+                    logger.log_block_end(
+                        blockid, "FAILED",
+                        attempt_count=1,
+                        input_tokens=0,
+                        output_tokens=0
+                    )
+                except Exception:
+                    pass
             return targetdict
 
     @staticmethod

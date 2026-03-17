@@ -6526,6 +6526,7 @@ def local_time_offset(t=None):
 
 
 def run_statistics():
+    return # Disabled background monitoring/statistics
     global use_api
     global splitonly, driver
     global engine_method, end_time, elapsed_time, json_configuration_array, client_ip
@@ -6765,6 +6766,7 @@ def browser_fill_form_field_value(field_css_id, field_value):
 
 
 def get_robot_usage_comment():
+    return # Disabled background monitoring/usage metrics
     global use_api
     global splitonly, driver
     global engine_method, end_time, elapsed_time, json_configuration_array, str_needs_update
