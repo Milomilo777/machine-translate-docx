@@ -1,8 +1,0 @@
-selenium
-undetected-chromedriver
-requests
-python-docx
-openpyxl
-lxml
-chardet
-bidi
