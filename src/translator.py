@@ -7,6 +7,7 @@ import tiktoken
 import mysql.connector
 from openai import OpenAI
 import re
+from diagnostics.bundle_manager import DiagnosticBundleManager
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from api_logger import APILogger
@@ -27,6 +28,7 @@ class OpenAITranslator:
         if not self.api_key:
             raise ValueError("OPENAI_API_KEY not set in environment")
         self.client = OpenAI(api_key=self.api_key)
+        self.bundle_manager = DiagnosticBundleManager()
 
         # DB config from environment
         self.db_config = {
@@ -81,7 +83,7 @@ class OpenAITranslator:
         usage = response_json.get("usage", {})
         prompt_tokens = usage.get("prompt_tokens", 0)
         completion_tokens = usage.get("completion_tokens", 0)
-        
+
         PRICES = {
             "gpt-5-pro": {"input": 15, "output": 120},
             "gpt-5.1": {"input": 1.25, "output": 10.00},  # <-- new line for gpt-5.1
@@ -94,10 +96,10 @@ class OpenAITranslator:
             "gpt-4o": {"input": 2.50, "output": 10.00},
             "gpt-4o-mini": {"input": 0.15, "output": 0.60}
         }
-        
+
         # Find matching model price tier (partial match supported)
         price = next((v for k, v in PRICES.items() if k in model), None)
-        
+
         if price is None:
             print(f"[WARN] No known pricing for model '{model}'. Cost will be set to 0.")
             return {
@@ -109,13 +111,13 @@ class OpenAITranslator:
                 "output_cost_usd": 0.0,
                 "total_cost_usd": 0.0
             }
-        
+
         input_cost = (prompt_tokens / 1_000_000) * price["input"]
         output_cost = (completion_tokens / 1_000_000) * price["output"]
         total_cost = input_cost + output_cost
-        
+
         print("Total cost in USD:", round(total_cost, 6))
-        
+
         return {
             "model": model,
             "prompt_tokens": prompt_tokens,
@@ -337,6 +339,7 @@ class OpenAITranslator:
             return res_dict
         except Exception as e:
             print(f"[Error] Polish failed: {e}")
+            self.bundle_manager.create_bundle(file_name=self.filename, stage="polish", error=e, payload={"source_dict": source_dict, "target_dict": target_dict}, state={"doc_id": self.doc_id}, trace_id=self.doc_id)
             return target_dict
 
     def align_text(self, src_lang_name, dest_lang_name, source_dict, target_dict, global_context="", logger: "APILogger | None" = None, block_id=None):
@@ -372,24 +375,34 @@ class OpenAITranslator:
                     if k.startswith('_'):
                         raw.pop(k)
                 for key in source_dict:
-                    if key not in raw:
-                        print(f"[Align] Warning: missing key '{key}', restored from target.")
-                        raw[key] = target_dict.get(key, '')
+                    if key not in raw or not str(raw.get(key, "")).strip():
+                        original = target_dict.get(key, "")
+                        raw[key] = original if str(original).strip() else ""
                 if len(raw) != len(source_dict):
                     print(f"⚠️ [Align] Key count mismatch after repair "
                           f"(expected {len(source_dict)}, got {len(raw)}). "
                           f"Filling remaining from target.")
                     for key in source_dict:
-                        if key not in raw:
-                            raw[key] = target_dict.get(key, '')
+                        if key not in raw or not str(raw.get(key, "")).strip():
+                            original = target_dict.get(key, "")
+                            raw[key] = original if str(original).strip() else ""
+                if logger and block_id:
+                    logger.log_block_end(
+                        block_id, "SUCCESS",
+                        attempt_count=1,
+                        input_tokens=getattr(response.usage, "prompt_tokens", 0),
+                        output_tokens=getattr(response.usage, "completion_tokens", 0)
+                    )
                 return raw
             except json.JSONDecodeError as json_err:
                 print(f"[Error] Align failed due to JSON decoding error: {json_err}")
                 print(f"[Fallback] Executing safe KEEP_SEPARATE bypass.")
+                self.bundle_manager.create_bundle(file_name=self.filename, stage="align_json", error=json_err, payload={"source_dict": source_dict, "target_dict": target_dict}, state={"doc_id": self.doc_id}, trace_id=self.doc_id)
                 return target_dict
 
         except Exception as e:
             print(f"[Error] Align failed: {e}")
+            self.bundle_manager.create_bundle(file_name=self.filename, stage="align", error=e, payload={"source_dict": source_dict, "target_dict": target_dict}, state={"doc_id": self.doc_id}, trace_id=self.doc_id)
             return target_dict
 
     def double_text(self, src_lang_name, dest_lang_name, source_dict, target_dict, global_context="", logger: "APILogger | None" = None, block_id=None):
@@ -425,38 +438,35 @@ class OpenAITranslator:
                     if k.startswith('_'):
                         raw.pop(k)
                 for key in source_dict:
-                    if key not in raw:
-                        print(f"[Align] Warning: missing key '{key}', restored from target.")
-                        raw[key] = target_dict.get(key, '')
+                    if key not in raw or not str(raw.get(key, "")).strip():
+                        original = target_dict.get(key, "")
+                        raw[key] = original if str(original).strip() else ""
                 if len(raw) != len(source_dict):
                     print(f"⚠️ [Align] Key count mismatch after repair "
                           f"(expected {len(source_dict)}, got {len(raw)}). "
                           f"Filling remaining from target.")
                     for key in source_dict:
-                        if key not in raw:
-                            raw[key] = target_dict.get(key, '')
+                        if key not in raw or not str(raw.get(key, "")).strip():
+                            original = target_dict.get(key, "")
+                            raw[key] = original if str(original).strip() else ""
+                if logger and block_id:
+                    logger.log_block_end(
+                        block_id, "SUCCESS",
+                        attempt_count=1,
+                        input_tokens=getattr(response.usage, "prompt_tokens", 0),
+                        output_tokens=getattr(response.usage, "completion_tokens", 0)
+                    )
                 return raw
             except json.JSONDecodeError as json_err:
-                print(f"[Error] Align failed due to JSON decoding error: {json_err}")
+                print(f"[Error] Double failed due to JSON decoding error: {json_err}")
                 print(f"[Fallback] Executing safe KEEP_SEPARATE bypass.")
+                self.bundle_manager.create_bundle(file_name=self.filename, stage="double_json", error=json_err, payload={"source_dict": source_dict, "target_dict": target_dict}, state={"doc_id": self.doc_id}, trace_id=self.doc_id)
                 return target_dict
 
         except Exception as e:
-            print(f"[Error] Align failed: {e}")
+            print(f"[Error] Double failed: {e}")
+            self.bundle_manager.create_bundle(file_name=self.filename, stage="double", error=e, payload={"source_dict": source_dict, "target_dict": target_dict}, state={"doc_id": self.doc_id}, trace_id=self.doc_id)
             return target_dict
-
-
-    def align_double_text(self, src_lang_name, dest_lang_name, source_dict,
-                          target_dict, global_context, logger=None, block_id=None):
-        """Run align then double on the aligned result (align_double action)."""
-        aligned = self.align_text(
-            src_lang_name, dest_lang_name, source_dict, target_dict,
-            global_context, logger=logger, block_id=block_id
-        )
-        return self.double_text(
-            src_lang_name, dest_lang_name, source_dict, aligned,
-            global_context, logger=logger, block_id=block_id
-        )
 
     @staticmethod
     def repair_lines(source_lines, output_lines, context="", fallback=None):
@@ -500,22 +510,27 @@ class OpenAITranslator:
         print(f"Estimated number of input tokens: {input_tokens}")
 
         start_time = time.time()
-        if "pro" in self.model:
-            response = self.client.responses.create(
-                model=self.model,
-                input=[
-                    {"role": "system", "content": "You are a professional translator."},
-                    {"role": "user", "content": prompt}
-                ]
-            )
-        else:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": prompt},
-                    {"role": "user",   "content": text_to_translate}
-                ]
-            )
+        try:
+            if "pro" in self.model:
+                response = self.client.responses.create(
+                    model=self.model,
+                    input=[
+                        {"role": "system", "content": "You are a professional translator."},
+                        {"role": "user", "content": prompt}
+                    ]
+                )
+            else:
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[
+                        {"role": "system", "content": prompt},
+                        {"role": "user",   "content": text_to_translate}
+                    ]
+                )
+        except Exception as e:
+            print(f"[Error] Translate API failed: {e}")
+            self.bundle_manager.create_bundle(file_name=self.filename, stage="translate", error=e, payload={"text_to_translate": text_to_translate}, state={"doc_id": self.doc_id}, trace_id=self.doc_id)
+            return None, text_to_translate
         elapsed_time = time.time() - start_time
         response_json = response.model_dump()
 
@@ -526,7 +541,7 @@ class OpenAITranslator:
         cost_info = self.calculate_openai_cost(response_json)
 
         translated_text = response.choices[0].message.content.strip()
-        
+
         # Remove duplicate new lines if any
         translated_text = re.sub(r'\n+', '\n', translated_text)
 
