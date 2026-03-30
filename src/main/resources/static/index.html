@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Machine Translator v2.0</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            min-height: 100vh;
+        }
+        .drag-over {
+            border-color: #3b82f6 !important;
+            background-color: rgba(59, 130, 246, 0.1) !important;
+        }
+        .spinner {
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: #3b82f6;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="flex items-center justify-center p-4">
+    <div class="w-full max-w-2xl">
+        <div class="bg-slate-800 rounded-2xl shadow-2xl p-8 border border-slate-700">
+            <!-- Header -->
+            <div class="text-center mb-8">
+                <h1 class="text-3xl font-bold text-white mb-2">Machine Translator v2.0</h1>
+                <p class="text-slate-400">Upload and translate your documents with ease</p>
+            </div>
+
+            <!-- Form -->
+            <form id="translateForm" class="space-y-6">
+                <!-- Drag & Drop File Input -->
+                <div>
+                    <label class="block text-sm font-medium text-slate-300 mb-2">Document File</label>
+                    <div id="dropZone" class="border-2 border-dashed border-slate-600 rounded-lg p-8 text-center cursor-pointer hover:border-slate-500 transition-colors bg-slate-900">
+                        <svg class="mx-auto h-12 w-12 text-slate-500 mb-3" stroke="currentColor" fill="none" viewBox="0 0 48 48">
+                            <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                        <p class="text-slate-400 mb-1" id="fileName">Drag & drop your .docx file here</p>
+                        <p class="text-sm text-slate-500">or click to browse</p>
+                        <input type="file" id="fileInput" name="file" accept=".docx" class="hidden" required>
+                    </div>
+                </div>
+
+                <!-- Source Language -->
+                <div>
+                    <label for="sourceLang" class="block text-sm font-medium text-slate-300 mb-2">Source Language</label>
+                    <select id="sourceLang" name="source_lang" class="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition">
+                        <option value="en" selected>English</option>
+                    </select>
+                </div>
+
+                <!-- Destination Language -->
+                <div>
+                    <label for="destLang" class="block text-sm font-medium text-slate-300 mb-2">Destination Language</label>
+                    <select id="destLang" name="dest_lang" class="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition" required>
+                        <option value="">Select destination language</option>
+                        <option value="fa">Persian (Farsi)</option>
+                        <option value="en">English</option>
+                        <option value="fr">French</option>
+                        <option value="de">German</option>
+                        <option value="es">Spanish</option>
+                        <option value="it">Italian</option>
+                        <option value="ru">Russian</option>
+                        <option value="ar">Arabic</option>
+                        <option value="tr">Turkish</option>
+                        <option value="ja">Japanese</option>
+                        <option value="ko">Korean</option>
+                        <option value="zh-CN">Chinese (Simplified)</option>
+                        <option value="nl">Dutch</option>
+                        <option value="pt">Portuguese</option>
+                        <option value="sv">Swedish</option>
+                    </select>
+                </div>
+
+                <!-- Engine -->
+                <div>
+                    <label for="engine" class="block text-sm font-medium text-slate-300 mb-2">Translation Engine</label>
+                    <select id="engine" name="engine" class="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition" required>
+                        <option value="">Select engine</option>
+                        <option value="GOOGLE">Google</option>
+                        <option value="DEEPL">DeepL</option>
+                        <option value="PERPLEXITY">Perplexity</option>
+                        <option value="CHATGPT">ChatGPT (API)</option>
+                    </select>
+                </div>
+
+                <!-- Split Sentences Toggle -->
+                <div class="flex items-center justify-between p-4 bg-slate-900 rounded-lg border border-slate-700">
+                    <div>
+                        <label for="splitSentences" class="text-sm font-medium text-slate-300 cursor-pointer">Split Sentences</label>
+                        <p class="text-xs text-slate-500 mt-1">Process document sentence by sentence</p>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="splitSentences" name="split_sentences" class="sr-only peer" checked>
+                        <div class="w-11 h-6 bg-slate-700 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                    </label>
+                </div>
+
+                <!-- Submit Button -->
+                <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-4 px-6 rounded-lg transition-colors duration-200 shadow-lg hover:shadow-xl text-lg">
+                    Translate Document
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="fixed inset-0 bg-black bg-opacity-75 hidden items-center justify-center z-50">
+        <div class="text-center">
+            <div class="spinner mx-auto mb-4"></div>
+            <p class="text-white text-xl font-semibold">Processing...</p>
+            <p class="text-slate-400 mt-2">This may take a few minutes</p>
+        </div>
+    </div>
+
+    <script>
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const fileName = document.getElementById('fileName');
+        const form = document.getElementById('translateForm');
+        const loadingOverlay = document.getElementById('loadingOverlay');
+
+        // Drag and drop functionality
+        dropZone.addEventListener('click', () => fileInput.click());
+
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('drag-over');
+        });
+
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('drag-over');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('drag-over');
+
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                fileInput.files = files;
+                updateFileName(files[0].name);
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                updateFileName(e.target.files[0].name);
+            }
+        });
+
+        function updateFileName(name) {
+            fileName.textContent = name;
+            fileName.classList.add('text-blue-400', 'font-medium');
+        }
+
+        // Form submission
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            formData.append('sourceLang', document.getElementById('sourceLang').value);
+            formData.append('targetLang', document.getElementById('destLang').value);
+            formData.append('engine', document.getElementById('engine').value);
+            formData.append('split', document.getElementById('splitSentences').checked.toString());
+
+            // Show loading overlay
+            loadingOverlay.classList.remove('hidden');
+            loadingOverlay.classList.add('flex');
+
+            try {
+                const response = await fetch('/translate', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    // Get the blob from response
+                    const blob = await response.blob();
+
+                    // Create download link
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+
+                    // Try to get filename from Content-Disposition header
+                    const contentDisposition = response.headers.get('Content-Disposition');
+                    let filename = 'translated_document.docx';
+                    if (contentDisposition) {
+                        const filenameMatch = contentDisposition.match(/filename=\"?(.+)\"?/);
+                        if (filenameMatch) filename = filenameMatch[1];
+                    }
+
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    document.body.removeChild(a);
+                } else {
+                    const errorText = await response.text();
+                    alert(`Error: ${response.status} - ${errorText || 'Translation failed'}`);
+                }
+            } catch (error) {
+                alert(`Error: ${error.message}`);
+            } finally {
+                // Hide loading overlay
+                loadingOverlay.classList.add('hidden');
+                loadingOverlay.classList.remove('flex');
+            }
+        });
+    </script>
+</body>
+</html>

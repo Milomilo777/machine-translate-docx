@@ -1,4 +1,18 @@
 lib
 samples
 github-keys
-documentation
+documentationtarget/
+target/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Test fixtures (generated files, not committed)
+tests/fixtures/*.docx
+tests/fixtures/*.pdf
+
+# OS files
+.DS_Store
+Thumbs.db

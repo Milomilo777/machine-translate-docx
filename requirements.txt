@@ -6,3 +6,4 @@ openpyxl
 lxml
 chardet
 bidi
+python-dotenv
