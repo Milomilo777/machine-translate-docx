@@ -1,0 +1,5 @@
+python-docx
+tiktoken
+openai
+mysql-connector-python
+lxml
