@@ -52,7 +52,7 @@ def build_translation_prompt(source_lang, dest_lang, text):
     # ─────────────────────────────────────────────
     # Persian-specific rules
     # ─────────────────────────────────────────────
-    if dest_lang.lower() == "persian":
+    if dest_lang.lower() in ["persian", "fa"]:
         prompt = (
             f"SYSTEM IDENTITY & MISSION\n"
             f"[ROLE]: Elite_EN2FA_Translator&Architect + Senior_Persian_Editor (Supreme Master TV Standard)\n"
