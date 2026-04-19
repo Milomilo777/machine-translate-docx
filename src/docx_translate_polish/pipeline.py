@@ -6,8 +6,8 @@ from .core.logger import TranslationLogger
 from .docx_io.reader import DocxReader
 from .docx_io.writer import DocxWriter
 from .processing.noise_filter import NoiseFilter
-from .processing.chunker import Chunker
-from .translation.openai_client import OpenAITranslator
+from .translation.chunker import Chunker
+from .translation.openai_engine import OpenAITranslator
 from .translation.splitter import DocxLineSplitter
 
 class TranslationPipeline:

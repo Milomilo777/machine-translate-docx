@@ -27,6 +27,10 @@ MODELS = [
 REASONING_LEVELS = ["medium", "high", "xhigh"]
 
 class SMTVTranslatePolishApp(ctk.CTk):
+    """
+    Elite SMTV GUI for the Docx Translate + Polish + Split workflow.
+    Fully isolated from business logic.
+    """
     def __init__(self):
         super().__init__()
 
@@ -34,8 +38,9 @@ class SMTVTranslatePolishApp(ctk.CTk):
         self.settings_file = "translate_polish_settings.json"
         self.stop_event = threading.Event()
 
+        # Load languages from backend config
         self.languages_dict = google_translate_lang_codes
-        self.lang_names = sorted(list(self.languages_dict.values()))
+        self.lang_display_names = sorted(list(self.languages_dict.values()))
 
         self.setup_ui()
         self.load_all_data()
@@ -46,6 +51,7 @@ class SMTVTranslatePolishApp(ctk.CTk):
         ctk.set_appearance_mode("dark")
 
         self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(7, weight=1)
 
         # Row 0 — Title
         self.title_label = ctk.CTkLabel(self, text="SMTV · Translate + Polish + Split", font=ctk.CTkFont(size=22, weight="bold"))
@@ -63,7 +69,7 @@ class SMTVTranslatePolishApp(ctk.CTk):
         self.clear_file_btn = ctk.CTkButton(self.file_frame, text="✕", width=30, fg_color="#c0392b", hover_color="#e74c3c", command=lambda: self.file_entry.delete(0, 'end'))
         self.clear_file_btn.grid(row=1, column=2)
 
-        # Row 2 — Excel Dictionary
+        # Row 2 — Excel Dictionary (Optional)
         self.dict_frame = ctk.CTkFrame(self, fg_color="transparent")
         self.dict_frame.grid(row=2, column=0, padx=20, pady=5, sticky="ew")
         self.dict_frame.grid_columnconfigure(0, weight=1)
@@ -115,11 +121,11 @@ class SMTVTranslatePolishApp(ctk.CTk):
         self.lang_panel.grid_columnconfigure((1, 3), weight=1)
 
         ctk.CTkLabel(self.lang_panel, text="Source Language:").grid(row=0, column=0, padx=15, pady=15, sticky="w")
-        self.src_lang_cb = ctk.CTkComboBox(self.lang_panel, values=self.lang_names)
+        self.src_lang_cb = ctk.CTkComboBox(self.lang_panel, values=self.lang_display_names)
         self.src_lang_cb.grid(row=0, column=1, padx=(0, 15), pady=15, sticky="ew")
 
         ctk.CTkLabel(self.lang_panel, text="Destination Language:").grid(row=0, column=2, padx=15, pady=15, sticky="w")
-        self.dest_lang_cb = ctk.CTkComboBox(self.lang_panel, values=self.lang_names)
+        self.dest_lang_cb = ctk.CTkComboBox(self.lang_panel, values=self.lang_display_names)
         self.dest_lang_cb.grid(row=0, column=3, padx=(0, 15), pady=15, sticky="ew")
 
         # Row 5 — Action row
@@ -241,8 +247,10 @@ class SMTVTranslatePolishApp(ctk.CTk):
             "engine_tr": self.engine_tr_cb.get(),
             "splitting_mode": self.split_mode_cb.get()
         }
-        with open(self.state_file, "w") as f: json.dump(state, f)
-        with open(self.settings_file, "w") as f: json.dump(settings, f)
+        try:
+            with open(self.state_file, "w") as f: json.dump(state, f)
+            with open(self.settings_file, "w") as f: json.dump(settings, f)
+        except: pass
 
     def request_stop(self):
         self.stop_event.set()
@@ -254,7 +262,6 @@ class SMTVTranslatePolishApp(ctk.CTk):
         return "en"
 
     def parse_engine_selection(self, selection):
-        # "ChatGPT 5.4 [high]" -> model_id="gpt-5.4", reasoning="high"
         model_id = "gpt-5.4"
         reasoning = "medium"
         for m in MODELS:
