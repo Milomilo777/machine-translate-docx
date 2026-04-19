@@ -20,7 +20,7 @@ class TranslationPipeline:
         self.noise_filter = NoiseFilter()
         self.chunker = Chunker()
         self.translator = OpenAITranslator(model=self.config.default_model)
-        self.splitter = DocxLineSplitter()
+        self.splitter = DocxLineSplitter(model=self.config.default_model)
 
     def run(self, input_path: str, src_lang: str, dest_lang: str,
             output_path: Optional[str] = None, splitting_mode: str = "classic") -> str:
