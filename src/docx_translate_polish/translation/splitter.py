@@ -40,7 +40,7 @@ class DocxLineSplitter:
             f"6. Output requirements:\n"
             f"   - Use exactly {len(lines)} lines.\n"
             f"CRITICAL: You MUST output exactly {len(lines)} lines.\n\n"
-            f"{source_lang} source ({len(lines)} lines):\n"
+            f"{src_lang} source ({len(lines)} lines):\n"
             f"{numbered_text}\n\n"
             f"{dest_lang} translation:\n"
             f"{translation}\n"

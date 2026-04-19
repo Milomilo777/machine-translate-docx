@@ -15,6 +15,7 @@ class TranslationPipeline:
 
     def __init__(self, config: Optional[TranslationConfig] = None):
         self.config = config or TranslationConfig()
+        self._pipeline_logger = None  # will be created per run
         self.reader = DocxReader()
         self.noise_filter = NoiseFilter()
         self.chunker = Chunker()
@@ -31,23 +32,23 @@ class TranslationPipeline:
             stem, ext = os.path.splitext(input_path)
             output_path = f"{stem}_{dest_lang}{ext}"
 
-        logger = PipelineFileLogger(output_docx_path=str(output_path))
-        logger.set_meta(
+        self._pipeline_logger = PipelineFileLogger(output_docx_path=str(output_path))
+        self._pipeline_logger.set_meta(
             model=self.config.default_model,
             src_lang=src_lang,
             dest_lang=dest_lang,
             splitting_mode=splitting_mode,
             source_file=str(input_path),
         )
-        logger.log_event("INFO", "Pipeline started")
+        self._pipeline_logger.log_event("INFO", "Pipeline started")
 
-        logger.log_event("INFO", f"Starting pipeline: {input_path} -> {output_path}")
+        self._pipeline_logger.log_event("INFO", f"Starting pipeline: {input_path} -> {output_path}")
         self.translator.set_filename(os.path.basename(input_path))
 
         # Step 1: Load and Extract
         doc = self.reader.load(input_path)
         cells = self.reader.extract_cells()
-        logger.log_event("INFO", f"Extracted {len(cells)} cells from table.")
+        self._pipeline_logger.log_event("INFO", f"Extracted {len(cells)} cells from table.")
 
         # Step 2: Noise Filter & Skip Check
         processed_cells = []
@@ -63,11 +64,11 @@ class TranslationPipeline:
             })
 
             if is_gray:
-                logger.log_event("INFO", f"Skipping gray cell at row {cell_data['row_n']}")
+                self._pipeline_logger.log_event("INFO", f"Skipping gray cell at row {cell_data['row_n']}")
                 continue
 
             if cell_data['is_already_translated']:
-                logger.log_event("INFO", f"Skipping already translated cell at row {cell_data['row_n']}")
+                self._pipeline_logger.log_event("INFO", f"Skipping already translated cell at row {cell_data['row_n']}")
                 continue
 
             if not clean_text:
@@ -80,7 +81,7 @@ class TranslationPipeline:
         blocks = self.chunker.split_into_token_blocks(
             phrases, self.config.max_translation_block_size
         )
-        logger.log_event("INFO", f"Grouped into {len(phrases)} phrases and {len(blocks)} API blocks.")
+        self._pipeline_logger.log_event("INFO", f"Grouped into {len(phrases)} phrases and {len(blocks)} API blocks.")
 
         # Step 4, 5, 6: Translate, Split, and Write
         writer = DocxWriter(doc)
@@ -88,7 +89,7 @@ class TranslationPipeline:
         for block_idx, block in enumerate(blocks):
             block_lines = [p['text'] for p in block]
             translated_block = self.translator.translate_with_retry(
-                block_lines, src_lang, dest_lang, logger=logger, block_index=block_idx
+                block_lines, src_lang, dest_lang, logger=self._pipeline_logger, block_index=block_idx
             )
 
             translated_lines = translated_block.split("\n")
@@ -108,7 +109,7 @@ class TranslationPipeline:
                     src_lang=src_lang,
                     dest_lang=dest_lang,
                     source_text=phrase['text'],
-                    logger=logger,
+                    logger=self._pipeline_logger,
                     block_index=block_idx
                 )
 
@@ -117,7 +118,7 @@ class TranslationPipeline:
 
         # Step 7: Save
         writer.save(output_path)
-        logger.log_event("INFO", "Pipeline finished")
-        log_path = logger.save()
-        print(f"[LOG] Saved: {log_path}")
+        self._pipeline_logger.log_event("INFO", f"Pipeline finished. Output: {output_path}")
+        log_saved = self._pipeline_logger.save()
+        print(f"[LOG] Black-box log saved: {log_saved}")
         return output_path
