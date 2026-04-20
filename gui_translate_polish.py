@@ -187,7 +187,7 @@ class SMTVTranslatePolishApp(ctk.CTk):
     def copy_log(self):
         self.clipboard_clear()
         self.clipboard_append(self.log_text.get("1.0", "end"))
-        messagebox.showinfo("Clipboard", "Log copied to clipboard.")
+        self.log_message("✔ Log copied to clipboard.", "INFO")
 
     def browse_docx(self):
         path = filedialog.askopenfilename(filetypes=[("Word Documents", "*.docx")])
@@ -285,10 +285,17 @@ class SMTVTranslatePolishApp(ctk.CTk):
 
         threading.Thread(target=self.worker_thread, args=(file_path, model_id, reasoning, sm), daemon=True).start()
 
-    def worker_thread(self, file_path, model_id, reasoning, splitting_mode):
+    def worker_thread(self, file_path, model_id, reasoning_effort, splitting_mode):
         try:
             src_code = self.get_code(self.src_lang_cb.get())
             dest_code = self.get_code(self.dest_lang_cb.get())
+
+            api_key = os.environ.get("OPENAI_API_KEY", "")
+            if not api_key:
+                self.log_message("[ERROR] OPENAI_API_KEY is not set. Translation will fail.", "ERROR")
+            else:
+                masked = api_key[:8] + "..." + api_key[-4:]
+                self.log_message(f"API key loaded: {masked}", "INFO")
 
             chunk_enabled = self.chunk_var.get()
             try:
@@ -297,30 +304,36 @@ class SMTVTranslatePolishApp(ctk.CTk):
                 chunk_size = 100
 
             config = TranslationConfig(
+                openai_api_key=api_key,
                 default_model=model_id,
-                reasoning_effort=reasoning,
+                reasoning_effort=reasoning_effort,
                 chunk_enabled=chunk_enabled,
                 chunk_size=chunk_size
             )
 
             pipeline = TranslationPipeline(config=config)
 
+            self.log_message(
+                f"Engine: {model_id} | Reasoning: {reasoning_effort} | "
+                f"Split: {splitting_mode} | "
+                f"File: {os.path.basename(file_path)}"
+            )
+
             output_path = pipeline.run(
                 input_path=file_path,
                 src_lang=src_code,
                 dest_lang=dest_code,
                 splitting_mode=splitting_mode,
-                reasoning_effort=reasoning,
+                reasoning_effort=reasoning_effort,
                 progress_callback=lambda msg: self.log_message(msg)
             )
 
             self.after(0, lambda: self.prog_bar.set(1.0))
-            messagebox.showinfo("Success", f"Process complete!\nFile saved: {output_path}")
+            self.log_message(f"✔ Pipeline complete. Output saved to: {output_path}", "INFO")
 
         except Exception as e:
             tb = traceback.format_exc()
             self.log_message(f"CRITICAL ERROR: {str(e)}\n{tb}", "ERROR")
-            messagebox.showerror("Error", f"An unexpected error occurred: {str(e)}")
         finally:
             self.after(0, lambda: self.run_btn.configure(state="normal"))
 

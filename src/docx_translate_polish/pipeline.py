@@ -34,8 +34,10 @@ class TranslationPipeline:
         Returns: Path to the generated output file.
         """
         if not output_path:
+            from datetime import datetime
             stem, ext = os.path.splitext(input_path)
-            output_path = f"{stem}_PER{ext}"
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            output_path = f"{stem}_PER_{ts}{ext}"
 
         self._pipeline_logger = PipelineFileLogger(output_docx_path=str(output_path))
         self._pipeline_logger.set_meta(
@@ -116,7 +118,7 @@ class TranslationPipeline:
             )
 
             if not translated_block:
-                log_info(f"Translation failed for block {block_idx+1}")
+                log_info(f"[ERROR] Translation failed for block {block_idx+1}. Check log for details.")
                 continue
 
             translated_lines = translated_block.split("\n")

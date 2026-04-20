@@ -181,6 +181,8 @@ class OpenAITranslator:
             return response_json, translated_text
 
         except Exception as e:
+            if logger:
+                logger.log_event("ERROR", f"OpenAI API call failed: {e}")
             print(f"[Error] OpenAI translation failed: {e}")
             return None, None
 
