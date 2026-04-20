@@ -5,7 +5,7 @@ from celery import Celery
 REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 
 app = Celery(
-    "machine_translator",
+    "translation_app",
     broker=REDIS_URL,
     backend=REDIS_URL,
     include=["server.worker"]
