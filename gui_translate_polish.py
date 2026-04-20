@@ -1,123 +1,112 @@
-import customtkinter as ctk
+import tkinter as tk
 from tkinter import filedialog, messagebox
+import customtkinter as ctk
 import os
-import sys
-import threading
 import json
+import threading
 import traceback
-import time
 from datetime import datetime
+from src.docx_translate_polish.pipeline import TranslationPipeline
+from src.docx_translate_polish.core.config import TranslationConfig
 
-# sys.path bootstrap
-_SRC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "src")
-if _SRC not in sys.path:
-    sys.path.insert(0, _SRC)
-
-try:
-    from docx_translate_polish.core.config import TranslationConfig, google_translate_lang_codes
-    from docx_translate_polish.pipeline import TranslationPipeline
-except ImportError:
-    print("ERROR: Could not import docx_translate_polish module from src/ folder.")
-    sys.exit(1)
-
+# --- Configuration & UI Constants ---
 MODELS = [
     {"label": "ChatGPT 5.4",      "id": "gpt-5.4"},
     {"label": "ChatGPT 5.4 Mini", "id": "gpt-5.4-mini"},
 ]
 REASONING_LEVELS = ["medium", "high", "xhigh"]
 
+ctk.set_appearance_mode("Dark")
+ctk.set_default_color_theme("blue")
+
 class SMTVTranslatePolishApp(ctk.CTk):
-    """
-    Elite SMTV GUI for the Docx Translate + Polish + Split workflow.
-    Fully isolated from business logic.
-    """
     def __init__(self):
         super().__init__()
 
-        self.state_file = "gui_translate_polish_state.json"
-        self.settings_file = "translate_polish_settings.json"
+        self.title("SMTV | DOCX Translate & Polish Lab v1.0")
+        self.geometry("1000x850")
+
+        self.state_file = "gui_state.json"
+        self.settings_file = "gui_settings.json"
         self.stop_event = threading.Event()
 
-        # Load languages from backend config
-        self.languages_dict = google_translate_lang_codes
+        # Load language data from config
+        self.languages_dict = TranslationConfig().google_translate_lang_codes
         self.lang_display_names = sorted(list(self.languages_dict.values()))
 
-        self.setup_ui()
+        self._build_ui()
         self.load_all_data()
 
-    def setup_ui(self):
-        self.title("SMTV · Translate + Polish + Split")
-        self.geometry("850x950")
-        ctk.set_appearance_mode("dark")
-
+    def _build_ui(self):
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(7, weight=1)
 
-        # Row 0 — Title
-        self.title_label = ctk.CTkLabel(self, text="SMTV · Translate + Polish + Split", font=ctk.CTkFont(size=22, weight="bold"))
-        self.title_label.grid(row=0, column=0, padx=20, pady=(20, 10), sticky="w")
+        # Row 0 — Header
+        self.header = ctk.CTkFrame(self, height=60, corner_radius=0, fg_color="#1a1a1a")
+        self.header.grid(row=0, column=0, sticky="ew")
+        self.header.grid_columnconfigure(0, weight=1)
 
-        # Row 1 — DOCX File
-        self.file_frame = ctk.CTkFrame(self, fg_color="transparent")
-        self.file_frame.grid(row=1, column=0, padx=20, pady=5, sticky="ew")
-        self.file_frame.grid_columnconfigure(0, weight=1)
-        ctk.CTkLabel(self.file_frame, text="DOCX File", font=ctk.CTkFont(weight="bold")).grid(row=0, column=0, sticky="w")
-        self.file_entry = ctk.CTkEntry(self.file_frame, height=35)
-        self.file_entry.grid(row=1, column=0, sticky="ew", padx=(0, 10))
-        self.browse_file_btn = ctk.CTkButton(self.file_frame, text="Browse", width=80, command=self.browse_docx)
-        self.browse_file_btn.grid(row=1, column=1, padx=5)
-        self.clear_file_btn = ctk.CTkButton(self.file_frame, text="✕", width=30, fg_color="#c0392b", hover_color="#e74c3c", command=lambda: self.file_entry.delete(0, 'end'))
-        self.clear_file_btn.grid(row=1, column=2)
+        title_label = ctk.CTkLabel(self.header, text="DOCX TRANSLATE & POLISH LAB",
+                                  font=ctk.CTkFont(family="Bahnschrift", size=24, weight="bold"))
+        title_label.grid(row=0, column=0, padx=20, pady=15, sticky="w")
 
-        # Row 2 — Excel Dictionary (Optional)
-        self.dict_frame = ctk.CTkFrame(self, fg_color="transparent")
-        self.dict_frame.grid(row=2, column=0, padx=20, pady=5, sticky="ew")
-        self.dict_frame.grid_columnconfigure(0, weight=1)
-        ctk.CTkLabel(self.dict_frame, text="Excel Dictionary (Optional)", font=ctk.CTkFont(weight="bold")).grid(row=0, column=0, sticky="w")
-        self.dict_entry = ctk.CTkEntry(self.dict_frame, height=35)
-        self.dict_entry.grid(row=1, column=0, sticky="ew", padx=(0, 10))
-        self.browse_dict_btn = ctk.CTkButton(self.dict_frame, text="Browse", width=80, command=self.browse_dict)
-        self.browse_dict_btn.grid(row=1, column=1, padx=5)
-        self.clear_dict_btn = ctk.CTkButton(self.dict_frame, text="✕", width=30, fg_color="#c0392b", hover_color="#e74c3c", command=lambda: self.dict_entry.delete(0, 'end'))
-        self.clear_dict_btn.grid(row=1, column=2)
+        # Row 1 — File selection
+        self.file_panel = ctk.CTkFrame(self)
+        self.file_panel.grid(row=1, column=0, padx=20, pady=(20, 10), sticky="ew")
+        self.file_panel.grid_columnconfigure(1, weight=1)
 
-        # Row 3 — Engine Configuration panel
+        ctk.CTkLabel(self.file_panel, text="Source Document:").grid(row=0, column=0, padx=15, pady=15, sticky="w")
+        self.file_entry = ctk.CTkEntry(self.file_panel, placeholder_text="Path to .docx table...")
+        self.file_entry.grid(row=0, column=1, padx=(0, 10), pady=15, sticky="ew")
+        self.file_btn = ctk.CTkButton(self.file_panel, text="Browse...", width=100, command=self.browse_docx)
+        self.file_btn.grid(row=0, column=2, padx=(0, 15), pady=15)
+
+        # Row 2 — Translation Dictionary (Optional)
+        self.dict_panel = ctk.CTkFrame(self)
+        self.dict_panel.grid(row=2, column=0, padx=20, pady=10, sticky="ew")
+        self.dict_panel.grid_columnconfigure(1, weight=1)
+
+        ctk.CTkLabel(self.dict_panel, text="Translation Dictionary (XTM):").grid(row=0, column=0, padx=15, pady=15, sticky="w")
+        self.dict_entry = ctk.CTkEntry(self.dict_panel, placeholder_text="Optional .xlsx dictionary...")
+        self.dict_entry.grid(row=0, column=1, padx=(0, 10), pady=15, sticky="ew")
+        self.dict_btn = ctk.CTkButton(self.dict_panel, text="Browse...", width=100, command=self.browse_dict)
+        self.dict_btn.grid(row=0, column=2, padx=(0, 15), pady=15)
+
+        # Row 3 — Engine & Quality Panel
         self.engine_panel = ctk.CTkFrame(self)
         self.engine_panel.grid(row=3, column=0, padx=20, pady=10, sticky="ew")
-        self.engine_panel.grid_columnconfigure(1, weight=1)
 
-        engine_options = []
-        for m in MODELS:
-            for r in REASONING_LEVELS:
-                engine_options.append(f"{m['label']} [{r}]")
+        ctk.CTkLabel(self.engine_panel, text="AI Engine:").grid(row=0, column=0, padx=15, pady=(15, 10), sticky="w")
+        engine_options = [f"{m['label']} [{r}]" for m in MODELS for r in REASONING_LEVELS]
+        self.engine_tr_cb = ctk.CTkComboBox(self.engine_panel, values=engine_options, width=280)
+        self.engine_tr_cb.grid(row=0, column=1, padx=10, pady=(15, 10), sticky="w")
 
-        # Row A: Translate
-        self.badge_tr = ctk.CTkLabel(self.engine_panel, text=" Translate Engine ", fg_color="#1a5276", text_color="white", corner_radius=6)
-        self.badge_tr.grid(row=0, column=0, padx=10, pady=10, sticky="w")
-        self.engine_tr_cb = ctk.CTkComboBox(self.engine_panel, values=engine_options, width=400)
-        self.engine_tr_cb.grid(row=0, column=1, padx=10, pady=10, sticky="ew")
-
-        # Row B: Polish
-        self.badge_pl = ctk.CTkLabel(self.engine_panel, text=" Polish Engine ", fg_color="#7d3c98", text_color="white", corner_radius=6)
-        self.badge_pl.grid(row=1, column=0, padx=10, pady=5, sticky="w")
-        self.engine_pl_cb = ctk.CTkComboBox(self.engine_panel, values=["Coming soon..."], state="disabled", width=400)
-        self.engine_pl_cb.grid(row=1, column=1, padx=10, pady=5, sticky="ew")
-
-        # Row C: Splitting
-        self.badge_sp = ctk.CTkLabel(self.engine_panel, text=" Splitting Engine ", fg_color="#196f3d", text_color="white", corner_radius=6)
-        self.badge_sp.grid(row=2, column=0, padx=10, pady=5, sticky="w")
-        self.engine_sp_cb = ctk.CTkComboBox(self.engine_panel, values=["Coming soon..."], state="disabled", width=400)
-        self.engine_sp_cb.grid(row=2, column=1, padx=10, pady=5, sticky="ew")
-
-        # Splitting Mode selector
-        self.sm_label = ctk.CTkLabel(self.engine_panel, text="Splitting Mode:", font=ctk.CTkFont(weight="bold"))
-        self.sm_label.grid(row=3, column=0, padx=10, pady=(15, 10), sticky="w")
+        ctk.CTkLabel(self.engine_panel, text="Splitting Mode:").grid(row=0, column=2, padx=15, pady=(15, 10), sticky="w")
         self.split_mode_cb = ctk.CTkComboBox(self.engine_panel, values=["classic", "ai"])
-        self.split_mode_cb.grid(row=3, column=1, padx=10, pady=(15, 10), sticky="w")
+        self.split_mode_cb.grid(row=0, column=3, padx=10, pady=(15, 10), sticky="w")
 
-        # Row 4 — Language Configuration panel
+        # Row 4 — Advanced Settings (Collapsible-like frame)
+        self.adv_btn = ctk.CTkButton(self, text="▶ Advanced Settings", fg_color="transparent", anchor="w", command=self.toggle_advanced)
+        self.adv_btn.grid(row=4, column=0, padx=20, pady=(5, 0), sticky="w")
+
+        self.adv_panel = ctk.CTkFrame(self)
+        self.adv_panel.grid_forget() # Initially hidden
+
+        self.chunk_var = tk.BooleanVar(value=False)
+        self.chunk_cb = ctk.CTkCheckBox(self.adv_panel, text="Enable chunking for large files", variable=self.chunk_var, command=self.toggle_chunk_input)
+        self.chunk_cb.grid(row=0, column=0, padx=15, pady=10, sticky="w")
+
+        ctk.CTkLabel(self.adv_panel, text="Lines per chunk:").grid(row=0, column=1, padx=(20, 5), pady=10)
+        self.chunk_size_entry = ctk.CTkEntry(self.adv_panel, width=80)
+        self.chunk_size_entry.insert(0, "100")
+        self.chunk_size_entry.configure(state="disabled")
+        self.chunk_size_entry.grid(row=0, column=2, padx=10, pady=10)
+
+        ctk.CTkLabel(self.adv_panel, text="Default: entire file sent in one API call (recommended)", font=ctk.CTkFont(size=11, slant="italic")).grid(row=1, column=0, columnspan=3, padx=15, pady=(0, 10), sticky="w")
+
+        # Row 5 — Language Configuration panel
         self.lang_panel = ctk.CTkFrame(self)
-        self.lang_panel.grid(row=4, column=0, padx=20, pady=10, sticky="ew")
+        self.lang_panel.grid(row=5, column=0, padx=20, pady=10, sticky="ew")
         self.lang_panel.grid_columnconfigure((1, 3), weight=1)
 
         ctk.CTkLabel(self.lang_panel, text="Source Language:").grid(row=0, column=0, padx=15, pady=15, sticky="w")
@@ -128,9 +117,9 @@ class SMTVTranslatePolishApp(ctk.CTk):
         self.dest_lang_cb = ctk.CTkComboBox(self.lang_panel, values=self.lang_display_names)
         self.dest_lang_cb.grid(row=0, column=3, padx=(0, 15), pady=15, sticky="ew")
 
-        # Row 5 — Action row
+        # Row 6 — Action row
         self.action_frame = ctk.CTkFrame(self, fg_color="transparent")
-        self.action_frame.grid(row=5, column=0, padx=20, pady=10, sticky="ew")
+        self.action_frame.grid(row=6, column=0, padx=20, pady=10, sticky="ew")
         self.action_frame.grid_columnconfigure(0, weight=1)
 
         self.run_btn = ctk.CTkButton(self.action_frame, text="▶ Translate (Raw)", height=45, font=ctk.CTkFont(size=15, weight="bold"), command=self.start_pipeline)
@@ -138,21 +127,6 @@ class SMTVTranslatePolishApp(ctk.CTk):
 
         self.stop_btn = ctk.CTkButton(self.action_frame, text="Stop", width=100, height=45, fg_color="#c0392b", hover_color="#e74c3c", command=self.request_stop)
         self.stop_btn.grid(row=0, column=1)
-
-        # Row 6 — Progress bar + labels
-        self.prog_frame = ctk.CTkFrame(self, fg_color="transparent")
-        self.prog_frame.grid(row=6, column=0, padx=20, pady=10, sticky="ew")
-        self.prog_frame.grid_columnconfigure(0, weight=1)
-
-        self.prog_bar = ctk.CTkProgressBar(self.prog_frame)
-        self.prog_bar.set(0)
-        self.prog_bar.grid(row=0, column=0, sticky="ew")
-
-        self.prog_label = ctk.CTkLabel(self.prog_frame, text="0%", font=ctk.CTkFont(size=12))
-        self.prog_label.grid(row=0, column=1, padx=(10, 0))
-
-        self.status_label = ctk.CTkLabel(self.prog_frame, text="Ready", font=ctk.CTkFont(size=12, slant="italic"))
-        self.status_label.grid(row=1, column=0, columnspan=2, sticky="w", pady=(5, 0))
 
         # Row 7 — Debug Log
         self.log_panel = ctk.CTkFrame(self)
@@ -174,6 +148,29 @@ class SMTVTranslatePolishApp(ctk.CTk):
 
         self.log_text = ctk.CTkTextbox(self.log_panel, font=ctk.CTkFont(family="Consolas", size=12))
         self.log_text.grid(row=1, column=0, padx=10, pady=(0, 10), sticky="nsew")
+
+        # Progress bar overlay
+        self.prog_bar = ctk.CTkProgressBar(self, width=600)
+        self.prog_bar.set(0)
+        self.prog_bar.grid(row=8, column=0, pady=(0, 20))
+
+    def toggle_advanced(self):
+        if self.adv_panel.winfo_viewable():
+            self.adv_panel.grid_forget()
+            self.adv_btn.configure(text="▶ Advanced Settings")
+        else:
+            self.adv_panel.grid(row=5, column=0, padx=20, pady=5, sticky="ew")
+            # Shift language panel down
+            self.lang_panel.grid(row=6, column=0, padx=20, pady=10, sticky="ew")
+            self.action_frame.grid(row=7, column=0, padx=20, pady=10, sticky="ew")
+            self.log_panel.grid(row=8, column=0, padx=20, pady=(10, 20), sticky="nsew")
+            self.adv_btn.configure(text="▼ Advanced Settings")
+
+    def toggle_chunk_input(self):
+        if self.chunk_var.get():
+            self.chunk_size_entry.configure(state="normal")
+        else:
+            self.chunk_size_entry.configure(state="disabled")
 
     def log_message(self, msg, level="INFO"):
         ts = datetime.now().strftime("%H:%M:%S")
@@ -205,7 +202,6 @@ class SMTVTranslatePolishApp(ctk.CTk):
             self.dict_entry.insert(0, path)
 
     def load_all_data(self):
-        # State
         if os.path.exists(self.state_file):
             try:
                 with open(self.state_file, "r") as f:
@@ -216,7 +212,6 @@ class SMTVTranslatePolishApp(ctk.CTk):
                         self.dict_entry.insert(0, state["last_dict"])
             except: pass
 
-        # Settings
         if os.path.exists(self.settings_file):
             try:
                 with open(self.settings_file, "r") as f:
@@ -254,7 +249,7 @@ class SMTVTranslatePolishApp(ctk.CTk):
 
     def request_stop(self):
         self.stop_event.set()
-        self.log_message("Stop requested. Current module build does not support live cancellation.", "WARN")
+        self.log_message("Stop requested. Cancellation supported at block boundaries.", "WARN")
 
     def get_code(self, display_name):
         for code, name in self.languages_dict.items():
@@ -283,12 +278,10 @@ class SMTVTranslatePolishApp(ctk.CTk):
         self.save_all_data()
         self.stop_event.clear()
         self.run_btn.configure(state="disabled")
-        self.prog_bar.set(0.15)
-        self.prog_label.configure(text="15%")
+        self.prog_bar.set(0)
 
         model_id, reasoning = self.parse_engine_selection(self.engine_tr_cb.get())
         sm = self.split_mode_cb.get()
-        self.status_label.configure(text=f"{os.path.basename(file_path)} | {model_id} | split={sm}")
 
         threading.Thread(target=self.worker_thread, args=(file_path, model_id, sm), daemon=True).start()
 
@@ -297,31 +290,29 @@ class SMTVTranslatePolishApp(ctk.CTk):
             src_code = self.get_code(self.src_lang_cb.get())
             dest_code = self.get_code(self.dest_lang_cb.get())
 
-            # TranslationConfig (STRICT signature)
+            chunk_enabled = self.chunk_var.get()
+            try:
+                chunk_size = int(self.chunk_size_entry.get())
+            except:
+                chunk_size = 100
+
             config = TranslationConfig(
-                openai_api_key=os.environ.get("OPENAI_API_KEY", ""),
-                default_model=model_id
+                default_model=model_id,
+                chunk_enabled=chunk_enabled,
+                chunk_size=chunk_size
             )
 
             pipeline = TranslationPipeline(config=config)
 
-            self.log_message(f"Starting pipeline: {os.path.basename(file_path)}")
-            self.after(0, lambda: self.prog_bar.set(0.5))
-            self.after(0, lambda: self.prog_label.configure(text="50%"))
-
-            # pipeline.run (STRICT signature)
             output_path = pipeline.run(
                 input_path=file_path,
                 src_lang=src_code,
                 dest_lang=dest_code,
-                splitting_mode=splitting_mode
+                splitting_mode=splitting_mode,
+                progress_callback=lambda msg: self.log_message(msg)
             )
 
-            self.log_message(f"Pipeline completed successfully. Output: {output_path}")
             self.after(0, lambda: self.prog_bar.set(1.0))
-            self.after(0, lambda: self.prog_label.configure(text="100%"))
-            self.after(0, lambda: self.status_label.configure(text="Finished"))
-
             messagebox.showinfo("Success", f"Process complete!\nFile saved: {output_path}")
 
         except Exception as e:

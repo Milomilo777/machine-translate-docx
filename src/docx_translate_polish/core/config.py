@@ -65,7 +65,7 @@ line_separator_regex_str = r' ?\(\) ?'
 TABLE_INDEX = 0
 SOURCE_COL = 1
 TRANSLATION_COL = 2
-DEFAULT_MODEL = "gpt-4o"
+DEFAULT_MODEL = "gpt-5.4"
 
 @dataclass
 class TranslationConfig:
@@ -76,6 +76,10 @@ class TranslationConfig:
     table_index: int = TABLE_INDEX
     source_col: int = SOURCE_COL
     translation_col: int = TRANSLATION_COL
+
+    # Chunking options
+    chunk_enabled: bool = False       # default OFF — entire file in one API call
+    chunk_size: int = 100             # lines per chunk, used only if chunk_enabled=True
 
     # Language lists and tags
     google_translate_lang_codes: Dict[str, str] = field(default_factory=lambda: google_translate_lang_codes)

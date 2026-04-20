@@ -1,70 +1,56 @@
-"""Phrase and token chunking logic."""
+"""
+FUTURE USE — Chunking support for very large documents.
+
+Currently disabled. Default behavior: entire document in one API call.
+To enable chunking in the future:
+  - Set chunk_enabled=True in TranslationConfig (config.py)
+  - Set chunk_size to the desired number of lines per API call
+This module is intentionally preserved for future large-file support.
+"""
 from typing import List, Dict
 from ..core.utils import estimate_tokens
-from ..docx_io.reader import DocxReader
 
 class Chunker:
-    """Groups cells into phrases and token-limited blocks."""
+    """Handles grouping cells into phrases and phrases into API-safe blocks."""
 
     def build_phrases(self, cells: List[Dict]) -> List[Dict]:
-        """Groups cells into phrase blocks based on punctuation."""
+        """Groups cells into phrase blocks based on EOL/BOL markers."""
         phrases = []
-        if not cells:
-            return phrases
+        current_phrase = {"rows": [], "text": "", "lines_count": 0}
 
-        current_phrase = None
-
-        for i, cell in enumerate(cells):
+        for cell in cells:
             text = cell['clean_text']
-            if not text:
-                continue
+            current_phrase["rows"].append(cell['row_n'])
+            current_phrase["text"] += (text + " ")
+            current_phrase["lines_count"] += 1
 
-            # Check if this cell starts a new phrase
-            is_start = DocxReader.is_beginning_of_line(text) or current_phrase is None
-
-            if is_start and current_phrase:
+            # Very basic phrase boundary detection for now
+            if text.strip().endswith(('.', '!', '?', ':', ';')):
+                current_phrase["text"] = current_phrase["text"].strip()
                 phrases.append(current_phrase)
-                current_phrase = None
+                current_phrase = {"rows": [], "text": "", "lines_count": 0}
 
-            if current_phrase is None:
-                current_phrase = {
-                    "start_row": cell['row_n'],
-                    "end_row": cell['row_n'],
-                    "text": text,
-                    "nb_lines": cell['nb_lines_in_cell'],
-                    "rows": [cell['row_n']]
-                }
-            else:
-                current_phrase["text"] += " " + text
-                current_phrase["end_row"] = cell['row_n']
-                current_phrase["nb_lines"] += cell['nb_lines_in_cell']
-                current_phrase["rows"].append(cell['row_n'])
-
-            # Check if this cell ends a phrase
-            if DocxReader.is_end_of_line(text):
-                phrases.append(current_phrase)
-                current_phrase = None
-
-        if current_phrase:
+        if current_phrase["rows"]:
+            current_phrase["text"] = current_phrase["text"].strip()
             phrases.append(current_phrase)
 
         return phrases
 
     def split_into_token_blocks(self, phrases: List[Dict], max_tokens: int) -> List[List[Dict]]:
-        """Groups phrases into API-safe blocks under max_tokens limit."""
+        """Groups phrases into API blocks within token limits."""
         blocks = []
         current_block = []
         current_tokens = 0
 
         for phrase in phrases:
-            phrase_tokens = estimate_tokens(phrase['text'])
-            if current_tokens + phrase_tokens > max_tokens and current_block:
+            tokens = estimate_tokens(phrase['text'])
+            if current_tokens + tokens > max_tokens and current_block:
                 blocks.append(current_block)
                 current_block = []
                 current_tokens = 0
 
             current_block.append(phrase)
-            current_tokens += phrase_tokens
+            current_tokens += tokens
 
         if current_block:
             blocks.append(current_block)

@@ -1,6 +1,6 @@
 """Translation orchestration pipeline."""
 import os
-from typing import Optional
+from typing import Optional, List, Callable
 from .core.config import TranslationConfig
 from .core.logger import PipelineFileLogger
 from .docx_io.reader import DocxReader
@@ -8,7 +8,7 @@ from .docx_io.writer import DocxWriter
 from .processing.noise_filter import NoiseFilter
 from .translation.chunker import Chunker
 from .translation.openai_engine import OpenAITranslator
-from .translation.splitter import DocxLineSplitter
+from .translation.splitter import OpenAISubtitleSplitter
 
 class TranslationPipeline:
     """Orchestrates the full DOCX translation and polishing workflow."""
@@ -20,17 +20,19 @@ class TranslationPipeline:
         self.noise_filter = NoiseFilter()
         self.chunker = Chunker()
         self.translator = OpenAITranslator(model=self.config.default_model)
-        self.splitter = DocxLineSplitter(model=self.config.default_model)
+        self.splitter = OpenAISubtitleSplitter(model=self.config.default_model)
 
     def run(self, input_path: str, src_lang: str, dest_lang: str,
-            output_path: Optional[str] = None, splitting_mode: str = "classic") -> str:
+            output_path: Optional[str] = None, splitting_mode: str = "classic",
+            progress_callback: Optional[Callable[[str], None]] = None) -> str:
         """
         Executes the translation pipeline.
         Returns: Path to the generated output file.
         """
         if not output_path:
             stem, ext = os.path.splitext(input_path)
-            output_path = f"{stem}_{dest_lang}{ext}"
+            # Output suffix must be _PER
+            output_path = f"{stem}_PER{ext}"
 
         self._pipeline_logger = PipelineFileLogger(output_docx_path=str(output_path))
         self._pipeline_logger.set_meta(
@@ -40,15 +42,21 @@ class TranslationPipeline:
             splitting_mode=splitting_mode,
             source_file=str(input_path),
         )
-        self._pipeline_logger.log_event("INFO", "Pipeline started")
 
-        self._pipeline_logger.log_event("INFO", f"Starting pipeline: {input_path} -> {output_path}")
+        def log_info(msg):
+            self._pipeline_logger.log_event("INFO", msg)
+            if progress_callback:
+                progress_callback(f"[INFO] {msg}")
+
+        log_info("Pipeline started")
+        log_info(f"Starting pipeline: {input_path} -> {output_path}")
         self.translator.set_filename(os.path.basename(input_path))
+        self.splitter.set_filename(os.path.basename(input_path))
 
         # Step 1: Load and Extract
         doc = self.reader.load(input_path)
         cells = self.reader.extract_cells()
-        self._pipeline_logger.log_event("INFO", f"Extracted {len(cells)} cells from table.")
+        log_info(f"Extracted {len(cells)} cells from table.")
 
         # Step 2: Noise Filter & Skip Check
         processed_cells = []
@@ -64,11 +72,11 @@ class TranslationPipeline:
             })
 
             if is_gray:
-                self._pipeline_logger.log_event("INFO", f"Skipping gray cell at row {cell_data['row_n']}")
+                log_info(f"Skipping gray cell at row {cell_data['row_n']}")
                 continue
 
             if cell_data['is_already_translated']:
-                self._pipeline_logger.log_event("INFO", f"Skipping already translated cell at row {cell_data['row_n']}")
+                log_info(f"Skipping already translated cell at row {cell_data['row_n']}")
                 continue
 
             if not clean_text:
@@ -76,21 +84,36 @@ class TranslationPipeline:
 
             processed_cells.append(cell_data)
 
-        # Step 3: Chunking
+        # Step 3: Chunking (Matches original repo by defaulting to one call)
         phrases = self.chunker.build_phrases(processed_cells)
-        blocks = self.chunker.split_into_token_blocks(
-            phrases, self.config.max_translation_block_size
-        )
-        self._pipeline_logger.log_event("INFO", f"Grouped into {len(phrases)} phrases and {len(blocks)} API blocks.")
+
+        blocks = []
+        if self.config.chunk_enabled:
+            # FUTURE: chunked translation for large files
+            # blocks = self.chunker.split_into_token_blocks(phrases, self.config.chunk_size)
+            log_info("Chunking requested but using single-block fallback for now.")
+            blocks = [phrases]
+        else:
+            # DEFAULT: entire document in one API call
+            blocks = [phrases]
+
+        log_info(f"Grouped into {len(phrases)} phrases and {len(blocks)} API blocks.")
 
         # Step 4, 5, 6: Translate, Split, and Write
         writer = DocxWriter(doc)
 
         for block_idx, block in enumerate(blocks):
             block_lines = [p['text'] for p in block]
-            translated_block = self.translator.translate_with_retry(
-                block_lines, src_lang, dest_lang, logger=self._pipeline_logger, block_index=block_idx
+
+            log_info(f"Translating block {block_idx+1}/{len(blocks)} ({len(block_lines)} lines)...")
+            # Using verbatim translator.py method
+            response_json, translated_block = self.translator.translate(
+                src_lang, dest_lang, "\n".join(block_lines), logger=self._pipeline_logger
             )
+
+            if not translated_block:
+                log_info(f"Translation failed for block {block_idx+1}")
+                continue
 
             translated_lines = translated_block.split("\n")
 
@@ -102,23 +125,21 @@ class TranslationPipeline:
                 line_idx += 1
 
                 # Split phrase translation into rows
-                row_translations = self.splitter.split(
-                    mode=splitting_mode,
-                    translation=phrase_translation,
-                    expected_lines=len(phrase['rows']),
-                    src_lang=src_lang,
-                    dest_lang=dest_lang,
-                    source_text=phrase['text'],
-                    logger=self._pipeline_logger,
-                    block_index=block_idx
-                )
+                if splitting_mode == "ai":
+                    row_translations = self.splitter.split_phrase(
+                        src_lang, dest_lang, phrase['text'], phrase_translation, logger=self._pipeline_logger
+                    )
+                else:
+                    row_translations = self.splitter.classic_split(
+                        phrase_translation, len(phrase['rows'])
+                    )
 
                 for i, row_n in enumerate(phrase['rows']):
                     writer.write_translation(row_n, row_translations[i], dest_lang)
 
         # Step 7: Save
         writer.save(output_path)
-        self._pipeline_logger.log_event("INFO", f"Pipeline finished. Output: {output_path}")
+        log_info(f"Pipeline finished. Output: {output_path}")
         log_saved = self._pipeline_logger.save()
         print(f"[LOG] Black-box log saved: {log_saved}")
         return output_path
