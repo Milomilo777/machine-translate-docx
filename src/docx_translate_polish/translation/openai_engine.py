@@ -6,6 +6,8 @@ import tiktoken
 import mysql.connector
 from openai import OpenAI
 import re
+from typing import List, Tuple, Optional
+from .prompt_template import build_translation_prompt
 
 class OpenAITranslator:
     def __init__(self, model="gpt-5.4", filename=None):
@@ -79,7 +81,6 @@ class OpenAITranslator:
             "gpt-4o-mini": {"input": 0.15, "output": 0.60}
         }
 
-        # Find matching model price tier (partial match supported)
         price = next((v for k, v in PRICES.items() if k in model), None)
 
         if price is None:
@@ -108,130 +109,9 @@ class OpenAITranslator:
             "total_cost_usd": total_cost
         }
 
-    @staticmethod
-    def build_translation_prompt(source_lang, dest_lang, text):
-        lines = text.split("\n")
-        numbered_lines = [f"Line {i+1}: {line}" for i, line in enumerate(lines)]
-        numbered_text = "\n".join(numbered_lines)
-
-        prompt = (
-            f"You are a professional subtitling translator.\n"
-            f"Your task is to translate {source_lang} into high-quality {dest_lang} suitable for television subtitles.\n"
-
-            f"Overall context and style:\n"
-            f"Read all lines first so you understand the full context, intent, and information hierarchy.\n"
-            f"Treat the entire input as one coherent text when choosing tone, terminology, and phrasing.\n"
-            f"This global understanding is only for lexical choice, tone, and consistency; "
-            f"do NOT redistribute, move, or re-balance information across lines.\n"
-            f"Ensure consistent translations for recurring terms, names, and concepts across all lines.\n"
-            f"If part of the text to translate is already in {dest_lang}, treat it as authoritative translation memory and keep it literal.\n"
-
-            f"Line-by-line constraints:\n"
-            f"Translate line by line: produce exactly one output line for each input line.\n"
-            f"Do NOT merge, split, add, remove, or repeat lines.\n"
-            f"Preserve the input line order.\n"
-            f"Parentheses and multiple sentences within a line belong to that same line.\n"
-
-            f"Stylistic and linguistic rules:\n"
-            f"Use a formal, standard, and natural register appropriate for broadcast media; "
-            f"avoid colloquial speech and overly literary or archaic language, while preserving all core information.\n"
-            f"The wording inside each line may become slightly shorter or longer to produce natural {dest_lang}.\n"
-            f"Actively avoid English sentence patterns; restructure sentences to sound natural and idiomatic in {dest_lang}.\n"
-            f"Prefer concise, clear, neutral, and readable phrasing suitable for fast on-screen reading.\n"
-            f"Avoid stiffness, redundancy, and word-for-word translation.\n"
-
-            f"Selection and output rules:\n"
-            f"Only translate lines that start with 'Line ' followed by a number and a semicolon.\n"
-            f"For each such line, translate only the TEXT after the first semicolon.\n"
-            f"After translation, do NOT include 'Line N:' in the output; only output the translated TEXT.\n"
-            f"Output only {dest_lang} text, with no explanations or comments.\n"
-            f"Produce exactly {len(lines)} output lines, in the same order as the input; there should be no blank lines.\n"
-            f"End each output line with a single newline character (LF) except for the last line; do not add extra blank lines.\n"
-
-            f"Verb tense handling:\n"
-            f"When translating verb tenses, prefer simple, natural, and commonly used {dest_lang} tenses; avoid unnecessary preservation of English tense complexity unless it carries essential meaning.\n"
-
-            f"Handling idioms and cultural references:\n"
-            f"Apply adaptation only when an idiom or reference would be unclear or misleading if translated literally.\n"
-        )
-
-        # ─────────────────────────────────────────────
-        # Persian-specific rules
-        # ─────────────────────────────────────────────
-        if dest_lang.lower() == "persian":
-            prompt = (
-                f"<ID>\n"
-                f"[THINK_LANG]: فارسی\n"
-                f"[ROLE]: Supreme Master TV (SMTV) Master Elite EN2FA Translator & Senior Editor | ISO-17100 Certified Auditor\n"
-                f"[PERSONA]: Adaptive Triad — SAGE (spiritual) | NEWS (factual) | FACILITATOR (edu) — per block; details in <STYLE>\n"
-                f"[MISSION]: High-fidelity subtitle transposition. Preserve meaning, spiritual warmth and depth (modern dignified register — not classical), and broadcast rhythm.\n"
-                f"[AUDIENCE]: Global Persian-speaking viewers of all ages — universally accessible and crystal clear, while remaining refined, dignified, and spiritually grounded in modern Persian.\n"
-                f"[TARGET]: فارسی معیار مکتوب امروزی و مدرن | زیرنویس پخش | موجز | سازگار با ژانر\n"
-                f"[GUARDRAILS]: Persian Purist | SOV Enforcer | Active Voice | Locks First\n"
-                f"[METHOD]: Agentic TEP | Silent Reflexion Loop: Analyze > Draft(meaning: idiom/tone) > Reflect(idiom-lock) > QA(form: Latin/numbers/structure) > Emit\n"
-                f"[OUTPUT]: Final subtitle lines only — no explanations, no metadata. Locked tokens preserved as-is.\n"
-                f"</ID>\n"
-                f"\n"
-                f"<DEF>\n"
-                f"LINE == exactly one input line (no merge/split).\n"
-                f"LINE_BOUNDARY == absolute — no exception, no context override:\n"
-                f"    FORBIDDEN: import ANY content from L±1 into current line.\n"
-                f"    FORBIDDEN: redistribute a multi-line title/block differently\n"
-                f"    than input line breaks — even if Persian word order prefers it.\n"
-                f"    Each LINE = isolated translation unit.\n"
-                f"    Semantic fragments at line edges are acceptable output.\n"
-                f"    LINE_BOUNDARY > all semantic preferences.\n"
-                f"N == {len(lines)} (total; must be preserved 1:1).\n"
-                f"BYTE-ID == output byte-for-byte identical; zero edits.\n"
-                f"[WARN] == append \" ⚠️\" at absolute line-end only; never mid-line.\n"
-                f"   WARN triggers: (a) ambiguity unresolved after 2 rewrites | (b) REVERT forced | (c) P1↔P2 conflict unresolvable.\n"
-                f"SILENT == internal reasoning; DO NOT OUTPUT.\n"
-                f"BRACKETGLOSS == translate ALL content inside [...]; keep brackets; Whitelist items inside → BYTE-ID fragment.\n"
-                f"SL_TEXT == source-language line kept verbatim (last resort: corrupt/unparseable only).\n"
-                f"REVERT == discard draft; emit best available Persian draft + [WARN] when all rewrites fail.\n"
-                f"SL_TEXT fallback ONLY if Persian output is structurally impossible (corrupt/binary input).\n"
-                f"P1 == Semantic Precision (meaning fidelity). P2 == Persian Naturalness (fluency/idiom). P1↔P2 conflict == when literal accuracy and natural Persian are mutually exclusive.\n"
-                f"P1↔P2 resolution: idiom/wordplay/humor → P2 may override P1 IF core meaning preserved.\n"
-                f"All other cases → P1 governs. Never sacrifice negation, quantifier, or speaker identity.\n"
-                f"</DEF>\n"
-                f"\n"
-                f"<PRIORITY>\n"
-                f"P0) Preserve line count and blank lines exactly.\n"
-                f"P1) SMTV structure lock — apply when trigger confirmed (see <SMTV>).\n"
-                f"P2) Preserve locked spans: W1–W4 as BYTE-ID; W5 translate.\n"
-                f"P3) Preserve semantic meaning: negation, quantifiers, speaker, tense, cause/effect, scope.\n"
-                f"P4) Maintain glossary and document-level consistency.\n"
-                f"P5) Use natural modern written Persian.\n"
-                f"P6) Apply formatting: digits, punctuation, quotes, ezafe.\n"
-                f"P7) Optimize brevity and subtitle readability if P0–P6 remain intact.\n"
-                f"</PRIORITY>\n"
-                f"\n"
-                f"<WHITELIST>  [W1–W4: BYTE-ID | W5: Translate]\n"
-                f"W1) URLs | @handles | #hashtags\n"
-                f"W2) News_Source tokens: media/press outlets in parens at end of news → BYTE-ID [e.g. (Reuters)|(Lao Động)|(VTV)]; non-media (govt/NGO/company) → translate [e.g. (US Department of Labor)→(وزارت کار آمریکا)].\n"
-                f"     SCOPE: This BYTE-ID lock applies ONLY to the news-source token itself.\n"
-                f"W3) Proper Names/Titles with ID tags [e.g. <ID:001>Master Supreme<SMTV>].\n"
-                f"W4) Technical tags/IDs [e.g. [ID:738], {ID:992}].\n"
-                f"W5) Standard Proper Names (without ID tags) → Translate [e.g. John Doe → جان دو].\n"
-                f"</WHITELIST>\n"
-                f"\n"
-                f"<STYLE>\n"
-                f"1. DICTION: Use modern, dignified broadcast Persian. Avoid archaic words or slang.\n"
-                f"2. SYNTAX: Strictly follow Persian SOV (Subject-Object-Verb). Move verbs to line end where possible within line boundary constraints.\n"
-                f"3. EZAFE: Ensure grammatically correct ezafe application for readability.\n"
-                f"4. SMTV_MODE: If text contains spiritual/Master content → use SAGE persona (respectful, warm, profound). If news → use NEWS persona (factual, concise). Else → FACILITATOR (clear, instructional).\n"
-                f"5. PUNCTUATION: Use Persian-style punctuation (، ؛ ؟). Keep Latin numbers and punctuation inside locked BYTE-ID spans.\n"
-                f"</STYLE>\n"
-                f"\n"
-                f"<INPUT>\n"
-                f"{numbered_text}\n"
-                f"</INPUT>\n"
-            )
-        return prompt
-
     def translate(self, source_lang, dest_lang, text, logger=None):
         """Translate text using OpenAI API."""
-        prompt = self.build_translation_prompt(source_lang, dest_lang, text)
+        prompt = build_translation_prompt(source_lang, dest_lang, text)
 
         try:
             start_time = time.time()
@@ -252,20 +132,19 @@ class OpenAITranslator:
             lines = translated_text.split("\n")
             clean_lines = []
             for line in lines:
-                clean_lines.append(re.sub(r'^Line \d+: ', '', line))
+                # Matches "Line 1: ", "Line 01: ", etc.
+                clean_lines.append(re.sub(r'^Line \d+:\s*', '', line))
             translated_text = "\n".join(clean_lines)
 
             # Integrity check: line count must match
             if len(translated_text.split("\n")) != len(text.split("\n")):
                 print(f"[Warning] Line count mismatch in {self.model} response.")
-                # Fallback or retry logic can be added here
 
             # Log cost and query to DB
             cost_info = self.calculate_openai_cost(response_json)
             self.log_query_to_db(prompt, response_json, elapsed_time, cost_info)
 
             if logger:
-                # Adapting to our PipelineFileLogger
                 logger.log_call(
                     stage="translate",
                     block_index=0,
@@ -287,7 +166,7 @@ class OpenAITranslator:
             return None, None
 
     def log_query_to_db(self, prompt, response_json, execution_time, cost_info):
-        """Log API interaction to database for audit and cost tracking."""
+        """Log API interaction to database."""
         if not self.doc_id:
             return
 
