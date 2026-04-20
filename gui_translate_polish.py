@@ -283,9 +283,9 @@ class SMTVTranslatePolishApp(ctk.CTk):
         model_id, reasoning = self.parse_engine_selection(self.engine_tr_cb.get())
         sm = self.split_mode_cb.get()
 
-        threading.Thread(target=self.worker_thread, args=(file_path, model_id, sm), daemon=True).start()
+        threading.Thread(target=self.worker_thread, args=(file_path, model_id, reasoning, sm), daemon=True).start()
 
-    def worker_thread(self, file_path, model_id, splitting_mode):
+    def worker_thread(self, file_path, model_id, reasoning, splitting_mode):
         try:
             src_code = self.get_code(self.src_lang_cb.get())
             dest_code = self.get_code(self.dest_lang_cb.get())
@@ -298,6 +298,7 @@ class SMTVTranslatePolishApp(ctk.CTk):
 
             config = TranslationConfig(
                 default_model=model_id,
+                reasoning_effort=reasoning,
                 chunk_enabled=chunk_enabled,
                 chunk_size=chunk_size
             )
@@ -309,6 +310,7 @@ class SMTVTranslatePolishApp(ctk.CTk):
                 src_lang=src_code,
                 dest_lang=dest_code,
                 splitting_mode=splitting_mode,
+                reasoning_effort=reasoning,
                 progress_callback=lambda msg: self.log_message(msg)
             )
 

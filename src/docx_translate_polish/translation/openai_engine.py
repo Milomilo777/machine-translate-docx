@@ -10,8 +10,9 @@ from typing import List, Tuple, Optional
 from .prompt_template import build_translation_prompt
 
 class OpenAITranslator:
-    def __init__(self, model="gpt-5.4", filename=None):
+    def __init__(self, model="gpt-5.4", filename=None, reasoning_effort="medium"):
         self.model = model
+        self.reasoning_effort = reasoning_effort
         self.api_key = os.environ.get("OPENAI_API_KEY")
         if not self.api_key:
             raise ValueError("OPENAI_API_KEY not set in environment")
@@ -55,6 +56,10 @@ class OpenAITranslator:
 
     def get_doc_id(self):
         return self.doc_id
+
+    def set_reasoning_effort(self, reasoning_effort: str):
+        """Sets the reasoning effort for the API call."""
+        self.reasoning_effort = reasoning_effort
 
     @staticmethod
     def estimate_tokens(text: str) -> int:
@@ -113,16 +118,31 @@ class OpenAITranslator:
         """Translate text using OpenAI API."""
         prompt = build_translation_prompt(source_lang, dest_lang, text)
 
-        try:
-            start_time = time.time()
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
+        def _call_api(use_reasoning=True):
+            kwargs = {
+                "model": self.model,
+                "messages": [
                     {"role": "system", "content": "You are a professional translator and editor."},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0,
-            )
+                "temperature": 0,
+            }
+            if use_reasoning:
+                kwargs["reasoning_effort"] = self.reasoning_effort
+            return self.client.chat.completions.create(**kwargs)
+
+        try:
+            start_time = time.time()
+            try:
+                response = _call_api(use_reasoning=True)
+            except Exception as e:
+                # If reasoning_effort is not supported by the model, retry without it
+                if "reasoning_effort" in str(e).lower() or "unsupported parameter" in str(e).lower():
+                    print(f"[INFO] Retrying without reasoning_effort due to error: {e}")
+                    response = _call_api(use_reasoning=False)
+                else:
+                    raise e
+
             elapsed_time = time.time() - start_time
 
             response_json = response.model_dump()
@@ -132,7 +152,6 @@ class OpenAITranslator:
             lines = translated_text.split("\n")
             clean_lines = []
             for line in lines:
-                # Matches "Line 1: ", "Line 01: ", etc.
                 clean_lines.append(re.sub(r'^Line \d+:\s*', '', line))
             translated_text = "\n".join(clean_lines)
 

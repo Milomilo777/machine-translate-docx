@@ -73,6 +73,7 @@ class TranslationConfig:
     openai_api_key: str = field(default_factory=lambda: os.environ.get("OPENAI_API_KEY", ""))
     max_translation_block_size: int = 100
     default_model: str = DEFAULT_MODEL
+    reasoning_effort: str = "medium"  # options: "medium", "high", "xhigh"
     table_index: int = TABLE_INDEX
     source_col: int = SOURCE_COL
     translation_col: int = TRANSLATION_COL

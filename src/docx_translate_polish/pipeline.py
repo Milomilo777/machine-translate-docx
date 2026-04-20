@@ -19,11 +19,15 @@ class TranslationPipeline:
         self.reader = DocxReader()
         self.noise_filter = NoiseFilter()
         self.chunker = Chunker()
-        self.translator = OpenAITranslator(model=self.config.default_model)
+        self.translator = OpenAITranslator(
+            model=self.config.default_model,
+            reasoning_effort=self.config.reasoning_effort
+        )
         self.splitter = OpenAISubtitleSplitter(model=self.config.default_model)
 
     def run(self, input_path: str, src_lang: str, dest_lang: str,
             output_path: Optional[str] = None, splitting_mode: str = "classic",
+            reasoning_effort: str = "medium",
             progress_callback: Optional[Callable[[str], None]] = None) -> str:
         """
         Executes the translation pipeline.
@@ -31,12 +35,12 @@ class TranslationPipeline:
         """
         if not output_path:
             stem, ext = os.path.splitext(input_path)
-            # Output suffix must be _PER
             output_path = f"{stem}_PER{ext}"
 
         self._pipeline_logger = PipelineFileLogger(output_docx_path=str(output_path))
         self._pipeline_logger.set_meta(
             model=self.config.default_model,
+            reasoning_effort=reasoning_effort,
             src_lang=src_lang,
             dest_lang=dest_lang,
             splitting_mode=splitting_mode,
@@ -49,8 +53,12 @@ class TranslationPipeline:
                 progress_callback(f"[INFO] {msg}")
 
         log_info("Pipeline started")
+        log_info(f"Engine: {self.config.default_model} | Reasoning: {reasoning_effort}")
+        log_info(f"Splitting: {splitting_mode} | Chunking: {'ON' if self.config.chunk_enabled else 'OFF'}")
         log_info(f"Starting pipeline: {input_path} -> {output_path}")
+
         self.translator.set_filename(os.path.basename(input_path))
+        self.translator.set_reasoning_effort(reasoning_effort)
         self.splitter.set_filename(os.path.basename(input_path))
 
         # Step 1: Load and Extract
@@ -84,17 +92,14 @@ class TranslationPipeline:
 
             processed_cells.append(cell_data)
 
-        # Step 3: Chunking (Matches original repo by defaulting to one call)
+        # Step 3: Chunking
         phrases = self.chunker.build_phrases(processed_cells)
 
         blocks = []
         if self.config.chunk_enabled:
-            # FUTURE: chunked translation for large files
-            # blocks = self.chunker.split_into_token_blocks(phrases, self.config.chunk_size)
             log_info("Chunking requested but using single-block fallback for now.")
             blocks = [phrases]
         else:
-            # DEFAULT: entire document in one API call
             blocks = [phrases]
 
         log_info(f"Grouped into {len(phrases)} phrases and {len(blocks)} API blocks.")
@@ -106,7 +111,6 @@ class TranslationPipeline:
             block_lines = [p['text'] for p in block]
 
             log_info(f"Translating block {block_idx+1}/{len(blocks)} ({len(block_lines)} lines)...")
-            # Using verbatim translator.py method
             response_json, translated_block = self.translator.translate(
                 src_lang, dest_lang, "\n".join(block_lines), logger=self._pipeline_logger
             )
@@ -120,11 +124,9 @@ class TranslationPipeline:
             # Re-map translated lines back to phrases and rows
             line_idx = 0
             for phrase in block:
-                # Get the slice of translated lines for this phrase
                 phrase_translation = " ".join(translated_lines[line_idx : line_idx + 1])
                 line_idx += 1
 
-                # Split phrase translation into rows
                 if splitting_mode == "ai":
                     row_translations = self.splitter.split_phrase(
                         src_lang, dest_lang, phrase['text'], phrase_translation, logger=self._pipeline_logger
