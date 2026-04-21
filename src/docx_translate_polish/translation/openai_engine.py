@@ -35,18 +35,20 @@ class OpenAITranslator:
     def set_filename(self, filename):
         """Change active document context."""
         self.filename = filename
-        self.doc_id = str(uuid.uuid4())
+        new_doc_id = str(uuid.uuid4())
         try:
             conn = self.get_db_connection()
             cursor = conn.cursor()
             cursor.execute(
                 "INSERT INTO documents (doc_id, filename) VALUES (%s, %s)",
-                (self.doc_id, self.filename)
+                (new_doc_id, self.filename)
             )
             conn.commit()
+            self.doc_id = new_doc_id   # only set on success
             print(f"[INFO] Created document: {self.filename} ({self.doc_id})")
         except Exception as e:
-            print(f"[Warning] Failed to save document info: {e}")
+            self.doc_id = None         # explicitly clear so log_query_to_db skips
+            print(f"[INFO] DB unavailable, running without query logging: {e}")
         finally:
             try: cursor.close(); conn.close()
             except: pass
@@ -152,6 +154,7 @@ class OpenAITranslator:
             lines = translated_text.split("\n")
             clean_lines = []
             for line in lines:
+                # Matches "Line 1: ", "Line 01: ", etc.
                 clean_lines.append(re.sub(r'^Line \d+:\s*', '', line))
             translated_text = "\n".join(clean_lines)
 
@@ -181,10 +184,11 @@ class OpenAITranslator:
             return response_json, translated_text
 
         except Exception as e:
+            error_msg = f"OpenAI API call failed: {type(e).__name__}: {e}"
             if logger:
-                logger.log_event("ERROR", f"OpenAI API call failed: {e}")
-            print(f"[Error] OpenAI translation failed: {e}")
-            return None, None
+                logger.log_event("ERROR", error_msg)
+            print(f"[Error] {error_msg}")
+            raise
 
     def log_query_to_db(self, prompt, response_json, execution_time, cost_info):
         """Log API interaction to database."""

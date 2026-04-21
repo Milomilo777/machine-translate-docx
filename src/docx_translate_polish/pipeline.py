@@ -27,7 +27,7 @@ class TranslationPipeline:
 
     def run(self, input_path: str, src_lang: str, dest_lang: str,
             output_path: Optional[str] = None, splitting_mode: str = "classic",
-            reasoning_effort: str = "medium",
+            reasoning_effort: Optional[str] = None,
             progress_callback: Optional[Callable[[str], None]] = None) -> str:
         """
         Executes the translation pipeline.
@@ -39,10 +39,15 @@ class TranslationPipeline:
             ts = datetime.now().strftime("%Y%m%d_%H%M%S")
             output_path = f"{stem}_PER_{ts}{ext}"
 
+        if reasoning_effort is not None:
+            self.config.reasoning_effort = reasoning_effort
+
+        active_reasoning = self.config.reasoning_effort
+
         self._pipeline_logger = PipelineFileLogger(output_docx_path=str(output_path))
         self._pipeline_logger.set_meta(
             model=self.config.default_model,
-            reasoning_effort=reasoning_effort,
+            reasoning_effort=active_reasoning,
             src_lang=src_lang,
             dest_lang=dest_lang,
             splitting_mode=splitting_mode,
@@ -55,12 +60,12 @@ class TranslationPipeline:
                 progress_callback(msg)
 
         log_info("Pipeline started")
-        log_info(f"Engine: {self.config.default_model} | Reasoning: {reasoning_effort}")
+        log_info(f"Engine: {self.config.default_model} | Reasoning: {active_reasoning}")
         log_info(f"Splitting: {splitting_mode} | Chunking: {'ON' if self.config.chunk_enabled else 'OFF'}")
         log_info(f"Starting pipeline: {input_path} -> {output_path}")
 
         self.translator.set_filename(os.path.basename(input_path))
-        self.translator.set_reasoning_effort(reasoning_effort)
+        self.translator.set_reasoning_effort(active_reasoning)
         self.splitter.set_filename(os.path.basename(input_path))
 
         # Step 1: Load and Extract
@@ -113,12 +118,18 @@ class TranslationPipeline:
             block_lines = [p['text'] for p in block]
 
             log_info(f"Translating block {block_idx+1}/{len(blocks)} ({len(block_lines)} lines)...")
-            response_json, translated_block = self.translator.translate(
-                src_lang, dest_lang, "\n".join(block_lines), logger=self._pipeline_logger
-            )
+
+            try:
+                response_json, translated_block = self.translator.translate(
+                    src_lang, dest_lang, "\n".join(block_lines),
+                    logger=self._pipeline_logger
+                )
+            except Exception as e:
+                log_info(f"[ERROR] Block {block_idx+1} API error: {type(e).__name__}: {e}")
+                continue
 
             if not translated_block:
-                log_info(f"[ERROR] Translation failed for block {block_idx+1}. Check log for details.")
+                log_info(f"[ERROR] Block {block_idx+1} returned empty translation.")
                 continue
 
             translated_lines = translated_block.split("\n")
