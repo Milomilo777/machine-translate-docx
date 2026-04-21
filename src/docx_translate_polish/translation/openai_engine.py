@@ -10,12 +10,13 @@ from typing import List, Tuple, Optional
 from .prompt_template import build_translation_prompt
 
 class OpenAITranslator:
-    def __init__(self, model="gpt-5.4", filename=None, reasoning_effort="medium"):
+    def __init__(self, model="gpt-5.4", filename=None, reasoning_effort="medium", api_key=None):
         self.model = model
         self.reasoning_effort = reasoning_effort
-        self.api_key = os.environ.get("OPENAI_API_KEY")
+
+        self.api_key = api_key or os.environ.get("OPENAI_API_KEY")
         if not self.api_key:
-            raise ValueError("OPENAI_API_KEY not set in environment")
+            raise ValueError("OPENAI_API_KEY not set in environment or config")
         self.client = OpenAI(api_key=self.api_key)
 
         # DB config from environment

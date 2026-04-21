@@ -21,7 +21,8 @@ class TranslationPipeline:
         self.chunker = Chunker()
         self.translator = OpenAITranslator(
             model=self.config.default_model,
-            reasoning_effort=self.config.reasoning_effort
+            reasoning_effort=self.config.reasoning_effort,
+            api_key=self.config.openai_api_key or None
         )
         self.splitter = OpenAISubtitleSplitter(model=self.config.default_model)
 
