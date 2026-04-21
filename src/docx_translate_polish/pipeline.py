@@ -52,7 +52,7 @@ class TranslationPipeline:
         def log_info(msg):
             self._pipeline_logger.log_event("INFO", msg)
             if progress_callback:
-                progress_callback(f"[INFO] {msg}")
+                progress_callback(msg)
 
         log_info("Pipeline started")
         log_info(f"Engine: {self.config.default_model} | Reasoning: {reasoning_effort}")

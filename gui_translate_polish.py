@@ -313,12 +313,6 @@ class SMTVTranslatePolishApp(ctk.CTk):
 
             pipeline = TranslationPipeline(config=config)
 
-            self.log_message(
-                f"Engine: {model_id} | Reasoning: {reasoning_effort} | "
-                f"Split: {splitting_mode} | "
-                f"File: {os.path.basename(file_path)}"
-            )
-
             output_path = pipeline.run(
                 input_path=file_path,
                 src_lang=src_code,
@@ -329,7 +323,7 @@ class SMTVTranslatePolishApp(ctk.CTk):
             )
 
             self.after(0, lambda: self.prog_bar.set(1.0))
-            self.log_message(f"✔ Pipeline complete. Output saved to: {output_path}", "INFO")
+            self.log_message(f"✔ Pipeline complete. Output: {output_path}", "INFO")
 
         except Exception as e:
             tb = traceback.format_exc()
