@@ -1,0 +1,81 @@
+{
+  "logger_version": "2.0",
+  "run_start": "2026-04-22T08:21:22.289987+00:00",
+  "run_end": "2026-04-22T08:21:22.362731+00:00",
+  "run_metadata": {
+    "model": "gpt-5.4-mini",
+    "reasoning_effort": "medium",
+    "src_lang": "en",
+    "dest_lang": "fa",
+    "splitting_mode": "classic",
+    "source_file": "tests/fixtures/sample_3lines.docx"
+  },
+  "summary": {
+    "total_api_calls": 0,
+    "total_split_ops": 0,
+    "total_errors": 0,
+    "total_elapsed_sec": 0.0,
+    "tokens": {
+      "input": 0,
+      "output": 0,
+      "cached": 0,
+      "total": 0
+    },
+    "estimated_cost_usd": 0.0,
+    "by_stage": {}
+  },
+  "api_calls": [],
+  "split_operations": [],
+  "events": [
+    {
+      "timestamp": "2026-04-22T08:21:22.290022+00:00",
+      "level": "INFO",
+      "message": "Pipeline started"
+    },
+    {
+      "timestamp": "2026-04-22T08:21:22.290033+00:00",
+      "level": "INFO",
+      "message": "Engine: gpt-5.4-mini | Reasoning: medium"
+    },
+    {
+      "timestamp": "2026-04-22T08:21:22.290040+00:00",
+      "level": "INFO",
+      "message": "Splitting: classic | Chunking: OFF"
+    },
+    {
+      "timestamp": "2026-04-22T08:21:22.290044+00:00",
+      "level": "INFO",
+      "message": "Starting pipeline: tests/fixtures/sample_3lines.docx -> tests/fixtures/sample_3lines_PER_20260422_082122.docx"
+    },
+    {
+      "timestamp": "2026-04-22T08:21:22.337925+00:00",
+      "level": "INFO",
+      "message": "Extracted 3 cells from table."
+    },
+    {
+      "timestamp": "2026-04-22T08:21:22.340341+00:00",
+      "level": "INFO",
+      "message": "Grouped into 1 phrases and 1 API blocks."
+    },
+    {
+      "timestamp": "2026-04-22T08:21:22.345296+00:00",
+      "level": "INFO",
+      "message": "Translating block 1/1 (1 lines)..."
+    },
+    {
+      "timestamp": "2026-04-22T08:21:22.345508+00:00",
+      "level": "ERROR",
+      "message": "API call failed: Exception: AuthenticationError: 401 Unauthorized"
+    },
+    {
+      "timestamp": "2026-04-22T08:21:22.345570+00:00",
+      "level": "INFO",
+      "message": "[ERROR] Block 1 API error: Exception: AuthenticationError: 401 Unauthorized"
+    },
+    {
+      "timestamp": "2026-04-22T08:21:22.362683+00:00",
+      "level": "INFO",
+      "message": "Pipeline finished. Output: tests/fixtures/sample_3lines_PER_20260422_082122.docx"
+    }
+  ]
+}
