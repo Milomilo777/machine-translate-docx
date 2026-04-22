@@ -17,7 +17,7 @@ class DocxWriter:
         """Creates 'rtlstyle' if it doesn't exist in the document."""
         styles = self.doc.styles
         if 'rtlstyle' not in styles:
-            style = styles.add_style('rtlstyle', WD_STYLE_TYPE.PARAGRAPH)
+            style = styles.add_style('rtlstyle', WD_STYLE_TYPE.CHARACTER)
             style.font.rtl = True
 
     def _prepare_and_clear_cell(self, cell):

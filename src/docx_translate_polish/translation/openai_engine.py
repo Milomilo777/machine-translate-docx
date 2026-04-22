@@ -141,6 +141,8 @@ class OpenAITranslator:
             except Exception as e:
                 # If reasoning_effort is not supported by the model, retry without it
                 if "reasoning_effort" in str(e).lower() or "unsupported parameter" in str(e).lower():
+                    if logger:
+                        logger.log_event("WARNING", f"reasoning_effort failed: {e}. Retrying...")
                     print(f"[INFO] Retrying without reasoning_effort due to error: {e}")
                     response = _call_api(use_reasoning=False)
                 else:
@@ -155,7 +157,6 @@ class OpenAITranslator:
             lines = translated_text.split("\n")
             clean_lines = []
             for line in lines:
-                # Matches "Line 1: ", "Line 01: ", etc.
                 clean_lines.append(re.sub(r'^Line \d+:\s*', '', line))
             translated_text = "\n".join(clean_lines)
 
