@@ -40,6 +40,32 @@ CHANGES.md                    ← همین فایل — منبع اصلی برا
 
 ## تغییرات — از ابتدا تا آخر
 
+### ۰-ح. server.js و package.json [2026-05-09]
+
+**یافته:** فایل `server.js.txt` در ریشه پروژه دیگر وجود ندارد — قبلاً به
+`server.js` (با پسوند صحیح) تغییر نام یافته بوده. CLAUDE.md درست است.
+ارجاعات تاریخی در CHANGES.md (بخش‌های قدیمی) همچنان نام `server.js.txt`
+را دارند که برای آن مقطع زمانی صحیح است؛ تغییری روی تاریخ نمی‌دهیم.
+
+**اقدام:** فایل `package.json` که تا الان غایب بود اضافه شد. `server.js`
+این پکیج‌های npm را require می‌کند:
+- express ^4.19
+- multer ^1.4
+- cross-spawn ^7.0
+- body-parser ^1.20
+- cron ^3.1
+- iconv-lite ^0.6
+- ps-list ^8.1
+
+با `package.json` می‌توان `npm install && npm start` اجرا کرد و سرور
+production را برپا کرد. قبلاً نصب وابستگی‌ها دستی بود و reproducible
+نبود. `engines.node = ">=18"` ست شد.
+
+local_launcher.py (Python alternative) مستقل از این است و بدون Node
+کار می‌کند.
+
+---
+
 ### ۰-ز. تحقیق آنلاین + پیاده‌سازی [2026-05-09]
 
 #### Persian normalizer — fa_postprocess.py
