@@ -455,6 +455,7 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
             # Also look for the companion aligner output (_PER_Double.docx)
             double_path = self._find_double_file(output_path)
             if double_path:
+                double_path = self._strip_timestamp(double_path)
                 print(f"[job {job_id}] double file found -> {double_path.name}")
             self.state.update_job(
                 job_id,
