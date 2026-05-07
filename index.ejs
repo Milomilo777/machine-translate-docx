@@ -127,6 +127,13 @@
           <div class="loader ease-linear rounded-full border-4 border-t-4 border-gray-200 h-12 w-12 mb-4"></div>
           <h2 class="text-center text-white text-xl font-semibold">Loading...</h2>
           <p class="w-1/3 text-center text-white">This may take a few minutes, please don't close this page.</p>
+          <div class="mt-6 w-1/2 max-w-md">
+            <div class="flex items-center justify-between text-white text-sm mb-1">
+              <span id="progressLabel">Starting…</span>
+              <span id="progressPct">0%</span>
+            </div>
+            <progress id="progressBar" value="0" max="100" class="w-full h-3"></progress>
+          </div>
         </div>
 
         <div id="result" class="mt-8"></div>
@@ -561,6 +568,29 @@
       };
 
       // ------- Polling helper -------
+      // Update the progress bar from a /status response. Map known
+      // PROGRESS checkpoints to short human labels so the user has
+      // context for the percentage they see.
+      function _progressLabel(pct) {
+        if (pct >= 100) return 'Finalizing…';
+        if (pct >= 75)  return 'Aligning subtitles…';
+        if (pct >= 65)  return 'Polishing translation…';
+        if (pct >= 30)  return 'Polish pass running…';
+        if (pct >= 15)  return 'Translating…';
+        if (pct >= 10)  return 'Backend started…';
+        if (pct >= 5)   return 'Job queued…';
+        return 'Starting…';
+      }
+      function _updateProgress(pct) {
+        if (typeof pct !== 'number' || pct < 0) return;
+        const bar   = document.getElementById('progressBar');
+        const lbl   = document.getElementById('progressLabel');
+        const pctEl = document.getElementById('progressPct');
+        if (bar)   bar.value      = pct;
+        if (pctEl) pctEl.textContent = pct + '%';
+        if (lbl)   lbl.textContent   = _progressLabel(pct);
+      }
+
       async function pollJobStatus(jobId) {
         const POLL_INTERVAL = 4000;         // check every 4 seconds
         const MAX_WAIT      = 40 * 60 * 1000; // 40 minutes max
@@ -572,7 +602,8 @@
             const res = await fetch('/status/' + jobId);
             if (!res.ok) continue; // network glitch — retry silently
             const data = await res.json();
-            if (data.status === 'done')  return { filename: data.filename, filename2: data.filename2 || null, filename3: data.filename3 || null };
+            if (typeof data.progress === 'number') _updateProgress(data.progress);
+            if (data.status === 'done')  { _updateProgress(100); return { filename: data.filename, filename2: data.filename2 || null, filename3: data.filename3 || null }; }
             if (data.status === 'error') throw new Error(data.error || 'Translation failed on server.');
             // 'pending' → keep polling
           } catch (err) {
@@ -597,6 +628,7 @@
         }
 
         loadingElement.classList.add('visible');
+        _updateProgress(0);
 
         const formData = new FormData();
         const docxFile = docxFileInput.files[0];

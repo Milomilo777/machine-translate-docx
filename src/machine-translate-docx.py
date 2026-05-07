@@ -2026,10 +2026,14 @@ def selenium_chrome_translate_maxchar_blocks():
         full_source = "\n".join(blocks_nchar_max_to_translate_array)
         total_lines = len(full_source.split("\n"))
         print(f"[INFO] OpenAI single-call mode: {total_lines} lines, {len(full_source)} chars")
+        # PROGRESS marker — picked up by local_launcher.py and surfaced in /status JSON.
+        # Pre-translate: file parsed, prompts loaded, ready to call OpenAI.
+        print("PROGRESS:15", flush=True)
 
         _t_translate_start = time.time()
         _, full_translated = oai_translator.translate(src_lang_name, dest_lang_name, full_source)
         _t_translate = time.time() - _t_translate_start
+        print("PROGRESS:30", flush=True)
         _td = oai_translator.last_call_data
         print(
             f"[TIMER] Translate: {_t_translate:.1f}s | "
@@ -2045,6 +2049,7 @@ def selenium_chrome_translate_maxchar_blocks():
             _before_polish = full_translated
             full_translated = oai_polisher.polish(full_source, full_translated)
             _t_polish = time.time() - _t_polish_start
+            print("PROGRESS:65", flush=True)
             _pd = oai_polisher.last_call_data
             print(
                 f"[TIMER] Polish:    {_t_polish:.1f}s | "
@@ -7508,6 +7513,8 @@ def save_docx_file():
                 _double_path     = f"{_stem_path}_PER_Double.docx"
 
                 # ── Classic pass (mechanical only, llm_threshold=0) ───────────
+                # PROGRESS marker — translate+polish+save complete; aligner about to start.
+                print("PROGRESS:75", flush=True)
                 try:
                     print(f"\n[INFO] Running Classic aligner -> {_classic_path}")
                     _t0 = time.time()
@@ -7554,6 +7561,8 @@ def save_docx_file():
                     import traceback as _tb
                     print(f"[WARN] Double aligner failed: {_ae}")
                     print(_tb.format_exc())
+                # PROGRESS marker — both aligner passes complete, file written.
+                print("PROGRESS:100", flush=True)
         except Exception:
             var = traceback.format_exc()
             txt_readline = input(

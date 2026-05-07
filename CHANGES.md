@@ -40,6 +40,29 @@ CHANGES.md                    ← همین فایل — منبع اصلی برا
 
 ## تغییرات — از ابتدا تا آخر
 
+### ۰-و. Progress Bar روی polling موجود [2026-05-09]
+
+**فایل‌ها:** `local_launcher.py`، `src/machine-translate-docx.py`، `index.ejs`
+
+پیاده‌سازی بدون SSE — از همان polling هر ۴ ثانیه `/status/:jobId` استفاده
+می‌شود.
+
+- `Job` dataclass فیلد `progress: int = 0` گرفت.
+- `local_launcher._process_job` در دو نقطه `progress=5` (job ثبت شد) و
+  `progress=10` (semaphore acquired) ست می‌کند.
+- در `_run_real_backend`، loop خواندن stdout subprocess قبل از log کردن
+  هر خط، prefix `PROGRESS:` را تشخیص می‌دهد و `update_job(progress=...)`
+  می‌زند. خود خط چاپ نمی‌شود (نویز نیست).
+- `machine-translate-docx.py` در ۵ نقطه `print("PROGRESS:N", flush=True)`
+  می‌زند: `15` قبل از translate، `30` بعد از translate، `65` بعد از polish،
+  `75` قبل از aligner (Classic+Double)، `100` بعد از Double.
+- `/status/:jobId` فیلد `progress` را برمی‌گرداند.
+- `index.ejs` یک `<progress>` HTML5 + label و درصد دارد. `pollJobStatus`
+  هر بار `_updateProgress(data.progress)` می‌زند. label از `_progressLabel(pct)`
+  می‌آید (`Translating…` / `Polishing…` / `Aligning subtitles…` / ...).
+
+---
+
 ### ۰-ه. Phase 5 (review-rewrite-opus-4.7) — اختیاری [2026-05-08]
 
 #### 0.14 Prompt hash در log JSON

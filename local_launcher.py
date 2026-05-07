@@ -183,6 +183,7 @@ class Job:
     created_at: float
     filename2: str | None = None  # second output file  (_PER_Double.docx)
     filename3: str | None = None  # third output file   (_PER_Classic.docx)
+    progress: int = 0             # 0-100; updated by PROGRESS:N markers from backend
 
 
 class LocalState:
@@ -429,6 +430,7 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
                 "status": job.status,
                 "filename": job.filename,
                 "error": job.error,
+                "progress": job.progress,
             }
             if job.filename2:
                 payload["filename2"] = job.filename2
@@ -538,10 +540,12 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
     ) -> None:
         _job_t0 = time.time()
         print(f"[job {job_id}] ▶ start — file: {original_name} | lang: {target_language} | engine: {translation_engine}")
+        self.state.update_job(job_id, progress=5)
         # Limit concurrent backend subprocesses to keep memory bounded.
         # When the cap is reached, a job waits here (status remains 'pending'
         # so the frontend keeps polling) until a slot frees up.
         _job_semaphore.acquire()
+        self.state.update_job(job_id, progress=10)
         try:
             if self.state.backend_mode == "mock":
                 time.sleep(1.2)
@@ -707,6 +711,16 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
         if proc.stdout is not None:
             for line in proc.stdout:
                 stripped = line.rstrip()
+                # Parse PROGRESS:N lines into job.progress without printing
+                # them as noise — they are tiny status pings, not log content.
+                if stripped.startswith("PROGRESS:"):
+                    try:
+                        pct = int(stripped.split(":", 1)[1].strip())
+                        pct = max(0, min(100, pct))
+                        self.state.update_job(job_id, progress=pct)
+                    except ValueError:
+                        pass
+                    continue
                 if stripped:
                     print(f"[job {job_id}] {stripped}")
                 if "Saved file name:" in stripped:
