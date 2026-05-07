@@ -525,8 +525,18 @@ class FASubtitleAligner:
         FA-based sentence grouping.
 
         A group ends when:
-          - A bridge / shaded / empty row is encountered  → flush
+          - A bridge / shaded row is encountered     → flush, skip row
           - The FA text ends with sentence punctuation (.!?؟)
+
+        After a sentence-ending FA row, any immediately following empty-FA
+        non-bridge rows are absorbed into the same group.  This handles
+        single-call translation output, where the translator placed the full
+        FA sentence in the first row only and left the remaining EN rows with
+        empty FA cells.
+
+        Inline empty rows (empty FA mid-sentence, non-bridge) are also
+        absorbed into the current group so the aligner can distribute text
+        across them.
 
         Special case: if the translator copy-pasted the same long FA text
         across multiple rows, all those rows form one group (Lesson 5 pattern).
@@ -541,8 +551,8 @@ class FASubtitleAligner:
             en, fa = rd['en'], rd['fa']
             shaded = rd.get('shaded', False)
 
-            # Bridge or empty → flush current group
-            if _is_bridge(en, fa, shaded) or not fa.strip():
+            # Bridge row → flush current group and skip this row entirely
+            if _is_bridge(en, fa, shaded):
                 if current_indices:
                     groups.append({
                         'row_indices': list(current_indices),
@@ -550,6 +560,15 @@ class FASubtitleAligner:
                     })
                     current_indices = []
                     current_fa_parts = []
+                i += 1
+                continue
+
+            # Empty FA but non-bridge:
+            #   - Inside a sentence group → include as an extra row slot
+            #   - Not yet inside any group → skip (nothing to distribute yet)
+            if not fa.strip():
+                if current_indices:
+                    current_indices.append(rd['ri'])
                 i += 1
                 continue
 
@@ -573,12 +592,26 @@ class FASubtitleAligner:
             current_fa_parts.append(fa.strip())
 
             if _ends_sentence(fa):
+                # Look-ahead: absorb any immediately following empty-FA
+                # non-bridge rows into this group.  These are the "spare"
+                # EN rows that single-call translation left blank.
+                j = i + 1
+                while j < len(rows):
+                    nxt = rows[j]
+                    if _is_bridge(nxt['en'], nxt['fa'], nxt.get('shaded', False)):
+                        break
+                    if nxt['fa'].strip():
+                        break   # next sentence starts here
+                    current_indices.append(nxt['ri'])
+                    j += 1
                 groups.append({
                     'row_indices': list(current_indices),
                     'fa_parts':    list(current_fa_parts),
                 })
                 current_indices = []
                 current_fa_parts = []
+                i = j
+                continue
 
             i += 1
 
