@@ -603,7 +603,7 @@
             if (!res.ok) continue; // network glitch — retry silently
             const data = await res.json();
             if (typeof data.progress === 'number') _updateProgress(data.progress);
-            if (data.status === 'done')  { _updateProgress(100); return { filename: data.filename, filename2: data.filename2 || null, filename3: data.filename3 || null }; }
+            if (data.status === 'done')  { _updateProgress(100); return { filename: data.filename, filename2: data.filename2 || null, filename3: data.filename3 || null, filename4: data.filename4 || null }; }
             if (data.status === 'error') throw new Error(data.error || 'Translation failed on server.');
             // 'pending' → keep polling
           } catch (err) {
@@ -668,7 +668,7 @@
           }
 
           // Step 2: Poll until translation finishes
-          const { filename, filename2, filename3 } = await pollJobStatus(uploadData.jobId);
+          const { filename, filename2, filename3, filename4 } = await pollJobStatus(uploadData.jobId);
 
           // Step 3: Trigger download
           //
@@ -688,7 +688,9 @@
             .replace(/^\d{13}-/, '')
             .replace(/ - \d{4}-\d{2}-\d{2}T\d{6}\.\d{3}(?=\.docx$)/, '');
 
-          const hasMultiple = !!(filename2 || filename3);
+          // ZIP is only produced for Persian + chatgpt-polish pipeline
+          // (filename2/3/4 are only set in that case)
+          const hasMultiple = !!(filename2 || filename3 || filename4);
           if (hasMultiple) {
             triggerDownload('/download-zip/' + encodeURIComponent(uploadData.jobId));
           } else {
@@ -709,7 +711,7 @@
           }, 500);
 
           flashTabTitle('Download ready!');
-          const extraFiles = [filename2, filename3]
+          const extraFiles = [filename2, filename3, filename4]
             .filter(Boolean)
             .map(f => `\n• ${f.replace(/^\d{13}-/, '')}`).join('');
           const alertMsg = hasMultiple

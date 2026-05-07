@@ -7503,41 +7503,99 @@ def save_docx_file():
                 log_path = re.sub(r"(?i)\.docx$", "_log.json", word_file_to_translate_save_as_path)
                 write_translation_log(log_path)
 
-            # ── Subtitle aligner: two output files ───────────────────────────────
-            # Classic  (_PER_Classic.docx) = mechanical only, no LLM, fast
-            # Double   (_PER_Double.docx)  = LLM-assisted alignment, higher quality
+            # ── helpers for the three split passes ───────────────────────────────
+            def _write_cell_text(cell, text: str) -> None:
+                """Replace all text in a table cell with `text` (first paragraph)."""
+                for para in cell.paragraphs:
+                    for run in para.runs:
+                        run.text = ''
+                while len(cell.paragraphs) > 1:
+                    p_elem = cell.paragraphs[-1]._element
+                    p_elem.getparent().remove(p_elem)
+                if cell.paragraphs:
+                    p = cell.paragraphs[0]
+                    if p.runs:
+                        p.runs[0].text = text
+                    else:
+                        p.add_run(text)
+
+            def _simple_split_docx(input_path: str, output_path: str, max_len: int = 48) -> dict:
+                """Simple word-wrap split for FA cells — no AI, no Persian-specific logic.
+
+                For each FA cell (cells[2]) longer than max_len chars, splits at the
+                last word boundary ≤ max_len and inserts a duplicate row below with
+                the remainder. Maximum one split per original row (double only).
+                """
+                import copy as _copy
+                _doc = Document(input_path)
+                _stats: dict = {"rows_processed": 0, "rows_split": 0}
+                for _tbl in _doc.tables:
+                    _ri = 0
+                    while _ri < len(_tbl.rows):
+                        _row = _tbl.rows[_ri]
+                        _cells = _row.cells
+                        if len(_cells) < 3:
+                            _ri += 1
+                            continue
+                        _fa_text = " ".join(
+                            _p.text.strip()
+                            for _p in _cells[2].paragraphs
+                            if _p.text.strip()
+                        )
+                        _stats["rows_processed"] += 1
+                        if len(_fa_text) <= max_len:
+                            _ri += 1
+                            continue
+                        _split_at = _fa_text.rfind(' ', 0, max_len)
+                        if _split_at <= 0:
+                            _split_at = max_len
+                        _chunk1 = _fa_text[:_split_at].strip()
+                        _remainder = _fa_text[_split_at:].strip()
+                        if not _chunk1 or not _remainder:
+                            _ri += 1
+                            continue
+                        _write_cell_text(_cells[2], _chunk1)
+                        _new_tr = _copy.deepcopy(_row._tr)
+                        _row._tr.addnext(_new_tr)
+                        _write_cell_text(_tbl.rows[_ri + 1].cells[2], _remainder)
+                        _stats["rows_split"] += 1
+                        _ri += 2   # skip the newly inserted row
+                _doc.save(output_path)
+                return _stats
+
+            # ── Subtitle aligner: three output files ─────────────────────────────
+            # Classic  (_PER_Classic.docx)  = simple word-wrap split, no AI
+            # Double   (_PER_Double.docx)   = FA-specific mechanical aligner (llm_threshold=0)
+            # AIAlign  (_PER_AIAlign.docx)  = FA-specific aligner + full LLM review (llm_threshold=100)
+            # Guard: only for Persian + chatgpt-polish pipeline
             if with_polish and dest_lang.startswith('fa'):
-                _ai_model_align  = 'gpt-5.4-mini'  # aligner always uses mini
+                _ai_model_align  = 'gpt-5.4-mini'  # aligner always uses mini — never change
                 _stem_path       = re.sub(r'(?i)\.docx$', '', word_file_to_translate)
                 _classic_path    = f"{_stem_path}_PER_Classic.docx"
                 _double_path     = f"{_stem_path}_PER_Double.docx"
+                _ai_path         = f"{_stem_path}_PER_AIAlign.docx"
 
-                # ── Classic pass (mechanical only, llm_threshold=0) ───────────
-                # PROGRESS marker — translate+polish+save complete; aligner about to start.
+                # ── Pass 1: Classic — simple algorithmic word-wrap ────────────
+                # PROGRESS marker — translate+polish+save complete; splitting about to start.
                 print("PROGRESS:75", flush=True)
                 try:
-                    print(f"\n[INFO] Running Classic aligner -> {_classic_path}")
+                    print(f"\n[INFO] Running Classic split -> {_classic_path}")
                     _t0 = time.time()
-                    _classic_aligner = FASubtitleAligner(
-                        model=_ai_model_align,
-                        llm_threshold=0,   # never call LLM
-                        token_budget=0,
-                    )
-                    _cs = _classic_aligner.align(word_file_to_translate_save_as_path, _classic_path)
+                    _cs = _simple_split_docx(word_file_to_translate_save_as_path, _classic_path)
                     print(
                         f"[TIMER] Classic: {time.time()-_t0:.1f}s"
-                        f" | groups: {_cs.get('groups','?')}"
-                        f" | doubles: {_cs.get('doubles','?')}"
-                        f" | triples: {_cs.get('triples',0)}"
-                        f" | over-48: {_cs.get('over_limit',0)}"
+                        f" | processed: {_cs.get('rows_processed','?')}"
+                        f" | split: {_cs.get('rows_split','?')}"
                     )
                     print(f"[INFO] Classic saved: {_classic_path}")
                 except Exception as _ae:
                     import traceback as _tb
-                    print(f"[WARN] Classic aligner failed: {_ae}")
+                    print(f"[WARN] Classic split failed: {_ae}")
                     print(_tb.format_exc())
 
-                # ── Double pass (mechanical only, llm_threshold=0) ───────────
+                print("PROGRESS:82", flush=True)
+
+                # ── Pass 2: Double — FA mechanical aligner (no LLM) ──────────
                 try:
                     print(f"\n[INFO] Running Double aligner -> {_double_path}")
                     _t0 = time.time()
@@ -7550,8 +7608,6 @@ def save_docx_file():
                     print(
                         f"[TIMER] Double:  {time.time()-_t0:.1f}s"
                         f" | groups: {_ds.get('groups','?')}"
-                        f" | LLM: {_ds.get('llm_corrected','?')}"
-                        f" | tokens: {_ds.get('tokens_used','?')}"
                         f" | doubles: {_ds.get('doubles','?')}"
                         f" | triples: {_ds.get('triples',0)}"
                         f" | over-48: {_ds.get('over_limit',0)}"
@@ -7561,7 +7617,35 @@ def save_docx_file():
                     import traceback as _tb
                     print(f"[WARN] Double aligner failed: {_ae}")
                     print(_tb.format_exc())
-                # PROGRESS marker — both aligner passes complete, file written.
+
+                print("PROGRESS:90", flush=True)
+
+                # ── Pass 3: AIAlign — FA aligner + full LLM review ───────────
+                try:
+                    print(f"\n[INFO] Running AIAlign aligner -> {_ai_path}")
+                    _t0 = time.time()
+                    _ai_aligner = FASubtitleAligner(
+                        model=_ai_model_align,      # still gpt-5.4-mini — never change
+                        llm_threshold=100,           # all groups reviewed by LLM
+                        token_budget=40_000,
+                    )
+                    _as = _ai_aligner.align(word_file_to_translate_save_as_path, _ai_path)
+                    print(
+                        f"[TIMER] AIAlign: {time.time()-_t0:.1f}s"
+                        f" | groups: {_as.get('groups','?')}"
+                        f" | LLM: {_as.get('llm_corrected','?')}"
+                        f" | tokens: {_as.get('tokens_used','?')}"
+                        f" | doubles: {_as.get('doubles','?')}"
+                        f" | triples: {_as.get('triples',0)}"
+                        f" | over-48: {_as.get('over_limit',0)}"
+                    )
+                    print(f"[INFO] AIAlign saved: {_ai_path}")
+                except Exception as _ae:
+                    import traceback as _tb
+                    print(f"[WARN] AIAlign aligner failed: {_ae}")
+                    print(_tb.format_exc())
+
+                # PROGRESS marker — all three passes complete.
                 print("PROGRESS:100", flush=True)
         except Exception:
             var = traceback.format_exc()

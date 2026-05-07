@@ -181,8 +181,9 @@ class Job:
     filename: str | None
     error: str | None
     created_at: float
-    filename2: str | None = None  # second output file  (_PER_Double.docx)
-    filename3: str | None = None  # third output file   (_PER_Classic.docx)
+    filename2: str | None = None  # _PER_Double.docx   (FA mechanical aligner)
+    filename3: str | None = None  # _PER_Classic.docx  (simple word-wrap split)
+    filename4: str | None = None  # _PER_AIAlign.docx  (FA aligner + LLM review)
     progress: int = 0             # 0-100; updated by PROGRESS:N markers from backend
 
 
@@ -366,7 +367,7 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
         import io
         import zipfile
 
-        names = [n for n in (job.filename, job.filename2, job.filename3) if n]
+        names = [n for n in (job.filename, job.filename2, job.filename3, job.filename4) if n]
         existing = [(n, self.state.uploads_dir / n) for n in names
                     if (self.state.uploads_dir / n).exists()]
         if not existing:
@@ -436,6 +437,8 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
                 payload["filename2"] = job.filename2
             if job.filename3:
                 payload["filename3"] = job.filename3
+            if job.filename4:
+                payload["filename4"] = job.filename4
             self._send_json(payload)
             return
 
@@ -590,7 +593,7 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
             count = _read_int(self.state.count_file, 0) + 1
             _write_int(self.state.count_file, count)
 
-            # Companion aligner output files
+            # Companion split output files (fa + chatgpt-polish only)
             double_path = self._find_double_file(output_path)
             if double_path:
                 double_path = self._strip_timestamp(double_path)
@@ -601,12 +604,18 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
                 classic_path = self._strip_timestamp(classic_path)
                 print(f"[job {job_id}] classic file found -> {classic_path.name}")
 
+            ai_align_path = self._find_ai_align_file(output_path)
+            if ai_align_path:
+                ai_align_path = self._strip_timestamp(ai_align_path)
+                print(f"[job {job_id}] ai-align file found -> {ai_align_path.name}")
+
             self.state.update_job(
                 job_id,
                 status="done",
                 filename=output_path.name,
                 filename2=double_path.name if double_path else None,
                 filename3=classic_path.name if classic_path else None,
+                filename4=ai_align_path.name if ai_align_path else None,
                 error=None,
             )
             _job_elapsed = time.time() - _job_t0
@@ -839,6 +848,43 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
         for p in parent.glob("*_PER_Classic.docx"):
             p_clean = _re.sub(r'^\d{10,}-', '', p.name)
             p_stem  = _re.sub(r'[_\-]PER_Classic\.docx$', '', p_clean, flags=_re.IGNORECASE)
+            if p_stem == clean_stem:
+                return p
+
+        return None
+
+    def _find_ai_align_file(self, main_output: Path) -> Path | None:
+        """Look for the _PER_AIAlign.docx sibling of the main output file.
+
+        Mirrors _find_classic_file() but targets _PER_AIAlign.docx.
+        """
+        parent = main_output.parent
+
+        clean_stem = _re.sub(
+            r'[_\-](?:PER|ARA|GER|FRE|CHI|SPA|POR|ITA|JPN|KOR|RUS|TUR|POL|DUT|SWE|NOR|DAN|FIN|HEB|HIN|THA|VIE|UKR|CZE|HUN|ROM|BUL|CAT|HRV|SLK|SLV|LIT|LAV|EST).*$',
+            '',
+            main_output.stem,
+            flags=_re.IGNORECASE,
+        ) or main_output.stem
+
+        # Strategy 1: exact name — replace TranslatePolish with AIAlign
+        candidate_name = _re.sub(
+            r'_TranslatePolish(?=\.docx$)', '_AIAlign', main_output.name, flags=_re.IGNORECASE
+        )
+        if candidate_name != main_output.name:
+            p = parent / candidate_name
+            if p.exists():
+                return p
+
+        # Strategy 2: timestamped variant still on disk
+        for p in parent.glob(f"*-{clean_stem}_PER_AIAlign.docx"):
+            if p.exists():
+                return p
+
+        # Strategy 3: any *_PER_AIAlign.docx whose clean stem matches this job
+        for p in parent.glob("*_PER_AIAlign.docx"):
+            p_clean = _re.sub(r'^\d{10,}-', '', p.name)
+            p_stem  = _re.sub(r'[_\-]PER_AIAlign\.docx$', '', p_clean, flags=_re.IGNORECASE)
             if p_stem == clean_stem:
                 return p
 

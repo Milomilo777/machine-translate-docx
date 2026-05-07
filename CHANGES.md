@@ -28,13 +28,14 @@ CHANGES.md                    ← همین فایل — منبع اصلی برا
 
 ```
 ورودی:   filename.docx
-خروجی ترجمه+پولیش:   filename_PER_TranslatePolish.docx
-خروجی الاینر کلاسیک: filename_PER_Classic.docx   ← جدید
-خروجی الاینر دوبل:   filename_PER_Double.docx
-لاگ JSON:             filename_PER_TranslatePolish_log.json
+خروجی ترجمه+پولیش:      filename_PER_TranslatePolish.docx
+خروجی تقسیم ساده:       filename_PER_Classic.docx    ← بدون AI
+خروجی الاینر مکانیکی:   filename_PER_Double.docx     ← FA-specific
+خروجی الاینر+LLM:       filename_PER_AIAlign.docx    ← FA-specific + LLM review
+لاگ JSON:                filename_PER_TranslatePolish_log.json
 ```
 
-**توجه:** هر سه فایل به‌صورت خودکار دانلود می‌شوند (تأخیر: 0ms / 1500ms / 3000ms).
+**توجه:** هر ۴ فایل در یک ZIP دانلود می‌شوند (فقط فارسی + chatgpt-polish).
 
 ---
 
@@ -618,6 +619,36 @@ def _fallback_output_path(self, source_file, target_language):
 ```
 
 ---
+
+---
+
+### ۱۷. سه روش تقسیم متفاوت — Classic / Double / AIAlign [2026-05-08]
+
+**مشکل:** `_PER_Classic.docx` و `_PER_Double.docx` هر دو از `FASubtitleAligner(llm_threshold=0)`
+تولید می‌شدند — عیناً یکسان بودند؛ هیچ ارزش مقایسه‌ای نداشتند.
+
+**راه‌حل:** هر سه فایل خروجی اکنون روش تقسیم **واقعاً متفاوت** دارند:
+
+| فایل | روش | کد |
+|------|-----|-----|
+| `_PER_Classic.docx` | تقسیم ساده الگوریتمی — بدون AI، بدون منطق فارسی‌محور | `_simple_split_docx()` (تابع جدید) |
+| `_PER_Double.docx` | الاینر فارسی‌محور مکانیکی — بدون LLM | `FASubtitleAligner(llm_threshold=0)` |
+| `_PER_AIAlign.docx` | الاینر فارسی‌محور + بازبینی LLM تمام گروه‌ها | `FASubtitleAligner(llm_threshold=100)` |
+
+**تابع `_simple_split_docx`:** برای هر سلول FA با طول > 48 کاراکتر، در آخرین
+مرز کلمه تقسیم می‌کند و یک ردیف جدید با باقیمانده زیر ردیف اصلی می‌گذارد.
+حداکثر یک تقسیم per row (double، نه triple).
+
+**`filename4`:** فیلد جدید در `Job` dataclass → `_PER_AIAlign.docx`.
+`_find_ai_align_file()` با 3 استراتژی آن را پیدا می‌کند (mirrors `_find_classic_file`).
+
+**ZIP:** شامل همه ۴ فایل (TranslatePolish + Classic + Double + AIAlign).
+Guard صریح: `hasMultiple = !!(filename2 || filename3 || filename4)` — فقط fa+chatgpt-polish.
+
+**فایل‌های تغییریافته:**
+- `src/machine-translate-docx.py` — تابع `_simple_split_docx` + بلوک aligner بازنویسی شد
+- `local_launcher.py` — `filename4`، `_find_ai_align_file()`, آپدیت `/status/:jobId` و ZIP
+- `index.ejs` — `filename4` در poll, ZIP trigger, و alert message
 
 ---
 
