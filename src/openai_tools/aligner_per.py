@@ -9,7 +9,7 @@ across TV rows using:
 
 Hard limits enforced in both passes:
   - Each FA chunk ≤ 48 characters
-  - Triple (3 identical rows) only when every copy ≤ 20 characters
+  - Triple (3 identical rows) is FORBIDDEN — max 2 identical (double only)
   - Token budget cap (default 40 000) — excess groups keep mechanical result
 
 Usage from pipeline:
@@ -42,9 +42,36 @@ except ImportError:
 
 # ── constants ─────────────────────────────────────────────────────────────────
 
-MAX_CHARS    = 48        # hard limit per chunk
-TRIPLE_LIMIT = 20        # triple allowed only when each copy ≤ this
-MIN_TARGET   = 24        # minimum target length when splitting
+MAX_CHARS  = 48   # hard limit per chunk
+MIN_TARGET = 24   # minimum target length when splitting
+
+# Density-based minimum double recommendation (technique C from para_bridge)
+# Based on empirical broadcast data: FA char length → minimum doubles needed.
+# Used as a hint in _distribute() and passed to LLM payload.
+_DOUBLE_DENSITY: list[tuple[int, int]] = [
+    (20, 0),   # FA ≤ 20 chars → 0 doubles
+    (35, 1),   # FA ≤ 35 chars → 1 double
+    (48, 2),   # FA ≤ 48 chars → 2 doubles
+    # > 48 chars → split first (already handled by MAX_CHARS enforcement)
+]
+
+def _min_doubles_for(fa_len: int) -> int:
+    """Return minimum recommended doubles for a given FA text length."""
+    for threshold, min_d in _DOUBLE_DENSITY:
+        if fa_len <= threshold:
+            return min_d
+    return 2
+
+
+# Protected Persian bigrams — never split between these two words (technique A from hybrid_double)
+PROTECTED_BIGRAMS: frozenset = frozenset({
+    'از جمله', 'از طریق', 'همراه با', 'با وجود',
+    'در برابر', 'در نتیجه', 'در پی', 'به دلیل',
+    'به خاطر', 'از آنجا که', 'در عین حال', 'بر اساس',
+    'به جای', 'در راستای', 'به عنوان', 'در مقابل',
+    'بر خلاف', 'به جهت', 'به منظور', 'از سوی',
+    'به واسطه', 'در قبال',
+})
 ZWNJ         = '‌'  # Persian half-space
 
 SENT_END = frozenset('.!?؟')
@@ -164,19 +191,26 @@ class FASubtitleAligner:
     _SYSTEM_PROMPT = (
         "You are a bilingual Persian/English subtitle aligner for TV broadcast.\n"
         "You receive a JSON array of sentence groups. Each group has:\n"
-        "  id       — batch index (integer)\n"
-        "  n_rows   — number of TV display rows to fill (integer)\n"
-        "  en_rows  — English text for each row (array of strings)\n"
-        "  full_fa  — complete Persian sentence to distribute (string)\n\n"
+        "  id          — batch index (integer)\n"
+        "  n_rows      — number of TV display rows to fill (integer)\n"
+        "  en_rows     — English text for each row (array of strings)\n"
+        "  full_fa     — complete Persian sentence to distribute (string)\n"
+        "  min_doubles — minimum recommended doubles based on FA length (integer)\n\n"
         "Task: split full_fa into exactly n_rows Persian chunks.\n\n"
         "HARD RULES — never violate:\n"
         "  1. Each chunk ≤ 48 characters (count carefully).\n"
         "  2. Chunks joined with single space must equal full_fa exactly.\n"
         "  3. Consecutive identical chunks = double (allowed, max 2 identical).\n"
-        "  4. Triple (3 identical) ONLY when each copy ≤ 20 characters.\n"
+        "  4. TRIPLE IS FORBIDDEN — never use 3 or more identical chunks.\n"
         "  5. Never split compound verbs (می‌کند، نمی‌دهد، انجام می‌دهد …).\n"
-        "  6. Never start a chunk with standalone 'را'.\n\n"
-        "PREFERENCES — apply after hard rules:\n"
+        "  6. Never start a chunk with standalone 'را'.\n"
+        "  7. Never split protected bigrams across chunks:\n"
+        "     از جمله، از طریق، همراه با، با وجود، در برابر، در نتیجه، در پی،\n"
+        "     به دلیل، به خاطر، از آنجا که، در عین حال، بر اساس، به جای،\n"
+        "     در راستای، به عنوان، در مقابل، بر خلاف، به جهت، به منظور،\n"
+        "     از سوی، به واسطه، در قبال\n\n"
+        "GUIDANCE:\n"
+        "  • Use at least min_doubles double rows when FA length warrants it.\n"
         "  • Split at clause boundaries: که، اما، ولی، زیرا، چون، بنابراین\n"
         "  • Align FA chunk to EN row: numbers and named entities in same row\n"
         "  • Discourse markers (because→چون, however→اما) aligned where possible\n"
@@ -304,6 +338,26 @@ class FASubtitleAligner:
 
     # ── split point detection (from v7 script) ────────────────────────────────
 
+    @staticmethod
+    def _bigram_bad_positions(text: str) -> frozenset:
+        """Return character positions that fall inside a protected bigram.
+
+        A 'bad position' is the index of the second word's first character —
+        i.e. splitting right before word2 would break the bigram.
+        """
+        bad: set = set()
+        for bigram in PROTECTED_BIGRAMS:
+            start = 0
+            while True:
+                idx = text.find(bigram, start)
+                if idx == -1:
+                    break
+                # Position right after the space between word1 and word2
+                word1 = bigram.split(' ', 1)[0]
+                bad.add(idx + len(word1) + 1)
+                start = idx + 1
+        return frozenset(bad)
+
     def _find_split_points(self, text: str) -> list:
         """Return list of (position, quality) sorted by quality desc."""
         candidates = []
@@ -314,6 +368,8 @@ class FASubtitleAligner:
             idx = text.find(w, pos)
             boundaries.append((idx, idx + len(w), w))
             pos = idx + len(w)
+
+        bad_positions = self._bigram_bad_positions(text)
 
         for i, (start, end, word) in enumerate(boundaries):
             if i == 0:
@@ -341,6 +397,10 @@ class FASubtitleAligner:
             # «را» stays with its noun
             if word.strip() == 'را':
                 quality = 5
+
+            # Protected bigram: penalize splitting inside bigram
+            if start in bad_positions:
+                quality = 2
 
             candidates.append((start, quality))
 
@@ -421,30 +481,43 @@ class FASubtitleAligner:
                 return self._emergency_split(text, n_distinct)
         return chunks
 
-    # ── distribute (doubles + triple rule) ────────────────────────────────────
+    # ── distribute (doubles only — triples forbidden) ─────────────────────────
 
-    def _distribute(self, chunks: list, n_rows: int) -> list:
+    def _distribute(self, chunks: list, n_rows: int, fa_len: int = 0) -> list:
         """
         Map M distinct chunks → exactly N row slots.
-        Strategy: double longest chunks first; triple only if chunk ≤ TRIPLE_LIMIT.
+        Strategy: double longest chunks first, guided by density hint.
+        TRIPLES ARE FORBIDDEN — max 2 identical rows (double only).
+
+        fa_len: total FA character count, used for density-based double hint.
         """
         m = len(chunks)
         if m >= n_rows:
             return list(chunks[:n_rows])
 
         extra = n_rows - m
+        # Density hint: prefer at least min_d doubles when FA is long enough
+        min_d = _min_doubles_for(fa_len) if fa_len else 0
+
+        # Sort by length descending — double longest chunks first
         by_len = sorted(range(m), key=lambda i: len(chunks[i]), reverse=True)
         double_set: set = set()
-        triple_set: set = set()
 
+        # First: satisfy density hint (apply min_d doubles if budget allows)
         for i in by_len:
+            if len(double_set) >= min_d:
+                break
             if extra <= 0:
                 break
             double_set.add(i)
             extra -= 1
-            # Allow triple if this chunk is short enough
-            if extra > 0 and len(chunks[i]) <= TRIPLE_LIMIT:
-                triple_set.add(i)
+
+        # Then: fill remaining slots with more doubles (longest first)
+        for i in by_len:
+            if extra <= 0:
+                break
+            if i not in double_set:
+                double_set.add(i)
                 extra -= 1
 
         rows = []
@@ -452,21 +525,20 @@ class FASubtitleAligner:
             rows.append(ch)
             if i in double_set:
                 rows.append(ch)
-            if i in triple_set:
-                rows.append(ch)
 
-        # If still short (e.g. needed more than 2-3× the chunks), pad with last row
+        # If still short (edge case: need > 2× chunks), pad with last chunk — no triple
         while len(rows) < n_rows:
             rows.append(rows[-1] if rows else '')
         return rows[:n_rows]
 
-    def _enforce_no_bad_triple(self, rows: list) -> list:
-        """Remove triples where each copy > TRIPLE_LIMIT."""
+    def _enforce_no_triple(self, rows: list) -> list:
+        """Remove ALL triples — hard ban. Max 2 identical consecutive rows."""
         counts: dict = {}
         result = []
         for ch in rows:
             counts[ch] = counts.get(ch, 0) + 1
-            if counts[ch] > 2 and ch.strip() and len(ch) > TRIPLE_LIMIT:
+            if counts[ch] > 2 and ch.strip():
+                # Replace with previous row (keeps slot filled, breaks triple)
                 result.append(result[-1] if result else ch)
             else:
                 result.append(ch)
@@ -493,11 +565,11 @@ class FASubtitleAligner:
         # Try discourse-marker alignment to improve EN↔FA correspondence
         chunks = self._try_marker_align(full_fa, en_rows, chunks)
 
-        # Distribute into n_rows slots
-        rows = self._distribute(chunks, n_rows)
+        # Distribute into n_rows slots (density-guided, no triples)
+        rows = self._distribute(chunks, n_rows, fa_len=len(full_fa))
 
-        # Remove bad triples
-        rows = self._enforce_no_bad_triple(rows)
+        # Hard ban: remove any triples that slipped through
+        rows = self._enforce_no_triple(rows)
 
         # Final length guard (pad/trim to exact n_rows)
         if len(rows) < n_rows:
@@ -599,13 +671,13 @@ class FASubtitleAligner:
                 score -= 20
                 break
 
-        # Triple with long chunk
+        # Any triple → heavy penalty (triples are forbidden)
         cnt: dict = {}
         for r in rows:
             cnt[r] = cnt.get(r, 0) + 1
         for ch, c in cnt.items():
-            if c >= 3 and ch.strip() and len(ch) > TRIPLE_LIMIT:
-                score -= 40
+            if c >= 3 and ch.strip():
+                score -= 60
                 break
 
         # Length imbalance
@@ -702,10 +774,11 @@ class FASubtitleAligner:
 
             payload = [
                 {
-                    'id':      local_i,
-                    'n_rows':  grp['n_rows'],
-                    'en_rows': grp['en_rows'],
-                    'full_fa': grp['full_fa'],
+                    'id':          local_i,
+                    'n_rows':      grp['n_rows'],
+                    'en_rows':     grp['en_rows'],
+                    'full_fa':     grp['full_fa'],
+                    'min_doubles': _min_doubles_for(len(grp['full_fa'].strip())),
                 }
                 for local_i, (_, grp, _) in enumerate(batch)
             ]
@@ -775,12 +848,12 @@ class FASubtitleAligner:
         for ch in fa_rows:
             if not isinstance(ch, str) or len(ch) > MAX_CHARS:
                 return None
-        # Triple rule: triple allowed only if each copy ≤ TRIPLE_LIMIT
+        # Triple ban: any 3+ identical non-empty rows → reject LLM output
         cnt: dict = {}
         for ch in fa_rows:
             cnt[ch] = cnt.get(ch, 0) + 1
         for ch, c in cnt.items():
-            if c >= 3 and ch.strip() and len(ch) > TRIPLE_LIMIT:
+            if c >= 3 and ch.strip():
                 return None
         # Text preservation (normalized join must match full_fa)
         joined = ' '.join(ch for ch in fa_rows if ch.strip())
