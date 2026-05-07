@@ -41,16 +41,23 @@ Pass 3 — REFLOW
 After mechanical passes, groups with alignment score < `llm_threshold` are
 sent to `gpt-5.4-mini` for quality review.
 
-**Current threshold: 10** (lowered from 70 on 2026-05-07)
+**Current threshold: 90** (raised from 70 on 2026-05-07 to reduce LLM calls and improve speed)
 
-At threshold=10, practically all groups go to LLM. Raise to 40–60 for faster
-processing if cost is a concern.
+Groups with mechanical score **below** threshold are sent to LLM for review.
+Score range is 0–100; higher = better mechanical quality.
+
+- threshold=90 → only low-quality groups (score < 90) go to LLM — fast, ~10–20% of groups
+- threshold=70 → fewer groups pass through LLM — default before this change
+- threshold=100 → all groups go to LLM — slowest, highest quality
+
+Lower the threshold if speed matters more than quality.
+Raise it (up to 100) if quality matters more than speed.
 
 ```python
 # In machine-translate-docx.py:
 _aligner = FASubtitleAligner(
     model='gpt-5.4-mini',   # NEVER change this model
-    llm_threshold=10,
+    llm_threshold=90,
     token_budget=40_000,
 )
 ```

@@ -189,7 +189,7 @@ class FASubtitleAligner:
     def __init__(
         self,
         model:         str = 'gpt-5.4-mini',
-        llm_threshold: int = 10,
+        llm_threshold: int = 90,
         token_budget:  int = 40_000,
     ):
         self.model         = model

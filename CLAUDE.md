@@ -36,7 +36,8 @@ See [`docs/architecture.md`](docs/architecture.md) for the full pipeline diagram
 | `src/openai_tools/aligner_per.py` | `FASubtitleAligner` — bilingual doubling |
 | `src/openai_tools/splitting.py` | Legacy per-phrase splitter (only when splitTranslate=true) |
 | `local_launcher.py` | Local dev server (Python, no Node required) |
-| `index.ejs` | Frontend — EJS template served by local_launcher |
+| `server.js` | Express server (Node.js production server) |
+| `index.ejs` | Frontend — EJS template served by local_launcher or Express |
 | `prompts/translate_PER.txt` | Persian translation system prompt |
 | `prompts/polish_PER.txt` | Persian polish system prompt |
 | `prompts/translate_universal.txt` | Fallback prompt for other languages |

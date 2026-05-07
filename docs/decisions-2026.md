@@ -6,13 +6,15 @@ Format: date, decision, alternatives considered, rationale.
 
 ---
 
-## 2026-05-07 — Lower llm_threshold from 70 to 10
+## 2026-05-07 — Raise llm_threshold from 70 to 90
 
-**Decision:** `FASubtitleAligner` default `llm_threshold` reduced from 70 to 10.  
-**Alternatives:** Keep at 70 (faster, lower cost); raise to 100 (LLM reviews everything).  
-**Rationale:** At threshold=70, only ~10 % of groups went to LLM; output quality was uneven.
-At threshold=10, near-complete LLM review catches compound verb splits and poor alignments.
-Cost increase is acceptable for broadcast-quality output.
+**Decision:** `FASubtitleAligner` default `llm_threshold` raised from 70 to 90.  
+**Alternatives:** Keep at 70; lower to 10 (almost no LLM); raise to 100 (full LLM review).  
+**Rationale:** At threshold=70, generation was already slow (LLM called for many groups).
+Raising to 90 reduces LLM calls to low-quality groups only (score < 90), improving speed
+significantly while still catching the worst mechanical alignments.  
+**Note:** threshold meaning — groups with score *below* threshold go to LLM. Score 0–100,
+higher = better mechanical quality. Raise threshold → more LLM. Lower threshold → less LLM.
 
 ---
 

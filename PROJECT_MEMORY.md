@@ -28,7 +28,7 @@ See [`docs/decisions-2026.md`](docs/decisions-2026.md) for full log.
 |----------|----------------|
 | Translation pipeline | Single-call (whole file in one API call), not block-by-block |
 | Polish pipeline | Single-call, separate from translation |
-| Aligner | Batch-mode `FASubtitleAligner`; `llm_threshold=10` (10 % LLM review of groups) |
+| Aligner | Batch-mode `FASubtitleAligner`; `llm_threshold=90` (groups scoring < 90 go to LLM) |
 | Frontend–backend comms | Polling: POST `/upload` → jobId → GET `/status/:id` every 4 s |
 | Job store | In-memory dict in `local_launcher.py`; no persistence across restarts |
 | Lang code convention | ISO 639-2/B in filenames; `_LANG_ALPHA3B` dict in `local_launcher.py` |

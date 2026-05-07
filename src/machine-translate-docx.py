@@ -7490,7 +7490,7 @@ def save_docx_file():
                     print(f"\n[INFO] Running subtitle aligner → {_aligned_path}")
                     _aligner = FASubtitleAligner(
                         model=_ai_model_align,
-                        llm_threshold=10,
+                        llm_threshold=90,
                         token_budget=40_000,
                     )
                     _aligner.align(word_file_to_translate_save_as_path, _aligned_path)
