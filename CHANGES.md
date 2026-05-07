@@ -40,6 +40,46 @@ CHANGES.md                    ← همین فایل — منبع اصلی برا
 
 ## تغییرات — از ابتدا تا آخر
 
+### ۰-ج. Phase 3 (review-rewrite-opus-4.7) — کیفیت aligner [2026-05-08]
+
+#### 0.7 `_display_len` — حذف ZWNJ از شمارش طول
+**فایل:** `src/openai_tools/aligner_per.py`
+
+ZWNJ (U+200C) در نمایش Word zero-width است ولی در `len()` شمرده می‌شد →
+chunkهای حاوی نیم‌فاصله از حد نمایشی واقعی کوتاه‌تر می‌شدند. تابع جدید
+`_display_len(text)` این را اصلاح می‌کند. تمام مقایسه‌های `len(...) > MAX_CHARS`
+که برای validation/safety هستند به `_display_len(...) > MAX_CHARS` تبدیل شدند:
+`_recursive_split`، `_emergency_split`، `_split_distinct`، `_split_by_budget`،
+`_should_preserve_existing_segmentation`، `_mechanical_align` (fallback safety)،
+`_try_marker_align` (left/left_ch/right_ch)، `_quality_score`، `_validate`،
+`align()` stats. عملیات slicing (`text[:MAX_CHARS]`) همان len راو می‌ماند —
+نتیجه‌اش conservative است.
+
+#### 0.8 Cross-group triple guard با sentinel
+**فایل:** `src/openai_tools/aligner_per.py`
+
+Bridge rowها در flat list ظاهر نمی‌شوند، پس وقتی گروه N با "X" تمام و
+گروه N+1 با "X" شروع می‌شد، در flat list یک run "X X" دیده می‌شد و در
+ادامه‌ی واقعی پنجم سرکوب می‌کرد. حل: قبل از flatten بین گروه‌ها sentinel
+`'\x00GROUP_BOUNDARY\x00'` تزریق می‌شود. این رشته در `_enforce_no_triple`
+به‌صورت طبیعی run را reset می‌کند (چون با هیچ chunk واقعی برابر نیست).
+re-chunk هم با pos += 1 sentinel slot را skip می‌کند.
+
+#### 0.9 BREAK_RATIO per content type
+**فایل:** `src/openai_tools/aligner_per.py`
+
+به‌جای `BREAK_RATIO_MEDIAN=0.45` یکنواخت، dict `_BREAK_RATIO_BY_TYPE` بر اساس
+نوع محتوا:
+- `narration` و `spiritual` → 0.45 (verb-final فارسی)
+- `news_attr` → 0.55 (front-loaded subject/event)
+- `dialogue` و `ingredient` → 0.50 (متعادل)
+
+`_split_distinct(text, n, content_type=None)` پارامتر اختیاری گرفت — اگر
+None بود همان `BREAK_RATIO_MEDIAN` استفاده می‌شود (backward compat). در
+`_mechanical_align` content_type گروه به `_split_distinct` پاس می‌شود.
+
+---
+
 ### ۰-ب. Phase 2 (review-rewrite-opus-4.7) — مشکلات قابل دیدن [2026-05-08]
 
 #### 0.4 ZIP package برای دانلود (E9 fix)

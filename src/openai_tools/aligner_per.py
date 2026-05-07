@@ -71,6 +71,20 @@ BREAK_RATIO_MEDIAN = 0.45
 # Persian SOV structure means verbs (heavier content) cluster at the end,
 # so splitting slightly before the midpoint produces more balanced halves.
 
+# Per-content-type break ratios. NEWS leans front-loaded (event/subject up
+# front), so the split target moves to roughly the midpoint. SAGE / spiritual
+# narration keeps the legacy verb-final 0.45. Dialogue tends to balance speaker
+# turn vs. content, so 0.50 is a safe middle.
+_BREAK_RATIO_BY_TYPE: dict = {
+    # constants are referenced before the _CT_* names below;
+    # we use the literal strings _CT_* will be assigned to.
+    'narration':  0.45,
+    'spiritual':  0.45,
+    'news_attr':  0.55,
+    'dialogue':   0.50,
+    'ingredient': 0.50,
+}
+
 # Density-based minimum double recommendation (technique C from para_bridge).
 # Based on empirical broadcast data: FA char length → minimum doubles needed.
 # Used as a hint in _distribute() and passed to LLM payload.
@@ -310,6 +324,17 @@ def _normalize_fa(text: str) -> str:
 def _normalize_text(text: str) -> str:
     """Collapse all whitespace — used for text-preservation checks."""
     return re.sub(r'\s+', '', text)
+
+
+def _display_len(text: str) -> int:
+    """Return the visual character count of `text`.
+
+    ZWNJ (U+200C, "نیم‌فاصله") is invisible — Word renders it with zero
+    width — so it must NOT count toward MAX_CHARS. Counting it would
+    waste display budget on glyphs the viewer never sees, producing
+    chunks that look short but pass the limit.
+    """
+    return len(text.replace(ZWNJ, ''))
 
 
 def _estimate_tokens(text: str) -> int:
@@ -647,7 +672,7 @@ class FASubtitleAligner:
         for pos, quality in candidates:
             left  = text[:pos].rstrip()
             right = text[pos:].lstrip()
-            if not left or not right or len(left) > MAX_CHARS:
+            if not left or not right or _display_len(left) > MAX_CHARS:
                 continue
             ideal   = len(text) / n_parts
             balance = 1.0 - abs(len(left) - ideal) / max(len(text), 1)
@@ -675,7 +700,7 @@ class FASubtitleAligner:
             if i == n_parts - 1:
                 chunks.append(rem)
                 break
-            if len(rem) <= MAX_CHARS:
+            if _display_len(rem) <= MAX_CHARS:
                 chunks.append(rem)
                 rem = ''
                 continue
@@ -688,11 +713,16 @@ class FASubtitleAligner:
             chunks.append('')
         return chunks
 
-    def _split_distinct(self, text: str, n_distinct: int) -> list:
+    def _split_distinct(self, text: str, n_distinct: int,
+                        content_type: str | None = None) -> list:
         """Split text into n_distinct chunks each ≤ MAX_CHARS.
 
-        Uses BREAK_RATIO_MEDIAN (0.45) as split target for 2-part splits —
-        empirically better for Persian SOV structure.
+        For 2-part splits the break ratio is content-type aware:
+        SAGE/narration keeps 0.45 (Persian verb-final bias);
+        NEWS shifts to 0.55 (front-loaded event/subject);
+        DIALOGUE / INGREDIENT use 0.50 (neutral balance).
+        See `_BREAK_RATIO_BY_TYPE`. When `content_type` is None the legacy
+        `BREAK_RATIO_MEDIAN` is used so existing call sites keep behaviour.
         """
         text = text.strip()
         if not text:
@@ -700,16 +730,17 @@ class FASubtitleAligner:
         if n_distinct <= 1:
             return [text]
 
-        # Use 0.45 ratio for 2-part splits (Persian verb-final bias)
+        # 2-part split — pick break ratio per content type.
         if n_distinct == 2:
-            target = max(MIN_TARGET, int(len(text) * BREAK_RATIO_MEDIAN))
+            ratio = _BREAK_RATIO_BY_TYPE.get(content_type, BREAK_RATIO_MEDIAN)
+            target = max(MIN_TARGET, int(len(text) * ratio))
         else:
             target = max(MIN_TARGET, len(text) // n_distinct)
 
         chunks = self._recursive_split(text, n_distinct, target)
 
         for c in chunks:
-            if len(c) > MAX_CHARS:
+            if _display_len(c) > MAX_CHARS:
                 return self._emergency_split(text, n_distinct)
         return chunks
 
@@ -940,7 +971,7 @@ class FASubtitleAligner:
             left      = remaining[:split_pos].rstrip()
             remaining = remaining[split_pos:].lstrip()
 
-            if len(left) > MAX_CHARS:
+            if _display_len(left) > MAX_CHARS:
                 sp = left.rfind(' ', 0, MAX_CHARS)
                 if sp > 0:
                     remaining = left[sp:].lstrip() + (' ' if remaining else '') + remaining
@@ -969,7 +1000,7 @@ class FASubtitleAligner:
         nonempty = [r.strip() for r in orig_fa_rows if r.strip()]
         if len(nonempty) < 2:
             return False
-        if any(len(r) > MAX_CHARS for r in nonempty):
+        if any(_display_len(r) > MAX_CHARS for r in nonempty):
             return False
         mean_len    = sum(len(r) for r in nonempty) / len(nonempty)
         short_ratio = sum(1 for r in nonempty if len(r) < 10) / len(nonempty)
@@ -1007,7 +1038,7 @@ class FASubtitleAligner:
 
         if content_type in no_double_types:
             # Single allocation: one distinct chunk per row, no doubles
-            chunks = self._split_distinct(full_fa, n_rows)
+            chunks = self._split_distinct(full_fa, n_rows, content_type=content_type)
             chunks = self._try_marker_align(full_fa, en_rows, chunks)
             rows   = list(chunks[:n_rows])
         else:
@@ -1023,8 +1054,8 @@ class FASubtitleAligner:
             chunks = self._split_by_budget(full_fa, split_budgets)
 
             # Safety: if budget split violated MAX_CHARS, fall back
-            if any(len(c) > MAX_CHARS for c in chunks):
-                chunks = self._split_distinct(full_fa, min_dist)
+            if any(_display_len(c) > MAX_CHARS for c in chunks):
+                chunks = self._split_distinct(full_fa, min_dist, content_type=content_type)
 
             # Discourse-marker alignment to improve EN↔FA correspondence
             chunks = self._try_marker_align(full_fa, en_rows, chunks)
@@ -1084,14 +1115,14 @@ class FASubtitleAligner:
                             continue
                         left  = full_fa[:orig_pos].rstrip()
                         right = full_fa[orig_pos:].lstrip()
-                        if not left or not right or len(left) > MAX_CHARS:
+                        if not left or not right or _display_len(left) > MAX_CHARS:
                             continue
                         if not _normalize_fa(right).startswith(eq_norm):
                             continue
                         left_ch  = self._split_distinct(left, i)
                         right_ch = self._split_distinct(right, len(improved) - i)
-                        if (all(len(c) <= MAX_CHARS for c in left_ch) and
-                                all(len(c) <= MAX_CHARS for c in right_ch)):
+                        if (all(_display_len(c) <= MAX_CHARS for c in left_ch) and
+                                all(_display_len(c) <= MAX_CHARS for c in right_ch)):
                             improved = left_ch + right_ch
                         break
         return improved
@@ -1128,9 +1159,9 @@ class FASubtitleAligner:
         if not nonempty:
             return 100
 
-        # Hard violation: any chunk over limit
+        # Hard violation: any chunk over limit (visible length, ZWNJ-aware)
         for r in rows:
-            if len(r) > MAX_CHARS:
+            if _display_len(r) > MAX_CHARS:
                 score -= 50
                 break
 
@@ -1369,7 +1400,7 @@ class FASubtitleAligner:
             return None
 
         for ch in fa_rows:
-            if not isinstance(ch, str) or len(ch) > MAX_CHARS:
+            if not isinstance(ch, str) or _display_len(ch) > MAX_CHARS:
                 return None
 
         # FATAL: triple ban
@@ -1436,12 +1467,24 @@ class FASubtitleAligner:
 
         # Global triple guard: _enforce_no_triple runs per-group, but adjacent
         # groups can share the same boundary text and create cross-group triples.
-        # Fix by flattening all rows, applying the guard, then re-splitting.
-        flat_all   = [r for fc in final_chunks for r in fc]
+        # Insert a sentinel between groups so the run scan in _enforce_no_triple
+        # treats each group boundary as a break — without it, two groups whose
+        # last/first chunks coincide would be counted as a real consecutive run.
+        # The sentinel is a U+0000 NUL string that no real FA chunk can equal.
+        _SENTINEL = '\x00GROUP_BOUNDARY\x00'
+        flat_all: list[str] = []
+        for gi, fc in enumerate(final_chunks):
+            if gi > 0:
+                flat_all.append(_SENTINEL)
+            flat_all.extend(fc)
         flat_clean = self._enforce_no_triple(flat_all)
-        # Re-chunk back into per-group lists of the original sizes
+
+        # Re-chunk back into per-group lists, dropping sentinels.
         pos = 0
         for gi, fc in enumerate(final_chunks):
+            if gi > 0:
+                # Skip the sentinel slot for this boundary.
+                pos += 1
             n = len(fc)
             final_chunks[gi] = flat_clean[pos : pos + n]
             pos += n
@@ -1473,7 +1516,7 @@ class FASubtitleAligner:
                 n_triples += run - 2       # each 3rd+ occurrence is a triple violation
             i = j
 
-        n_over    = sum(1 for r in all_rows if len(r) > MAX_CHARS)
+        n_over    = sum(1 for r in all_rows if _display_len(r) > MAX_CHARS)
 
         self.last_stats = {
             'groups':          len(groups),

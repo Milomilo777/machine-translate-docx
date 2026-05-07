@@ -6,6 +6,27 @@ Format: date, decision, alternatives considered, rationale.
 
 ---
 
+## 2026-05-08 — Phase 3 of review-rewrite-opus-4.7 (aligner quality)
+
+**Decision:** Three internal aligner improvements with no public-API change.
+
+**`_display_len` alternatives:**
+- Strip ZWNJ globally on input — rejected; ZWNJ has semantic meaning, must be preserved in stored output.
+- Track display vs. raw separately — over-engineered; one helper covers every check site.
+
+**Sentinel approach alternatives:**
+- Run `_enforce_no_triple` over per-pair group boundaries only (compare last-of-G with first-of-G+1) — rejected because longer cross-group runs could still slip through if three consecutive groups all start/end with the same chunk.
+- Carry bridge-row indices into the flat list as empty strings — rejected; misleading because empty strings already mean "no FA on this row" and would conflate two distinct meanings.
+- NUL-bracketed sentinel — chosen; safe (no real chunk equals NUL bytes) and naturally breaks the existing run-counter logic.
+
+**Per-type break ratio alternatives:**
+- Continue with single 0.45 ratio — kept producing front-end ratios that felt unbalanced for news cells (verbs/objects clustered late even when subject/event were the focus).
+- Learn ratio from data per file — out of scope; the dict is hardcoded and easy to tune later.
+
+**Constraints honoured:** Aligner model still `gpt-5.4-mini`. `_normalize_lang()` untouched. No new API call sites.
+
+---
+
 ## 2026-05-08 — Phase 2 of review-rewrite-opus-4.7 (visible-issue fixes)
 
 **Decision:** Phase 2 ships three independent improvements: a single-shot ZIP download, a job-store cleanup thread, and a shared OpenAI retry helper.

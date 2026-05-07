@@ -242,6 +242,54 @@ Two files produced:
 
 ---
 
+## ZWNJ-aware length validation (Phase 3, 2026-05-08)
+
+Persian text uses ZWNJ (U+200C, "نیم‌فاصله") inside compound prefixes
+(`می‌کند`، `کتاب‌ها`). The character is invisible — Word renders it with
+zero width — so it must NOT count toward `MAX_CHARS = 48`.
+
+`_display_len(text)` returns `len(text.replace(ZWNJ, ''))`. All hard
+validation sites use it; raw `text[:MAX_CHARS]` slicing still uses raw
+character count (which is *conservative* — the resulting visible chunk
+is always ≤ MAX_CHARS).
+
+## Cross-group triple guard sentinel (Phase 3, 2026-05-08)
+
+Per-group `_enforce_no_triple` cannot see triples that straddle a group
+boundary because bridge rows are not part of the flat row list. The
+fix: insert a NUL-bracketed sentinel between groups' chunks before the
+global pass and skip that slot when re-chunking.
+
+```python
+_SENTINEL = '\x00GROUP_BOUNDARY\x00'
+flat = []
+for gi, fc in enumerate(final_chunks):
+    if gi > 0:
+        flat.append(_SENTINEL)
+    flat.extend(fc)
+flat = self._enforce_no_triple(flat)
+# re-chunk with pos += 1 to skip each sentinel
+```
+
+## Per-content-type break ratio (Phase 3, 2026-05-08)
+
+`_split_distinct(text, n, content_type=...)` accepts an optional
+content type. For 2-part splits the break ratio is read from
+`_BREAK_RATIO_BY_TYPE`:
+
+| Content type | Ratio | Reasoning |
+|--------------|-------|-----------|
+| `narration`  | 0.45  | Persian verb-final bias |
+| `spiritual`  | 0.45  | Same as narration; legacy SAGE |
+| `news_attr`  | 0.55  | Subject/event up front; balance later |
+| `dialogue`   | 0.50  | Speaker turn vs. content — neutral |
+| `ingredient` | 0.50  | Item + quantity — neutral |
+
+When `content_type` is None, the legacy `BREAK_RATIO_MEDIAN=0.45` is
+preserved so callers that have not been updated keep prior behaviour.
+
+---
+
 ## RTL guarantee (Phase 1, 2026-05-08)
 
 `_set_fa_cell` now ensures every rebuilt FA paragraph carries `<w:bidi/>` and
