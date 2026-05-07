@@ -6,7 +6,7 @@ from pathlib import Path
 from openai import OpenAI
 
 from .translator import _normalize_lang, _find_prompts_dir, _prompt_lang_code
-from ._retry import call_with_retry
+from ._retry import call_with_retry, prompt_hash
 
 
 class OpenAIPolisher:
@@ -249,6 +249,7 @@ class OpenAIPolisher:
         self.last_call_data = {
             "type":           "polish",
             "model":          self.model,
+            "prompt_hash":    prompt_hash(system),
             "system_prompt":  system,
             "user_prompt":    user_content,
             "response_raw":   response_json,

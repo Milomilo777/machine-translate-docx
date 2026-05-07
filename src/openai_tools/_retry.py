@@ -1,4 +1,9 @@
-"""Shared retry helper for OpenAI API calls.
+"""Shared helpers for the OpenAI tool modules.
+
+Currently exposes:
+- `call_with_retry(fn, *, label)` — retry transient OpenAI failures.
+- `prompt_hash(text)` — short reproducibility marker for system prompts.
+
 
 Behaviour:
 - RateLimitError, APIConnectionError, APITimeoutError -> retry up to MAX_RETRIES
@@ -12,8 +17,22 @@ stays consistent across the three OpenAI callers.
 """
 from __future__ import annotations
 
+import hashlib
 import time
 from typing import Callable, TypeVar
+
+
+def prompt_hash(text: str) -> str:
+    """Return the first 8 hex chars of sha256(text).
+
+    Stored in the JSON log so a downstream reviewer can tell which
+    revision of `translate_PER.txt` / `polish_PER.txt` was actually
+    sent to the model — prompts are large and edited often, so the
+    hash is the fastest way to spot drift.
+    """
+    if not text:
+        return "00000000"
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:8]
 
 try:
     from openai import (

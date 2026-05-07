@@ -40,6 +40,27 @@ CHANGES.md                    ← همین فایل — منبع اصلی برا
 
 ## تغییرات — از ابتدا تا آخر
 
+### ۰-ه. Phase 5 (review-rewrite-opus-4.7) — اختیاری [2026-05-08]
+
+#### 0.14 Prompt hash در log JSON
+**فایل‌ها:** `src/openai_tools/_retry.py` (تابع جدید)،
+`translator.py`، `polisher.py`، `aligner_per.py`، `tests/test_translator_utils.py`
+
+`prompt_hash(text)` → ۸ کاراکتر اول `sha256(text)`. در:
+- `OpenAITranslator.last_call_data["prompt_hash"]`
+- `OpenAIPolisher.last_call_data["prompt_hash"]`
+- `FASubtitleAligner.last_stats["prompt_hash"]`
+
+ثبت می‌شود. وقتی پرامپت تغییر می‌کند، می‌توان از روی hash تشخیص داد که
+کدام نسخه پرامپت در یک log قدیمی استفاده شده — برای reproducibility و
+debug ضروری وقتی پرامپت‌های ۲۰۰+ خطی به‌مرور ویرایش می‌شوند.
+
+#### 0.13/0.15 — Skip شدند
+- **Progress bar:** نیاز به تغییر state Job و SSE/polling expansion داشت → خارج از scope ۵
+- **virastar:** در PyPI نسخه‌ای موجود نیست (`pip install virastar` fail شد) → skip طبق شرط user
+
+---
+
 ### ۰-د. Phase 4 (review-rewrite-opus-4.7) — کیفیت کد و تست [2026-05-08]
 
 #### 0.10 ۱۰ unit test و pytest setup

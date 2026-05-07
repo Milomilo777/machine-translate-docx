@@ -50,9 +50,12 @@ except ImportError:
 
 try:
     from ._retry import call_with_retry as _call_with_retry
+    from ._retry import prompt_hash as _prompt_hash
 except ImportError:
     def _call_with_retry(fn, *, label="openai"):  # fallback when openai missing
         return fn()
+    def _prompt_hash(text: str) -> str:
+        return "00000000"
 
 try:
     import tiktoken as _tiktoken
@@ -1523,6 +1526,7 @@ class FASubtitleAligner:
             'llm_corrected':   len(corrections),
             'mechanical_only': len(groups) - len(corrections),
             'tokens_used':     self.tokens_used,
+            'prompt_hash':     _prompt_hash(self._SYSTEM_PROMPT),
             'total_rows':      n_total,
             'doubles':         n_doubles,
             'triples':         n_triples,

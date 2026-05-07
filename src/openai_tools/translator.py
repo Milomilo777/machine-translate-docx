@@ -8,7 +8,7 @@ from openai import OpenAI
 from pathlib import Path
 import re
 
-from ._retry import call_with_retry
+from ._retry import call_with_retry, prompt_hash
 
 # ── language-code normalisation ───────────────────────────────────────────────
 _LANG_CODE_MAP = {
@@ -313,6 +313,7 @@ class OpenAITranslator:
         self.last_call_data = {
             "type":            "translate",
             "model":           self.model,
+            "prompt_hash":     prompt_hash(system_prompt),
             "system_prompt":   system_prompt,
             "user_prompt":     user_message,
             "response_raw":    response_json,

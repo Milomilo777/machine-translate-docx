@@ -6,6 +6,23 @@ Format: date, decision, alternatives considered, rationale.
 
 ---
 
+## 2026-05-08 — Phase 5 of review-rewrite-opus-4.7 (optional)
+
+**Decision:** Ship `prompt_hash` only. Skip the progress bar (would require
+SSE / job-state schema changes — bigger than fits a "nice-to-have" phase)
+and virastar post-processing (no PyPI distribution exists today, so
+`pip install virastar` fails — would need vendoring and review of an
+unmaintained third party for the FA pipeline).
+
+**`prompt_hash` placement:** Stored in `last_call_data` /  `last_stats` of
+each OpenAI caller, so the existing JSON log writer in
+`machine-translate-docx.py` picks it up without modification. 8 hex chars
+of sha256 — enough to distinguish edits, short enough to skim by eye.
+
+**Constraints honoured:** Aligner model still `gpt-5.4-mini`. `_normalize_lang()` untouched. No `reasoning_effort` on translator. `prompt_cache_retention=24h` preserved.
+
+---
+
 ## 2026-05-08 — Phase 4 of review-rewrite-opus-4.7 (testability + ops hygiene)
 
 **Decision:** Three independent improvements that do not change observable
