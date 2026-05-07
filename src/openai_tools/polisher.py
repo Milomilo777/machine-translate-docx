@@ -192,20 +192,43 @@ class OpenAIPolisher:
         if "mini" in self.model.lower():
             _extra["reasoning_effort"] = "high"
 
+        # GPT-5.x models have broken prompt-caching via chat.completions (known
+        # OpenAI bug).  Route them to the Responses API for working cache hits.
+        _use_responses_api = (
+            "pro" in self.model.lower()
+            or self.model.lower().startswith("gpt-5")
+        )
+        # reasoning_effort is a chat.completions extra — omit it for Responses API
+        # (Responses API accepts reasoning via the `reasoning` parameter, not extra_body).
+        _extra_responses = {"prompt_cache_retention": "24h"}
+
+        _messages_list = [
+            {"role": "system", "content": system},
+            {"role": "user",   "content": user_content},
+        ]
+
         t0 = time.time()
         try:
-            response = call_with_retry(
-                lambda: self.client.chat.completions.create(
-                    model=self.model,
-                    messages=[
-                        {"role": "system", "content": system},
-                        {"role": "user",   "content": user_content},
-                    ],
-                    extra_body=_extra,
-                    timeout=1800,
-                ),
-                label="polisher.chat.completions.create",
-            )
+            if _use_responses_api:
+                response = call_with_retry(
+                    lambda: self.client.responses.create(
+                        model=self.model,
+                        input=_messages_list,
+                        extra_body=_extra_responses,
+                        timeout=1800,
+                    ),
+                    label="polisher.responses.create",
+                )
+            else:
+                response = call_with_retry(
+                    lambda: self.client.chat.completions.create(
+                        model=self.model,
+                        messages=_messages_list,
+                        extra_body=_extra,
+                        timeout=1800,
+                    ),
+                    label="polisher.chat.completions.create",
+                )
         except Exception as e:
             print(f"[ERROR] Polisher API call failed: {e} — returning original translation.")
             self.last_call_data = {"error": str(e)}
@@ -213,7 +236,23 @@ class OpenAIPolisher:
 
         elapsed       = time.time() - t0
         response_json = response.model_dump()
-        raw           = response.choices[0].message.content
+
+        # Normalize Responses API usage fields to Chat Completions format.
+        _raw_usage = response_json.get("usage") or {}
+        if "input_tokens" in _raw_usage and "prompt_tokens" not in _raw_usage:
+            response_json = dict(response_json)
+            response_json["usage"] = {
+                "prompt_tokens":             _raw_usage.get("input_tokens", 0),
+                "completion_tokens":         _raw_usage.get("output_tokens", 0),
+                "total_tokens":              _raw_usage.get("total_tokens", 0),
+                "prompt_tokens_details":     _raw_usage.get("input_tokens_details", {}),
+                "completion_tokens_details": _raw_usage.get("output_tokens_details", {}),
+            }
+
+        if _use_responses_api and hasattr(response, "output_text") and response.output_text is not None:
+            raw = response.output_text
+        else:
+            raw = response.choices[0].message.content
 
         polished_lines = self._parse_output(raw, fa_lines)
 

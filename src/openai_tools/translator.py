@@ -232,7 +232,15 @@ class OpenAITranslator:
 
         _extra = {"prompt_cache_retention": "24h"}
 
-        if "pro" in self.model:
+        # GPT-5.x models have broken prompt-caching via chat.completions (known
+        # OpenAI bug — community.openai.com/t/caching-is-borked-for-gpt-5-models).
+        # Routing them to the Responses API restores cache hits.
+        _use_responses_api = (
+            "pro" in self.model.lower()
+            or self.model.lower().startswith("gpt-5")
+        )
+
+        if _use_responses_api:
             response = call_with_retry(
                 lambda: self.client.responses.create(
                     model=self.model,
@@ -256,13 +264,32 @@ class OpenAITranslator:
         elapsed_time  = time.time() - start_time
         response_json = response.model_dump()
 
+        # Normalize Responses API usage fields to Chat Completions format so the
+        # rest of the code (cost calc, cached-token logging) works unchanged.
+        # Responses API uses input_tokens / output_tokens / input_tokens_details;
+        # Chat Completions uses prompt_tokens / completion_tokens / prompt_tokens_details.
+        _raw_usage = response_json.get("usage") or {}
+        if "input_tokens" in _raw_usage and "prompt_tokens" not in _raw_usage:
+            response_json = dict(response_json)
+            response_json["usage"] = {
+                "prompt_tokens":             _raw_usage.get("input_tokens", 0),
+                "completion_tokens":         _raw_usage.get("output_tokens", 0),
+                "total_tokens":              _raw_usage.get("total_tokens", 0),
+                "prompt_tokens_details":     _raw_usage.get("input_tokens_details", {}),
+                "completion_tokens_details": _raw_usage.get("output_tokens_details", {}),
+            }
+
         print("response:")
         print(json.dumps(response_json, indent=4))
         print("--end of response--")
 
         cost_info = self.calculate_openai_cost(response_json)
 
-        translated_text = response.choices[0].message.content.strip()
+        # Responses API exposes output_text directly; Chat Completions uses choices.
+        if _use_responses_api and hasattr(response, "output_text") and response.output_text is not None:
+            translated_text = response.output_text.strip()
+        else:
+            translated_text = response.choices[0].message.content.strip()
         translated_text = re.sub(r'\n+', '\n', translated_text)
 
         in_lines  = text_to_translate.split("\n")
