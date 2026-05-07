@@ -451,78 +451,65 @@
       targetSelector.addEventListener('change', () => engineChecker(true));
       setTargetLangs();
 
-      // ------- Remember language & engine (localStorage) -------
-      const engineSelector = document.getElementById('translationEngine');
+      // ------- Remember language selection (localStorage) -------
+      // Policy: ONLY language is persisted. Engine is intentionally NOT saved
+      // so that every page load starts with the correct language-specific
+      // default engine (chatgpt-polish for Persian, DeepL/Google for others).
+      // This prevents a one-time test with a lower-quality engine from becoming
+      // a permanent setting the user forgets about.
 
+      const engineSelector  = document.getElementById('translationEngine');
       const aiModelSelector = document.getElementById('aiModel');
 
+      // Safe localStorage helpers — silently no-ops when storage is restricted
+      // (private/incognito mode, storage quota exceeded, browser policy, etc.)
+      const _lsSet = (key, val) => { try { localStorage.setItem(key, val); } catch (_) {} };
+      const _lsGet = (key)      => { try { return localStorage.getItem(key); } catch (_) { return null; } };
+      const _lsDel = (key)      => { try { localStorage.removeItem(key); }    catch (_) {} };
+
       const saveLanguagePrefs = () => {
-        try {
-          localStorage.setItem('savedSourceLang', sourceSelector.value);
-          localStorage.setItem('savedTargetLang',  targetSelector.value);
-          localStorage.setItem('savedEngine',       engineSelector.value);
-          if (aiModelSelector) localStorage.setItem('savedAiModel', aiModelSelector.value);
-        } catch (e) {
-          console.warn('Unable to save settings: LocalStorage is restricted.');
-        }
+        // Save language only — never engine or model
+        _lsSet('savedSourceLang', sourceSelector.value);
+        _lsSet('savedTargetLang',  targetSelector.value);
+        // Remove any stale engine/model keys left from previous versions
+        _lsDel('savedEngine');
+        _lsDel('savedAiModel');
       };
 
       const loadLanguagePrefs = () => {
-        try {
-          const savedSource = localStorage.getItem('savedSourceLang');
-          const savedTarget = localStorage.getItem('savedTargetLang');
-          const savedEngine = localStorage.getItem('savedEngine');
+        // Clean up stale keys from older code that saved engine/model
+        _lsDel('savedEngine');
+        _lsDel('savedAiModel');
 
-          // 1. Restore source language and rebuild target list
-          if (savedSource) {
+        const savedSource = _lsGet('savedSourceLang');
+        const savedTarget = _lsGet('savedTargetLang');
+
+        // 1. Restore source language and rebuild target list
+        if (savedSource) {
+          const srcOpt = sourceSelector.querySelector(`option[value="${savedSource}"]`);
+          if (srcOpt) {
             sourceSelector.value = savedSource;
-            setTargetLangs();
+            setTargetLangs();   // rebuilds target list, calls engineChecker(true)
           }
-
-          // 2. Restore target language (only if option still exists)
-          if (savedTarget) {
-            const optionExists = [...targetSelector.options].some(o => o.value === savedTarget);
-            if (optionExists) targetSelector.value = savedTarget;
-          }
-
-          // 3. Run compatibility check (updates disabled/enabled states only)
-          engineChecker(false);
-
-          // 4. Restore engine only if it is present and not disabled
-          if (savedEngine) {
-            const engineOption = engineSelector.querySelector(`option[value="${savedEngine}"]`);
-            if (engineOption && !engineOption.disabled) {
-              engineSelector.value = savedEngine;
-            }
-          }
-          // Re-run to update split section visibility + checkbox state for the
-          // restored engine. setDefault=false so we never override the restored
-          // engine choice with the Persian language default.
-          engineChecker(false);
-
-          // 5. Restore AI model selection
-          const savedAiModel = localStorage.getItem('savedAiModel');
-          if (savedAiModel && aiModelSelector) {
-            const modelOpt = aiModelSelector.querySelector(`option[value="${savedAiModel}"]`);
-            if (modelOpt) aiModelSelector.value = savedAiModel;
-          }
-
-          // 6. Update aiModelRow visibility after restoring engine
-          const aiModelRow = document.getElementById('aiModelRow');
-          if (aiModelRow) {
-            const eng = engineSelector.value;
-            aiModelRow.style.display = (eng === 'chatgpt' || eng === 'chatgpt-polish') ? '' : 'none';
-          }
-        } catch (e) {
-          console.warn('Unable to load settings: LocalStorage is restricted.');
         }
+
+        // 2. Restore target language (only if the option still exists in the list)
+        if (savedTarget) {
+          const tgtOpt = targetSelector.querySelector(`option[value="${savedTarget}"]`);
+          if (tgtOpt) {
+            targetSelector.value = savedTarget;
+            // Apply language-specific default engine for the restored language
+            engineChecker(true);
+          }
+        }
+        // engineChecker(true) already called above; nothing more to do.
+        // Engine is always the language default on every page load.
       };
 
-      // Auto-save on any selection change
+      // Save language whenever source or target changes
       sourceSelector.addEventListener('change', saveLanguagePrefs);
       targetSelector.addEventListener('change', saveLanguagePrefs);
-      engineSelector.addEventListener('change', saveLanguagePrefs);
-      if (aiModelSelector) aiModelSelector.addEventListener('change', saveLanguagePrefs);
+      // Engine/model changes are NOT saved (intentional — see policy above)
 
       // Show/hide AI model row + Split section when engine changes.
       // setDefault=false: user explicitly chose an engine — never override.
