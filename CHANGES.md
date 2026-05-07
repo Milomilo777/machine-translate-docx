@@ -40,6 +40,47 @@ CHANGES.md                    ← همین فایل — منبع اصلی برا
 
 ## تغییرات — از ابتدا تا آخر
 
+### ۰-ز. تحقیق آنلاین + پیاده‌سازی [2026-05-09]
+
+#### Persian normalizer — fa_postprocess.py
+**فایل جدید:** `src/openai_tools/fa_postprocess.py`
+
+`hazm.Normalizer` با تنظیمات پیش‌فرض W3 TECH_LOCK پروژه را می‌شکست
+(`GPT-4o` → `GPT- ۴ o`) و quote `"..."` را به `«...»` تبدیل می‌کرد
+(نقض HL-11). به‌جای آن، یک normalizer سفارشی ≤۵۰ خط که فقط زیرمجموعه
+ایمن انجام می‌دهد:
+- `ي` (U+064A) → `ی` (U+06CC)
+- `ك` (U+0643) → `ک` (U+06A9)
+- ارقام `٠-٩` (U+0660+) → `۰-۹` (U+06F0+)
+
+ASCII، quote، ZWNJ، harakat، spacing — همگی دست‌نخورده. `polisher.polish`
+بعد از residue check آن را اعمال می‌کند. تست در
+`tests/test_polisher_parse.py::test_fa_postprocess_normalize_safe_subset`.
+
+#### Aligner discourse cues expansion
+**فایل:** `src/openai_tools/aligner_per.py`
+
+۴ category جدید به `_BUILTIN_CUES` اضافه شد بر اساس بررسی
+`docs/aligner-research.md`: addition، sequence، example، emphasis.
+~۲۰ خط افزایش، همان ساختار، ریسک نزدیک به صفر.
+
+#### RTL helpers با API صحیح python-docx
+**فایل:** `src/openai_tools/aligner_per.py`
+
+`_ensure_rtl_paragraph` و `_ensure_rtl_run` به جای `find()` دستی،
+از `get_or_add_pPr()` و `get_or_add_rPr()` (روش رسمی python-docx)
+استفاده می‌کنند. schema-correct insertion، کوتاه‌تر، idempotent.
+
+#### تحقیق محض (بدون پیاده‌سازی)
+- `docs/batch-api-analysis.md` — Batch API نه برای UI تعاملی فعلی، بله
+  برای bulk translation در آینده. پیشنهاد out-of-scope.
+- `docs/aligner-research.md` — مقایسه با Gale-Church، DP، embeddings،
+  ASR. ۳ ایده برای آینده مستند شد.
+- `docs/rtl-rendering.md` — توضیح why و how برای E10 fix؛ چرا
+  python-bidi / arabic-reshaper استفاده نشد.
+
+---
+
 ### ۰-و. Progress Bar روی polling موجود [2026-05-09]
 
 **فایل‌ها:** `local_launcher.py`، `src/machine-translate-docx.py`، `index.ejs`

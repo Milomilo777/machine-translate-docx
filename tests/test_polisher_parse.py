@@ -39,3 +39,20 @@ def test_detect_en_residue_flags_full_english_sentence():
     # Empty / whitespace → not flagged.
     assert OpenAIPolisher._detect_en_residue("") is False
     assert OpenAIPolisher._detect_en_residue("   ") is False
+
+
+def test_fa_postprocess_normalize_safe_subset():
+    from openai_tools.fa_postprocess import normalize_fa
+    # Arabic Yeh / Kaf rewritten to Persian forms.
+    assert normalize_fa("كاربرد ي") == "کاربرد ی"
+    # Arabic-Indic digits rewritten to Persian-Indic.
+    assert normalize_fa("٢٠٢٦") == "۲۰۲۶"
+    # TECH_LOCK token left untouched (ASCII digits, ASCII hyphen).
+    assert normalize_fa("GPT-4o و H5N1") == "GPT-4o و H5N1"
+    # Quotes preserved (HL-11): no « » conversion.
+    assert normalize_fa('گفت "سلام"') == 'گفت "سلام"'
+    # ZWNJ untouched.
+    assert normalize_fa("می‌گوید") == "می‌گوید"
+    # Idempotent.
+    once = normalize_fa("كاربرد ي ٢٠٢٦")
+    assert normalize_fa(once) == once

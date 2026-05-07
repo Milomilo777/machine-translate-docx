@@ -267,6 +267,31 @@ _BUILTIN_CUES = {
         'when':  ['وقتی', 'هنگامی که'],
         'while': ['در حالی که'],
     }},
+    # Categories below added 2026-05-09 from `docs/aligner-research.md`
+    # — common in SMTV news / educational content.
+    'addition':   {'weight': 0.6, 'cues': {
+        'also':           ['همچنین', 'نیز'],
+        'moreover':       ['علاوه بر این', 'افزون بر این'],
+        'in addition':    ['علاوه بر این', 'افزون بر این'],
+        'furthermore':    ['افزون بر این', 'همچنین'],
+    }},
+    'sequence':   {'weight': 0.5, 'cues': {
+        'then':    ['سپس', 'پس از آن'],
+        'next':    ['سپس', 'پس از آن'],
+        'finally': ['در نهایت', 'سرانجام'],
+        'first':   ['نخست', 'ابتدا'],
+    }},
+    'example':    {'weight': 0.5, 'cues': {
+        'for instance': ['برای مثال', 'به‌عنوان مثال'],
+        'such as':      ['مانند', 'از جمله'],
+        'for example':  ['برای مثال', 'به‌عنوان مثال'],
+        'e.g.':         ['مانند', 'از جمله'],
+    }},
+    'emphasis':   {'weight': 0.5, 'cues': {
+        'in fact':  ['در واقع'],
+        'indeed':   ['به‌راستی', 'در واقع'],
+        'actually': ['در واقع', 'به‌راستی'],
+    }},
 }
 
 
@@ -517,24 +542,19 @@ class FASubtitleAligner:
 
     @staticmethod
     def _ensure_rtl_paragraph(p):
-        """Add <w:bidi/> to paragraph properties so Word renders RTL."""
-        pPr = p._p.find(_qn('w:pPr'))
-        if pPr is None:
-            pPr = OxmlElement('w:pPr')
-            p._p.insert(0, pPr)
+        """Add <w:bidi/> to paragraph properties so Word renders RTL.
+
+        Uses python-docx's built-in `get_or_add_pPr` so element ordering
+        respects the OOXML schema rather than relying on manual insert(0).
+        """
+        pPr = p._p.get_or_add_pPr()
         if pPr.find(_qn('w:bidi')) is None:
-            bidi = OxmlElement('w:bidi')
-            # w:bidi must come before w:rPr inside pPr per OOXML schema;
-            # appending is safe because Word tolerates trailing properties.
-            pPr.append(bidi)
+            pPr.append(OxmlElement('w:bidi'))
 
     @staticmethod
     def _ensure_rtl_run(run):
         """Add <w:rtl/> to run properties so glyph order is right-to-left."""
-        rPr = run._r.find(_qn('w:rPr'))
-        if rPr is None:
-            rPr = OxmlElement('w:rPr')
-            run._r.insert(0, rPr)
+        rPr = run._r.get_or_add_rPr()
         if rPr.find(_qn('w:rtl')) is None:
             rPr.append(OxmlElement('w:rtl'))
 

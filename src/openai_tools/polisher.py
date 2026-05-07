@@ -7,6 +7,7 @@ from openai import OpenAI
 
 from .translator import _normalize_lang, _find_prompts_dir, _prompt_lang_code
 from ._retry import call_with_retry, prompt_hash
+from .fa_postprocess import normalize_fa
 
 
 class OpenAIPolisher:
@@ -242,6 +243,15 @@ class OpenAIPolisher:
                 f"[WARN] Polisher: {len(residue_lines)} line(s) flagged as "
                 f"English residue — reverted to translator output."
             )
+
+        # Conservative FA normalization — Arabic Yeh/Kaf and Arabic-Indic
+        # digits to their Persian equivalents only. Safe for TECH_LOCK
+        # tokens, ASCII content, ZWNJ, quotes. See fa_postprocess.py for
+        # the full list of what it does NOT touch.
+        normalized_lines = [normalize_fa(line) for line in polished_lines]
+        if any(a != b for a, b in zip(polished_lines, normalized_lines)):
+            print("[INFO] Polisher: FA letter/digit normalization applied.")
+        polished_lines = normalized_lines
 
         usage = response_json.get("usage") or {}
         ptd   = usage.get("prompt_tokens_details") or {}
