@@ -638,32 +638,29 @@
           // Step 2: Poll until translation finishes
           const { filename, filename2, filename3 } = await pollJobStatus(uploadData.jobId);
 
-          // Step 3: Trigger download(s)
-          function triggerDownload(fname) {
-            const enc = fname.replace(/#/g, '%23');
+          // Step 3: Trigger download
+          //
+          // When more than one output file exists, fetch a single ZIP package
+          // from /download-zip/:jobId. This avoids the Chrome multi-download
+          // permission prompt (E9) — the browser only sees one download.
+          function triggerDownload(href) {
             const a = document.createElement('a');
-            a.href = '/download/' + enc;
+            a.href = href;
             a.download = '';
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
           }
 
-          const encodedFilename = filename.replace(/#/g, '%23');
           let displayName = filename
             .replace(/^\d{13}-/, '')
             .replace(/ - \d{4}-\d{2}-\d{2}T\d{6}\.\d{3}(?=\.docx$)/, '');
 
-          triggerDownload(filename);
-
-          // Second file (_PER_Double.docx) — mechanical alignment
-          if (filename2) {
-            setTimeout(() => triggerDownload(filename2), 1500);
-          }
-
-          // Third file (_PER_Classic.docx) — mechanical (Python character-based) alignment
-          if (filename3) {
-            setTimeout(() => triggerDownload(filename3), 3000);
+          const hasMultiple = !!(filename2 || filename3);
+          if (hasMultiple) {
+            triggerDownload('/download-zip/' + encodeURIComponent(uploadData.jobId));
+          } else {
+            triggerDownload('/download/' + filename.replace(/#/g, '%23'));
           }
 
           // Play notification sound after short delay (Safari-safe)
@@ -683,8 +680,8 @@
           const extraFiles = [filename2, filename3]
             .filter(Boolean)
             .map(f => `\n• ${f.replace(/^\d{13}-/, '')}`).join('');
-          const alertMsg = extraFiles
-            ? `Download complete.\n• ${displayName}${extraFiles}\n\nAll files can be found in your default download folder.`
+          const alertMsg = hasMultiple
+            ? `Download complete — single ZIP package contains:\n• ${displayName}${extraFiles}\n\nThe ZIP can be found in your default download folder.`
             : `File download completed. File "${displayName}" can be found in your default download folder.`;
           await showAlert(alertMsg);
 

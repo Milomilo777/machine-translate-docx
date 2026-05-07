@@ -6,6 +6,28 @@ Format: date, decision, alternatives considered, rationale.
 
 ---
 
+## 2026-05-08 — Phase 2 of review-rewrite-opus-4.7 (visible-issue fixes)
+
+**Decision:** Phase 2 ships three independent improvements: a single-shot ZIP download, a job-store cleanup thread, and a shared OpenAI retry helper.
+
+**ZIP-download alternatives considered:**
+- Three on-page download links instead of auto-download — rejected (extra clicks for repeat users).
+- Keep multi-file auto-download with longer delays — already in place (E9) and still requires user-side permission click.
+- Stream a tar.gz — rejected (no native tar support in Windows file explorer; ZIP wins on portability).
+
+**Cleanup-thread alternatives:**
+- WeakValueDictionary — wouldn't help because Job dataclasses are referenced from inside the dict itself.
+- LRU cap (e.g. keep last 1000 jobs) — rejected because age-based pruning is more predictable for memory profiles in the absence of activity.
+
+**Retry-helper alternatives:**
+- `tenacity` library — adds an unnecessary dependency for ~30 LOC of logic.
+- Per-module retry implementation — rejected (drift between three callers; this is exactly what bit us before in the splitter cache regression).
+- Retry on every Exception — rejected (mask request bugs and burn tokens).
+
+**Constraints honoured:** Aligner model still `gpt-5.4-mini`. `_normalize_lang()` untouched. No `reasoning_effort` on translator. `prompt_cache_retention=24h` preserved.
+
+---
+
 ## 2026-05-08 — Phase 1 of review-rewrite-opus-4.7 (critical fixes only)
 
 **Decision:** A multi-phase rewrite branch was started after a full project review (Opus 4.7, 1M context). Phase 1 carries only fixes that are visible to end users or close a security gap; no refactor, no feature work.

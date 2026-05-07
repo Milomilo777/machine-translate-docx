@@ -138,6 +138,39 @@ Recurring bugs, root causes, and fixes. Add an entry any time a non-trivial bug 
 
 ---
 
+## E13 — Multi-file download blocked / fragmented in Chrome
+
+**ID:** E13
+**Status:** Fixed 2026-05-08 (Phase 2, review-rewrite-opus-4.7)
+**Symptom:** Only the first of three output files downloaded; user had to click "Allow multiple downloads". With increased setTimeout delays (E9 mitigation) the prompt timed out before the user noticed.
+**Root cause:** Browsers throttle / require permission for multiple programmatic downloads from the same origin in quick succession.
+**Fix:** New `_send_zip_for_job(job_id)` in `local_launcher.py` and route `GET /download-zip/:jobId`. The frontend, when `filename2 || filename3` is present, fetches the single ZIP instead of triggering multiple `/download/...` clicks. ZIP filename is `{stem}_PER_package.zip`.
+**Regression test:** upload a Persian DOCX → exactly one download initiates → unzipping shows TranslatePolish + Double + Classic.
+
+---
+
+## E14 — Job store memory growth
+
+**ID:** E14
+**Status:** Fixed 2026-05-08 (Phase 2, review-rewrite-opus-4.7)
+**Symptom:** `LocalState.jobs` dict held every job since process start; long-running launcher sessions accumulated thousands of `Job` records.
+**Root cause:** No cleanup logic.
+**Fix:** `LocalState.cleanup_old_jobs(max_age_sec=3600)` removes finished jobs (`done` / `error`) older than the threshold. `start_cleanup_thread()` spawns a daemon that calls it every 10 minutes; called once from `main()` after `state.boot()`.
+**Regression test:** measure `len(state.jobs)` after >1 h of churn — should not exceed concurrent active jobs + a small grace.
+
+---
+
+## E15 — Transient OpenAI failures aborted entire pipeline
+
+**ID:** E15
+**Status:** Fixed 2026-05-08 (Phase 2, review-rewrite-opus-4.7)
+**Symptom:** A single `RateLimitError` or brief network blip caused translator/polisher/aligner to fail and the user lost the whole job.
+**Root cause:** No retry logic; every API call was a one-shot.
+**Fix:** New `src/openai_tools/_retry.py::call_with_retry(fn, *, label)` — 3 attempts with exponential backoff (1 s, 2 s, 4 s) for `RateLimitError`, `APIConnectionError`, `APITimeoutError`. `BadRequestError` raises immediately (request bug — retrying would just reburn tokens). All three OpenAI callers (translator, polisher, aligner) wrap their `client.*.create(...)` call in this helper.
+**Regression test:** mock the openai client to throw `RateLimitError` once → call should succeed on retry; mock to throw 3× → should raise.
+
+---
+
 ## Template for new entries
 
 ```

@@ -8,6 +8,8 @@ from openai import OpenAI
 from pathlib import Path
 import re
 
+from ._retry import call_with_retry
+
 # ── language-code normalisation ───────────────────────────────────────────────
 _LANG_CODE_MAP = {
     "persian": "fa",
@@ -224,18 +226,24 @@ class OpenAITranslator:
         _extra = {"prompt_cache_retention": "24h"}
 
         if "pro" in self.model:
-            response = self.client.responses.create(
-                model=self.model,
-                input=_messages,
-                extra_body=_extra,
-                timeout=1800,
+            response = call_with_retry(
+                lambda: self.client.responses.create(
+                    model=self.model,
+                    input=_messages,
+                    extra_body=_extra,
+                    timeout=1800,
+                ),
+                label="translator.responses.create",
             )
         else:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=_messages,
-                extra_body=_extra,
-                timeout=1800,
+            response = call_with_retry(
+                lambda: self.client.chat.completions.create(
+                    model=self.model,
+                    messages=_messages,
+                    extra_body=_extra,
+                    timeout=1800,
+                ),
+                label="translator.chat.completions.create",
             )
 
         elapsed_time  = time.time() - start_time

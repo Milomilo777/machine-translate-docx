@@ -239,6 +239,32 @@ class LocalState:
         with self.lock:
             return dict(self.jobs)
 
+    def cleanup_old_jobs(self, max_age_sec: int = 3600) -> int:
+        """Remove finished jobs older than `max_age_sec`. Returns count removed."""
+        now = time.time()
+        removed = 0
+        with self.lock:
+            for jid in [
+                j for j, job in self.jobs.items()
+                if job.status in ("done", "error") and (now - job.created_at) > max_age_sec
+            ]:
+                del self.jobs[jid]
+                removed += 1
+        return removed
+
+    def start_cleanup_thread(self, interval_sec: int = 600, max_age_sec: int = 3600) -> None:
+        """Spawn a daemon thread that periodically prunes finished jobs."""
+        def _loop():
+            while True:
+                time.sleep(interval_sec)
+                try:
+                    n = self.cleanup_old_jobs(max_age_sec=max_age_sec)
+                    if n:
+                        print(f"[cleanup] pruned {n} finished job(s) older than {max_age_sec}s")
+                except Exception as exc:
+                    print(f"[cleanup] error: {exc}")
+        threading.Thread(target=_loop, daemon=True, name="job-cleanup").start()
+
 
 def _parse_multipart(headers, body: bytes) -> tuple[dict[str, str], dict[str, tuple[str, bytes]]]:
     content_type = headers.get("Content-Type", "")
@@ -319,6 +345,49 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def _send_zip_for_job(self, job_id: str) -> None:
+        """Bundle every output file for a job into a single ZIP and stream it.
+
+        Avoids the Chrome multi-download permission prompt (E9) — the browser
+        only sees one download. Filename derives from the main output stem.
+        """
+        job = self.state.get_job(job_id)
+        if not job or job.status != "done" or not job.filename:
+            self._send_text("Not found", HTTPStatus.NOT_FOUND)
+            return
+
+        import io
+        import zipfile
+
+        names = [n for n in (job.filename, job.filename2, job.filename3) if n]
+        existing = [(n, self.state.uploads_dir / n) for n in names
+                    if (self.state.uploads_dir / n).exists()]
+        if not existing:
+            self._send_text("Not found", HTTPStatus.NOT_FOUND)
+            return
+
+        # Strip _PER_TranslatePolish suffix to derive package stem.
+        main_stem = Path(job.filename).stem
+        pkg_stem = _re.sub(
+            r'_(?:PER|ARA|GER|FRE|CHI|SPA|POR|ITA|JPN|KOR|RUS|TUR|POL|DUT|SWE|NOR|DAN|FIN|HEB|HIN|THA|VIE|UKR|CZE|HUN|ROM|BUL).*$',
+            '', main_stem, flags=_re.IGNORECASE,
+        ) or main_stem
+        zip_name = f"{pkg_stem}_PER_package.zip"
+
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as z:
+            for name, path in existing:
+                z.write(path, name)
+        data = buf.getvalue()
+
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "application/zip")
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Content-Disposition", f'attachment; filename="{zip_name}"')
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(data)
+
     def do_GET(self):
         parsed = urlparse(self.path)
         path = parsed.path
@@ -365,6 +434,11 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
         if path.startswith("/download/"):
             file_name = unquote(path.removeprefix("/download/"))
             self._send_file(self.state.uploads_dir / file_name, file_name)
+            return
+
+        if path.startswith("/download-zip/"):
+            job_id = unquote(path.removeprefix("/download-zip/"))
+            self._send_zip_for_job(job_id)
             return
 
         if path == "/robots.txt":
@@ -783,6 +857,10 @@ def main() -> int:
 
     state = LocalState(runtime_dir, args.backend, python_exe, script_path)
     state.boot()
+
+    # Periodically prune finished jobs older than 1 h so the in-memory job
+    # store does not grow unbounded across long-running sessions.
+    state.start_cleanup_thread(interval_sec=600, max_age_sec=3600)
 
     port = _find_free_port(args.port)
     server = ThreadingHTTPServer((args.host, port), MockTranslatorHandler)

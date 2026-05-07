@@ -6,6 +6,7 @@ from pathlib import Path
 from openai import OpenAI
 
 from .translator import _normalize_lang, _find_prompts_dir, _prompt_lang_code
+from ._retry import call_with_retry
 
 
 class OpenAIPolisher:
@@ -192,14 +193,17 @@ class OpenAIPolisher:
 
         t0 = time.time()
         try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": system},
-                    {"role": "user",   "content": user_content},
-                ],
-                extra_body=_extra,
-                timeout=1800,
+            response = call_with_retry(
+                lambda: self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[
+                        {"role": "system", "content": system},
+                        {"role": "user",   "content": user_content},
+                    ],
+                    extra_body=_extra,
+                    timeout=1800,
+                ),
+                label="polisher.chat.completions.create",
             )
         except Exception as e:
             print(f"[ERROR] Polisher API call failed: {e} — returning original translation.")

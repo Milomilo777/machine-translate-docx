@@ -49,6 +49,12 @@ except ImportError:
     _HAS_OPENAI = False
 
 try:
+    from ._retry import call_with_retry as _call_with_retry
+except ImportError:
+    def _call_with_retry(fn, *, label="openai"):  # fallback when openai missing
+        return fn()
+
+try:
     import tiktoken as _tiktoken
     _HAS_TIKTOKEN = True
 except ImportError:
@@ -1302,16 +1308,19 @@ class FASubtitleAligner:
 
             try:
                 t0   = time.time()
-                resp = self.client.chat.completions.create(
-                    model=self.model,
-                    messages=[
-                        {'role': 'system', 'content': self._SYSTEM_PROMPT},
-                        {'role': 'user',   'content': user_msg},
-                    ],
-                    response_format={'type': 'json_object'},
-                    temperature=0,
-                    timeout=120,
-                    extra_body={'prompt_cache_retention': '24h'},
+                resp = _call_with_retry(
+                    lambda: self.client.chat.completions.create(
+                        model=self.model,
+                        messages=[
+                            {'role': 'system', 'content': self._SYSTEM_PROMPT},
+                            {'role': 'user',   'content': user_msg},
+                        ],
+                        response_format={'type': 'json_object'},
+                        temperature=0,
+                        timeout=120,
+                        extra_body={'prompt_cache_retention': '24h'},
+                    ),
+                    label=f"aligner.batch_{b_start // BATCH_SIZE + 1}",
                 )
                 elapsed           = time.time() - t0
                 used              = resp.usage.total_tokens

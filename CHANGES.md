@@ -40,7 +40,42 @@ CHANGES.md                    ← همین فایل — منبع اصلی برا
 
 ## تغییرات — از ابتدا تا آخر
 
-### ۰. Phase 1 (review-rewrite-opus-4.7) — رفع‌های بحرانی [2026-05-08]
+### ۰-ب. Phase 2 (review-rewrite-opus-4.7) — مشکلات قابل دیدن [2026-05-08]
+
+#### 0.4 ZIP package برای دانلود (E9 fix)
+**فایل‌ها:** `local_launcher.py`، `index.ejs`
+
+به‌جای ۳ تا setTimeout که Chrome آن‌ها را پشت permission gate قرار می‌دهد:
+- endpoint جدید `GET /download-zip/:jobId` همه فایل‌های موجود job را در یک
+  `_PER_package.zip` بسته‌بندی می‌کند و یک‌جا stream می‌کند.
+- Frontend وقتی `filename2 || filename3` وجود داشت، به‌جای ۳ دانلود سریال،
+  یک کلیک به ZIP می‌زند.
+- پیغام موفقیت بعد از دانلود به این حالت محتوای ZIP را نشان می‌دهد.
+
+#### 0.5 Cleanup خودکار job store
+**فایل:** `local_launcher.py`
+
+`LocalState.cleanup_old_jobs(max_age_sec=3600)` job‌های `done`/`error` که
+بیش از یک ساعت از created_at آن‌ها گذشته را حذف می‌کند. یک thread با نام
+`job-cleanup` هر ۱۰ دقیقه این تابع را فراخوانی می‌کند (`start_cleanup_thread`).
+در `main()` بعد از `state.boot()` راه می‌افتد.
+
+#### 0.6 Retry با backoff برای OpenAI calls
+**فایل‌ جدید:** `src/openai_tools/_retry.py`
+**فایل‌های ویرایش‌شده:** `translator.py`، `polisher.py`، `aligner_per.py`
+
+`call_with_retry(fn, *, label)`:
+- transient: `RateLimitError`، `APIConnectionError`، `APITimeoutError`
+  → ۳ تلاش با backoff ۱s، ۲s، ۴s
+- non-retryable: `BadRequestError` → فوری raise
+- بقیه exceptionها → فوری raise (هیچ silent swallow نیست)
+
+هر سه caller (translator chat/responses، polisher chat، aligner batch) از
+این helper مشترک استفاده می‌کنند تا رفتار retry یکدست بماند.
+
+---
+
+### ۰-الف. Phase 1 (review-rewrite-opus-4.7) — رفع‌های بحرانی [2026-05-08]
 
 **هدف:** بستن سه باگ بحرانی که مستقیماً در خروجی نهایی دیده می‌شوند یا امنیت را تهدید می‌کنند.
 
