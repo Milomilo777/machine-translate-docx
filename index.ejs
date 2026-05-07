@@ -338,7 +338,10 @@
         sourceSelector.appendChild(opt);
       });
 
-      function engineChecker() {
+      // setDefault=true → called from a language change: apply Persian default engine.
+      // setDefault=false (or omitted) → called from engine change / page restore:
+      //   update UI state only, never override the user's engine choice.
+      function engineChecker(setDefault) {
         const targetLanguage = targetSelector.value;
         const deeplAttr = targetSelector.selectedOptions && targetSelector.selectedOptions[0]
           ? targetSelector.selectedOptions[0].getAttribute('deepl') : 'false';
@@ -413,8 +416,10 @@
           }
         }
 
-        // Persian default: chatgpt-polish wins over any auto-selection above
-        if (targetLanguage === 'fa' && openaiPolishOption && !openaiPolishOption.disabled) {
+        // Persian default: chatgpt-polish — only when the LANGUAGE just changed.
+        // When called from an engine-change event or page restore (setDefault=false),
+        // we must not override the user's explicit engine choice.
+        if (setDefault && targetLanguage === 'fa' && openaiPolishOption && !openaiPolishOption.disabled) {
           if (engineSel) engineSel.value = 'chatgpt-polish';
         }
 
@@ -438,11 +443,12 @@
           opt.setAttribute('deepl', lang.deepl);
           targetSelector.appendChild(opt);
         });
-        engineChecker();
+        engineChecker(true);  // language rebuilt → apply language-specific defaults
       }
 
       sourceSelector.addEventListener('change', setTargetLangs);
-      targetSelector.addEventListener('change', engineChecker);
+      // Language changed by user → apply language-specific engine default
+      targetSelector.addEventListener('change', () => engineChecker(true));
       setTargetLangs();
 
       // ------- Remember language & engine (localStorage) -------
@@ -479,8 +485,8 @@
             if (optionExists) targetSelector.value = savedTarget;
           }
 
-          // 3. Run compatibility check (updates disabled states)
-          engineChecker();
+          // 3. Run compatibility check (updates disabled/enabled states only)
+          engineChecker(false);
 
           // 4. Restore engine only if it is present and not disabled
           if (savedEngine) {
@@ -489,11 +495,10 @@
               engineSelector.value = savedEngine;
             }
           }
-          // Re-run engineChecker after restoring engine so the split section
-          // visibility and checkbox state reflect the actual engine+language combo.
-          // Without this, chatgpt-polish restored from localStorage left the
-          // splitTranslate checkbox checked (B1 bug: split=True sent to backend).
-          engineChecker();
+          // Re-run to update split section visibility + checkbox state for the
+          // restored engine. setDefault=false so we never override the restored
+          // engine choice with the Persian language default.
+          engineChecker(false);
 
           // 5. Restore AI model selection
           const savedAiModel = localStorage.getItem('savedAiModel');
@@ -519,9 +524,10 @@
       engineSelector.addEventListener('change', saveLanguagePrefs);
       if (aiModelSelector) aiModelSelector.addEventListener('change', saveLanguagePrefs);
 
-      // Show/hide AI model row + Split section when engine changes
+      // Show/hide AI model row + Split section when engine changes.
+      // setDefault=false: user explicitly chose an engine — never override.
       engineSelector.addEventListener('change', () => {
-        engineChecker();
+        engineChecker(false);
         const aiModelRow = document.getElementById('aiModelRow');
         if (aiModelRow) {
           const eng = engineSelector.value;
