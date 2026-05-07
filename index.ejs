@@ -366,8 +366,9 @@
         if (openaiPolishOption) {
           if (targetLanguage !== 'fa') {
             openaiPolishOption.disabled = true;
-            // If chatgpt-polish was active, fall back to Google
-            if (engineSel && engineSel.value === 'chatgpt-polish') {
+            // If chatgpt-polish was active, switch to Google as fallback
+            // (only when this is triggered by a language change, not engine change)
+            if (setDefault && engineSel && engineSel.value === 'chatgpt-polish') {
               if (googleOption) googleOption.selected = true;
             }
           } else {
@@ -375,23 +376,18 @@
           }
         }
 
-        // DeepL availability
-        if (!deepl) {
-          if (deeplOption)  deeplOption.disabled  = true;
-          if (googleOption) googleOption.selected  = true;
-        } else {
-          if (deeplOption) {
-            const deeplLangs = [
-              'ar', 'bg', 'zh-CN', 'zh-TW', 'cs', 'fr', 'de', 'hu', 'id',
-              'it', 'ja', 'ko', 'pl', 'ro', 'ru', 'es', 'uk', 'vi', 'pa', 'fa', 'hi'
-            ];
-            if (deeplLangs.includes(targetLanguage)) {
-              deeplOption.disabled = false;
-              deeplOption.selected = true;
-            } else {
-              deeplOption.disabled = true;
-              if (googleOption) googleOption.selected = true;
-            }
+        // DeepL availability — only update disabled state here.
+        // Selecting a default engine is handled below, guarded by setDefault.
+        const deeplLangs = [
+          'ar', 'bg', 'zh-CN', 'zh-TW', 'cs', 'fr', 'de', 'hu', 'id',
+          'it', 'ja', 'ko', 'pl', 'ro', 'ru', 'es', 'uk', 'vi', 'pa', 'fa', 'hi'
+        ];
+        if (deeplOption) {
+          const deeplAvail = deepl && deeplLangs.includes(targetLanguage);
+          deeplOption.disabled = !deeplAvail;
+          // If DeepL is now disabled but was selected, fall back — only on lang change
+          if (!deeplAvail && setDefault && engineSel && engineSel.value === 'deepl') {
+            if (googleOption) googleOption.selected = true;
           }
         }
 
@@ -416,11 +412,20 @@
           }
         }
 
-        // Persian default: chatgpt-polish — only when the LANGUAGE just changed.
-        // When called from an engine-change event or page restore (setDefault=false),
-        // we must not override the user's explicit engine choice.
-        if (setDefault && targetLanguage === 'fa' && openaiPolishOption && !openaiPolishOption.disabled) {
-          if (engineSel) engineSel.value = 'chatgpt-polish';
+        // Apply language-specific default engine — only on language change (setDefault=true).
+        // Never runs when called from an engine-change or page-restore event,
+        // so the user's explicit choice is never overridden.
+        if (setDefault && engineSel) {
+          if (targetLanguage === 'fa' && openaiPolishOption && !openaiPolishOption.disabled) {
+            // Persian → chatgpt-polish
+            engineSel.value = 'chatgpt-polish';
+          } else if (deeplOption && !deeplOption.disabled) {
+            // Language supports DeepL → DeepL
+            engineSel.value = 'deepl';
+          } else {
+            // Fallback → Google
+            engineSel.value = 'google';
+          }
         }
 
         // Show AI model selector only when OpenAI engine is selected
