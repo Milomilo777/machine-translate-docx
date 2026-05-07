@@ -7533,46 +7533,54 @@ def save_docx_file():
                         p.add_run(text)
 
             def _simple_split_docx(input_path: str, output_path: str, max_len: int = 48) -> dict:
-                """Simple word-wrap split for FA cells — no AI, no Persian-specific logic.
+                """Classic FA distribution — no doubling, no row insertion.
 
-                For each FA cell (cells[2]) longer than max_len chars, splits at the
-                last word boundary ≤ max_len and inserts a duplicate row below with
-                the remainder. Maximum one split per original row (double only).
+                Distributes the translated FA text across the group's EXISTING rows.
+                Only the FA column (cells[2]) is ever written.
+                The timecode/number column (cells[0]) and the EN column (cells[1])
+                are never touched.
+
+                Groups rows by FA sentence (same FA-based logic as FASubtitleAligner),
+                splits the joined FA text into at most n_rows chunks, then writes
+                one chunk per row with empty padding — no chunk is ever repeated.
                 """
-                import copy as _copy
-                _doc = Document(input_path)
-                _stats: dict = {"rows_processed": 0, "rows_split": 0}
-                for _tbl in _doc.tables:
-                    _ri = 0
-                    while _ri < len(_tbl.rows):
-                        _row = _tbl.rows[_ri]
-                        _cells = _row.cells
-                        if len(_cells) < 3:
-                            _ri += 1
-                            continue
-                        _fa_text = " ".join(
-                            _p.text.strip()
-                            for _p in _cells[2].paragraphs
-                            if _p.text.strip()
-                        )
-                        _stats["rows_processed"] += 1
-                        if len(_fa_text) <= max_len:
-                            _ri += 1
-                            continue
-                        _split_at = _fa_text.rfind(' ', 0, max_len)
-                        if _split_at <= 0:
-                            _split_at = max_len
-                        _chunk1 = _fa_text[:_split_at].strip()
-                        _remainder = _fa_text[_split_at:].strip()
-                        if not _chunk1 or not _remainder:
-                            _ri += 1
-                            continue
-                        _write_cell_text(_cells[2], _chunk1)
-                        _new_tr = _copy.deepcopy(_row._tr)
-                        _row._tr.addnext(_new_tr)
-                        _write_cell_text(_tbl.rows[_ri + 1].cells[2], _remainder)
-                        _stats["rows_split"] += 1
-                        _ri += 2   # skip the newly inserted row
+                from openai_tools.aligner_per import (
+                    FASubtitleAligner as _Aligner,
+                    _split_for_n_rows  as _split,
+                    _set_fa_cell       as _write_fa,
+                    _normalize_fa      as _norm_fa,
+                )
+
+                # Lightweight aligner instance for grouping only
+                _al = _Aligner.__new__(_Aligner)
+                _al.model = 'classic'; _al.llm_threshold = 0
+                _al.token_budget = 0;  _al.last_stats = {}
+
+                _stats: dict = {"rows_processed": 0, "rows_written": 0}
+
+                _rows   = _al._read_rows(input_path)
+                _groups = _al._parse_groups(_rows)
+                _stats["rows_processed"] = len(_rows)
+
+                _doc   = Document(input_path)
+                _table = _doc.tables[0]
+
+                for _grp in _groups:
+                    _n_rows  = len(_grp['row_indices'])
+                    _full_fa = _norm_fa(' '.join(p for p in _grp['fa_parts'] if p))
+                    if not _full_fa:
+                        continue
+
+                    # Split into at most n_rows chunks — no chunk is ever repeated.
+                    _chunks = _split(_full_fa, _n_rows)
+
+                    # One chunk per row; trailing rows get empty string (no double).
+                    for _i, _ri in enumerate(_grp['row_indices']):
+                        _text = _chunks[_i] if _i < len(_chunks) else ''
+                        _write_fa(_table, _ri, _text)
+                        if _text:
+                            _stats["rows_written"] += 1
+
                 _doc.save(output_path)
                 return _stats
 
