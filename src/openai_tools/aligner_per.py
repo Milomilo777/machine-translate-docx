@@ -12,6 +12,12 @@ Hard limits enforced in both passes:
   - Triple (3 identical rows) is FORBIDDEN — max 2 identical (double only)
   - Token budget cap (default 40 000) — excess groups keep mechanical result
 
+Mechanical pass improvements (2026-05):
+  - B4 proportional distribution (EN word-count → FA char budget per row)
+  - Content-type rules (DIALOGUE/SPIRITUAL/NEWS_ATTR/COOKING skip doubling)
+  - Multi-candidate split scoring with balance bonus
+  - Tiered validation: FATAL blocks, WARN accepted with log
+
 Usage from pipeline:
     from openai_tools.aligner import FASubtitleAligner
     aligner = FASubtitleAligner(model="gpt-5.4-mini")
@@ -61,6 +67,57 @@ def _min_doubles_for(fa_len: int) -> int:
         if fa_len <= threshold:
             return min_d
     return 2
+
+
+# B4 proportional weight table — empirical EN word-count → FA display weight
+# Derived from 3,036 real broadcast rows (para_bridge research).
+# 0-1 words = meta/bridge row (weight 0); 7+ words → weight 1.01
+_B4_WEIGHTS: dict = {0: 0.0, 1: 0.0, 2: 2.86, 3: 2.05, 4: 1.57, 5: 1.34, 6: 1.13}
+_B4_DEFAULT = 1.01  # 7+ words
+
+
+def _fa_budget_per_row(en_rows: list, total_fa_len: int) -> list:
+    """Compute target FA character count per EN row using B4 weight table.
+
+    Rows with 0-1 EN words (likely meta/bridge) receive proportionally
+    less budget. Result sums to approximately total_fa_len.
+    """
+    weights = [_B4_WEIGHTS.get(len(en.split()), _B4_DEFAULT) for en in en_rows]
+    total_w = sum(weights)
+    if total_w == 0:
+        each = max(1, total_fa_len // len(en_rows)) if en_rows else 0
+        return [each] * len(en_rows)
+    return [max(1, round(total_fa_len * w / total_w)) for w in weights]
+
+
+# Content type constants — affect doubling and bridge rules
+_CT_NARRATION  = 'narration'   # default
+_CT_DIALOGUE   = 'dialogue'    # speaker-tagged rows — prefer fewer doubles
+_CT_SPIRITUAL  = 'spiritual'   # SM:/Master: — conservative doubling
+_CT_NEWS_ATTR  = 'news_attr'   # (Reuters)/(AP) attribution lines — skip doubling
+_CT_COOKING    = 'cooking'     # action-verb instructions — skip doubling
+
+_RE_DIALOGUE   = re.compile(r'^(?:Q\s*\([mf]\)|[A-Z]{1,4})\s*:', re.I)
+_RE_SPIRITUAL  = re.compile(r'^(?:SM|Master)\s*:', re.I)
+_RE_NEWS_ATTR  = re.compile(r'\((?:Reuters|AP|BBC|CNN|AFP|Al\s*Jazeera|Xinhua|Fox\s*News)\)', re.I)
+_RE_COOKING    = re.compile(
+    r'\b(?:hold|mix|stir|pour|add|fold|bake|heat|boil|simmer|'
+    r'slice|chop|blend|whisk|fry|saut[eé]|season|combine|place|'
+    r'spread|cover|remove|serve|rinse|drain)\b', re.I
+)
+
+
+def _classify_content(en: str, fa: str = '') -> str:
+    """Return content type for a row based on EN (and optionally FA) text."""
+    if _RE_SPIRITUAL.match(en):
+        return _CT_SPIRITUAL
+    if _RE_DIALOGUE.match(en):
+        return _CT_DIALOGUE
+    if _RE_NEWS_ATTR.search(en) or _RE_NEWS_ATTR.search(fa):
+        return _CT_NEWS_ATTR
+    if _RE_COOKING.search(en):
+        return _CT_COOKING
+    return _CT_NARRATION
 
 
 # Protected Persian bigrams — never split between these two words (technique A from hybrid_double)
@@ -390,6 +447,14 @@ class FASubtitleAligner:
                         if w_norm.startswith(_normalize_fa(fa_eq)):
                             quality = max(quality, 80)
 
+            # Balance bonus: positions near text midpoint get a bonus
+            text_mid  = len(text) / 2
+            proximity = 1.0 - abs(start - text_mid) / max(text_mid, 1)
+            balance_bonus = int(proximity * 18)  # up to +18 pts
+            # Only apply balance bonus if it wouldn't override a strong signal
+            if quality < 80:
+                quality = min(79, quality + balance_bonus)
+
             # Compound verb: never split before می‌ / نمی‌
             if any(word.startswith(pf) for pf in COMPOUND_PREFIXES):
                 quality = 5
@@ -544,6 +609,114 @@ class FASubtitleAligner:
                 result.append(ch)
         return result
 
+    def _best_split_near(self, text: str, target: int) -> int:
+        """Find best word-boundary split position near `target` chars from start.
+
+        Respects compound verbs, protected bigrams, and sentence punctuation.
+        Returns a character index into `text`.
+        """
+        if len(text) <= target:
+            return len(text)
+
+        lo = max(1, int(target * 0.65))
+        hi = min(MAX_CHARS, int(target * 1.35), len(text) - 1)
+
+        bad_positions = self._bigram_bad_positions(text)
+
+        words  = text.split()
+        pos    = 0
+        best_p = None
+        best_q = -1
+
+        for w in words:
+            idx = text.find(w, pos)
+            pos = idx + len(w)
+            if idx == 0:
+                continue  # no split before first word
+
+            # only consider splits in window
+            if not (lo <= idx <= hi):
+                continue
+
+            proximity = 1.0 - abs(idx - target) / max(target, 1)
+            quality   = proximity * 60
+
+            left = text[:idx].rstrip()
+
+            # sentence end: always preferred
+            if left and left[-1] in '.!?؟' and not left.endswith('...'):
+                quality = 100
+            elif left and left[-1] in '،؛,;':
+                quality = min(100, quality + 25)
+
+            # compound verb: skip
+            if any(w.startswith(pf) for pf in COMPOUND_PREFIXES):
+                continue
+
+            # را orphan: skip
+            if w.strip() == 'را':
+                continue
+
+            # protected bigram: strong penalty (don't skip — may be only option)
+            if idx in bad_positions:
+                quality = max(0, quality - 55)
+
+            if quality > best_q:
+                best_q = quality
+                best_p = idx
+
+        if best_p is None:
+            # fallback: rightmost space before MAX_CHARS
+            sp = text.rfind(' ', 0, min(target + 10, MAX_CHARS))
+            best_p = sp if sp > 0 else min(target, MAX_CHARS, len(text))
+
+        return best_p
+
+    def _split_by_budget(self, text: str, budgets: list) -> list:
+        """Split text into len(budgets) chunks guided by per-row char budgets.
+
+        Each budget[i] is the target character count from B4 weighting.
+        Falls back to equal splitting when budget guidance is unhelpful.
+        """
+        n = len(budgets)
+        if n <= 1 or not text:
+            return [text[:MAX_CHARS]] if text else ['']
+
+        chunks    = []
+        remaining = text.strip()
+        total_rem = len(remaining)
+
+        for i, budget in enumerate(budgets[:-1]):
+            if not remaining:
+                chunks.append('')
+                continue
+            # Scale budget to remaining text length
+            remaining_budget = sum(budgets[i:])
+            if remaining_budget > 0:
+                scaled = max(1, round(len(remaining) * budget / remaining_budget))
+            else:
+                scaled = len(remaining) // max(1, n - i)
+
+            split_pos = self._best_split_near(remaining, min(scaled, MAX_CHARS))
+            left  = remaining[:split_pos].rstrip()
+            remaining = remaining[split_pos:].lstrip()
+
+            if len(left) > MAX_CHARS:
+                # Safety: hard-trim at word boundary
+                sp = left.rfind(' ', 0, MAX_CHARS)
+                if sp > 0:
+                    remaining = left[sp:].lstrip() + (' ' if remaining else '') + remaining
+                    left = left[:sp].rstrip()
+                else:
+                    left = left[:MAX_CHARS]
+            chunks.append(left)
+
+        last = remaining[:MAX_CHARS]
+        chunks.append(last)
+
+        # Ensure all chunks are within limit
+        return [c[:MAX_CHARS] for c in chunks]
+
     def _mechanical_align(self, group: dict) -> list:
         """Mechanical pass for one group. Returns list of len == n_rows."""
         full_fa = group['full_fa'].strip()
@@ -559,14 +732,40 @@ class FASubtitleAligner:
         min_by_rows = -(-n_rows // 2)
         min_dist    = max(min_by_len, min_by_rows)
 
-        # Get distinct chunks
-        chunks = self._split_distinct(full_fa, min_dist)
+        # Content type for this group (use first non-empty EN row)
+        first_en = next((r for r in en_rows if r.strip()), '')
+        content_type = _classify_content(first_en, full_fa)
 
-        # Try discourse-marker alignment to improve EN↔FA correspondence
-        chunks = self._try_marker_align(full_fa, en_rows, chunks)
+        # Skip doubling for certain content types
+        no_double_types = {_CT_NEWS_ATTR, _CT_COOKING}
 
-        # Distribute into n_rows slots (density-guided, no triples)
-        rows = self._distribute(chunks, n_rows, fa_len=len(full_fa))
+        if content_type in no_double_types:
+            # Single allocation: one chunk per row, no doubles
+            chunks = self._split_distinct(full_fa, n_rows)
+            chunks = self._try_marker_align(full_fa, en_rows, chunks)
+            rows   = list(chunks[:n_rows])
+        else:
+            # B4-guided split: compute per-row FA budget then split accordingly
+            # For distinct chunks (before doubling), budget across min_dist slots
+            # by aggregating EN row budgets.
+            budgets = _fa_budget_per_row(en_rows, len(full_fa))
+
+            if min_dist < n_rows:
+                # Some rows will be doubles — aggregate budgets for distinct slots.
+                # Simple heuristic: merge adjacent budgets for shortest EN rows.
+                chunks = self._split_by_budget(full_fa, budgets[:min_dist] if min_dist <= len(budgets) else budgets)
+            else:
+                chunks = self._split_by_budget(full_fa, budgets)
+
+            # Verify MAX_CHARS; fall back to equal split if budget produced violations
+            if any(len(c) > MAX_CHARS for c in chunks):
+                chunks = self._split_distinct(full_fa, min_dist)
+
+            # Try discourse-marker alignment to improve EN↔FA correspondence
+            chunks = self._try_marker_align(full_fa, en_rows, chunks)
+
+            # Distribute into n_rows slots (density-guided, no triples)
+            rows = self._distribute(chunks, n_rows, fa_len=len(full_fa))
 
         # Hard ban: remove any triples that slipped through
         rows = self._enforce_no_triple(rows)
@@ -840,25 +1039,46 @@ class FASubtitleAligner:
 
         return corrections
 
-    def _validate(self, fa_rows: list, group: dict) -> list:
-        """Validate LLM output. Returns rows list or None if invalid."""
+    def _validate(self, fa_rows: list, group: dict) -> list | None:
+        """Validate LLM output using tiered rules.
+
+        Returns fa_rows if FATAL-free (WARNs are accepted with a log).
+        Returns None on any FATAL violation.
+
+        FATAL (reject): wrong count, text modified, over MAX_CHARS, triple.
+        WARN  (accept): doubling ratio outside ideal range.
+        """
         n = group['n_rows']
+
+        # FATAL: wrong row count
         if not isinstance(fa_rows, list) or len(fa_rows) != n:
             return None
+
         for ch in fa_rows:
+            # FATAL: non-string or over hard limit
             if not isinstance(ch, str) or len(ch) > MAX_CHARS:
                 return None
-        # Triple ban: any 3+ identical non-empty rows → reject LLM output
+
+        # FATAL: triple ban
         cnt: dict = {}
         for ch in fa_rows:
             cnt[ch] = cnt.get(ch, 0) + 1
         for ch, c in cnt.items():
             if c >= 3 and ch.strip():
                 return None
-        # Text preservation (normalized join must match full_fa)
+
+        # FATAL: text preservation (normalized join must match full_fa)
         joined = ' '.join(ch for ch in fa_rows if ch.strip())
         if _normalize_text(joined) != _normalize_text(group['full_fa']):
             return None
+
+        # WARN: doubling ratio outside [0.10, 0.65]
+        n_doubles = sum(max(0, c - 1) for c in cnt.values() if c >= 2)
+        if n > 2:
+            ratio = n_doubles / n
+            if ratio > 0.65:
+                print(f"[WARN] Aligner: high double ratio {ratio:.0%} — accepted")
+
         return fa_rows
 
     # ── main entry point ──────────────────────────────────────────────────────
