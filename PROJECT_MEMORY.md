@@ -3,7 +3,7 @@
 Committed team memory. Keep it concise — no raw logs, no long discussion.
 Summary + link to `docs/` for depth.
 
-Last updated: 2026-05-07
+Last updated: 2026-05-08
 
 ---
 
@@ -28,11 +28,15 @@ See [`docs/decisions-2026.md`](docs/decisions-2026.md) for full log.
 |----------|----------------|
 | Translation pipeline | Single-call (whole file in one API call), not block-by-block |
 | Polish pipeline | Single-call, separate from translation |
-| Aligner | Batch-mode `FASubtitleAligner`; `llm_threshold=90` (groups scoring < 90 go to LLM) |
+| Aligner Classic | `FASubtitleAligner`; `llm_threshold=0`; fully mechanical; no API calls |
+| Aligner Double | `FASubtitleAligner`; `llm_threshold=0`; fully mechanical; no API calls |
+| Three-file output | TranslatePolish + Classic + Double; sequential browser downloads 0/1500/3000 ms |
+| Split section visibility | Hidden when Persian + chatgpt-polish (aligner handles distribution) |
 | Frontend–backend comms | Polling: POST `/upload` → jobId → GET `/status/:id` every 4 s |
-| Job store | In-memory dict in `local_launcher.py`; no persistence across restarts |
+| Job store | In-memory dict in `local_launcher.py`; `filename`, `filename2`, `filename3`; no persistence |
 | Lang code convention | ISO 639-2/B in filenames; `_LANG_ALPHA3B` dict in `local_launcher.py` |
 | Prompt file naming | `{action}_{LANG_CODE}.txt` — e.g., `translate_PER.txt`, `polish_PER.txt` |
+| Java/Kotlin migration | Not recommended — API latency is bottleneck; python-docx has no Java equivalent |
 
 ---
 
@@ -40,11 +44,15 @@ See [`docs/decisions-2026.md`](docs/decisions-2026.md) for full log.
 
 | Term | Meaning |
 |------|---------|
-| `_PER_TranslatePolish` | Main output suffix — translate + GPT polish pipeline |
-| `_PER_Double` | Aligner output — bilingual EN/FA double-line subtitle DOCX |
-| `chatgpt-polish` | Engine name for the translate+polish pipeline |
+| `_PER_TranslatePolish` | Main output — translate + GPT polish pipeline |
+| `_PER_Classic` | Mechanical aligner output (no LLM, `llm_threshold=0`) |
+| `_PER_Double` | Mechanical aligner output (no LLM, `llm_threshold=0`) — currently identical to Classic |
+| `chatgpt-polish` | Engine name for the translate+polish+align pipeline |
 | `bridge row` | Table row to skip in aligner (timecodes, speaker tags, empty FA) |
-| `llm_threshold` | Minimum score below which a sentence group goes to LLM for review |
+| `llm_threshold` | Groups with score *below* this go to LLM. Currently 0 = all mechanical |
+| `filename2` | Job field for `_PER_Double.docx` |
+| `filename3` | Job field for `_PER_Classic.docx` |
+| `splitSection` | HTML wrapper div for Split controls — hidden for Persian+chatgpt-polish |
 | `_normalize_lang()` | Internal lang normalizer — read-only |
 | `_prompt_lang_code()` | Maps normalized lang to prompt filename suffix (e.g. `fa` → `PER`) |
 | single-call mode | Entire file translated in one API request (vs. block-by-block) |
@@ -63,6 +71,8 @@ See [`docs/error-catalog.md`](docs/error-catalog.md) for full list.
 | E4 | `_PER_Double.docx` created on disk but never served for download | **Fixed** via `_find_double_file()` + `filename2` in job |
 | E5 | Polisher `⟨⟨N⟩⟩` tag parser — 4 fallback strategies needed | **Active** — works, monitor edge cases |
 | E6 | `splitting.py` `cached_tokens: 0` — prompt cache not applied | **Fixed** 2026-05-07 |
+| E8 | Split Method (OpenAI API) conflicted with Aligner — massive redundant API calls | **Fixed** 2026-05-08 — Split section hidden for Persian+chatgpt-polish |
+| E9 | Only 1 of 3 files downloaded — Chrome blocks multiple file downloads without permission | **Mitigated** — delays increased to 1500/3000ms; user must Allow once in Chrome |
 
 ---
 
@@ -70,7 +80,13 @@ See [`docs/error-catalog.md`](docs/error-catalog.md) for full list.
 
 | Date | Change |
 |------|--------|
-| 2026-05-07 | `llm_threshold` 70 → 10 (more LLM review in aligner) |
+| 2026-05-08 | `llm_threshold=0` for BOTH Classic and Double aligners — fully mechanical, zero API calls |
+| 2026-05-08 | Three-file download: `_PER_Classic.docx` added as `filename3`; `_find_classic_file()` in launcher |
+| 2026-05-08 | Split section hidden for Persian+chatgpt-polish — eliminates Split/Aligner conflict |
+| 2026-05-08 | Download delays: 800/1600ms → 1500/3000ms for Chrome multi-file permission |
+| 2026-05-08 | `engineChecker()` now also fires on engine dropdown change |
+| 2026-05-07 | Aligner v2: 11 legacy techniques injected into `aligner_per.py` (see decisions-2026.md) |
+| 2026-05-07 | `llm_threshold` 70 → 90 (superseded by 2026-05-08 change above) |
 | 2026-05-07 | Two-file download: `_PER_Double.docx` now served alongside main output |
 | 2026-05-07 | `prompt_cache_retention: 24h` added to `splitting.py` |
 | 2026-05-07 | Splitter fallback model fixed: `gpt-5_5-2026-04-23` → `gpt-5.5` |

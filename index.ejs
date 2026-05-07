@@ -86,16 +86,17 @@
             </select>
           </div>
 
-          <div class="flex py-2 mb-2">
-            <input type="checkbox" id="splitTranslate" class="mr-2" name="splitTranslate" checked />
-            <label for="splitTranslate" class="block text-sm text-gray-600">Splittranslation:</label>
+          <div id="splitSection">
+            <div class="flex py-2 mb-2">
+              <input type="checkbox" id="splitTranslate" class="mr-2" name="splitTranslate" checked />
+              <label for="splitTranslate" class="block text-sm text-gray-600">Splittranslation:</label>
+            </div>
+            <label for="splitEngine" class="block mb-2 text-sm text-gray-600">Split Method: </label>
+            <select id="splitEngine" class="w-full mb-4 p-2 border rounded" name="splitEngine" disabled>
+              <option id="basic-split-option" value="basic">Basic with excel file</option>
+              <option id="openai-split-option" value="openai">OpenAI API</option>
+            </select>
           </div>
-		  
-          <label for="splitEngine" class="block mb-2 text-sm text-gray-600">Split Method: </label>
-          <select id="splitEngine" class="w-full mb-4 p-2 border rounded" name="splitEngine" disabled>
-            <option id="basic-split-option" value="basic">Basic with excel file</option>
-            <option id="openai-split-option" value="openai">OpenAI API</option>
-          </select>
 		  
           <div class="flex py-2 mb-2 items-center space-x-2">
             <input type="checkbox" id="enableSound" class="mr-2" name="enableSound" checked>
@@ -394,6 +395,17 @@
           document.getElementById("splitEngine").disabled = true;
         }
 
+        // Hide Split section when Persian + OpenAI Polish (aligner handles line distribution)
+        const splitSection = document.getElementById('splitSection');
+        const isAlignerPipeline = (targetLanguage === 'fa' && engineSel && engineSel.value === 'chatgpt-polish');
+        if (splitSection) {
+          splitSection.style.display = isAlignerPipeline ? 'none' : '';
+          if (isAlignerPipeline) {
+            const cb = document.getElementById('splitTranslate');
+            if (cb) cb.checked = false;
+          }
+        }
+
         // Persian default: chatgpt-polish wins over any auto-selection above
         if (targetLanguage === 'fa' && openaiPolishOption && !openaiPolishOption.disabled) {
           if (engineSel) engineSel.value = 'chatgpt-polish';
@@ -495,8 +507,9 @@
       engineSelector.addEventListener('change', saveLanguagePrefs);
       if (aiModelSelector) aiModelSelector.addEventListener('change', saveLanguagePrefs);
 
-      // Show/hide AI model row when engine changes
+      // Show/hide AI model row + Split section when engine changes
       engineSelector.addEventListener('change', () => {
+        engineChecker();
         const aiModelRow = document.getElementById('aiModelRow');
         if (aiModelRow) {
           const eng = engineSelector.value;
@@ -559,7 +572,7 @@
             const res = await fetch('/status/' + jobId);
             if (!res.ok) continue; // network glitch — retry silently
             const data = await res.json();
-            if (data.status === 'done')  return { filename: data.filename, filename2: data.filename2 || null };
+            if (data.status === 'done')  return { filename: data.filename, filename2: data.filename2 || null, filename3: data.filename3 || null };
             if (data.status === 'error') throw new Error(data.error || 'Translation failed on server.');
             // 'pending' → keep polling
           } catch (err) {
@@ -623,7 +636,7 @@
           }
 
           // Step 2: Poll until translation finishes
-          const { filename, filename2 } = await pollJobStatus(uploadData.jobId);
+          const { filename, filename2, filename3 } = await pollJobStatus(uploadData.jobId);
 
           // Step 3: Trigger download(s)
           function triggerDownload(fname) {
@@ -643,9 +656,14 @@
 
           triggerDownload(filename);
 
-          // If a second file exists (e.g. _PER_Double.docx), download it too after a short delay
+          // Second file (_PER_Double.docx) — mechanical alignment
           if (filename2) {
-            setTimeout(() => triggerDownload(filename2), 800);
+            setTimeout(() => triggerDownload(filename2), 1500);
+          }
+
+          // Third file (_PER_Classic.docx) — mechanical (Python character-based) alignment
+          if (filename3) {
+            setTimeout(() => triggerDownload(filename3), 3000);
           }
 
           // Play notification sound after short delay (Safari-safe)
@@ -662,8 +680,11 @@
           }, 500);
 
           flashTabTitle('Download ready!');
-          const alertMsg = filename2
-            ? `Download complete.\n• ${displayName}\n• ${filename2.replace(/^\d{13}-/, '')}\n\nBoth files can be found in your default download folder.`
+          const extraFiles = [filename2, filename3]
+            .filter(Boolean)
+            .map(f => `\n• ${f.replace(/^\d{13}-/, '')}`).join('');
+          const alertMsg = extraFiles
+            ? `Download complete.\n• ${displayName}${extraFiles}\n\nAll files can be found in your default download folder.`
             : `File download completed. File "${displayName}" can be found in your default download folder.`;
           await showAlert(alertMsg);
 

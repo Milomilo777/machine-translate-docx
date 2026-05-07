@@ -6,6 +6,68 @@ Format: date, decision, alternatives considered, rationale.
 
 ---
 
+## 2026-05-08 — Three-file output (TranslatePolish + Classic + Double)
+
+**Decision:** Persian pipeline now produces three files. Classic and Double are both fully mechanical (`llm_threshold=0`).  
+**Alternatives:** One file (TranslatePolish only); two files (TranslatePolish + Double); ZIP all.  
+**Rationale:** Classic is for reference/comparison with the pre-aligner output. Double is the aligned version. Both are now mechanical — the LLM aligner pass was found to produce no visible quality improvement and caused slow, expensive API calls per sentence group. The mechanical pass alone covers ~80-85% quality at zero API cost.  
+**Note:** Classic and Double are currently functionally identical (same `llm_threshold=0`). Classic reserved for future differentiation (e.g., character-distribution algorithm vs. aligner algorithm).
+
+---
+
+## 2026-05-08 — Lower llm_threshold to 0 (fully mechanical aligner)
+
+**Decision:** `llm_threshold` for both Classic and Double set to 0. No LLM review of any sentence group.  
+**Alternatives:** Keep at 90 (LLM for low-quality groups); raise to 100 (LLM for all groups).  
+**Rationale:** In production test, 23 LLM calls for 102 groups (22%) added 16.7s but produced no visible output improvement. The mechanical 3-pass algorithm is sufficient for distribution; quality issues originate in the translation phase (pre-aligner), not the distribution phase. Removing LLM also eliminates a confound when evaluating mechanical quality.  
+**Reversible:** Set `llm_threshold=90, token_budget=40_000` in `machine-translate-docx.py` Double pass to re-enable.
+
+---
+
+## 2026-05-08 — Hide Split section for Persian+chatgpt-polish
+
+**Decision:** When target language is `fa` AND engine is `chatgpt-polish`, the entire Split section (checkbox + dropdown) is hidden in the UI and `splitTranslate=false` is sent to the server.  
+**Alternatives:** Keep Split visible; auto-switch to basic algorithm only; add tooltip explanation.  
+**Rationale:** Split Method (OpenAI API) and the Aligner both distribute FA text across EN rows — they do the same job. Running both caused: (1) one OpenAI API call per phrase during splitting, (2) aligner re-distributing the already-split output, undoing split work. The aligner is the correct tool; the splitter is redundant and expensive in this pipeline.  
+**Safety layer:** `engineChecker()` is also called on engine change, not just language change.
+
+---
+
+## 2026-05-08 — Download delays 1500ms/3000ms for multi-file Chrome
+
+**Decision:** Sequential download delays changed from 800ms/1600ms to 1500ms/3000ms.  
+**Rationale:** Chrome shows "allow multiple downloads?" notification for the 2nd and 3rd files. Longer delays give the user time to see and respond to the notification before the next download fires. 1500ms is the community-recommended minimum for reliable Chrome multi-download.
+
+---
+
+## 2026-05-07 — Aligner v2: inject 11 legacy techniques
+
+**Decision:** Injected the following into `aligner_per.py` from audit of legacy modules
+(para_bridge, hybrid_double, v9, fa-aligner-pro, pipe15) and critique findings:
+
+| Technique | Source | Effect |
+|-----------|--------|--------|
+| CONTINUATION_STARTERS (15 conjunctions) | legacy grouper | prevents premature sentence-group splits at که/چون/اما… |
+| DANGEROUS_SPLITS (7 light-verb patterns) | legacy splitter | protects انجام داد، استفاوده کرد، صحبت کرد etc. |
+| Weight pass | v9 aligner | fixes heavy-last-line from Persian SOV verb-final structure |
+| Modulo-cycle distribution | hybrid_double | spreads doubles evenly (not clustered at longest chunks) |
+| Preservation check | v9 aligner | skips re-split when existing FA is already balanced (mean 18-42) |
+| 5-part alignment score | fa-aligner-pro | discourse(0.30)+numbers(0.20)+punctuation(0.10)+ratio(0.20)+base(0.10) |
+| Per-row number alignment | critique fix | checks numbers in FA ±1 window per row, not whole group |
+| BREAK_RATIO_MEDIAN=0.45 | pipe15 | splits at 45% of text (empirically better for SOV) |
+| Content-type-aware double ratio | legacy | NEWS_ATTR/INGREDIENT warn >5%, DIALOGUE warn >30%, NARRATION >55% |
+| Pipe normalization in _normalize_fa | legacy | strips `|` artifacts before scoring |
+| Citation stripping (_strip_citation) | legacy | removes trailing (euronews) etc. from FA cells |
+
+**Alternatives:** Apply selectively; apply all at once but flag for rollback.
+**Rationale:** All 11 techniques address real mechanical quality issues identified
+in production (heavy last lines, premature group splits, clustering doubles,
+false-positive quality scores). Applied together they complement each other.
+`_should_preserve_existing_segmentation()` acts as a safety valve to avoid
+degrading already-good translator output.
+
+---
+
 ## 2026-05-07 — Raise llm_threshold from 70 to 90
 
 **Decision:** `FASubtitleAligner` default `llm_threshold` raised from 70 to 90.  

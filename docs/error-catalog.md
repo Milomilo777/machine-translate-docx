@@ -83,6 +83,28 @@ Recurring bugs, root causes, and fixes. Add an entry any time a non-trivial bug 
 
 ---
 
+## E8 — Split Method + Aligner conflict (massive API calls)
+
+**ID:** E8  
+**Status:** Fixed 2026-05-08  
+**Symptom:** Log showed hundreds of "Splitting phrase" OpenAI API calls; job took much longer than expected; output quality not improved  
+**Root cause:** When `chatgpt-polish` engine selected + `Split Method: OpenAI API` checked (default), the pipeline ran: translate → polish → **split each phrase with OpenAI** → aligner. The splitter and aligner both distribute FA text across EN rows — identical work done twice. The splitter's output was then re-distributed by the aligner, wasting all split work.  
+**Fix:** `index.ejs` — `engineChecker()` hides `#splitSection` div and unchecks `splitTranslate` when target=`fa` AND engine=`chatgpt-polish`. `engineSelector.addEventListener('change', engineChecker)` added to trigger on engine switch.  
+**Regression test:** For Persian + chatgpt-polish, log must show zero "Splitting phrase" lines.
+
+---
+
+## E9 — Only 1 of 3 files downloaded (Chrome multi-download block)
+
+**ID:** E9  
+**Status:** Mitigated 2026-05-08  
+**Symptom:** Browser showed "allow multiple downloads?" notification; user didn't respond in time; only first file saved  
+**Root cause:** Chrome (65+) blocks multiple downloads from same origin and shows a notification bar. Downloads triggered by `setTimeout` are treated as non-user-gesture and queued behind permission. With 800ms/1600ms delays, the notification appeared and timed out before user could respond.  
+**Fix:** Delays increased to 1500ms/3000ms to give user time to respond to Chrome permission prompt. One-time "Allow" in Chrome permanently allows multiple downloads from `127.0.0.1`.  
+**Note:** Not fully fixable without changing UX (e.g., show 3 download buttons instead). Current approach requires user to click Allow once.
+
+---
+
 ## Template for new entries
 
 ```

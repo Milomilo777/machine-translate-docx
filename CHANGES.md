@@ -29,9 +29,12 @@ CHANGES.md                    ← همین فایل — منبع اصلی برا
 ```
 ورودی:   filename.docx
 خروجی ترجمه+پولیش:   filename_PER_TranslatePolish.docx
-خروجی الاینر (دوبل):  filename_PER_Double.docx
+خروجی الاینر کلاسیک: filename_PER_Classic.docx   ← جدید
+خروجی الاینر دوبل:   filename_PER_Double.docx
 لاگ JSON:             filename_PER_TranslatePolish_log.json
 ```
+
+**توجه:** هر سه فایل به‌صورت خودکار دانلود می‌شوند (تأخیر: 0ms / 1500ms / 3000ms).
 
 ---
 
@@ -363,24 +366,91 @@ def _fallback_output_path(self, source_file, target_language):
 
 ---
 
+---
+
+### ۱۵. سه‌فایل خروجی — Classic + Double + TranslatePolish
+
+**فایل‌ها:** `local_launcher.py`, `index.ejs`, `src/machine-translate-docx.py`
+
+پایپ‌لاین فارسی حالا سه فایل تولید می‌کند:
+
+| فایل | الگوریتم | LLM |
+|------|-----------|-----|
+| `_PER_TranslatePolish.docx` | ترجمه + پولیش | gpt-5.5 |
+| `_PER_Classic.docx` | الاینر مکانیکی خالص | ❌ هیچ |
+| `_PER_Double.docx` | الاینر مکانیکی خالص | ❌ هیچ |
+
+**توجه:** Classic و Double هر دو `llm_threshold=0, token_budget=0` دارند — هیچ API call از الاینر نمی‌زند.
+
+**تغییرات `local_launcher.py`:**
+```python
+@dataclass
+class Job:
+    filename2: str | None = None   # _PER_Double.docx
+    filename3: str | None = None   # _PER_Classic.docx
+
+def _find_classic_file(self, main_output: Path) -> Path | None:
+    # Strategy 1: replace _TranslatePolish → _Classic
+    # Strategy 2: timestamped variant
+    # Strategy 3: glob by clean stem
+```
+
+**تغییرات `index.ejs`:**
+```javascript
+const { filename, filename2, filename3 } = await pollJobStatus(uploadData.jobId);
+triggerDownload(filename);
+if (filename2) setTimeout(() => triggerDownload(filename2), 1500);
+if (filename3) setTimeout(() => triggerDownload(filename3), 3000);
+```
+
+**نکته Chrome:** اولین بار که ۳ فایل دانلود می‌شود، Chrome notification «Allow multiple downloads» نشان می‌دهد — باید یک‌بار Allow بزنی.
+
+---
+
+### ۱۶. حذف تعارض Split/Aligner — مخفی‌سازی Split section
+
+**فایل:** `index.ejs`
+
+**مشکل کشف‌شده:** وقتی موتور `chatgpt-polish` با زبان فارسی انتخاب می‌شد، Split Method هم روشن بود (پیش‌فرض: OpenAI API). این باعث می‌شد:
+1. یک API call به‌ازای هر phrase برای splitting
+2. Aligner هم همان توزیع را دوباره انجام می‌داد — کار دوگانه
+
+**راه‌حل:**
+```javascript
+// در engineChecker():
+const isAlignerPipeline = (targetLanguage === 'fa' && engineSel.value === 'chatgpt-polish');
+if (splitSection) {
+  splitSection.style.display = isAlignerPipeline ? 'none' : '';
+  if (isAlignerPipeline) splitTranslateCheckbox.checked = false;
+}
+```
+
+- کل `#splitSection` از دید پنهان می‌شود
+- `splitTranslate=false` → سرور هیچ splitting انجام نمی‌دهد
+- هر بار که engine یا زبان تغییر کند، بررسی مجدد می‌شود
+
+---
+
 ## وضعیت فعلی
 
 | بخش | وضعیت |
 |-----|--------|
 | ترجمه OpenAI (single-call) | ✅ |
 | پولیش OpenAI (single-call) | ✅ |
-| FA Subtitle Aligner | ✅ (`aligner_per.py`) |
+| FA Subtitle Aligner — Classic (مکانیکی خالص) | ✅ |
+| FA Subtitle Aligner — Double (مکانیکی خالص) | ✅ |
 | فرمت خروجی `⟨⟨N⟩⟩` | ✅ |
 | Polling architecture | ✅ |
 | localStorage (زبان + موتور + مدل) | ✅ |
-| کش prompt (24h) | ✅ اصلاح شده |
+| کش prompt (24h) | ✅ |
 | مدل gpt-5.5 | ✅ پیش‌فرض |
 | UI model selector | ✅ |
-| local_launcher.py | ✅ باگ‌ها اصلاح شده |
-| نام‌گذاری `_PER` / `_PER_Double` | ✅ |
+| local_launcher.py | ✅ سه‌فایل download |
+| نام‌گذاری `_PER` / `_PER_Double` / `_PER_Classic` | ✅ |
 | پرامپت‌ها با پسوند `_PER` | ✅ |
-| Java port | ~۶۵٪ (در پوشه `jules_session`) |
-| تست end-to-end واقعی | ⏳ انجام نشده |
+| Split section مخفی برای فارسی+polish | ✅ |
+| تست end-to-end واقعی | ⚠️ کیفیت مکانیکی تأیید نشده |
+| Java/Kotlin migration | ❌ توصیه نشد — Python engine نگه داشته شود |
 
 ---
 
@@ -388,8 +458,9 @@ def _fallback_output_path(self, source_file, target_language):
 
 - `server.js.txt` نام عجیبی دارد — بررسی شود آیا باید `.js` باشد
 - قیمت `gpt-5.5` در PRICES تخمینی است — آپدیت کن وقتی pricing رسمی شد
-- تست end-to-end با فرانت‌اند زنده انجام نشده
-- Java port نیمه‌کامل است
+- متن انگلیسی در بعضی ردیف‌ها پس از ترجمه باقی می‌ماند (باگ ترجمه‌گر، نه الاینر)
+- بعضی ردیف‌ها متن معکوس/آینه‌ای دارند (ممکن است RTL display artifact یا encoding باگ)
+- کیفیت خروجی مکانیکی (بدون LLM) هنوز تأیید کامل نشده
 
 ---
 
@@ -413,7 +484,10 @@ def _fallback_output_path(self, source_file, target_language):
 - «کش چطور کار می‌کند؟» → system prompt ثابت است؛ N در user message است؛ از call دوم کش می‌خورد
 - «single-call کجاست؟» → جستجوی `_single_call_done` در `machine-translate-docx.py`
 - «فرمت خروجی پولیشر؟» → `⟨⟨N⟩⟩ متن` — regex در `polisher.py`
-- «الاینر چطور کار می‌کند؟» → mechanical → quality score → LLM batch — در `aligner_per.py`
+- «الاینر چطور کار می‌کند؟» → صرفاً مکانیکی (llm_threshold=0) — mechanical 3 pass — در `aligner_per.py`
 - «چرا الاینر سلول‌های خاکستری را درست می‌شناسد؟» → `_cell_has_shading()` از DOCX XML می‌خواند
 - «پرامپت فارسی کجاست؟» → `prompts/translate_PER.txt` و `prompts/polish_PER.txt`
 - «local_launcher چطور engine را می‌خواند؟» → `fields.get("translationEngine")` — همان key که JS ارسال می‌کند
+- «چرا Split section مخفی است؟» → برای فارسی+chatgpt-polish، aligner جایگزین splitter است — تعارض برطرف شد
+- «چرا سه فایل دانلود می‌شود؟» → TranslatePolish + Classic + Double، هر ۱.۵ ثانیه یکی
+- «آیا باید به Java/Kotlin مهاجرت کرد؟» → خیر — bottleneck API است نه Python؛ python-docx جایگزین ندارد

@@ -2027,12 +2027,32 @@ def selenium_chrome_translate_maxchar_blocks():
         total_lines = len(full_source.split("\n"))
         print(f"[INFO] OpenAI single-call mode: {total_lines} lines, {len(full_source)} chars")
 
+        _t_translate_start = time.time()
         _, full_translated = oai_translator.translate(src_lang_name, dest_lang_name, full_source)
+        _t_translate = time.time() - _t_translate_start
+        _td = oai_translator.last_call_data
+        print(
+            f"[TIMER] Translate: {_t_translate:.1f}s | "
+            f"tokens: {_td.get('total_tokens', '?')} "
+            f"(prompt {_td.get('prompt_tokens', '?')}, "
+            f"completion {_td.get('completion_tokens', '?')}, "
+            f"cached {_td.get('cached_tokens', 0)})"
+        )
 
         if oai_polisher is not None:
             print("[INFO] Polish pass (full document in one call) ...")
+            _t_polish_start = time.time()
             _before_polish = full_translated
             full_translated = oai_polisher.polish(full_source, full_translated)
+            _t_polish = time.time() - _t_polish_start
+            _pd = oai_polisher.last_call_data
+            print(
+                f"[TIMER] Polish:    {_t_polish:.1f}s | "
+                f"tokens: {_pd.get('total_tokens', '?')} "
+                f"(prompt {_pd.get('prompt_tokens', '?')}, "
+                f"completion {_pd.get('completion_tokens', '?')}, "
+                f"cached {_pd.get('cached_tokens', 0)})"
+            )
 
             _lines_before = _before_polish.split("\n")
             _lines_after  = full_translated.split("\n")
@@ -7478,26 +7498,61 @@ def save_docx_file():
                 log_path = re.sub(r"(?i)\.docx$", "_log.json", word_file_to_translate_save_as_path)
                 write_translation_log(log_path)
 
-            # ── Subtitle aligner: second output file (AI-assisted distribution) ─
+            # ── Subtitle aligner: two output files ───────────────────────────────
+            # Classic  (_PER_Classic.docx) = mechanical only, no LLM, fast
+            # Double   (_PER_Double.docx)  = LLM-assisted alignment, higher quality
             if with_polish and dest_lang.startswith('fa'):
+                _ai_model_align  = 'gpt-5.4-mini'  # aligner always uses mini
+                _stem_path       = re.sub(r'(?i)\.docx$', '', word_file_to_translate)
+                _classic_path    = f"{_stem_path}_PER_Classic.docx"
+                _double_path     = f"{_stem_path}_PER_Double.docx"
+
+                # ── Classic pass (mechanical only, llm_threshold=0) ───────────
                 try:
-                    # Aligner output: original input name + _PER_Double (distinct from polish output)
-                    _aligned_path = re.sub(
-                        r'(?i)\.docx$', '_PER_Double.docx',
-                        word_file_to_translate
-                    )
-                    _ai_model_align = 'gpt-5.4-mini'  # aligner always uses mini — user preference
-                    print(f"\n[INFO] Running subtitle aligner → {_aligned_path}")
-                    _aligner = FASubtitleAligner(
+                    print(f"\n[INFO] Running Classic aligner -> {_classic_path}")
+                    _t0 = time.time()
+                    _classic_aligner = FASubtitleAligner(
                         model=_ai_model_align,
-                        llm_threshold=90,
-                        token_budget=40_000,
+                        llm_threshold=0,   # never call LLM
+                        token_budget=0,
                     )
-                    _aligner.align(word_file_to_translate_save_as_path, _aligned_path)
-                    print(f"[INFO] Aligned file saved: {_aligned_path}")
+                    _cs = _classic_aligner.align(word_file_to_translate_save_as_path, _classic_path)
+                    print(
+                        f"[TIMER] Classic: {time.time()-_t0:.1f}s"
+                        f" | groups: {_cs.get('groups','?')}"
+                        f" | doubles: {_cs.get('doubles','?')}"
+                        f" | triples: {_cs.get('triples',0)}"
+                        f" | over-48: {_cs.get('over_limit',0)}"
+                    )
+                    print(f"[INFO] Classic saved: {_classic_path}")
                 except Exception as _ae:
                     import traceback as _tb
-                    print(f"[WARN] Aligner failed: {_ae}")
+                    print(f"[WARN] Classic aligner failed: {_ae}")
+                    print(_tb.format_exc())
+
+                # ── Double pass (mechanical only, llm_threshold=0) ───────────
+                try:
+                    print(f"\n[INFO] Running Double aligner -> {_double_path}")
+                    _t0 = time.time()
+                    _double_aligner = FASubtitleAligner(
+                        model=_ai_model_align,
+                        llm_threshold=0,   # never call LLM
+                        token_budget=0,
+                    )
+                    _ds = _double_aligner.align(word_file_to_translate_save_as_path, _double_path)
+                    print(
+                        f"[TIMER] Double:  {time.time()-_t0:.1f}s"
+                        f" | groups: {_ds.get('groups','?')}"
+                        f" | LLM: {_ds.get('llm_corrected','?')}"
+                        f" | tokens: {_ds.get('tokens_used','?')}"
+                        f" | doubles: {_ds.get('doubles','?')}"
+                        f" | triples: {_ds.get('triples',0)}"
+                        f" | over-48: {_ds.get('over_limit',0)}"
+                    )
+                    print(f"[INFO] Double saved: {_double_path}")
+                except Exception as _ae:
+                    import traceback as _tb
+                    print(f"[WARN] Double aligner failed: {_ae}")
                     print(_tb.format_exc())
         except Exception:
             var = traceback.format_exc()

@@ -43,9 +43,11 @@ Open browser → `http://127.0.0.1:3000`
 
 | Engine | Target | Expected outputs |
 |--------|--------|-----------------|
-| `chatgpt-polish` | Persian (fa) | `_PER_TranslatePolish.docx` + `_PER_Double.docx` |
+| `chatgpt-polish` | Persian (fa) | `_PER_TranslatePolish.docx` + `_PER_Double.docx` + `_PER_Classic.docx` |
 | `google` | German (de) | `_GER_Google.docx` (or similar) |
 | `chatgpt` | Arabic (ar) | `_ARA_...docx` |
+
+**Split section check:** When Persian + chatgpt-polish selected, the "Split Translation" section must be **hidden** and not sent to server.
 
 ---
 
@@ -60,13 +62,16 @@ print("Aligner OK, threshold:", a.llm_threshold)  # should print 10
 
 ---
 
-## 5. Two-File Download Test
+## 5. Three-File Download Test
 
 After a Persian `chatgpt-polish` job:
-1. Both `_PER_TranslatePolish.docx` and `_PER_Double.docx` must appear in
-   `$TMPDIR/machine_translate_docx_local/uploads/`
-2. Browser must initiate two downloads (second with 800 ms delay)
-3. Alert message must list both filenames
+1. All three files must appear in `$TMPDIR/machine_translate_docx_local/uploads/`:
+   - `_PER_TranslatePolish.docx`
+   - `_PER_Double.docx`
+   - `_PER_Classic.docx`
+2. Browser must initiate three downloads (at 0ms / 1500ms / 3000ms)
+3. Alert message must list all three filenames
+4. **Chrome note:** first time, must click "Allow multiple downloads" in notification bar
 
 ---
 
@@ -75,10 +80,14 @@ After a Persian `chatgpt-polish` job:
 Look for these lines in the console output:
 
 ```
-[job {id}] done -> {stem}_PER_TranslatePolish.docx    ← main output
-[job {id}] double file found -> {stem}_PER_Double.docx ← aligner output
+[job {id}] done -> {stem}_PER_TranslatePolish.docx      ← main output
+[job {id}] double file found -> {stem}_PER_Double.docx  ← double aligner
+[job {id}] classic file found -> {stem}_PER_Classic.docx ← classic aligner
 Saved file name: /path/to/{stem}_PER_TranslatePolish.docx
-[INFO] Aligned file saved: /path/to/{stem}_PER_Double.docx
+[INFO] Classic saved: /path/to/{stem}_PER_Classic.docx
+[INFO] Double saved: /path/to/{stem}_PER_Double.docx
+[TIMER] Classic: X.Xs | groups: N | doubles: Y | triples: 0
+[TIMER] Double:  X.Xs | groups: N | LLM: 0 | doubles: Y | triples: 0
 ```
 
 Red flags in logs:
@@ -86,3 +95,5 @@ Red flags in logs:
 - `404` on model name → wrong model string (check for underscores vs dots)
 - `_FA` in output filename → `_LANG_ALPHA3B` map not applied
 - `timestamp-` prefix in final download name → `_strip_timestamp()` not called
+- `Splitting phrase` lines appearing → Split section not hidden; user checked splitTranslate manually
+- `LLM: N` where N > 0 in Double timer → `llm_threshold` not zero

@@ -142,7 +142,8 @@ class Job:
     filename: str | None
     error: str | None
     created_at: float
-    filename2: str | None = None  # second output file (e.g. _PER_Double.docx)
+    filename2: str | None = None  # second output file  (_PER_Double.docx)
+    filename3: str | None = None  # third output file   (_PER_Classic.docx)
 
 
 class LocalState:
@@ -323,6 +324,8 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
             }
             if job.filename2:
                 payload["filename2"] = job.filename2
+            if job.filename3:
+                payload["filename3"] = job.filename3
             self._send_json(payload)
             return
 
@@ -408,6 +411,8 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
         enable_sound: str | None,
         sound_select: str | None,
     ) -> None:
+        _job_t0 = time.time()
+        print(f"[job {job_id}] ▶ start — file: {original_name} | lang: {target_language} | engine: {translation_engine}")
         try:
             if self.state.backend_mode == "mock":
                 time.sleep(1.2)
@@ -452,22 +457,31 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
             count = _read_int(self.state.count_file, 0) + 1
             _write_int(self.state.count_file, count)
 
-            # Also look for the companion aligner output (_PER_Double.docx)
+            # Companion aligner output files
             double_path = self._find_double_file(output_path)
             if double_path:
                 double_path = self._strip_timestamp(double_path)
                 print(f"[job {job_id}] double file found -> {double_path.name}")
+
+            classic_path = self._find_classic_file(output_path)
+            if classic_path:
+                classic_path = self._strip_timestamp(classic_path)
+                print(f"[job {job_id}] classic file found -> {classic_path.name}")
+
             self.state.update_job(
                 job_id,
                 status="done",
                 filename=output_path.name,
                 filename2=double_path.name if double_path else None,
+                filename3=classic_path.name if classic_path else None,
                 error=None,
             )
-            print(f"[job {job_id}] done -> {output_path.name}")
+            _job_elapsed = time.time() - _job_t0
+            print(f"[job {job_id}] ✓ done in {_job_elapsed:.0f}s -> {output_path.name}")
         except Exception as exc:
+            _job_elapsed = time.time() - _job_t0
             self.state.update_job(job_id, status="error", filename=None, error=str(exc))
-            print(f"[job {job_id}] error: {exc}")
+            print(f"[job {job_id}] ✗ error after {_job_elapsed:.0f}s: {exc}")
 
     def _map_engine(self, translation_engine: str) -> tuple[str, list[str]]:
         engine = translation_engine.lower().strip()
@@ -539,16 +553,23 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
             encoding="utf-8",
             errors="replace",
             cwd=str(ROOT),
-            env={k: v for k, v in os.environ.items() if k.upper() not in {
-                "HTTP_PROXY",
-                "HTTPS_PROXY",
-                "ALL_PROXY",
-                "NO_PROXY",
-                "http_proxy",
-                "https_proxy",
-                "all_proxy",
-                "no_proxy",
-            }},
+            env={
+                **{k: v for k, v in os.environ.items() if k.upper() not in {
+                    "HTTP_PROXY",
+                    "HTTPS_PROXY",
+                    "ALL_PROXY",
+                    "NO_PROXY",
+                    "http_proxy",
+                    "https_proxy",
+                    "all_proxy",
+                    "no_proxy",
+                }},
+                # Force UTF-8 stdout/stderr in the subprocess so aligner
+                # print() calls containing non-ASCII chars (e.g. arrows, dashes)
+                # don't crash with UnicodeEncodeError on Windows CP1252 consoles.
+                "PYTHONIOENCODING": "utf-8",
+                "PYTHONUTF8": "1",
+            },
         )
 
         saved_filename: str | None = None
@@ -636,6 +657,43 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
         for p in parent.glob("*_PER_Double.docx"):
             p_clean = _re.sub(r'^\d{10,}-', '', p.name)          # strip timestamp
             p_stem  = _re.sub(r'[_\-]PER_Double\.docx$', '', p_clean, flags=_re.IGNORECASE)
+            if p_stem == clean_stem:
+                return p
+
+        return None
+
+    def _find_classic_file(self, main_output: Path) -> Path | None:
+        """Look for the _PER_Classic.docx sibling of the main output file.
+
+        Mirrors _find_double_file() but targets _PER_Classic.docx.
+        """
+        parent = main_output.parent
+
+        clean_stem = _re.sub(
+            r'[_\-](?:PER|ARA|GER|FRE|CHI|SPA|POR|ITA|JPN|KOR|RUS|TUR|POL|DUT|SWE|NOR|DAN|FIN|HEB|HIN|THA|VIE|UKR|CZE|HUN|ROM|BUL|CAT|HRV|SLK|SLV|LIT|LAV|EST).*$',
+            '',
+            main_output.stem,
+            flags=_re.IGNORECASE,
+        ) or main_output.stem
+
+        # Strategy 1: exact name — replace TranslatePolish with Classic
+        candidate_name = _re.sub(
+            r'_TranslatePolish(?=\.docx$)', '_Classic', main_output.name, flags=_re.IGNORECASE
+        )
+        if candidate_name != main_output.name:
+            p = parent / candidate_name
+            if p.exists():
+                return p
+
+        # Strategy 2: timestamped variant still on disk
+        for p in parent.glob(f"*-{clean_stem}_PER_Classic.docx"):
+            if p.exists():
+                return p
+
+        # Strategy 3: any *_PER_Classic.docx whose clean stem matches this job
+        for p in parent.glob("*_PER_Classic.docx"):
+            p_clean = _re.sub(r'^\d{10,}-', '', p.name)
+            p_stem  = _re.sub(r'[_\-]PER_Classic\.docx$', '', p_clean, flags=_re.IGNORECASE)
             if p_stem == clean_stem:
                 return p
 
