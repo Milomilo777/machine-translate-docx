@@ -2081,6 +2081,7 @@ def selenium_chrome_translate_maxchar_blocks():
     # Standard block loop (DeepL, Google, Selenium, and all other engines)
     # ------------------------------------------------------------------
     if not _single_call_done:
+      _progress_blk_emitted: set[int] = set()  # milestones already sent this job
       for i, block in enumerate(blocks_nchar_max_to_translate_array):
         print(
             f"Translating block {i + 1}/{len(blocks_nchar_max_to_translate_array)} "
@@ -2128,6 +2129,18 @@ def selenium_chrome_translate_maxchar_blocks():
             translation_log["blocks"].append(block_entry)
 
         translated_blocks.append(translated)
+
+        # Emit 25/50/75 progress milestones proportional to block completion.
+        # Applies to all block-loop engines (Google, DeepL, Selenium, etc.).
+        # The chatgpt single-call path emits its own PROGRESS markers and never
+        # reaches this loop (_single_call_done = True skips us entirely).
+        _n_blks = len(blocks_nchar_max_to_translate_array)
+        if _n_blks > 0:
+            _blk_pct = int(((i + 1) / _n_blks) * 100)
+            for _m in (25, 50, 75):
+                if _blk_pct >= _m and _m not in _progress_blk_emitted:
+                    print(f"PROGRESS:{_m}", flush=True)
+                    _progress_blk_emitted.add(_m)
 
         if i % 2 == 1 and translation_engine in ("chatgpt", "perplexity"):
             print("Cleaning up cookies...")

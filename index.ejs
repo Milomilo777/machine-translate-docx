@@ -578,9 +578,9 @@
       // context for the percentage they see.
       function _progressLabel(pct) {
         if (pct >= 100) return 'Finalizing…';
-        if (pct >= 75)  return 'Aligning subtitles…';
-        if (pct >= 65)  return 'Polishing translation…';
-        if (pct >= 30)  return 'Polish pass running…';
+        if (pct >= 90)  return 'Aligning…';
+        if (pct >= 75)  return 'Almost done…';
+        if (pct >= 65)  return 'Polishing…';
         if (pct >= 15)  return 'Translating…';
         if (pct >= 10)  return 'Backend started…';
         if (pct >= 5)   return 'Job queued…';
