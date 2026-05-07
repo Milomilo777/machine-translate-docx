@@ -39,6 +39,7 @@ import json
 import time
 import unicodedata
 from docx import Document
+from docx.oxml import OxmlElement
 from docx.oxml.ns import qn as _qn
 
 try:
@@ -480,6 +481,29 @@ class FASubtitleAligner:
         flush()
         return groups
 
+    @staticmethod
+    def _ensure_rtl_paragraph(p):
+        """Add <w:bidi/> to paragraph properties so Word renders RTL."""
+        pPr = p._p.find(_qn('w:pPr'))
+        if pPr is None:
+            pPr = OxmlElement('w:pPr')
+            p._p.insert(0, pPr)
+        if pPr.find(_qn('w:bidi')) is None:
+            bidi = OxmlElement('w:bidi')
+            # w:bidi must come before w:rPr inside pPr per OOXML schema;
+            # appending is safe because Word tolerates trailing properties.
+            pPr.append(bidi)
+
+    @staticmethod
+    def _ensure_rtl_run(run):
+        """Add <w:rtl/> to run properties so glyph order is right-to-left."""
+        rPr = run._r.find(_qn('w:rPr'))
+        if rPr is None:
+            rPr = OxmlElement('w:rPr')
+            run._r.insert(0, rPr)
+        if rPr.find(_qn('w:rtl')) is None:
+            rPr.append(OxmlElement('w:rtl'))
+
     def _set_fa_cell(self, table, ri: int, text: str):
         row = table.rows[ri]
         if len(row.cells) < 3:
@@ -494,8 +518,13 @@ class FASubtitleAligner:
         p = fa_cell.paragraphs[0]
         if p.runs:
             p.runs[0].text = text
+            run = p.runs[0]
         else:
-            p.add_run(text)
+            run = p.add_run(text)
+        # Ensure Persian text renders RTL even if the source DOCX cell
+        # template lacked w:bidi/w:rtl markers (caused mirrored display).
+        self._ensure_rtl_paragraph(p)
+        self._ensure_rtl_run(run)
 
     def _write_docx(self, input_path: str, output_path: str,
                     groups: list, all_chunks: list):

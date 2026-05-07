@@ -239,3 +239,32 @@ Two files produced:
 - Both paths derived from the **original input file**, not the timestamped upload copy
 - `local_launcher.py` detects them via `_find_double_file()` / `_find_classic_file()` (3-strategy search each)
 - Frontend triggers downloads at +1500ms (Double) and +3000ms (Classic) after main file
+
+---
+
+## RTL guarantee (Phase 1, 2026-05-08)
+
+`_set_fa_cell` now ensures every rebuilt FA paragraph carries `<w:bidi/>` and
+every run carries `<w:rtl/>`. This is required because `python-docx` does not
+copy these markers when a run is replaced; without them, Word renders the FA
+text in LTR direction, which appears mirrored / out-of-order on screen.
+
+Two helpers (idempotent — safe to call multiple times):
+
+```python
+@staticmethod
+def _ensure_rtl_paragraph(p):
+    pPr = p._p.find(_qn('w:pPr')) or _insert_pPr(p)
+    if pPr.find(_qn('w:bidi')) is None:
+        pPr.append(OxmlElement('w:bidi'))
+
+@staticmethod
+def _ensure_rtl_run(run):
+    rPr = run._r.find(_qn('w:rPr')) or _insert_rPr(run)
+    if rPr.find(_qn('w:rtl')) is None:
+        rPr.append(OxmlElement('w:rtl'))
+```
+
+Verification: open output `.docx` in Word — every FA paragraph must show RTL
+arrow in the paragraph dialog; alternatively unzip and grep `word/document.xml`
+for `<w:bidi/>` inside each FA cell paragraph.

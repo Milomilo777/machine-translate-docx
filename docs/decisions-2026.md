@@ -6,6 +6,23 @@ Format: date, decision, alternatives considered, rationale.
 
 ---
 
+## 2026-05-08 — Phase 1 of review-rewrite-opus-4.7 (critical fixes only)
+
+**Decision:** A multi-phase rewrite branch was started after a full project review (Opus 4.7, 1M context). Phase 1 carries only fixes that are visible to end users or close a security gap; no refactor, no feature work.
+
+**Phase 1 scope:**
+- E10 RTL/bidi rebuilt-cell fix (`aligner_per.py`)
+- E11 English-residue fallback after polish (`polisher.py`)
+- E12 Server-side magic-bytes + 50 MB zip-bomb cap (`local_launcher.py`)
+
+**Alternatives considered:**
+- Bundle Phase 1 + Phase 2 (UX) — rejected because RTL and residue fixes are independently verifiable and benefit from a clean isolated commit so they can be cherry-picked back to `master` without UX changes.
+- Skip server-side validation since the launcher is local — kept anyway because the same handler is shared with deployments and the cost (≤30 LOC) is trivial.
+
+**Constraints honoured:** Aligner model still `gpt-5.4-mini`. `_normalize_lang()` untouched. No `reasoning_effort` on translator. `prompt_cache_retention=24h` preserved on every API call.
+
+---
+
 ## 2026-05-08 — Three-file output (TranslatePolish + Classic + Double)
 
 **Decision:** Persian pipeline now produces three files. Classic and Double are both fully mechanical (`llm_threshold=0`).  

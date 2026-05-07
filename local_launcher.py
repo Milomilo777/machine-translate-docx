@@ -49,6 +49,39 @@ def _sanitize_filename(name: str) -> str:
     return name.strip() or "upload.docx"
 
 
+# Server-side upload limits
+_MAX_DOCX_UNCOMPRESSED = 50 * 1024 * 1024   # 50 MB total uncompressed entries
+_DOCX_MAGIC_PK         = b"PK\x03\x04"      # ZIP local file header (DOCX is a ZIP)
+
+
+def _validate_docx_payload(payload: bytes) -> str | None:
+    """Return None when payload is a safe DOCX, otherwise an error message.
+
+    Two layers:
+      1. Magic bytes — first four bytes must be ZIP local-file header (PK\\x03\\x04).
+      2. Decompressed-size cap — sum of all entries' file_size must stay under
+         _MAX_DOCX_UNCOMPRESSED. Defends against zip-bomb DOCX uploads.
+    """
+    if not payload or not payload.startswith(_DOCX_MAGIC_PK):
+        return "File does not look like a DOCX (missing ZIP header)."
+
+    import io
+    import zipfile
+    try:
+        with zipfile.ZipFile(io.BytesIO(payload)) as zf:
+            total = 0
+            for zi in zf.infolist():
+                total += zi.file_size
+                if total > _MAX_DOCX_UNCOMPRESSED:
+                    return (
+                        f"DOCX uncompressed size exceeds the "
+                        f"{_MAX_DOCX_UNCOMPRESSED // (1024 * 1024)} MB limit."
+                    )
+    except zipfile.BadZipFile:
+        return "DOCX file is corrupted or not a valid ZIP archive."
+    return None
+
+
 def _load_index_html() -> str:
     return INDEX_FILE.read_text(encoding="utf-8", errors="replace")
 
@@ -356,6 +389,18 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
             return
 
         original_name, payload = uploaded
+
+        # Server-side validation runs *before* writing to disk.
+        # Magic bytes + zip-bomb cap protect against malicious / malformed uploads
+        # even when the client-side check in index.ejs is bypassed.
+        validation_error = _validate_docx_payload(payload)
+        if validation_error:
+            self._send_json(
+                {"ok": False, "comment": validation_error},
+                HTTPStatus.BAD_REQUEST,
+            )
+            return
+
         safe_name = _sanitize_filename(original_name)
         saved_name = f"{int(time.time() * 1000)}-{safe_name}"
         upload_path = self.state.uploads_dir / saved_name

@@ -40,6 +40,42 @@ CHANGES.md                    ← همین فایل — منبع اصلی برا
 
 ## تغییرات — از ابتدا تا آخر
 
+### ۰. Phase 1 (review-rewrite-opus-4.7) — رفع‌های بحرانی [2026-05-08]
+
+**هدف:** بستن سه باگ بحرانی که مستقیماً در خروجی نهایی دیده می‌شوند یا امنیت را تهدید می‌کنند.
+
+#### 0.1 RTL/bidi در سلول‌های FA (متن آینه‌ای fix)
+**فایل:** `src/openai_tools/aligner_per.py`
+
+`_set_fa_cell` فقط `run.text` را ست می‌کرد. اگر سلول template DOCX
+مارکر `<w:bidi/>` نداشت، Word متن FA را با direction LTR رندر می‌کرد →
+کاربر "آینه‌ای/معکوس" می‌دید. حالا دو helper جدید:
+- `_ensure_rtl_paragraph(p)` — `<w:bidi/>` به `pPr` اضافه می‌کند
+- `_ensure_rtl_run(run)` — `<w:rtl/>` به `rPr` اضافه می‌کند
+
+و در پایان `_set_fa_cell` هر دو فراخوانی می‌شوند. idempotent — اگر markup
+از قبل وجود دارد دست نمی‌زند.
+
+#### 0.2 تشخیص English residue در پولیش
+**فایل:** `src/openai_tools/polisher.py`
+
+تابع جدید `_detect_en_residue(text)` — اگر بیش از ۴۰٪ نویسه‌ها latin باشند و
+کلمه > ۵ → خط را untranslated می‌داند. بعد از `_parse_output`، خطوط مشکوک
+با خروجی translator (قبل از پولیش) جایگزین می‌شوند. لیست تغییرات در
+`last_call_data["en_residue"]` ثبت می‌شود تا در log JSON ظاهر شود.
+
+#### 0.3 Server-side validation فایل
+**فایل:** `local_launcher.py`
+
+تابع جدید `_validate_docx_payload(payload)`:
+1. **Magic bytes:** payload باید با `PK\x03\x04` (ZIP local header) شروع شود
+2. **Zip-bomb cap:** مجموع `file_size` تمام entryها ≤ ۵۰ MB
+
+قبل از `write_bytes` در `do_POST` فراخوانی می‌شود. روی client-side validation
+در `index.ejs` تکیه نمی‌کند.
+
+---
+
 ### ۱. فرمت خروجی پولیشر: تگ‌های `⟨⟨N⟩⟩`
 
 **فایل:** `src/openai_tools/polisher.py` + `prompts/polish_PER.txt`
