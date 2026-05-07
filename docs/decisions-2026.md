@@ -6,6 +6,37 @@ Format: date, decision, alternatives considered, rationale.
 
 ---
 
+## 2026-05-08 — Phase 4 of review-rewrite-opus-4.7 (testability + ops hygiene)
+
+**Decision:** Three independent improvements that do not change observable
+behaviour for end users but make the system safer to operate and modify.
+
+**Tests alternatives:**
+- `pytest-cov`, `pytest-mock` extras — rejected; goal is *minimum-deps* test
+  pack so contributors can `pip install -r requirements-test.txt && pytest`.
+- Tests as `unittest` — rejected; pytest is widely available and the tests
+  use `assert` style.
+- Tests touching real OpenAI / real DOCX — rejected; would require API keys
+  in CI and slow the pre-commit loop.
+
+**DB-guard alternatives:**
+- Lazily try to connect on first use — current behaviour, has overhead per
+  API call when MariaDB is not provisioned (most local-launcher runs).
+- Hard requirement (raise on missing host) — rejected; many users don't
+  want DB persistence at all.
+- Env-driven opt-in (`MARIADB_HOST`) — chosen; zero overhead when unset,
+  fully backward-compatible when set.
+
+**Semaphore alternatives:**
+- Per-engine queue — over-engineered for current scale.
+- Hardcoded cap of 2 — chosen as default but exposed via
+  `MTD_MAX_CONCURRENT_JOBS` so power users can raise it without code changes.
+- No cap — current behaviour, can OOM the host on a 5-user burst.
+
+**Constraints honoured:** Aligner model still `gpt-5.4-mini`. `_normalize_lang()` untouched. No `reasoning_effort` on translator. `prompt_cache_retention=24h` preserved.
+
+---
+
 ## 2026-05-08 — Phase 3 of review-rewrite-opus-4.7 (aligner quality)
 
 **Decision:** Three internal aligner improvements with no public-API change.

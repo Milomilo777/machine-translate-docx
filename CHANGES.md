@@ -40,6 +40,37 @@ CHANGES.md                    ← همین فایل — منبع اصلی برا
 
 ## تغییرات — از ابتدا تا آخر
 
+### ۰-د. Phase 4 (review-rewrite-opus-4.7) — کیفیت کد و تست [2026-05-08]
+
+#### 0.10 ۱۰ unit test و pytest setup
+**فایل‌های جدید:** `pytest.ini`، `requirements-test.txt`، `tests/conftest.py`،
+`tests/test_aligner_split.py` (۶ تست)، `tests/test_polisher_parse.py` (۳ تست)،
+`tests/test_translator_utils.py` (۱ تست)
+
+`conftest.py` فقط `src/` را به `sys.path` اضافه می‌کند تا
+`import openai_tools.*` کار کند. تست‌ها با `__new__` آبجکت می‌سازند تا
+بدون OPENAI_API_KEY و بدون network call اجرا شوند. اجرا:
+`pip install -r requirements-test.txt && pytest` → 10 passed in <۲s.
+
+#### 0.11 DB connection guard
+**فایل:** `src/openai_tools/translator.py`
+
+`self.db_enabled = bool(os.environ.get("MARIADB_HOST"))` در `__init__`. اگر
+False است، هیچ MariaDB connection تلاش نمی‌شود — `set_filename` و block
+"Save query record" هر دو early-return با لاگ INFO. این ۲ تلاش connection
+retry در هر API call را در حالت بدون DB حذف می‌کند.
+
+#### 0.12 Concurrent job semaphore
+**فایل:** `local_launcher.py`
+
+`_job_semaphore = threading.Semaphore(int(os.environ.get("MTD_MAX_CONCURRENT_JOBS", "2")))`
+ماژول-سطح. `_process_job` قبل از کار `acquire()` می‌کند و در `finally` رها
+می‌کند → cap concurrent backend subprocesses (هر کدام ۲۵۰-۵۰۰MB حافظه).
+job‌های اضافی در حالت `pending` می‌مانند و فرانت‌اند به polling ادامه می‌دهد.
+از طریق env var قابل override.
+
+---
+
 ### ۰-ج. Phase 3 (review-rewrite-opus-4.7) — کیفیت aligner [2026-05-08]
 
 #### 0.7 `_display_len` — حذف ZWNJ از شمارش طول

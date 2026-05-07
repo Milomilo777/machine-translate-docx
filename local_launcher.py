@@ -53,6 +53,12 @@ def _sanitize_filename(name: str) -> str:
 _MAX_DOCX_UNCOMPRESSED = 50 * 1024 * 1024   # 50 MB total uncompressed entries
 _DOCX_MAGIC_PK         = b"PK\x03\x04"      # ZIP local file header (DOCX is a ZIP)
 
+# Concurrency cap on real-backend subprocesses. Each subprocess loads
+# python-docx + openai client + tiktoken (≈250-500 MB). Two slots is a
+# safe default for a workstation; increase via MTD_MAX_CONCURRENT_JOBS env var.
+_MAX_CONCURRENT_JOBS = int(os.environ.get("MTD_MAX_CONCURRENT_JOBS", "2"))
+_job_semaphore       = threading.Semaphore(_MAX_CONCURRENT_JOBS)
+
 
 def _validate_docx_payload(payload: bytes) -> str | None:
     """Return None when payload is a safe DOCX, otherwise an error message.
@@ -532,6 +538,10 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
     ) -> None:
         _job_t0 = time.time()
         print(f"[job {job_id}] ▶ start — file: {original_name} | lang: {target_language} | engine: {translation_engine}")
+        # Limit concurrent backend subprocesses to keep memory bounded.
+        # When the cap is reached, a job waits here (status remains 'pending'
+        # so the frontend keeps polling) until a slot frees up.
+        _job_semaphore.acquire()
         try:
             if self.state.backend_mode == "mock":
                 time.sleep(1.2)
@@ -601,6 +611,8 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
             _job_elapsed = time.time() - _job_t0
             self.state.update_job(job_id, status="error", filename=None, error=str(exc))
             print(f"[job {job_id}] ✗ error after {_job_elapsed:.0f}s: {exc}")
+        finally:
+            _job_semaphore.release()
 
     def _map_engine(self, translation_engine: str) -> tuple[str, list[str]]:
         engine = translation_engine.lower().strip()
