@@ -2,6 +2,26 @@
 
 ---
 
+## 0. Unit Tests (Phase 4, 2026-05-08)
+
+```bash
+pip install -r requirements-test.txt
+pytest
+```
+
+Ten tests live under `tests/`:
+
+| File | Count | What it covers |
+|------|-------|---------------|
+| `tests/test_aligner_split.py` | 6 | `_display_len` ZWNJ handling; `PROTECTED_BIGRAMS` membership and `_bigram_bad_positions`; quadruple `[X,X,X,X] → [X,X,'','']`; sentinel breaks the run for cross-group triples; every chunk after `_split_distinct` honours `MAX_CHARS`; `_BREAK_RATIO_BY_TYPE` covers all 5 content types |
+| `tests/test_polisher_parse.py` | 3 | `⟨⟨N⟩⟩` tag parser; `Line N:` legacy fallback; `_detect_en_residue` true/false/empty cases |
+| `tests/test_translator_utils.py` | 1 | `_normalize_lang` + `_prompt_lang_code` round-trip |
+
+Tests construct their objects with `__new__` to bypass `__init__` and never
+touch the OpenAI client / DOCX I/O / network — all run in <2 s with no API key.
+
+---
+
 ## 1. Syntax Check (fast, no API)
 
 ```bash
@@ -9,6 +29,7 @@ python -m py_compile src/machine-translate-docx.py
 python -m py_compile src/openai_tools/translator.py
 python -m py_compile src/openai_tools/polisher.py
 python -m py_compile src/openai_tools/aligner_per.py
+python -m py_compile src/openai_tools/_retry.py
 python -m py_compile local_launcher.py
 ```
 

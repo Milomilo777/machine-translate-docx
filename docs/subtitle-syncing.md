@@ -239,3 +239,80 @@ Two files produced:
 - Both paths derived from the **original input file**, not the timestamped upload copy
 - `local_launcher.py` detects them via `_find_double_file()` / `_find_classic_file()` (3-strategy search each)
 - Frontend triggers downloads at +1500ms (Double) and +3000ms (Classic) after main file
+
+---
+
+## ZWNJ-aware length validation (Phase 3, 2026-05-08)
+
+Persian text uses ZWNJ (U+200C, "نیم‌فاصله") inside compound prefixes
+(`می‌کند`، `کتاب‌ها`). The character is invisible — Word renders it with
+zero width — so it must NOT count toward `MAX_CHARS = 48`.
+
+`_display_len(text)` returns `len(text.replace(ZWNJ, ''))`. All hard
+validation sites use it; raw `text[:MAX_CHARS]` slicing still uses raw
+character count (which is *conservative* — the resulting visible chunk
+is always ≤ MAX_CHARS).
+
+## Cross-group triple guard sentinel (Phase 3, 2026-05-08)
+
+Per-group `_enforce_no_triple` cannot see triples that straddle a group
+boundary because bridge rows are not part of the flat row list. The
+fix: insert a NUL-bracketed sentinel between groups' chunks before the
+global pass and skip that slot when re-chunking.
+
+```python
+_SENTINEL = '\x00GROUP_BOUNDARY\x00'
+flat = []
+for gi, fc in enumerate(final_chunks):
+    if gi > 0:
+        flat.append(_SENTINEL)
+    flat.extend(fc)
+flat = self._enforce_no_triple(flat)
+# re-chunk with pos += 1 to skip each sentinel
+```
+
+## Per-content-type break ratio (Phase 3, 2026-05-08)
+
+`_split_distinct(text, n, content_type=...)` accepts an optional
+content type. For 2-part splits the break ratio is read from
+`_BREAK_RATIO_BY_TYPE`:
+
+| Content type | Ratio | Reasoning |
+|--------------|-------|-----------|
+| `narration`  | 0.45  | Persian verb-final bias |
+| `spiritual`  | 0.45  | Same as narration; legacy SAGE |
+| `news_attr`  | 0.55  | Subject/event up front; balance later |
+| `dialogue`   | 0.50  | Speaker turn vs. content — neutral |
+| `ingredient` | 0.50  | Item + quantity — neutral |
+
+When `content_type` is None, the legacy `BREAK_RATIO_MEDIAN=0.45` is
+preserved so callers that have not been updated keep prior behaviour.
+
+---
+
+## RTL guarantee (Phase 1, 2026-05-08)
+
+`_set_fa_cell` now ensures every rebuilt FA paragraph carries `<w:bidi/>` and
+every run carries `<w:rtl/>`. This is required because `python-docx` does not
+copy these markers when a run is replaced; without them, Word renders the FA
+text in LTR direction, which appears mirrored / out-of-order on screen.
+
+Two helpers (idempotent — safe to call multiple times):
+
+```python
+@staticmethod
+def _ensure_rtl_paragraph(p):
+    pPr = p._p.find(_qn('w:pPr')) or _insert_pPr(p)
+    if pPr.find(_qn('w:bidi')) is None:
+        pPr.append(OxmlElement('w:bidi'))
+
+@staticmethod
+def _ensure_rtl_run(run):
+    rPr = run._r.find(_qn('w:rPr')) or _insert_rPr(run)
+    if rPr.find(_qn('w:rtl')) is None:
+        rPr.append(OxmlElement('w:rtl'))
+```
+
+Verification: open output `.docx` in Word — every FA paragraph must show RTL
+arrow in the paragraph dialog; alternatively unzip and grep `word/document.xml`
+for `<w:bidi/>` inside each FA cell paragraph.

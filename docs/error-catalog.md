@@ -105,6 +105,72 @@ Recurring bugs, root causes, and fixes. Add an entry any time a non-trivial bug 
 
 ---
 
+## E10 — Persian text rendered mirrored / reversed in Word
+
+**ID:** E10
+**Status:** Fixed 2026-05-08 (Phase 1, review-rewrite-opus-4.7)
+**Symptom:** Some FA cells in `_PER_Double.docx` / `_PER_Classic.docx` displayed glyphs in the wrong order or "mirrored" left-to-right when opened in Word.
+**Root cause:** `aligner_per.py::_set_fa_cell` rebuilt cell content with `python-docx` runs but never copied the paragraph-level `<w:bidi/>` and run-level `<w:rtl/>` markers. When the source DOCX template did not carry these on every cell, the new text inherited LTR direction.
+**Fix:** Added `_ensure_rtl_paragraph(p)` and `_ensure_rtl_run(run)` helpers (idempotent) and called them at the end of `_set_fa_cell`. Both insert the OOXML element only when missing.
+**Regression test:** open output DOCX → every FA cell paragraph must contain `<w:pPr><w:bidi/></w:pPr>` and the run must contain `<w:rPr><w:rtl/></w:rPr>`.
+
+---
+
+## E11 — English residue rows after polish
+
+**ID:** E11
+**Status:** Fixed 2026-05-08 (Phase 1, review-rewrite-opus-4.7)
+**Symptom:** Random rows in the polished FA output contained English text (the source verbatim) instead of Persian.
+**Root cause:** Two paths produced this. (1) Translator's `SL_TEXT` fallback for unparseable lines — sometimes triggered too eagerly. (2) Polisher Strategy 4 raw passthrough — when no `⟨⟨N⟩⟩` tags were found and the line count happened to match, raw English content propagated unchanged.
+**Fix:** Added `OpenAIPolisher._detect_en_residue(text)` (>40 % latin chars AND >5 words) and applied it after `_parse_output`. Flagged lines fall back to the pre-polish translator output for that index. Indices and replaced texts are recorded in `last_call_data["en_residue"]` so they appear in the run's JSON log.
+**Regression test:** check `last_call_data["en_residue"]` is empty for clean documents; for documents that previously regressed, count should drop to ~0.
+
+---
+
+## E12 — Server-side DOCX upload validation missing
+
+**ID:** E12
+**Status:** Fixed 2026-05-08 (Phase 1, review-rewrite-opus-4.7)
+**Symptom:** Server accepted any payload as `.docx`. Client-side magic-bytes check in `index.ejs` could be bypassed by sending a raw POST. No defense against zip-bomb DOCX uploads.
+**Root cause:** `local_launcher.py::do_POST` wrote `payload` directly to disk without inspecting it.
+**Fix:** Added `_validate_docx_payload(payload)` — (1) magic bytes must equal `PK\x03\x04` (ZIP local file header) and (2) sum of `ZipInfo.file_size` across entries must stay under `_MAX_DOCX_UNCOMPRESSED = 50 MB`. Called before `upload_path.write_bytes`.
+**Regression test:** POST a non-ZIP payload → 400 + `"missing ZIP header"`. POST a 1 KB zip whose entries decompress to >50 MB → 400 + `"uncompressed size exceeds"`.
+
+---
+
+## E13 — Multi-file download blocked / fragmented in Chrome
+
+**ID:** E13
+**Status:** Fixed 2026-05-08 (Phase 2, review-rewrite-opus-4.7)
+**Symptom:** Only the first of three output files downloaded; user had to click "Allow multiple downloads". With increased setTimeout delays (E9 mitigation) the prompt timed out before the user noticed.
+**Root cause:** Browsers throttle / require permission for multiple programmatic downloads from the same origin in quick succession.
+**Fix:** New `_send_zip_for_job(job_id)` in `local_launcher.py` and route `GET /download-zip/:jobId`. The frontend, when `filename2 || filename3` is present, fetches the single ZIP instead of triggering multiple `/download/...` clicks. ZIP filename is `{stem}_PER_package.zip`.
+**Regression test:** upload a Persian DOCX → exactly one download initiates → unzipping shows TranslatePolish + Double + Classic.
+
+---
+
+## E14 — Job store memory growth
+
+**ID:** E14
+**Status:** Fixed 2026-05-08 (Phase 2, review-rewrite-opus-4.7)
+**Symptom:** `LocalState.jobs` dict held every job since process start; long-running launcher sessions accumulated thousands of `Job` records.
+**Root cause:** No cleanup logic.
+**Fix:** `LocalState.cleanup_old_jobs(max_age_sec=3600)` removes finished jobs (`done` / `error`) older than the threshold. `start_cleanup_thread()` spawns a daemon that calls it every 10 minutes; called once from `main()` after `state.boot()`.
+**Regression test:** measure `len(state.jobs)` after >1 h of churn — should not exceed concurrent active jobs + a small grace.
+
+---
+
+## E15 — Transient OpenAI failures aborted entire pipeline
+
+**ID:** E15
+**Status:** Fixed 2026-05-08 (Phase 2, review-rewrite-opus-4.7)
+**Symptom:** A single `RateLimitError` or brief network blip caused translator/polisher/aligner to fail and the user lost the whole job.
+**Root cause:** No retry logic; every API call was a one-shot.
+**Fix:** New `src/openai_tools/_retry.py::call_with_retry(fn, *, label)` — 3 attempts with exponential backoff (1 s, 2 s, 4 s) for `RateLimitError`, `APIConnectionError`, `APITimeoutError`. `BadRequestError` raises immediately (request bug — retrying would just reburn tokens). All three OpenAI callers (translator, polisher, aligner) wrap their `client.*.create(...)` call in this helper.
+**Regression test:** mock the openai client to throw `RateLimitError` once → call should succeed on retry; mock to throw 3× → should raise.
+
+---
+
 ## Template for new entries
 
 ```

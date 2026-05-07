@@ -40,6 +40,169 @@ CHANGES.md                    ← همین فایل — منبع اصلی برا
 
 ## تغییرات — از ابتدا تا آخر
 
+### ۰-ه. Phase 5 (review-rewrite-opus-4.7) — اختیاری [2026-05-08]
+
+#### 0.14 Prompt hash در log JSON
+**فایل‌ها:** `src/openai_tools/_retry.py` (تابع جدید)،
+`translator.py`، `polisher.py`، `aligner_per.py`، `tests/test_translator_utils.py`
+
+`prompt_hash(text)` → ۸ کاراکتر اول `sha256(text)`. در:
+- `OpenAITranslator.last_call_data["prompt_hash"]`
+- `OpenAIPolisher.last_call_data["prompt_hash"]`
+- `FASubtitleAligner.last_stats["prompt_hash"]`
+
+ثبت می‌شود. وقتی پرامپت تغییر می‌کند، می‌توان از روی hash تشخیص داد که
+کدام نسخه پرامپت در یک log قدیمی استفاده شده — برای reproducibility و
+debug ضروری وقتی پرامپت‌های ۲۰۰+ خطی به‌مرور ویرایش می‌شوند.
+
+#### 0.13/0.15 — Skip شدند
+- **Progress bar:** نیاز به تغییر state Job و SSE/polling expansion داشت → خارج از scope ۵
+- **virastar:** در PyPI نسخه‌ای موجود نیست (`pip install virastar` fail شد) → skip طبق شرط user
+
+---
+
+### ۰-د. Phase 4 (review-rewrite-opus-4.7) — کیفیت کد و تست [2026-05-08]
+
+#### 0.10 ۱۰ unit test و pytest setup
+**فایل‌های جدید:** `pytest.ini`، `requirements-test.txt`، `tests/conftest.py`،
+`tests/test_aligner_split.py` (۶ تست)، `tests/test_polisher_parse.py` (۳ تست)،
+`tests/test_translator_utils.py` (۱ تست)
+
+`conftest.py` فقط `src/` را به `sys.path` اضافه می‌کند تا
+`import openai_tools.*` کار کند. تست‌ها با `__new__` آبجکت می‌سازند تا
+بدون OPENAI_API_KEY و بدون network call اجرا شوند. اجرا:
+`pip install -r requirements-test.txt && pytest` → 10 passed in <۲s.
+
+#### 0.11 DB connection guard
+**فایل:** `src/openai_tools/translator.py`
+
+`self.db_enabled = bool(os.environ.get("MARIADB_HOST"))` در `__init__`. اگر
+False است، هیچ MariaDB connection تلاش نمی‌شود — `set_filename` و block
+"Save query record" هر دو early-return با لاگ INFO. این ۲ تلاش connection
+retry در هر API call را در حالت بدون DB حذف می‌کند.
+
+#### 0.12 Concurrent job semaphore
+**فایل:** `local_launcher.py`
+
+`_job_semaphore = threading.Semaphore(int(os.environ.get("MTD_MAX_CONCURRENT_JOBS", "2")))`
+ماژول-سطح. `_process_job` قبل از کار `acquire()` می‌کند و در `finally` رها
+می‌کند → cap concurrent backend subprocesses (هر کدام ۲۵۰-۵۰۰MB حافظه).
+job‌های اضافی در حالت `pending` می‌مانند و فرانت‌اند به polling ادامه می‌دهد.
+از طریق env var قابل override.
+
+---
+
+### ۰-ج. Phase 3 (review-rewrite-opus-4.7) — کیفیت aligner [2026-05-08]
+
+#### 0.7 `_display_len` — حذف ZWNJ از شمارش طول
+**فایل:** `src/openai_tools/aligner_per.py`
+
+ZWNJ (U+200C) در نمایش Word zero-width است ولی در `len()` شمرده می‌شد →
+chunkهای حاوی نیم‌فاصله از حد نمایشی واقعی کوتاه‌تر می‌شدند. تابع جدید
+`_display_len(text)` این را اصلاح می‌کند. تمام مقایسه‌های `len(...) > MAX_CHARS`
+که برای validation/safety هستند به `_display_len(...) > MAX_CHARS` تبدیل شدند:
+`_recursive_split`، `_emergency_split`، `_split_distinct`، `_split_by_budget`،
+`_should_preserve_existing_segmentation`، `_mechanical_align` (fallback safety)،
+`_try_marker_align` (left/left_ch/right_ch)، `_quality_score`، `_validate`،
+`align()` stats. عملیات slicing (`text[:MAX_CHARS]`) همان len راو می‌ماند —
+نتیجه‌اش conservative است.
+
+#### 0.8 Cross-group triple guard با sentinel
+**فایل:** `src/openai_tools/aligner_per.py`
+
+Bridge rowها در flat list ظاهر نمی‌شوند، پس وقتی گروه N با "X" تمام و
+گروه N+1 با "X" شروع می‌شد، در flat list یک run "X X" دیده می‌شد و در
+ادامه‌ی واقعی پنجم سرکوب می‌کرد. حل: قبل از flatten بین گروه‌ها sentinel
+`'\x00GROUP_BOUNDARY\x00'` تزریق می‌شود. این رشته در `_enforce_no_triple`
+به‌صورت طبیعی run را reset می‌کند (چون با هیچ chunk واقعی برابر نیست).
+re-chunk هم با pos += 1 sentinel slot را skip می‌کند.
+
+#### 0.9 BREAK_RATIO per content type
+**فایل:** `src/openai_tools/aligner_per.py`
+
+به‌جای `BREAK_RATIO_MEDIAN=0.45` یکنواخت، dict `_BREAK_RATIO_BY_TYPE` بر اساس
+نوع محتوا:
+- `narration` و `spiritual` → 0.45 (verb-final فارسی)
+- `news_attr` → 0.55 (front-loaded subject/event)
+- `dialogue` و `ingredient` → 0.50 (متعادل)
+
+`_split_distinct(text, n, content_type=None)` پارامتر اختیاری گرفت — اگر
+None بود همان `BREAK_RATIO_MEDIAN` استفاده می‌شود (backward compat). در
+`_mechanical_align` content_type گروه به `_split_distinct` پاس می‌شود.
+
+---
+
+### ۰-ب. Phase 2 (review-rewrite-opus-4.7) — مشکلات قابل دیدن [2026-05-08]
+
+#### 0.4 ZIP package برای دانلود (E9 fix)
+**فایل‌ها:** `local_launcher.py`، `index.ejs`
+
+به‌جای ۳ تا setTimeout که Chrome آن‌ها را پشت permission gate قرار می‌دهد:
+- endpoint جدید `GET /download-zip/:jobId` همه فایل‌های موجود job را در یک
+  `_PER_package.zip` بسته‌بندی می‌کند و یک‌جا stream می‌کند.
+- Frontend وقتی `filename2 || filename3` وجود داشت، به‌جای ۳ دانلود سریال،
+  یک کلیک به ZIP می‌زند.
+- پیغام موفقیت بعد از دانلود به این حالت محتوای ZIP را نشان می‌دهد.
+
+#### 0.5 Cleanup خودکار job store
+**فایل:** `local_launcher.py`
+
+`LocalState.cleanup_old_jobs(max_age_sec=3600)` job‌های `done`/`error` که
+بیش از یک ساعت از created_at آن‌ها گذشته را حذف می‌کند. یک thread با نام
+`job-cleanup` هر ۱۰ دقیقه این تابع را فراخوانی می‌کند (`start_cleanup_thread`).
+در `main()` بعد از `state.boot()` راه می‌افتد.
+
+#### 0.6 Retry با backoff برای OpenAI calls
+**فایل‌ جدید:** `src/openai_tools/_retry.py`
+**فایل‌های ویرایش‌شده:** `translator.py`، `polisher.py`، `aligner_per.py`
+
+`call_with_retry(fn, *, label)`:
+- transient: `RateLimitError`، `APIConnectionError`، `APITimeoutError`
+  → ۳ تلاش با backoff ۱s، ۲s، ۴s
+- non-retryable: `BadRequestError` → فوری raise
+- بقیه exceptionها → فوری raise (هیچ silent swallow نیست)
+
+هر سه caller (translator chat/responses، polisher chat، aligner batch) از
+این helper مشترک استفاده می‌کنند تا رفتار retry یکدست بماند.
+
+---
+
+### ۰-الف. Phase 1 (review-rewrite-opus-4.7) — رفع‌های بحرانی [2026-05-08]
+
+**هدف:** بستن سه باگ بحرانی که مستقیماً در خروجی نهایی دیده می‌شوند یا امنیت را تهدید می‌کنند.
+
+#### 0.1 RTL/bidi در سلول‌های FA (متن آینه‌ای fix)
+**فایل:** `src/openai_tools/aligner_per.py`
+
+`_set_fa_cell` فقط `run.text` را ست می‌کرد. اگر سلول template DOCX
+مارکر `<w:bidi/>` نداشت، Word متن FA را با direction LTR رندر می‌کرد →
+کاربر "آینه‌ای/معکوس" می‌دید. حالا دو helper جدید:
+- `_ensure_rtl_paragraph(p)` — `<w:bidi/>` به `pPr` اضافه می‌کند
+- `_ensure_rtl_run(run)` — `<w:rtl/>` به `rPr` اضافه می‌کند
+
+و در پایان `_set_fa_cell` هر دو فراخوانی می‌شوند. idempotent — اگر markup
+از قبل وجود دارد دست نمی‌زند.
+
+#### 0.2 تشخیص English residue در پولیش
+**فایل:** `src/openai_tools/polisher.py`
+
+تابع جدید `_detect_en_residue(text)` — اگر بیش از ۴۰٪ نویسه‌ها latin باشند و
+کلمه > ۵ → خط را untranslated می‌داند. بعد از `_parse_output`، خطوط مشکوک
+با خروجی translator (قبل از پولیش) جایگزین می‌شوند. لیست تغییرات در
+`last_call_data["en_residue"]` ثبت می‌شود تا در log JSON ظاهر شود.
+
+#### 0.3 Server-side validation فایل
+**فایل:** `local_launcher.py`
+
+تابع جدید `_validate_docx_payload(payload)`:
+1. **Magic bytes:** payload باید با `PK\x03\x04` (ZIP local header) شروع شود
+2. **Zip-bomb cap:** مجموع `file_size` تمام entryها ≤ ۵۰ MB
+
+قبل از `write_bytes` در `do_POST` فراخوانی می‌شود. روی client-side validation
+در `index.ejs` تکیه نمی‌کند.
+
+---
+
 ### ۱. فرمت خروجی پولیشر: تگ‌های `⟨⟨N⟩⟩`
 
 **فایل:** `src/openai_tools/polisher.py` + `prompts/polish_PER.txt`

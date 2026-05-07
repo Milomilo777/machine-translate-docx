@@ -73,6 +73,12 @@ See [`docs/error-catalog.md`](docs/error-catalog.md) for full list.
 | E6 | `splitting.py` `cached_tokens: 0` — prompt cache not applied | **Fixed** 2026-05-07 |
 | E8 | Split Method (OpenAI API) conflicted with Aligner — massive redundant API calls | **Fixed** 2026-05-08 — Split section hidden for Persian+chatgpt-polish |
 | E9 | Only 1 of 3 files downloaded — Chrome blocks multiple file downloads without permission | **Mitigated** — delays increased to 1500/3000ms; user must Allow once in Chrome |
+| E10 | Persian text rendered mirrored/reversed in Word — `<w:bidi/>` / `<w:rtl/>` missing on rebuilt cells | **Fixed** 2026-05-08 (Phase 1) — `_ensure_rtl_paragraph` + `_ensure_rtl_run` in `aligner_per.py` |
+| E11 | Polisher could return source English verbatim → English residue rows in final FA output | **Fixed** 2026-05-08 (Phase 1) — `_detect_en_residue` falls back to translator output, logs flagged indices |
+| E12 | `local_launcher.py` accepted any payload as DOCX (client-side magic bytes only) | **Fixed** 2026-05-08 (Phase 1) — `_validate_docx_payload` (PK header + 50 MB zip-bomb cap) before disk write |
+| E13 | Multi-file download blocked by Chrome — required user click "Allow" | **Fixed** 2026-05-08 (Phase 2) — single `/download-zip/:jobId` endpoint bundles all outputs |
+| E14 | Job store grew unbounded across long sessions | **Fixed** 2026-05-08 (Phase 2) — `start_cleanup_thread` prunes finished jobs >1 h old every 10 min |
+| E15 | Transient OpenAI errors (rate-limit, network) caused full pipeline fail | **Fixed** 2026-05-08 (Phase 2) — shared `call_with_retry` helper with 3 attempts and exponential backoff |
 
 ---
 
@@ -80,6 +86,11 @@ See [`docs/error-catalog.md`](docs/error-catalog.md) for full list.
 
 | Date | Change |
 |------|--------|
+| 2026-05-08 | **Phase 5 (review-rewrite-opus-4.7):** `prompt_hash` (sha256[:8]) recorded in translator/polisher last_call_data and aligner last_stats; progress bar + virastar skipped (out of scope / no PyPI package) |
+| 2026-05-08 | **Phase 4 (review-rewrite-opus-4.7):** 10 unit tests + pytest setup (`tests/`); DB connection guarded by `MARIADB_HOST` env; concurrent job semaphore (default 2, override via `MTD_MAX_CONCURRENT_JOBS`) |
+| 2026-05-08 | **Phase 3 (review-rewrite-opus-4.7):** `_display_len` (ZWNJ-aware) for all MAX_CHARS validation; sentinel-separated cross-group triple guard; per-content-type break ratio in `_split_distinct` |
+| 2026-05-08 | **Phase 2 (review-rewrite-opus-4.7):** ZIP download endpoint + frontend single-download; job cleanup thread (10 min interval, 1 h max age); shared `call_with_retry` for transient OpenAI errors |
+| 2026-05-08 | **Phase 1 (review-rewrite-opus-4.7):** RTL/bidi fix in aligner; English-residue fallback in polisher; server-side magic-bytes + 50 MB zip-bomb validation in launcher |
 | 2026-05-08 | `llm_threshold=0` for BOTH Classic and Double aligners — fully mechanical, zero API calls |
 | 2026-05-08 | Three-file download: `_PER_Classic.docx` added as `filename3`; `_find_classic_file()` in launcher |
 | 2026-05-08 | Split section hidden for Persian+chatgpt-polish — eliminates Split/Aligner conflict |

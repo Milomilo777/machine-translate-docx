@@ -6,6 +6,114 @@ Format: date, decision, alternatives considered, rationale.
 
 ---
 
+## 2026-05-08 — Phase 5 of review-rewrite-opus-4.7 (optional)
+
+**Decision:** Ship `prompt_hash` only. Skip the progress bar (would require
+SSE / job-state schema changes — bigger than fits a "nice-to-have" phase)
+and virastar post-processing (no PyPI distribution exists today, so
+`pip install virastar` fails — would need vendoring and review of an
+unmaintained third party for the FA pipeline).
+
+**`prompt_hash` placement:** Stored in `last_call_data` /  `last_stats` of
+each OpenAI caller, so the existing JSON log writer in
+`machine-translate-docx.py` picks it up without modification. 8 hex chars
+of sha256 — enough to distinguish edits, short enough to skim by eye.
+
+**Constraints honoured:** Aligner model still `gpt-5.4-mini`. `_normalize_lang()` untouched. No `reasoning_effort` on translator. `prompt_cache_retention=24h` preserved.
+
+---
+
+## 2026-05-08 — Phase 4 of review-rewrite-opus-4.7 (testability + ops hygiene)
+
+**Decision:** Three independent improvements that do not change observable
+behaviour for end users but make the system safer to operate and modify.
+
+**Tests alternatives:**
+- `pytest-cov`, `pytest-mock` extras — rejected; goal is *minimum-deps* test
+  pack so contributors can `pip install -r requirements-test.txt && pytest`.
+- Tests as `unittest` — rejected; pytest is widely available and the tests
+  use `assert` style.
+- Tests touching real OpenAI / real DOCX — rejected; would require API keys
+  in CI and slow the pre-commit loop.
+
+**DB-guard alternatives:**
+- Lazily try to connect on first use — current behaviour, has overhead per
+  API call when MariaDB is not provisioned (most local-launcher runs).
+- Hard requirement (raise on missing host) — rejected; many users don't
+  want DB persistence at all.
+- Env-driven opt-in (`MARIADB_HOST`) — chosen; zero overhead when unset,
+  fully backward-compatible when set.
+
+**Semaphore alternatives:**
+- Per-engine queue — over-engineered for current scale.
+- Hardcoded cap of 2 — chosen as default but exposed via
+  `MTD_MAX_CONCURRENT_JOBS` so power users can raise it without code changes.
+- No cap — current behaviour, can OOM the host on a 5-user burst.
+
+**Constraints honoured:** Aligner model still `gpt-5.4-mini`. `_normalize_lang()` untouched. No `reasoning_effort` on translator. `prompt_cache_retention=24h` preserved.
+
+---
+
+## 2026-05-08 — Phase 3 of review-rewrite-opus-4.7 (aligner quality)
+
+**Decision:** Three internal aligner improvements with no public-API change.
+
+**`_display_len` alternatives:**
+- Strip ZWNJ globally on input — rejected; ZWNJ has semantic meaning, must be preserved in stored output.
+- Track display vs. raw separately — over-engineered; one helper covers every check site.
+
+**Sentinel approach alternatives:**
+- Run `_enforce_no_triple` over per-pair group boundaries only (compare last-of-G with first-of-G+1) — rejected because longer cross-group runs could still slip through if three consecutive groups all start/end with the same chunk.
+- Carry bridge-row indices into the flat list as empty strings — rejected; misleading because empty strings already mean "no FA on this row" and would conflate two distinct meanings.
+- NUL-bracketed sentinel — chosen; safe (no real chunk equals NUL bytes) and naturally breaks the existing run-counter logic.
+
+**Per-type break ratio alternatives:**
+- Continue with single 0.45 ratio — kept producing front-end ratios that felt unbalanced for news cells (verbs/objects clustered late even when subject/event were the focus).
+- Learn ratio from data per file — out of scope; the dict is hardcoded and easy to tune later.
+
+**Constraints honoured:** Aligner model still `gpt-5.4-mini`. `_normalize_lang()` untouched. No new API call sites.
+
+---
+
+## 2026-05-08 — Phase 2 of review-rewrite-opus-4.7 (visible-issue fixes)
+
+**Decision:** Phase 2 ships three independent improvements: a single-shot ZIP download, a job-store cleanup thread, and a shared OpenAI retry helper.
+
+**ZIP-download alternatives considered:**
+- Three on-page download links instead of auto-download — rejected (extra clicks for repeat users).
+- Keep multi-file auto-download with longer delays — already in place (E9) and still requires user-side permission click.
+- Stream a tar.gz — rejected (no native tar support in Windows file explorer; ZIP wins on portability).
+
+**Cleanup-thread alternatives:**
+- WeakValueDictionary — wouldn't help because Job dataclasses are referenced from inside the dict itself.
+- LRU cap (e.g. keep last 1000 jobs) — rejected because age-based pruning is more predictable for memory profiles in the absence of activity.
+
+**Retry-helper alternatives:**
+- `tenacity` library — adds an unnecessary dependency for ~30 LOC of logic.
+- Per-module retry implementation — rejected (drift between three callers; this is exactly what bit us before in the splitter cache regression).
+- Retry on every Exception — rejected (mask request bugs and burn tokens).
+
+**Constraints honoured:** Aligner model still `gpt-5.4-mini`. `_normalize_lang()` untouched. No `reasoning_effort` on translator. `prompt_cache_retention=24h` preserved.
+
+---
+
+## 2026-05-08 — Phase 1 of review-rewrite-opus-4.7 (critical fixes only)
+
+**Decision:** A multi-phase rewrite branch was started after a full project review (Opus 4.7, 1M context). Phase 1 carries only fixes that are visible to end users or close a security gap; no refactor, no feature work.
+
+**Phase 1 scope:**
+- E10 RTL/bidi rebuilt-cell fix (`aligner_per.py`)
+- E11 English-residue fallback after polish (`polisher.py`)
+- E12 Server-side magic-bytes + 50 MB zip-bomb cap (`local_launcher.py`)
+
+**Alternatives considered:**
+- Bundle Phase 1 + Phase 2 (UX) — rejected because RTL and residue fixes are independently verifiable and benefit from a clean isolated commit so they can be cherry-picked back to `master` without UX changes.
+- Skip server-side validation since the launcher is local — kept anyway because the same handler is shared with deployments and the cost (≤30 LOC) is trivial.
+
+**Constraints honoured:** Aligner model still `gpt-5.4-mini`. `_normalize_lang()` untouched. No `reasoning_effort` on translator. `prompt_cache_retention=24h` preserved on every API call.
+
+---
+
 ## 2026-05-08 — Three-file output (TranslatePolish + Classic + Double)
 
 **Decision:** Persian pipeline now produces three files. Classic and Double are both fully mechanical (`llm_threshold=0`).  

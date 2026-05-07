@@ -8,6 +8,8 @@ from openai import OpenAI
 from pathlib import Path
 import re
 
+from ._retry import call_with_retry, prompt_hash
+
 # ── language-code normalisation ───────────────────────────────────────────────
 _LANG_CODE_MAP = {
     "persian": "fa",
@@ -68,7 +70,11 @@ class OpenAITranslator:
             raise ValueError("OPENAI_API_KEY not set in environment")
         self.client = OpenAI(api_key=self.api_key)
 
-        # DB config from environment
+        # DB persistence is opt-in. Only attempt to connect when MARIADB_HOST
+        # is set in the environment — otherwise skip every DB call cheaply
+        # and silently. Avoids two connection retries per API call when no
+        # database is provisioned (most local-launcher runs).
+        self.db_enabled = bool(os.environ.get("MARIADB_HOST"))
         self.db_config = {
             "host": os.environ.get("MARIADB_HOST", "localhost"),
             "user": os.environ.get("MARIADB_USER", "root"),
@@ -87,6 +93,9 @@ class OpenAITranslator:
         """Change active document context."""
         self.filename = filename
         self.doc_id = str(uuid.uuid4())
+        if not self.db_enabled:
+            print(f"[INFO] (db disabled) document: {self.filename} ({self.doc_id})")
+            return
         try:
             conn = self.get_db_connection()
             cursor = conn.cursor()
@@ -224,18 +233,24 @@ class OpenAITranslator:
         _extra = {"prompt_cache_retention": "24h"}
 
         if "pro" in self.model:
-            response = self.client.responses.create(
-                model=self.model,
-                input=_messages,
-                extra_body=_extra,
-                timeout=1800,
+            response = call_with_retry(
+                lambda: self.client.responses.create(
+                    model=self.model,
+                    input=_messages,
+                    extra_body=_extra,
+                    timeout=1800,
+                ),
+                label="translator.responses.create",
             )
         else:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=_messages,
-                extra_body=_extra,
-                timeout=1800,
+            response = call_with_retry(
+                lambda: self.client.chat.completions.create(
+                    model=self.model,
+                    messages=_messages,
+                    extra_body=_extra,
+                    timeout=1800,
+                ),
+                label="translator.chat.completions.create",
             )
 
         elapsed_time  = time.time() - start_time
@@ -263,40 +278,42 @@ class OpenAITranslator:
                 print("Error in openai translation, too few lines")
             translated_text = out_lines
 
-        # Save query record
-        try:
-            conn   = self.get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute(
-                """
-                INSERT INTO queries
-                (doc_id, type, model_name, prompt_json, response_json, execution_time_sec,
-                 input_tokens, output_tokens, total_tokens, cost_usd)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """,
-                (
-                    self.doc_id,
-                    "translate",
-                    self.model,
-                    json.dumps({"system": system_prompt, "user": user_message}),
-                    json.dumps(response_json),
-                    elapsed_time,
-                    cost_info["prompt_tokens"],
-                    cost_info["completion_tokens"],
-                    cost_info["total_tokens"],
-                    cost_info["total_cost_usd"],
+        # Save query record (only when DB persistence is enabled)
+        if self.db_enabled:
+            try:
+                conn   = self.get_db_connection()
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    INSERT INTO queries
+                    (doc_id, type, model_name, prompt_json, response_json, execution_time_sec,
+                     input_tokens, output_tokens, total_tokens, cost_usd)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (
+                        self.doc_id,
+                        "translate",
+                        self.model,
+                        json.dumps({"system": system_prompt, "user": user_message}),
+                        json.dumps(response_json),
+                        elapsed_time,
+                        cost_info["prompt_tokens"],
+                        cost_info["completion_tokens"],
+                        cost_info["total_tokens"],
+                        cost_info["total_cost_usd"],
+                    )
                 )
-            )
-            conn.commit()
-        except Exception as e:
-            print(f"[Warning] Failed to save query info: {e}")
-        finally:
-            try: cursor.close(); conn.close()
-            except: pass
+                conn.commit()
+            except Exception as e:
+                print(f"[Warning] Failed to save query info: {e}")
+            finally:
+                try: cursor.close(); conn.close()
+                except: pass
 
         self.last_call_data = {
             "type":            "translate",
             "model":           self.model,
+            "prompt_hash":     prompt_hash(system_prompt),
             "system_prompt":   system_prompt,
             "user_prompt":     user_message,
             "response_raw":    response_json,

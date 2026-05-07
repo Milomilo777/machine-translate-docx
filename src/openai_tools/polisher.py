@@ -6,6 +6,7 @@ from pathlib import Path
 from openai import OpenAI
 
 from .translator import _normalize_lang, _find_prompts_dir, _prompt_lang_code
+from ._retry import call_with_retry, prompt_hash
 
 
 class OpenAIPolisher:
@@ -68,6 +69,22 @@ class OpenAIPolisher:
         for i, ch in enumerate("۰۱۲۳۴۵۶۷۸۹"):
             s = s.replace(ch, str(i))
         return s
+
+    @staticmethod
+    def _detect_en_residue(text: str) -> bool:
+        """Return True when a polished FA line looks like untranslated English.
+
+        Triggers when latin letters dominate (>40 % of characters in the line)
+        AND the line carries enough words to be a real sentence (>5 tokens).
+        Whitelist tokens (URLs, codes like GPT-4o, single acronyms) are short
+        and pass through; this guard targets full-sentence regressions where
+        the model returned the source verbatim.
+        """
+        if not text or not text.strip():
+            return False
+        latin = sum(1 for c in text if 'a' <= c.lower() <= 'z')
+        word_count = len(text.split())
+        return latin > len(text) * 0.4 and word_count > 5
 
     def _parse_output(self, raw: str, fa_lines: list) -> list:
         """
@@ -176,14 +193,17 @@ class OpenAIPolisher:
 
         t0 = time.time()
         try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": system},
-                    {"role": "user",   "content": user_content},
-                ],
-                extra_body=_extra,
-                timeout=1800,
+            response = call_with_retry(
+                lambda: self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[
+                        {"role": "system", "content": system},
+                        {"role": "user",   "content": user_content},
+                    ],
+                    extra_body=_extra,
+                    timeout=1800,
+                ),
+                label="polisher.chat.completions.create",
             )
         except Exception as e:
             print(f"[ERROR] Polisher API call failed: {e} — returning original translation.")
@@ -203,17 +223,39 @@ class OpenAIPolisher:
             )
             return translated_text
 
+        # English-residue scan: any line that came back as English (or mostly
+        # English) is replaced with the pre-polish translator output for that
+        # line. Indices of replaced rows are recorded in last_call_data so the
+        # caller can surface them in the run JSON log.
+        residue_lines: list = []
+        for i, polished in enumerate(polished_lines):
+            if self._detect_en_residue(polished):
+                fallback = fa_lines[i] if i < len(fa_lines) else ''
+                residue_lines.append({
+                    'index':      i + 1,
+                    'polished':   polished,
+                    'fallback':   fallback,
+                })
+                polished_lines[i] = fallback
+        if residue_lines:
+            print(
+                f"[WARN] Polisher: {len(residue_lines)} line(s) flagged as "
+                f"English residue — reverted to translator output."
+            )
+
         usage = response_json.get("usage") or {}
         ptd   = usage.get("prompt_tokens_details") or {}
 
         self.last_call_data = {
             "type":           "polish",
             "model":          self.model,
+            "prompt_hash":    prompt_hash(system),
             "system_prompt":  system,
             "user_prompt":    user_content,
             "response_raw":   response_json,
             "input_fa_text":  translated_text,
             "output_text":    "\n".join(polished_lines),
+            "en_residue":     residue_lines,
             "tokens": {
                 "prompt":     usage.get("prompt_tokens", 0),
                 "completion": usage.get("completion_tokens", 0),

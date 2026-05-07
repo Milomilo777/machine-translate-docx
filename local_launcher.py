@@ -49,6 +49,45 @@ def _sanitize_filename(name: str) -> str:
     return name.strip() or "upload.docx"
 
 
+# Server-side upload limits
+_MAX_DOCX_UNCOMPRESSED = 50 * 1024 * 1024   # 50 MB total uncompressed entries
+_DOCX_MAGIC_PK         = b"PK\x03\x04"      # ZIP local file header (DOCX is a ZIP)
+
+# Concurrency cap on real-backend subprocesses. Each subprocess loads
+# python-docx + openai client + tiktoken (≈250-500 MB). Two slots is a
+# safe default for a workstation; increase via MTD_MAX_CONCURRENT_JOBS env var.
+_MAX_CONCURRENT_JOBS = int(os.environ.get("MTD_MAX_CONCURRENT_JOBS", "2"))
+_job_semaphore       = threading.Semaphore(_MAX_CONCURRENT_JOBS)
+
+
+def _validate_docx_payload(payload: bytes) -> str | None:
+    """Return None when payload is a safe DOCX, otherwise an error message.
+
+    Two layers:
+      1. Magic bytes — first four bytes must be ZIP local-file header (PK\\x03\\x04).
+      2. Decompressed-size cap — sum of all entries' file_size must stay under
+         _MAX_DOCX_UNCOMPRESSED. Defends against zip-bomb DOCX uploads.
+    """
+    if not payload or not payload.startswith(_DOCX_MAGIC_PK):
+        return "File does not look like a DOCX (missing ZIP header)."
+
+    import io
+    import zipfile
+    try:
+        with zipfile.ZipFile(io.BytesIO(payload)) as zf:
+            total = 0
+            for zi in zf.infolist():
+                total += zi.file_size
+                if total > _MAX_DOCX_UNCOMPRESSED:
+                    return (
+                        f"DOCX uncompressed size exceeds the "
+                        f"{_MAX_DOCX_UNCOMPRESSED // (1024 * 1024)} MB limit."
+                    )
+    except zipfile.BadZipFile:
+        return "DOCX file is corrupted or not a valid ZIP archive."
+    return None
+
+
 def _load_index_html() -> str:
     return INDEX_FILE.read_text(encoding="utf-8", errors="replace")
 
@@ -206,6 +245,32 @@ class LocalState:
         with self.lock:
             return dict(self.jobs)
 
+    def cleanup_old_jobs(self, max_age_sec: int = 3600) -> int:
+        """Remove finished jobs older than `max_age_sec`. Returns count removed."""
+        now = time.time()
+        removed = 0
+        with self.lock:
+            for jid in [
+                j for j, job in self.jobs.items()
+                if job.status in ("done", "error") and (now - job.created_at) > max_age_sec
+            ]:
+                del self.jobs[jid]
+                removed += 1
+        return removed
+
+    def start_cleanup_thread(self, interval_sec: int = 600, max_age_sec: int = 3600) -> None:
+        """Spawn a daemon thread that periodically prunes finished jobs."""
+        def _loop():
+            while True:
+                time.sleep(interval_sec)
+                try:
+                    n = self.cleanup_old_jobs(max_age_sec=max_age_sec)
+                    if n:
+                        print(f"[cleanup] pruned {n} finished job(s) older than {max_age_sec}s")
+                except Exception as exc:
+                    print(f"[cleanup] error: {exc}")
+        threading.Thread(target=_loop, daemon=True, name="job-cleanup").start()
+
 
 def _parse_multipart(headers, body: bytes) -> tuple[dict[str, str], dict[str, tuple[str, bytes]]]:
     content_type = headers.get("Content-Type", "")
@@ -286,6 +351,49 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def _send_zip_for_job(self, job_id: str) -> None:
+        """Bundle every output file for a job into a single ZIP and stream it.
+
+        Avoids the Chrome multi-download permission prompt (E9) — the browser
+        only sees one download. Filename derives from the main output stem.
+        """
+        job = self.state.get_job(job_id)
+        if not job or job.status != "done" or not job.filename:
+            self._send_text("Not found", HTTPStatus.NOT_FOUND)
+            return
+
+        import io
+        import zipfile
+
+        names = [n for n in (job.filename, job.filename2, job.filename3) if n]
+        existing = [(n, self.state.uploads_dir / n) for n in names
+                    if (self.state.uploads_dir / n).exists()]
+        if not existing:
+            self._send_text("Not found", HTTPStatus.NOT_FOUND)
+            return
+
+        # Strip _PER_TranslatePolish suffix to derive package stem.
+        main_stem = Path(job.filename).stem
+        pkg_stem = _re.sub(
+            r'_(?:PER|ARA|GER|FRE|CHI|SPA|POR|ITA|JPN|KOR|RUS|TUR|POL|DUT|SWE|NOR|DAN|FIN|HEB|HIN|THA|VIE|UKR|CZE|HUN|ROM|BUL).*$',
+            '', main_stem, flags=_re.IGNORECASE,
+        ) or main_stem
+        zip_name = f"{pkg_stem}_PER_package.zip"
+
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as z:
+            for name, path in existing:
+                z.write(path, name)
+        data = buf.getvalue()
+
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "application/zip")
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Content-Disposition", f'attachment; filename="{zip_name}"')
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(data)
+
     def do_GET(self):
         parsed = urlparse(self.path)
         path = parsed.path
@@ -334,6 +442,11 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
             self._send_file(self.state.uploads_dir / file_name, file_name)
             return
 
+        if path.startswith("/download-zip/"):
+            job_id = unquote(path.removeprefix("/download-zip/"))
+            self._send_zip_for_job(job_id)
+            return
+
         if path == "/robots.txt":
             self._send_text("User-agent: *\nDisallow:\n")
             return
@@ -356,6 +469,18 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
             return
 
         original_name, payload = uploaded
+
+        # Server-side validation runs *before* writing to disk.
+        # Magic bytes + zip-bomb cap protect against malicious / malformed uploads
+        # even when the client-side check in index.ejs is bypassed.
+        validation_error = _validate_docx_payload(payload)
+        if validation_error:
+            self._send_json(
+                {"ok": False, "comment": validation_error},
+                HTTPStatus.BAD_REQUEST,
+            )
+            return
+
         safe_name = _sanitize_filename(original_name)
         saved_name = f"{int(time.time() * 1000)}-{safe_name}"
         upload_path = self.state.uploads_dir / saved_name
@@ -413,6 +538,10 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
     ) -> None:
         _job_t0 = time.time()
         print(f"[job {job_id}] ▶ start — file: {original_name} | lang: {target_language} | engine: {translation_engine}")
+        # Limit concurrent backend subprocesses to keep memory bounded.
+        # When the cap is reached, a job waits here (status remains 'pending'
+        # so the frontend keeps polling) until a slot frees up.
+        _job_semaphore.acquire()
         try:
             if self.state.backend_mode == "mock":
                 time.sleep(1.2)
@@ -482,6 +611,8 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
             _job_elapsed = time.time() - _job_t0
             self.state.update_job(job_id, status="error", filename=None, error=str(exc))
             print(f"[job {job_id}] ✗ error after {_job_elapsed:.0f}s: {exc}")
+        finally:
+            _job_semaphore.release()
 
     def _map_engine(self, translation_engine: str) -> tuple[str, list[str]]:
         engine = translation_engine.lower().strip()
@@ -738,6 +869,10 @@ def main() -> int:
 
     state = LocalState(runtime_dir, args.backend, python_exe, script_path)
     state.boot()
+
+    # Periodically prune finished jobs older than 1 h so the in-memory job
+    # store does not grow unbounded across long-running sessions.
+    state.start_cleanup_thread(interval_sec=600, max_age_sec=3600)
 
     port = _find_free_port(args.port)
     server = ThreadingHTTPServer((args.host, port), MockTranslatorHandler)
