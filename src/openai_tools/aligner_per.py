@@ -91,32 +91,46 @@ def _fa_budget_per_row(en_rows: list, total_fa_len: int) -> list:
 
 
 # Content type constants — affect doubling and bridge rules
-_CT_NARRATION  = 'narration'   # default
-_CT_DIALOGUE   = 'dialogue'    # speaker-tagged rows — prefer fewer doubles
-_CT_SPIRITUAL  = 'spiritual'   # SM:/Master: — conservative doubling
-_CT_NEWS_ATTR  = 'news_attr'   # (Reuters)/(AP) attribution lines — skip doubling
-_CT_COOKING    = 'cooking'     # action-verb instructions — skip doubling
+_CT_NARRATION  = 'narration'    # default — normal doubling rules
+_CT_DIALOGUE   = 'dialogue'     # speaker-tagged rows — prefer fewer doubles
+_CT_SPIRITUAL  = 'spiritual'    # SM:/Master: — conservative doubling
+_CT_NEWS_ATTR  = 'news_attr'    # (Reuters)/(AP) attribution lines — skip doubling
+_CT_INGREDIENT = 'ingredient'   # recipe ingredient list row — skip doubling
+# NOTE: general cooking narrative (methods, descriptions) uses _CT_NARRATION
+# and gets normal doubling. Only isolated ingredient list rows skip doubling.
 
 _RE_DIALOGUE   = re.compile(r'^(?:Q\s*\([mf]\)|[A-Z]{1,4})\s*:', re.I)
 _RE_SPIRITUAL  = re.compile(r'^(?:SM|Master)\s*:', re.I)
 _RE_NEWS_ATTR  = re.compile(r'\((?:Reuters|AP|BBC|CNN|AFP|Al\s*Jazeera|Xinhua|Fox\s*News)\)', re.I)
-_RE_COOKING    = re.compile(
-    r'\b(?:hold|mix|stir|pour|add|fold|bake|heat|boil|simmer|'
-    r'slice|chop|blend|whisk|fry|saut[eé]|season|combine|place|'
-    r'spread|cover|remove|serve|rinse|drain)\b', re.I
+
+# Ingredient list row: has a measurement unit OR starts with a fraction/number
+# Examples: "1 cup of vegan cream cheese", "¼ cup of sugar", "2 tablespoons salt"
+_RE_INGREDIENT = re.compile(
+    r'(?:'
+    r'^[¼½¾⅓⅔⅛⅜⅝⅞]\s'                            # starts with fraction
+    r'|^\d+\s*(?:cup|tbsp|tsp|tablespoon|teaspoon'  # starts with number + unit
+    r'|oz|ounce|gram|g\b|ml|kg|lb|pound'
+    r'|inch|cm|pinch|clove|slice|piece|handful)s?'
+    r'|^\d+\s+\w'                                   # starts with plain number + word (e.g. "1 egg")
+    r')',
+    re.I
 )
 
 
 def _classify_content(en: str, fa: str = '') -> str:
-    """Return content type for a row based on EN (and optionally FA) text."""
+    """Return content type for a row based on EN (and optionally FA) text.
+
+    Only ingredient-list rows suppress doubling — general cooking narrative
+    (process descriptions, instructions with context) uses normal rules.
+    """
     if _RE_SPIRITUAL.match(en):
         return _CT_SPIRITUAL
     if _RE_DIALOGUE.match(en):
         return _CT_DIALOGUE
     if _RE_NEWS_ATTR.search(en) or _RE_NEWS_ATTR.search(fa):
         return _CT_NEWS_ATTR
-    if _RE_COOKING.search(en):
-        return _CT_COOKING
+    if _RE_INGREDIENT.match(en.strip()):
+        return _CT_INGREDIENT
     return _CT_NARRATION
 
 
@@ -737,7 +751,7 @@ class FASubtitleAligner:
         content_type = _classify_content(first_en, full_fa)
 
         # Skip doubling for certain content types
-        no_double_types = {_CT_NEWS_ATTR, _CT_COOKING}
+        no_double_types = {_CT_NEWS_ATTR, _CT_INGREDIENT}
 
         if content_type in no_double_types:
             # Single allocation: one chunk per row, no doubles
