@@ -597,27 +597,47 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
     def _find_double_file(self, main_output: Path) -> Path | None:
         """Look for the _PER_Double.docx sibling of the main output file.
 
-        The aligner derives its output path from the *original* source file
-        (not the timestamped upload copy) so we probe both the clean stem and
-        a timestamp-stripped variant.
+        Search order:
+          1. Exact name: replace _TranslatePolish → _Double in main output name.
+          2. Timestamped variant: same but with a leading timestamp prefix on disk
+             (aligner may write before _strip_timestamp runs).
+          3. Fallback glob filtered by stem: scan uploads dir for *_PER_Double.docx
+             whose clean stem matches the current job's clean stem.
         """
         parent = main_output.parent
-        # Strategy 1: replace TranslatePolish suffix with Double
-        candidate = _re.sub(r'_TranslatePolish(?=\.docx$)', '_Double', main_output.name, flags=_re.IGNORECASE)
-        if candidate != main_output.name:
-            p = parent / candidate
+
+        # Derive the clean stem shared by both output files.
+        # main_output.name is already timestamp-stripped at this point.
+        # e.g. "myfile_PER_TranslatePolish.docx" → clean_stem = "myfile"
+        clean_stem = _re.sub(
+            r'[_\-](?:PER|ARA|GER|FRE|CHI|SPA|POR|ITA|JPN|KOR|RUS|TUR|POL|DUT|SWE|NOR|DAN|FIN|HEB|HIN|THA|VIE|UKR|CZE|HUN|ROM|BUL|CAT|HRV|SLK|SLV|LIT|LAV|EST).*$',
+            '',
+            main_output.stem,
+            flags=_re.IGNORECASE,
+        ) or main_output.stem
+
+        # Strategy 1: exact name — replace TranslatePolish with Double
+        candidate_name = _re.sub(
+            r'_TranslatePolish(?=\.docx$)', '_Double', main_output.name, flags=_re.IGNORECASE
+        )
+        if candidate_name != main_output.name:
+            p = parent / candidate_name
             if p.exists():
                 return p
 
-        # Strategy 2: scan the directory for *_PER_Double.docx files
-        # created after (or around) when the main output appeared
-        try:
-            main_mtime = main_output.stat().st_mtime
-            for p in parent.glob("*_PER_Double.docx"):
-                if p.stat().st_mtime >= main_mtime - 5:  # within 5 s
-                    return p
-        except OSError:
-            pass
+        # Strategy 2: timestamped variant still on disk
+        # e.g. "1778036666789-myfile_PER_Double.docx"
+        for p in parent.glob(f"*-{clean_stem}_PER_Double.docx"):
+            if p.exists():
+                return p
+
+        # Strategy 3: any *_PER_Double.docx whose clean stem matches this job
+        # (handles edge-case naming variations)
+        for p in parent.glob("*_PER_Double.docx"):
+            p_clean = _re.sub(r'^\d{10,}-', '', p.name)          # strip timestamp
+            p_stem  = _re.sub(r'[_\-]PER_Double\.docx$', '', p_clean, flags=_re.IGNORECASE)
+            if p_stem == clean_stem:
+                return p
 
         return None
 
