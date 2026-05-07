@@ -183,7 +183,6 @@ class Job:
     created_at: float
     filename2: str | None = None  # _PER_Double.docx   (FA mechanical aligner)
     filename3: str | None = None  # _PER_Classic.docx  (simple word-wrap split)
-    filename4: str | None = None  # _PER_AIAlign.docx  (FA aligner + LLM review)
     progress: int = 0             # 0-100; updated by PROGRESS:N markers from backend
 
 
@@ -354,11 +353,22 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def _send_zip_for_job(self, job_id: str) -> None:
-        """Bundle every output file for a job into a single ZIP and stream it.
+        """[DISABLED] ZIP packaging for multi-file download.
 
-        Avoids the Chrome multi-download permission prompt (E9) — the browser
-        only sees one download. Filename derives from the main output stem.
+        Was introduced in Phase 2 (fix E13) to work around Chrome's multi-download
+        permission prompt: all output files were packed into a single ZIP so the
+        browser only saw one download request.
+
+        Replaced by sequential timed downloads in the frontend (1800 ms apart),
+        which avoids the Chrome prompt without requiring users to unzip anything.
+        Kept here in case ZIP bundling is needed again in the future.
+
+        The /download-zip/ route still exists and forwards to this method,
+        but returns 410 GONE so no client should rely on it.
         """
+        self._send_text("ZIP download is no longer active.", HTTPStatus.GONE)
+        return
+        # --- original implementation below (kept for reference) ---
         job = self.state.get_job(job_id)
         if not job or job.status != "done" or not job.filename:
             self._send_text("Not found", HTTPStatus.NOT_FOUND)
@@ -437,8 +447,6 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
                 payload["filename2"] = job.filename2
             if job.filename3:
                 payload["filename3"] = job.filename3
-            if job.filename4:
-                payload["filename4"] = job.filename4
             self._send_json(payload)
             return
 
@@ -448,6 +456,7 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
             return
 
         if path.startswith("/download-zip/"):
+            # ZIP download is disabled — see _send_zip_for_job() for explanation.
             job_id = unquote(path.removeprefix("/download-zip/"))
             self._send_zip_for_job(job_id)
             return
@@ -604,18 +613,12 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
                 classic_path = self._strip_timestamp(classic_path)
                 print(f"[job {job_id}] classic file found -> {classic_path.name}")
 
-            ai_align_path = self._find_ai_align_file(output_path)
-            if ai_align_path:
-                ai_align_path = self._strip_timestamp(ai_align_path)
-                print(f"[job {job_id}] ai-align file found -> {ai_align_path.name}")
-
             self.state.update_job(
                 job_id,
                 status="done",
                 filename=output_path.name,
                 filename2=double_path.name if double_path else None,
                 filename3=classic_path.name if classic_path else None,
-                filename4=ai_align_path.name if ai_align_path else None,
                 error=None,
             )
             _job_elapsed = time.time() - _job_t0
@@ -656,6 +659,12 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
         ai_model: str | None,
     ) -> Path:
         engine, extra_flags = self._map_engine(translation_engine)
+
+        # B1-guard: fa + chatgpt-polish pipeline never uses basic split —
+        # the aligner handles line distribution. Force off regardless of
+        # what the frontend sent (e.g. stale localStorage checkbox state).
+        if translation_engine == "chatgpt-polish" and target_language.lower().startswith("fa"):
+            split_translate = False
 
         cmd = [
             str(self.state.python_exe),
@@ -848,43 +857,6 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
         for p in parent.glob("*_PER_Classic.docx"):
             p_clean = _re.sub(r'^\d{10,}-', '', p.name)
             p_stem  = _re.sub(r'[_\-]PER_Classic\.docx$', '', p_clean, flags=_re.IGNORECASE)
-            if p_stem == clean_stem:
-                return p
-
-        return None
-
-    def _find_ai_align_file(self, main_output: Path) -> Path | None:
-        """Look for the _PER_AIAlign.docx sibling of the main output file.
-
-        Mirrors _find_classic_file() but targets _PER_AIAlign.docx.
-        """
-        parent = main_output.parent
-
-        clean_stem = _re.sub(
-            r'[_\-](?:PER|ARA|GER|FRE|CHI|SPA|POR|ITA|JPN|KOR|RUS|TUR|POL|DUT|SWE|NOR|DAN|FIN|HEB|HIN|THA|VIE|UKR|CZE|HUN|ROM|BUL|CAT|HRV|SLK|SLV|LIT|LAV|EST).*$',
-            '',
-            main_output.stem,
-            flags=_re.IGNORECASE,
-        ) or main_output.stem
-
-        # Strategy 1: exact name — replace TranslatePolish with AIAlign
-        candidate_name = _re.sub(
-            r'_TranslatePolish(?=\.docx$)', '_AIAlign', main_output.name, flags=_re.IGNORECASE
-        )
-        if candidate_name != main_output.name:
-            p = parent / candidate_name
-            if p.exists():
-                return p
-
-        # Strategy 2: timestamped variant still on disk
-        for p in parent.glob(f"*-{clean_stem}_PER_AIAlign.docx"):
-            if p.exists():
-                return p
-
-        # Strategy 3: any *_PER_AIAlign.docx whose clean stem matches this job
-        for p in parent.glob("*_PER_AIAlign.docx"):
-            p_clean = _re.sub(r'^\d{10,}-', '', p.name)
-            p_stem  = _re.sub(r'[_\-]PER_AIAlign\.docx$', '', p_clean, flags=_re.IGNORECASE)
             if p_stem == clean_stem:
                 return p
 

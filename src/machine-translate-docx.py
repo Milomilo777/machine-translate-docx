@@ -7563,17 +7563,15 @@ def save_docx_file():
                 _doc.save(output_path)
                 return _stats
 
-            # ── Subtitle aligner: three output files ─────────────────────────────
+            # ── Subtitle aligner: two output files ───────────────────────────────
             # Classic  (_PER_Classic.docx)  = simple word-wrap split, no AI
             # Double   (_PER_Double.docx)   = FA-specific mechanical aligner (llm_threshold=0)
-            # AIAlign  (_PER_AIAlign.docx)  = FA-specific aligner + full LLM review (llm_threshold=100)
             # Guard: only for Persian + chatgpt-polish pipeline
             if with_polish and dest_lang.startswith('fa'):
                 _ai_model_align  = 'gpt-5.4-mini'  # aligner always uses mini — never change
                 _stem_path       = re.sub(r'(?i)\.docx$', '', word_file_to_translate)
                 _classic_path    = f"{_stem_path}_PER_Classic.docx"
                 _double_path     = f"{_stem_path}_PER_Double.docx"
-                _ai_path         = f"{_stem_path}_PER_AIAlign.docx"
 
                 # ── Pass 1: Classic — simple algorithmic word-wrap ────────────
                 # PROGRESS marker — translate+polish+save complete; splitting about to start.
@@ -7593,7 +7591,7 @@ def save_docx_file():
                     print(f"[WARN] Classic split failed: {_ae}")
                     print(_tb.format_exc())
 
-                print("PROGRESS:82", flush=True)
+                print("PROGRESS:90", flush=True)
 
                 # ── Pass 2: Double — FA mechanical aligner (no LLM) ──────────
                 try:
@@ -7618,34 +7616,7 @@ def save_docx_file():
                     print(f"[WARN] Double aligner failed: {_ae}")
                     print(_tb.format_exc())
 
-                print("PROGRESS:90", flush=True)
-
-                # ── Pass 3: AIAlign — FA aligner + full LLM review ───────────
-                try:
-                    print(f"\n[INFO] Running AIAlign aligner -> {_ai_path}")
-                    _t0 = time.time()
-                    _ai_aligner = FASubtitleAligner(
-                        model=_ai_model_align,      # still gpt-5.4-mini — never change
-                        llm_threshold=100,           # all groups reviewed by LLM
-                        token_budget=40_000,
-                    )
-                    _as = _ai_aligner.align(word_file_to_translate_save_as_path, _ai_path)
-                    print(
-                        f"[TIMER] AIAlign: {time.time()-_t0:.1f}s"
-                        f" | groups: {_as.get('groups','?')}"
-                        f" | LLM: {_as.get('llm_corrected','?')}"
-                        f" | tokens: {_as.get('tokens_used','?')}"
-                        f" | doubles: {_as.get('doubles','?')}"
-                        f" | triples: {_as.get('triples',0)}"
-                        f" | over-48: {_as.get('over_limit',0)}"
-                    )
-                    print(f"[INFO] AIAlign saved: {_ai_path}")
-                except Exception as _ae:
-                    import traceback as _tb
-                    print(f"[WARN] AIAlign aligner failed: {_ae}")
-                    print(_tb.format_exc())
-
-                # PROGRESS marker — all three passes complete.
+                # PROGRESS marker — both passes complete.
                 print("PROGRESS:100", flush=True)
         except Exception:
             var = traceback.format_exc()
