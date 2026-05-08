@@ -226,6 +226,27 @@ def _get_ctx() -> RuntimeContext:
             _ctx.config.max_translation_block_size = MAX_TRANSLATION_BLOCK_SIZE
         except NameError:
             pass
+        # F1.4 — engine + flags snapshot
+        try:
+            _ctx.engine.engine = translation_engine
+        except NameError:
+            pass
+        try:
+            _ctx.engine.method = engine_method
+        except NameError:
+            pass
+        try:
+            _ctx.flags.splitonly = splitonly
+        except NameError:
+            pass
+        try:
+            _ctx.docx.translation_errors_count = translation_errors_count
+        except NameError:
+            pass
+        try:
+            _ctx.browser.deepl_sleep_wait_translation_seconds = deepl_sleep_wait_translation_seconds
+        except NameError:
+            pass
     return _ctx
 
 
@@ -3083,68 +3104,72 @@ def selenium_webservice_perplexity_translate(ctx: RuntimeContext, to_translate, 
         return False, ""
 
 
-def set_translation_function():
-    global selenium_chrome_machine_translate_once
-    if not splitonly:
-        print("\ntranslation_engine=%s" % (translation_engine))
-        print("engine_method=%s" % (engine_method))
-        if (engine_method == "phrasesblock"):
-            print("maximum number of characters per block: %d" % MAX_TRANSLATION_BLOCK_SIZE)
+def set_translation_function(ctx: RuntimeContext):
+    """Resolve the per-call dispatcher for the active engine + method.
 
-    if translation_engine == 'deepl':
-        if engine_method == 'phrasesblock':
-            selenium_chrome_machine_translate_once = selenium_chrome_translate_get_from_text_array
+    Threaded in Phase F1.4: writes ``ctx.engine.dispatcher`` instead of
+    the historical module-level pointer
+    ``selenium_chrome_machine_translate_once``. Reads engine + method
+    + max-block-size + splitonly through ``ctx`` instead of globals.
+
+    R15: this is the function that re-points the dispatcher during the
+    DeepL phrasesblock → singlephrase fallback. The structural test
+    `test_engine_method_flip_via_ctx` pins the contract.
+    """
+    if not ctx.flags.splitonly:
+        print("\ntranslation_engine=%s" % (ctx.engine.engine))
+        print("engine_method=%s"        % (ctx.engine.method))
+        if ctx.engine.method == "phrasesblock":
+            print("maximum number of characters per block: %d" % ctx.config.max_translation_block_size)
+
+    if ctx.engine.engine == 'deepl':
+        if ctx.engine.method == 'phrasesblock':
+            ctx.engine.dispatcher = selenium_chrome_translate_get_from_text_array
         else:
-            selenium_chrome_machine_translate_once = selenium_chrome_deepl_translate
-    elif translation_engine == 'chatgpt':
+            ctx.engine.dispatcher = selenium_chrome_deepl_translate
+    elif ctx.engine.engine == 'chatgpt':
         # Same for API and web scraping
-        selenium_chrome_machine_translate_once = selenium_chrome_translate_get_from_text_array
+        ctx.engine.dispatcher = selenium_chrome_translate_get_from_text_array
     else:
-        if engine_method == 'textfile':
-            selenium_chrome_machine_translate_once = selenium_chrome_translate_get_from_text_array
-        elif engine_method == 'singlephrase':
-            selenium_chrome_machine_translate_once = selenium_chrome_google_translate
+        if ctx.engine.method == 'textfile':
+            ctx.engine.dispatcher = selenium_chrome_translate_get_from_text_array
+        elif ctx.engine.method == 'singlephrase':
+            ctx.engine.dispatcher = selenium_chrome_google_translate
         else:
-            selenium_chrome_machine_translate_once = selenium_chrome_translate_get_from_text_array
+            ctx.engine.dispatcher = selenium_chrome_translate_get_from_text_array
 
 
-def selenium_chrome_machine_translate(to_translate, index):
-    global selenium_chrome_machine_translate_once
+def selenium_chrome_machine_translate(ctx: RuntimeContext, to_translate, index):
+    """Per-call wrapper around ``ctx.engine.dispatcher`` with retry logic.
+
+    Threaded in Phase F1.4: reads the dispatcher pointer, the active
+    engine + method, the retry counter, and the inter-retry sleep
+    factor from ``ctx`` instead of module globals.
+    """
     translation = ""
     translation_try_count = 1
     max_try_count = 15
-    global translation_errors_count
-    global deepl_sleep_wait_translation_seconds
-    #print("--index-- : %d" % index)
-    #to_translate_str = str(to_translate)
     try:
         while translation_try_count < max_try_count and translation == "":
             if translation_try_count > 1:
                 print("Retrying to translate again (%d)..." % (translation_try_count))
-                translation_errors_count = translation_errors_count + 1
-                deepl_sleep_wait_translation_seconds  = deepl_sleep_wait_translation_seconds * 1.1
-                print("%d translation retry so far..." % (translation_errors_count))
-            if translation_engine == 'deepl':
-                if engine_method == 'phrasesblock':
-                    translation = selenium_chrome_machine_translate_once(to_translate, index)
+                ctx.docx.translation_errors_count += 1
+                ctx.browser.deepl_sleep_wait_translation_seconds *= 1.1
+                print("%d translation retry so far..." % (ctx.docx.translation_errors_count))
+            if ctx.engine.engine == 'deepl':
+                if ctx.engine.method == 'phrasesblock':
+                    translation = ctx.engine.dispatcher(to_translate, index)
                 else:
-                    translation = selenium_chrome_machine_translate_once(to_translate, translation_try_count - 1)
-            elif engine_method == 'textfile':
-                translation = selenium_chrome_machine_translate_once(to_translate, index)
-            elif engine_method == 'xlsxfile':
-                translation = selenium_chrome_machine_translate_once(to_translate, index)
-            elif engine_method == 'phrasesblock':
-                translation = selenium_chrome_machine_translate_once(to_translate, index)
-            elif engine_method == 'javascript':
-                translation = selenium_chrome_machine_translate_once(to_translate, index)
-            elif engine_method == 'webservice':
-                translation = selenium_chrome_machine_translate_once(to_translate, index)
-            elif engine_method == 'api':
-                translation = selenium_chrome_machine_translate_once(to_translate, index)
+                    translation = ctx.engine.dispatcher(to_translate, translation_try_count - 1)
+            elif ctx.engine.method in (
+                'textfile', 'xlsxfile', 'phrasesblock',
+                'javascript', 'webservice', 'api',
+            ):
+                translation = ctx.engine.dispatcher(to_translate, index)
             else:
-                translation = selenium_chrome_machine_translate_once(to_translate)
-            translation_try_count = translation_try_count + 1
-    except:
+                translation = ctx.engine.dispatcher(to_translate)
+            translation_try_count += 1
+    except Exception:
         print("Error in selenium_chrome_machine_translate function.")
     return translation
     
@@ -4605,7 +4630,7 @@ def get_translation_and_replace_after():
                                 #driver.set_window_size(400, 650)
 
                             print("phrase_no=%d" % phrase_no)
-                            web_translation_separators = selenium_chrome_machine_translate(item_searched_and_replaced_before, phrase_no)
+                            web_translation_separators = selenium_chrome_machine_translate(_get_ctx(), item_searched_and_replaced_before, phrase_no)
                     except Exception:
                         use_api = False
                         # Faster google Chrome translate failed, using Selenium as backup
@@ -4621,12 +4646,12 @@ def get_translation_and_replace_after():
                             driver.set_window_size(800, 700)
 
                         print("phrase_no = %d" % phrase_no)
-                        web_translation_separators = selenium_chrome_machine_translate(item_searched_and_replaced_before, phrase_no)
+                        web_translation_separators = selenium_chrome_machine_translate(_get_ctx(), item_searched_and_replaced_before, phrase_no)
                 else:
                     if engine_method == "singlephrase" and translation_engine == 'deepl':
-                        translation_succeded, web_translation_separators  = selenium_chrome_machine_translate(item_searched_and_replaced_before, phrase_no)
+                        translation_succeded, web_translation_separators  = selenium_chrome_machine_translate(_get_ctx(), item_searched_and_replaced_before, phrase_no)
                     else:
-                        web_translation_separators = selenium_chrome_machine_translate(item_searched_and_replaced_before, phrase_no)
+                        web_translation_separators = selenium_chrome_machine_translate(_get_ctx(), item_searched_and_replaced_before, phrase_no)
                         
                 #web_translation_separators = translation.text
                 phrase_separator_removed_str = p_remove_double_spaces.sub(' ', web_translation_separators)
@@ -6055,15 +6080,15 @@ def main() -> int:
     global logged_into_deepl, deepl_nb_clear_cached_times, version_checker_sleep_seconds_on_update
     translation_succeded = False
 
-    set_translation_function()
+    set_translation_function(_get_ctx())
     initialize_translation_memory_xlsx()
 
     read_and_parse_docx_document(_get_ctx())
 
     create_webdriver()
-    
+
     if translation_engine == 'deepl':
-        logged_into_deepl = selenium_chrome_deepl_log_in()
+        logged_into_deepl = selenium_chrome_deepl_log_in(_get_ctx())
         
     if translation_engine == 'perplexity':
         pass
@@ -6076,13 +6101,18 @@ def main() -> int:
     if logged_into_deepl:
         selenium_chrome_deepl_log_off(_get_ctx())
 
+    # R15: DeepL phrasesblock → singlephrase fallback. Threaded in F1.4
+    # so the dispatcher refresh sees the flipped method through ctx.
+    # The structural test is `test_engine_method_flip_via_ctx` in
+    # tests/test_runtime_threading.py.
     if translation_succeded == False and translation_engine == 'deepl' and engine_method == 'phrasesblock':
         engine_method = 'singlephrase'
-        set_translation_function()
+        _get_ctx().engine.method = 'singlephrase'
+        set_translation_function(_get_ctx())
         try:
             driver.close()
             driver.quit()
-        except:
+        except Exception:
             pass
         create_webdriver()
 
