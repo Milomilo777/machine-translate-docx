@@ -3587,10 +3587,16 @@ def generate_tmx_file():
         print(var)
 
 
-def prepare_and_clear_cell_for_writing(row_n, translation_cell_text):
-    global table_cells
+def prepare_and_clear_cell_for_writing(ctx: RuntimeContext, row_n, translation_cell_text):
+    """Clear and re-init a target-language cell.
+
+    Threaded in Phase F1.3: reads ``ctx.docx.table_cells`` in place of the
+    historical ``table_cells`` global. ``dest_lang`` and ``rtlstyle`` are
+    not yet on ctx; they remain as ambient module reads (closed over by
+    Python's name lookup) and will be threaded in a later sub-phase.
+    """
     paragraph_no = 0
-    current_cell = table_cells[row_n][2]
+    current_cell = ctx.docx.table_cells[row_n][2]
 
     current_cell._element.clear_content()
     
@@ -3703,36 +3709,17 @@ def cell_add_paragraph(row_n, paragraph_text):
         
     table_cells[row_n][2] = current_cell
 
-def read_and_parse_docx_document():
-    global from_text_table
-    global from_text_is_greyed_table
-    global from_text_is_red_color_table
-    global from_text_is_end_of_line_table
-    global from_text_is_beginning_of_line_table
-    global from_text_is_empty_line_table
-    global from_text_is_conditional_end_of_line_table
-    global from_text_by_phrase_separator_table
-    global from_text_by_phrase_table
-    global from_text_nb_lines_in_phrase
-    global from_text_nb_lines_in_cell
-    global to_text_by_phrase_separator_table
-    global to_text_by_phrase_separator_removed_table
-    global to_text_splited_table1
-    global to_text_by_phrase_table
-    global to_text_table
-    global to_raw_translated_table
-    global to_text_removed_line_separator
-    global translation_result_using_separator
-    global translation_result_phrase_array
-    global translation_result
-    global from_text_is_read
+def read_and_parse_docx_document(ctx: RuntimeContext):
+    """Parse the input DOCX into the parallel arrays on ``ctx.docx``.
 
-    global table_cells
-
-    global word_translation_table_length
-
-    global table, numrows, numcols
-    global E_mail_str
+    Threaded in Phase F1.3: every parallel array, table_cells, the
+    table reference, and the row/column geometry move from module
+    globals into ``ctx.docx``. The +1 indexing convention
+    (arrays sized ``numrows + 1``, accessed at ``[i + 1]``) is
+    preserved exactly. R16's structural test
+    (``test_docx_arrays_plus_one_indexing``) pins this contract.
+    """
+    docx = ctx.docx
 
 
     start = timeit.timeit()
@@ -3740,7 +3727,7 @@ def read_and_parse_docx_document():
     if use_html:
         print("Content-Type: text/html\n")
 
-    word_translation_table_length = len(docxdoc.tables[0].rows)
+    docx.word_translation_table_length = len(docxdoc.tables[0].rows)
 
     nb_tables = len(docxdoc.tables)
 
@@ -3753,21 +3740,21 @@ def read_and_parse_docx_document():
     # Number of tables</h2>nb_tables=", nb_tables
 
     numerrors = 0
-    # print("word_translation_table_length=%d" %(word_translation_table_length))
+    # print("docx.word_translation_table_length=%d" %(docx.word_translation_table_length))
     # print("docx_translation_table_length=%d" %(docx_translation_table_length))
 
     try:
-        table = docxdoc.tables[0]
+        docx.table = docxdoc.tables[0]
     except:
         print(f"Error: document {docxfile} does not have a table. Exiting.")
         exit(14)
-    table_cells = [['' for i in range(len(table.columns))] for j in range(len(table.rows))]
+    docx.table_cells = [['' for i in range(len(docx.table.columns))] for j in range(len(docx.table.rows))]
 
-    numrows = len(table.rows)
-    numcols = len(table.columns)
+    docx.numrows = len(docx.table.rows)
+    docx.numcols = len(docx.table.columns)
 
-    if numcols <= 2:
-        print("ERROR : The table has %s column but expected 3" % (numcols))
+    if docx.numcols <= 2:
+        print("ERROR : The table has %s column but expected 3" % (docx.numcols))
         print("Exiting\n")
 
         print("\nDeveloper: %s" %(E_mail_str))
@@ -3780,36 +3767,36 @@ def read_and_parse_docx_document():
 
     rownum = 0
 
-    from_text_table = [''] * (numrows + 1)
-    from_text_is_greyed_table = [0] * (numrows + 1)
-    from_text_is_red_color_table = [0] * (numrows + 1)
-    from_text_is_end_of_line_table = [0] * (numrows + 1)
-    from_text_is_beginning_of_line_table = [0] * (numrows + 1)
-    from_text_is_empty_line_table = [0] * (numrows + 1)
-    from_text_is_conditional_end_of_line_table = [0] * (numrows + 1)
-    from_text_by_phrase_separator_table = [''] * (numrows + 1)
-    from_text_by_phrase_table = [''] * (numrows + 1)
+    docx.from_text_table = [''] * (docx.numrows + 1)
+    docx.from_text_is_greyed_table = [0] * (docx.numrows + 1)
+    docx.from_text_is_red_color_table = [0] * (docx.numrows + 1)
+    docx.from_text_is_end_of_line_table = [0] * (docx.numrows + 1)
+    docx.from_text_is_beginning_of_line_table = [0] * (docx.numrows + 1)
+    docx.from_text_is_empty_line_table = [0] * (docx.numrows + 1)
+    docx.from_text_is_conditional_end_of_line_table = [0] * (docx.numrows + 1)
+    docx.from_text_by_phrase_separator_table = [''] * (docx.numrows + 1)
+    docx.from_text_by_phrase_table = [''] * (docx.numrows + 1)
     #number of lines in per phrase
-    from_text_nb_lines_in_phrase = [0] * (numrows + 1)
-    from_text_nb_lines_in_cell = [0] * (numrows + 1)
-   #input(numrows)
+    docx.from_text_nb_lines_in_phrase = [0] * (docx.numrows + 1)
+    docx.from_text_nb_lines_in_cell = [0] * (docx.numrows + 1)
+   #input(docx.numrows)
     #
-    to_text_by_phrase_separator_table = [''] * (numrows + 1)
-    to_text_by_phrase_separator_removed_table = [''] * (numrows + 1)
-    to_text_splited_table1 = [''] * (numrows + 1)
-    to_text_by_phrase_table = [''] * (numrows + 1)
-    to_text_table = [''] * (numrows + 1)
-    to_raw_translated_table = [''] * (numrows + 1)
-    to_text_removed_line_separator = [''] * (numrows + 1)
-    translation_result_using_separator = [''] * (numrows + 1)
-    translation_result_phrase_array = [[]] * (numrows + 1)
-    translation_result = [''] * (numrows + 1)
-    from_text_is_read = [0] * (numrows + 1)
+    docx.to_text_by_phrase_separator_table = [''] * (docx.numrows + 1)
+    docx.to_text_by_phrase_separator_removed_table = [''] * (docx.numrows + 1)
+    docx.to_text_splited_table1 = [''] * (docx.numrows + 1)
+    docx.to_text_by_phrase_table = [''] * (docx.numrows + 1)
+    docx.to_text_table = [''] * (docx.numrows + 1)
+    docx.to_raw_translated_table = [''] * (docx.numrows + 1)
+    docx.to_text_removed_line_separator = [''] * (docx.numrows + 1)
+    docx.translation_result_using_separator = [''] * (docx.numrows + 1)
+    docx.translation_result_phrase_array = [[]] * (docx.numrows + 1)
+    docx.translation_result = [''] * (docx.numrows + 1)
+    docx.from_text_is_read = [0] * (docx.numrows + 1)
 
     if use_html :
-        print("<br>%s rows.<br>%d colums.<br>" % (numrows, numcols))
+        print("<br>%s rows.<br>%d colums.<br>" % (docx.numrows, docx.numcols))
 
-    for i, row in enumerate(table.rows):
+    for i, row in enumerate(docx.table.rows):
         col_no = 1
         row_n = i + 1
         
@@ -3821,17 +3808,17 @@ def read_and_parse_docx_document():
             for j, cell in enumerate(row.cells):
                 #if cell.text:
                 #    df[i][j] = cell.text
-                table_cells[i][j] = cell
+                docx.table_cells[i][j] = cell
                 # XML is ._tc
                 #df[i][j] = cell._tc
                 if col_no == 2:
                 
-                    #from_text_is_greyed_table[row_n] = is_greyed_line(cell)
+                    #docx.from_text_is_greyed_table[row_n] = is_greyed_line(cell)
                     #cellvalue = cell.text.replace('’', "'").strip()
-                    #print(from_text_is_greyed_table)
-                    #print(from_text_is_red_color_table)
+                    #print(docx.from_text_is_greyed_table)
+                    #print(docx.from_text_is_red_color_table)
                     #print("row_n=%d" % (row_n))
-                    cellvalue, from_text_is_greyed_table[i], from_text_is_red_color_table[i] = get_cell_data(cell,row_n)
+                    cellvalue, docx.from_text_is_greyed_table[i], docx.from_text_is_red_color_table[i] = get_cell_data(cell,row_n)
                     p_remove_pause
                     cellvalue = p_remove_pause.sub(' ', cellvalue)
                     cellvalue = p_remove_double_spaces.sub(' ', cellvalue)
@@ -3846,137 +3833,137 @@ def read_and_parse_docx_document():
                         except Exception:
                             print("%d : (unable to print content to screen)" )
 
-                    from_text_is_end_of_line_table[i] = is_end_of_line(cellvalue) or from_text_is_red_color_table[i]
-                    from_text_is_empty_line_table[i] = is_empty_line(cellvalue)
-                    from_text_is_beginning_of_line_table[i] = is_beginning_of_line(cellvalue)
-                    from_text_is_conditional_end_of_line_table[i] = is_conditional_end_of_line(cellvalue)
+                    docx.from_text_is_end_of_line_table[i] = is_end_of_line(cellvalue) or docx.from_text_is_red_color_table[i]
+                    docx.from_text_is_empty_line_table[i] = is_empty_line(cellvalue)
+                    docx.from_text_is_beginning_of_line_table[i] = is_beginning_of_line(cellvalue)
+                    docx.from_text_is_conditional_end_of_line_table[i] = is_conditional_end_of_line(cellvalue)
 
-                    if from_text_is_greyed_table[i] == 1:
-                        from_text_is_beginning_of_line_table[i] = 0
-                        from_text_is_end_of_line_table[i] = 0
+                    if docx.from_text_is_greyed_table[i] == 1:
+                        docx.from_text_is_beginning_of_line_table[i] = 0
+                        docx.from_text_is_end_of_line_table[i] = 0
                         
                     if i == 2 and len(cellvalue) > 0:
-                        from_text_is_beginning_of_line_table[i] = 1
+                        docx.from_text_is_beginning_of_line_table[i] = 1
 
                     if i > 1:
                         #Test conditionel de fin de ligne
-                        if from_text_is_conditional_end_of_line_table[i - 1] == 1 \
-                            and from_text_is_beginning_of_line_table[i] == 1:
-                            from_text_is_end_of_line_table [i - 1] = 1
-                            from_text_is_beginning_of_line_table [i] = 1
+                        if docx.from_text_is_conditional_end_of_line_table[i - 1] == 1 \
+                            and docx.from_text_is_beginning_of_line_table[i] == 1:
+                            docx.from_text_is_end_of_line_table [i - 1] = 1
+                            docx.from_text_is_beginning_of_line_table [i] = 1
 
                         # Verifier debut de ligne special
                         # Si ligne precedente est vide ou grisee:
                         #    Si ligne courante est non vide et non grisee
                         #        ligne courante est debut de ligne
-                        if (from_text_is_empty_line_table[i - 1] == 1 \
-                            or from_text_is_greyed_table[i - 1] == 1):
-                            if (from_text_is_empty_line_table[i] == 1 \
-                                and from_text_is_greyed_table[i] == 1):
-                                from_text_is_beginning_of_line_table[i] = 1
+                        if (docx.from_text_is_empty_line_table[i - 1] == 1 \
+                            or docx.from_text_is_greyed_table[i - 1] == 1):
+                            if (docx.from_text_is_empty_line_table[i] == 1 \
+                                and docx.from_text_is_greyed_table[i] == 1):
+                                docx.from_text_is_beginning_of_line_table[i] = 1
 
                         # Verifier la ligne precedente est fin de ligne
                         # Si ligne precedente est non vide et non grisee
                         #    Si ligne courante est vide ou grisee
                         #        la ligne precedente est fin de ligne
-                        if (from_text_is_empty_line_table[i - 1] == 0 \
-                            and from_text_is_greyed_table[i - 1] == 0):
-                            if (from_text_is_empty_line_table[i] == 1 \
-                                or from_text_is_greyed_table[i] == 1):
-                                from_text_is_end_of_line_table[i - 1] = 1
+                        if (docx.from_text_is_empty_line_table[i - 1] == 0 \
+                            and docx.from_text_is_greyed_table[i - 1] == 0):
+                            if (docx.from_text_is_empty_line_table[i] == 1 \
+                                or docx.from_text_is_greyed_table[i] == 1):
+                                docx.from_text_is_end_of_line_table[i - 1] = 1
 
 
                         # Verifier que c'est vraiment un debut de ligne suivant une fin de ligne
                         # Si ligne precedente n'est pas fin de ligne
                         #    et ligne oourante est debut de ligne
                         #        la ligne courante n'est pas un debut de ligne
-                        if from_text_is_beginning_of_line_table[i] == 1 and \
-                            from_text_is_end_of_line_table[i - 1] == 0 \
-                            and from_text_is_greyed_table[i - 1] == 0 \
+                        if docx.from_text_is_beginning_of_line_table[i] == 1 and \
+                            docx.from_text_is_end_of_line_table[i - 1] == 0 \
+                            and docx.from_text_is_greyed_table[i - 1] == 0 \
                             and i > 2:
-                            from_text_is_beginning_of_line_table[i] = 0
+                            docx.from_text_is_beginning_of_line_table[i] = 0
 
 
                         # Verifier qu'on a pas loupe un debut de ligne
                         # Si ligne precedente est fin de ligne
                         #    et ligne oourante n'est pas grisee et pas debut de ligne
                         #        la ligne courante est un debut de ligne
-                        if from_text_is_end_of_line_table[i - 1] == 1 \
-                            and from_text_is_greyed_table[i] == 0 \
-                            and from_text_is_beginning_of_line_table[i] == 0:
-                            from_text_is_beginning_of_line_table[i] = 1
+                        if docx.from_text_is_end_of_line_table[i - 1] == 1 \
+                            and docx.from_text_is_greyed_table[i] == 0 \
+                            and docx.from_text_is_beginning_of_line_table[i] == 0:
+                            docx.from_text_is_beginning_of_line_table[i] = 1
 
-                        if (from_text_is_empty_line_table[i - 1] == 1 \
-                            or from_text_is_greyed_table[i - 1] == 1) \
-                            and (from_text_is_empty_line_table[i] == 0 \
-                            and from_text_is_greyed_table[i] == 0):
-                            from_text_is_beginning_of_line_table[i] = 1
+                        if (docx.from_text_is_empty_line_table[i - 1] == 1 \
+                            or docx.from_text_is_greyed_table[i - 1] == 1) \
+                            and (docx.from_text_is_empty_line_table[i] == 0 \
+                            and docx.from_text_is_greyed_table[i] == 0):
+                            docx.from_text_is_beginning_of_line_table[i] = 1
 
-                        if from_text_is_empty_line_table[i - 1] == 1:
-                            from_text_is_beginning_of_line_table[i - 1] = 0
+                        if docx.from_text_is_empty_line_table[i - 1] == 1:
+                            docx.from_text_is_beginning_of_line_table[i - 1] = 0
 
-                        if i == numrows:
-                            from_text_is_end_of_line_table[i - 1] = 1
+                        if i == docx.numrows:
+                            docx.from_text_is_end_of_line_table[i - 1] = 1
 
-                    from_text_table[i] = cellvalue
+                    docx.from_text_table[i] = cellvalue
                 col_no = col_no + 1
             
             if not splitonly and i > 1:
-                prepare_and_clear_cell_for_writing (i, '')
-            from_text_is_read[i] = 1
+                prepare_and_clear_cell_for_writing(ctx, i, '')
+            docx.from_text_is_read[i] = 1
         except Exception:
             var = traceback.format_exc()
             print(var)
             numerrors = numerrors + 1
 
-    if from_text_is_greyed_table[numrows] == 0 \
-        and from_text_is_empty_line_table[numrows] == 0:
-        from_text_is_end_of_line_table[numrows] = 1
+    if docx.from_text_is_greyed_table[docx.numrows] == 0 \
+        and docx.from_text_is_empty_line_table[docx.numrows] == 0:
+        docx.from_text_is_end_of_line_table[docx.numrows] = 1
 
     split_phrases()
 
     if use_html :
         print("<table border=1 width=800>")
 
-    for row_n in range(1, len(from_text_table)):
+    for row_n in range(1, len(docx.from_text_table)):
         try:
             if use_html :
                 print("<tr>")
                 print("<td width=50>", row_n)
                 print("<td width=250>")
 
-            if from_text_is_beginning_of_line_table[row_n] == 1:
+            if docx.from_text_is_beginning_of_line_table[row_n] == 1:
                 if use_html :
                     print("<hr style=\"height:5px;border:none;color:#ffff00;background-color:#ffff00;\" />")
             
-            if from_text_is_greyed_table[row_n] == 1:
+            if docx.from_text_is_greyed_table[row_n] == 1:
                 if use_html :
-                    print("'<span style=\"background-color: #DCDCDC\">%s</span>' (%s)" % (from_text_table[row_n], len(from_text_table[row_n])))
+                    print("'<span style=\"background-color: #DCDCDC\">%s</span>' (%s)" % (docx.from_text_table[row_n], len(docx.from_text_table[row_n])))
                     print("<hr style=\"height:5px;border-top: dotted 2px;color:##DCDCDC;background-color:#DCDCDC;\" />")
             else:
 
                 if use_html :
-                    print("'%s' (%s)" % (from_text_table[row_n], len(from_text_table[row_n])))
+                    print("'%s' (%s)" % (docx.from_text_table[row_n], len(docx.from_text_table[row_n])))
 
-            if from_text_is_end_of_line_table[row_n] == 1:
+            if docx.from_text_is_end_of_line_table[row_n] == 1:
                 
                 if use_html :
                     print("<hr style=\"height:5px;border:none;color:#333;background-color:#333;\" />")
             
-            if from_text_is_empty_line_table[row_n] == 1:
+            if docx.from_text_is_empty_line_table[row_n] == 1:
 
                 if use_html :
                     print("<hr style=\"height:5px;border-top: dotted 2px;color:##DCDCDC;background-color:#DCDCDC;\" />")
                     print("<td>is_greyed=%s<br>is_end_of_line=%s<br>is_empty_line=%s<br>is_beginning_of_line=%s<br>is_conditional_end_of_line=%s" %(
-                from_text_is_greyed_table[row_n], \
-                from_text_is_end_of_line_table[row_n], \
-                from_text_is_empty_line_table[row_n], \
-                from_text_is_beginning_of_line_table[row_n], \
-                from_text_is_conditional_end_of_line_table[row_n]))
+                docx.from_text_is_greyed_table[row_n], \
+                docx.from_text_is_end_of_line_table[row_n], \
+                docx.from_text_is_empty_line_table[row_n], \
+                docx.from_text_is_beginning_of_line_table[row_n], \
+                docx.from_text_is_conditional_end_of_line_table[row_n]))
 
             if use_html :
-                print("<td>'%s' (%d)<td>'%s' (%d)" % (from_text_by_phrase_table[row_n], len(from_text_by_phrase_table[row_n]), \
-                                                  from_text_by_phrase_separator_table[row_n], len(from_text_by_phrase_separator_table[row_n])))
+                print("<td>'%s' (%d)<td>'%s' (%d)" % (docx.from_text_by_phrase_table[row_n], len(docx.from_text_by_phrase_table[row_n]), \
+                                                  docx.from_text_by_phrase_separator_table[row_n], len(docx.from_text_by_phrase_separator_table[row_n])))
         except Exception:
             var = traceback.format_exc()
             print(var)
@@ -5067,7 +5054,7 @@ def print_console_docx_file_translated():
 
             if not split_translation:
                 translation_cell_text = to_text_by_phrase_separator_table[row_n]
-                prepare_and_clear_cell_for_writing(row_n, translation_cell_text)
+                prepare_and_clear_cell_for_writing(_get_ctx(), row_n, translation_cell_text)
                 if dest_lang in right_to_left_languages_list.keys():
                     #translation_cell_aligned_text = reverse_string (translation_cell_text)
                     #translation_cell_aligned_text = "\u202B" + translation_cell_text + "\u202C"
@@ -5105,7 +5092,7 @@ def print_console_docx_file_translated():
                         if cell_line_pos == 0:
                             #print("cell_line_pos=%d" % cell_line_pos)
                             if splitonly:
-                                prepare_and_clear_cell_for_writing(current_cell_row, translation_phrase_line_str)
+                                prepare_and_clear_cell_for_writing(_get_ctx(), current_cell_row, translation_phrase_line_str)
                             else:
                             #prepare_and_clear_cell_for_writing(current_cell_row, translation_phrase_line_str)
                                 cell_set_1st_paragraph(current_cell_row, translation_phrase_line_str)
@@ -6071,7 +6058,7 @@ def main() -> int:
     set_translation_function()
     initialize_translation_memory_xlsx()
 
-    read_and_parse_docx_document()
+    read_and_parse_docx_document(_get_ctx())
 
     create_webdriver()
     
