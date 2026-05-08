@@ -185,6 +185,41 @@ from config import (
     COUNTRY_QUERY_HTTP_TIMEOUT,
 )
 
+from runtime import RuntimeContext
+
+# Module-level RuntimeContext singleton — Phase F1 transition shim.
+# Lazily built by `_get_ctx()` on first call from any function that has
+# already been threaded with a `ctx` parameter. Phase F1.6 collapses this
+# helper into an explicit `ctx = RuntimeContext.empty()` at the top of
+# main(); until then, threaded functions can be called from un-threaded
+# callers without a signature cascade.
+_ctx: RuntimeContext | None = None
+
+
+def _get_ctx() -> RuntimeContext:
+    """Return the singleton RuntimeContext, snapshotting current module-level
+    globals on first call. Threaded callers should propagate their own
+    parameter where possible — this helper exists only to bridge un-threaded
+    callers to threaded callees during the F1 transition."""
+    global _ctx
+    if _ctx is None:
+        _ctx = RuntimeContext.empty()
+        # Snapshot whatever module-level globals are already populated by
+        # import time. The dataclass defaults cover anything that is not.
+        # Each F1.x batch may extend this snapshot as it threads more
+        # globals.
+        try:
+            _ctx.browser.driver = driver
+        except NameError:
+            pass
+        try:
+            _ctx.language.src_lang_name  = src_lang_name
+            _ctx.language.dest_lang_name = dest_lang_name
+        except NameError:
+            pass
+    return _ctx
+
+
 # Track the child processes
 def kill_child_process():
     import time
@@ -1348,7 +1383,7 @@ def selenium_chrome_translate_maxchar_blocks():
             # perplexity_web.py in Phase D. Only the webservice forwarder
             # (HTTP → localhost:8000) remains in the active dispatcher.
             if method == "webservice":
-                return selenium_webservice_perplexity_translate(text, attempt)
+                return selenium_webservice_perplexity_translate(_get_ctx(), text, attempt)
             raise ValueError(
                 f"perplexity non-webservice method '{method}' is no longer "
                 f"supported (selenium engine moved to inactive)"
@@ -2286,41 +2321,42 @@ def selenium_chrome_deepl_log_off():
         print("Failed of Deepl, this can be ignored")
         return False
 
-# Module-level cache
-_cached_window_pos = None
+def set_chrome_window_2_3_screen(ctx: RuntimeContext):
+    """Resize and position the Chrome window to roughly 5/7 of the screen.
 
-def set_chrome_window_2_3_screen():
-    global driver
-    global _cached_window_pos
-
+    Threaded in Phase F1.1: reads/writes the window-position cache through
+    ``ctx.browser.cached_window_pos`` (was the module-level
+    ``_cached_window_pos`` global) and the active driver through
+    ``ctx.browser.driver``.
+    """
+    drv = ctx.browser.driver
     try:
         # Get screen size directly from browser
-        screen_width = driver.execute_script("return screen.availWidth;")
-        screen_height = driver.execute_script("return screen.availHeight;")
+        screen_width  = drv.execute_script("return screen.availWidth;")
+        screen_height = drv.execute_script("return screen.availHeight;")
 
-        width = min(int(screen_width * 5 / 7), 1200)
+        width  = min(int(screen_width  * 5 / 7), 1200)
         height = min(int(screen_height * 5 / 7), 900)
 
-        if _cached_window_pos is None:
-            max_x_offset = int(screen_width / 15)
+        if ctx.browser.cached_window_pos is None:
+            max_x_offset = int(screen_width  / 15)
             max_y_offset = int(screen_height / 15)
 
-            import random
             x_pos = random.randint(0, max_x_offset)
             y_pos = random.randint(0, max_y_offset)
 
-            _cached_window_pos = (x_pos, y_pos)
+            ctx.browser.cached_window_pos = (x_pos, y_pos)
         else:
-            x_pos, y_pos = _cached_window_pos
+            x_pos, y_pos = ctx.browser.cached_window_pos
 
-        driver.set_window_size(width, height)
-        driver.set_window_position(x_pos, y_pos)
+        drv.set_window_size(width, height)
+        drv.set_window_position(x_pos, y_pos)
 
     except Exception as e:
         print(f"[Warning] Could not set Chrome window size/position: {e}")
         print("[Info] Falling back to 850x750 at (0,0)")
-        driver.set_window_size(850, 750)
-        driver.set_window_position(0, 0)
+        drv.set_window_size(850, 750)
+        drv.set_window_position(0, 0)
         
 def deepl_close_messages():
     """
@@ -2401,9 +2437,9 @@ def selenium_chrome_deepl_translate(to_translate, retry_count):
     to_translate_phrases_array = to_translate.split("\n")
     to_translate_phrases_array_len = len(to_translate_phrases_array)
 
-    set_chrome_window_2_3_screen()
-    
-    
+    set_chrome_window_2_3_screen(_get_ctx())
+
+
     def ensure_target_language(driver, dest_lang="fr", dest_lang_name="French", timeout=20):
         try:
             wait = WebDriverWait(driver, timeout)
@@ -3007,21 +3043,23 @@ def build_translation_prompt(source_lang, dest_lang, text):
 
     return prompt
 
-def selenium_webservice_perplexity_translate(to_translate, retry_count):
-    global src_lang_name, dest_lang_name
+def selenium_webservice_perplexity_translate(ctx: RuntimeContext, to_translate, retry_count):
+    """HTTP forwarder for Perplexity webservice. Threaded in Phase F1.1:
+    reads ``ctx.language.src_lang_name`` and ``ctx.language.dest_lang_name``
+    in place of the historical module globals."""
     try:
         url = "http://127.0.0.1:8000/translate"
         payload = {
-            "src_lang_name": src_lang_name,
-            "dest_lang_name": dest_lang_name,
-            "text": to_translate,
-            "engine": "perplexity",
-            "retry_count": 2
+            "src_lang_name":  ctx.language.src_lang_name,
+            "dest_lang_name": ctx.language.dest_lang_name,
+            "text":           to_translate,
+            "engine":         "perplexity",
+            "retry_count":    2,
         }
         response = requests.post(url, json=payload)
         translation = response.json()['translation']
         return True, translation
-    except:
+    except Exception:
         return False, ""
 
 
@@ -4019,9 +4057,9 @@ def create_webdriver():
         #driver.set_window_position(0, 350)
         if translation_engine == 'deepl':
             driver.set_window_position(0, 100)
-            set_chrome_window_2_3_screen()
+            set_chrome_window_2_3_screen(_get_ctx())
         else:
-            set_chrome_window_2_3_screen()
+            set_chrome_window_2_3_screen(_get_ctx())
             #driver.set_window_size(400, 650)
             
     numerrors_deepl = 0
