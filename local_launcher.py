@@ -24,6 +24,15 @@ from urllib.parse import unquote, urlparse
 
 import re as _re
 
+# Windows console (cp1252) crashes when print() emits ▶ ✓ ✗ — that the
+# job-progress logs use. Force stdout/stderr to UTF-8 so the _process_job
+# thread does not die on the first decoration. (Audit finding F-013.)
+try:
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+except (AttributeError, OSError):
+    pass
+
 ROOT = Path(__file__).resolve().parent
 INDEX_FILE = ROOT / "index.ejs"
 WEB_V2_DIR = ROOT / "web" / "v2"
