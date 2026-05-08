@@ -8,9 +8,10 @@ Adding a new engine should be:
 
 The dispatch table maps ``EngineName`` to the per-engine
 ``translate(ctx, text)`` callable. ``set_translation_function`` in the
-entry script reads from here when re-pointing
-``ctx.engine.dispatcher`` (e.g. during the DeepL phrasesblock →
-singlephrase fallback).
+entry script does not yet read from this table — it still hand-rolls
+an if/elif tree over ``ctx.engine.engine`` + ``ctx.engine.method`` for
+the DeepL phrasesblock → singlephrase fallback (R15). The table is
+exposed for future migration; new code should prefer it.
 """
 from __future__ import annotations
 
