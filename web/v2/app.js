@@ -10,6 +10,7 @@
       POST /subscribe   → JSON { email } → { ok, message }
 
    Polling-based (no SSE). Two files queue sequentially.
+   i18n: see web/v2/i18n.json. Loaded once during init() before render.
    ────────────────────────────────────────────────────────────────────────── */
 
 (function () {
@@ -53,10 +54,41 @@
     { name: 'Vietnamese',             value: 'vi',    deepl: true  },
   ];
 
-  const LS_KEYS = { source: 'v2.savedSourceLang', target: 'v2.savedTargetLang', theme: 'v2.theme' };
+  const LS_KEYS = {
+    source: 'v2.savedSourceLang',
+    target: 'v2.savedTargetLang',
+    theme:  'v2.theme',
+    locale: 'v2.locale',
+  };
 
   function lsGet(k, def) { try { return localStorage.getItem(k) ?? def; } catch (_) { return def; } }
   function lsSet(k, v)   { try { localStorage.setItem(k, v); } catch (_) {} }
+
+  // Best-effort initial locale: persisted choice → navigator language
+  // prefix → 'en'. Persian Speakers landing on this page get a Persian
+  // UI without any clicks. The user can flip via the header toggle.
+  function detectLocale() {
+    const saved = lsGet(LS_KEYS.locale, null);
+    if (saved === 'en' || saved === 'fa') return saved;
+    const nav = (navigator.language || 'en').toLowerCase();
+    if (nav.startsWith('fa')) return 'fa';
+    return 'en';
+  }
+
+  // The progressLabel mapping has 9 buckets; each maps to an i18n key
+  // resolved at render time so the spinner text reads in the active locale.
+  // Order matters — first match wins.
+  const PROGRESS_BUCKETS = [
+    [100, 'progress_finalizing'],
+    [ 90, 'progress_saving'],
+    [ 75, 'progress_aligning'],
+    [ 65, 'progress_polishing'],
+    [ 30, 'progress_translating'],
+    [ 15, 'progress_sending'],
+    [ 10, 'progress_backend'],
+    [  5, 'progress_queued'],
+    [  0, 'progress_starting'],
+  ];
 
   // Expose the Alpine factory at module load time (Alpine reads x-data="docTranslator()").
   window.docTranslator = function () {
@@ -74,7 +106,7 @@
       currentJobIndex: 0,
       currentFileName: '',
       progress: 0,
-      progressLabel: 'Ready',
+      progressKey: 'progress_ready',     // i18n key — `progressLabel` getter resolves it
 
       results: [],
       error: '',
@@ -85,24 +117,55 @@
       newsletterOk: false,
 
       theme: lsGet(LS_KEYS.theme, 'light'),
+      locale: detectLocale(),
+      i18n: { en: {}, fa: {} },
 
       // ── Init ─────────────────────────────────────────────────────────────
-      init() {
+      async init() {
         document.documentElement.setAttribute('data-theme', this.theme);
+        // Load i18n strings BEFORE Alpine paints the body — bound t() lookups
+        // would otherwise show raw keys for one frame.
+        await this.loadI18n();
         // Pick a sensible default engine for the saved target language.
         this.onLanguageChange();
-        // Sync <html lang=...> so screen readers + Google Translate detect
-        // the actual page language. Tracks targetLanguage when it's RTL.
         this.syncHtmlLang();
       },
 
-      // Update <html lang> to reflect the active target language for RTL
-      // locales (fa, ar, he). For LTR targets the page chrome stays English,
-      // so `lang="en"` remains the right value.
+      async loadI18n() {
+        try {
+          const res = await fetch('/v2/i18n.json', { cache: 'no-cache' });
+          if (res.ok) this.i18n = await res.json();
+        } catch (_) {
+          // Network failure — keep the empty default; t() falls back to keys.
+        }
+      },
+
+      // Translate a key. Falls back: active locale → English → key itself.
+      // {placeholders} can be filled by passing an object as second arg.
+      t(key, vars) {
+        const here = (this.i18n && this.i18n[this.locale]) || {};
+        const en   = (this.i18n && this.i18n.en)           || {};
+        let out = (here[key] ?? en[key] ?? key);
+        if (vars && typeof out === 'string') {
+          for (const k of Object.keys(vars)) {
+            out = out.replaceAll(`{${k}}`, String(vars[k]));
+          }
+        }
+        return out;
+      },
+
+      // <html dir + lang> tracks the UI locale. Body chrome reads RTL when
+      // the locale is Persian/Arabic regardless of the document target.
       syncHtmlLang() {
         const rtl = { fa: 'fa', ar: 'ar', he: 'he' };
-        const next = rtl[this.targetLanguage] || 'en';
-        document.documentElement.setAttribute('lang', next);
+        document.documentElement.setAttribute('lang', rtl[this.locale] || 'en');
+        document.documentElement.setAttribute('dir',  this.locale === 'fa' ? 'rtl' : 'ltr');
+      },
+
+      toggleLocale() {
+        this.locale = this.locale === 'fa' ? 'en' : 'fa';
+        lsSet(LS_KEYS.locale, this.locale);
+        this.syncHtmlLang();
       },
 
       // ── Computed helpers ────────────────────────────────────────────────
@@ -132,6 +195,12 @@
         return this.files.length > 0 && !!this.targetLanguage && !!this.engine;
       },
 
+      // Progress label getter — resolves the bucket key to a localised string
+      // every time it's read, so toggling locale mid-job updates the spinner.
+      get progressLabel() {
+        return this.t(this.progressKey);
+      },
+
       // ── Persistence on selection change ─────────────────────────────────
       onLanguageChange() {
         lsSet(LS_KEYS.source, this.sourceLanguage);
@@ -146,7 +215,6 @@
           else this.engine = 'google';
         }
         this.onEngineChange();
-        this.syncHtmlLang();
       },
 
       onEngineChange() {
@@ -172,11 +240,11 @@
         for (const f of list) {
           if (this.files.length >= MAX_FILES) break;
           if (!f.name.toLowerCase().endsWith('.docx')) {
-            this.error = `Skipped “${f.name}” — only .docx files are supported.`;
+            this.error = this.t('err_skipped_not_docx', { name: f.name });
             continue;
           }
           if (f.size > MAX_FILE_BYTES) {
-            this.error = `Skipped “${f.name}” — exceeds 50 MB limit.`;
+            this.error = this.t('err_skipped_too_big', { name: f.name });
             continue;
           }
           this.files.push(f);
@@ -206,11 +274,11 @@
             this.currentJobIndex = i;
             this.currentFileName = this.files[i].name;
             this.progress = 0;
-            this.progressLabel = 'Uploading…';
+            this.progressKey = 'progress_uploading';
             await this.translateOne(this.files[i]);
           }
         } catch (e) {
-          this.error = e?.message || 'Unknown error.';
+          this.error = e?.message || this.t('err_unknown');
         } finally {
           this.running = false;
         }
@@ -229,14 +297,14 @@
         }
 
         const upRes = await fetch('/upload', { method: 'POST', body: fd });
-        if (!upRes.ok) throw new Error(`Upload failed (${upRes.status})`);
+        if (!upRes.ok) throw new Error(this.t('err_upload_failed', { status: upRes.status }));
         const upData = await upRes.json();
-        if (!upData.ok) throw new Error(upData.comment || 'Upload rejected');
+        if (!upData.ok) throw new Error(upData.comment || this.t('err_upload_rejected'));
 
         const wasCached = !!upData.cacheHit;
         if (wasCached) {
           this.progress = 100;
-          this.progressLabel = 'Cached';
+          this.progressKey = 'progress_cached';
         }
 
         const status = await this.pollStatus(upData.jobId);
@@ -255,27 +323,27 @@
           const data = await res.json();
           if (typeof data.progress === 'number') {
             this.progress = data.progress;
-            this.progressLabel = labelForProgress(data.progress);
+            this.progressKey = bucketKey(data.progress);
           }
           if (data.status === 'done')  return data;
-          if (data.status === 'error') throw new Error(data.error || 'Translation failed.');
+          if (data.status === 'error') throw new Error(data.error || this.t('err_translation_failed'));
         }
-        throw new Error('Timed out after 40 minutes.');
+        throw new Error(this.t('err_timeout'));
       },
 
       collectResults(status, sourceName, wasCached) {
-        const push = (filename, suffixLabel) => {
+        const push = (filename, suffixKey) => {
           if (!filename) return;
           this.results.push({
-            label:    `${stripPrefix(filename)} — ${suffixLabel}`,
+            label:    `${stripPrefix(filename)} — ${this.t(suffixKey)}`,
             filename: stripPrefix(filename),
             href:     '/download/' + encodeURIComponent(filename),
             fromCache: wasCached,
           });
         };
-        push(status.filename,  'translated');
-        push(status.filename2, 'aligned (double)');
-        push(status.filename3, 'aligned (classic)');
+        push(status.filename,  'results_translated');
+        push(status.filename2, 'results_double');
+        push(status.filename3, 'results_classic');
       },
 
       // ── Theme toggle ────────────────────────────────────────────────────
@@ -301,13 +369,13 @@
           this.newsletterOk = !!data.ok;
           this.newsletterMessage = this.newsletterOk
             ? (data.message === 'already subscribed'
-                ? 'You are already on the list — thanks.'
-                : 'Subscribed. Welcome!')
-            : (data.message || 'Could not subscribe.');
+                ? this.t('newsletter_already')
+                : this.t('newsletter_welcome'))
+            : (data.message || this.t('newsletter_failed'));
           if (this.newsletterOk) this.newsletterEmail = '';
         } catch (e) {
           this.newsletterOk = false;
-          this.newsletterMessage = 'Network error. Please try again.';
+          this.newsletterMessage = this.t('newsletter_network');
         } finally {
           this.newsletterPending = false;
         }
@@ -323,15 +391,10 @@
     return name.replace(/^\d{10,}-/, '');
   }
 
-  function labelForProgress(pct) {
-    if (pct >= 100) return 'Finalizing…';
-    if (pct >= 90)  return 'Saving output…';
-    if (pct >= 75)  return 'Aligning subtitles…';
-    if (pct >= 65)  return 'Polishing translation…';
-    if (pct >= 30)  return 'Translating…';
-    if (pct >= 15)  return 'Sending to engine…';
-    if (pct >= 10)  return 'Backend started…';
-    if (pct >= 5)   return 'Queued…';
-    return 'Starting…';
+  function bucketKey(pct) {
+    for (const [floor, key] of PROGRESS_BUCKETS) {
+      if (pct >= floor) return key;
+    }
+    return 'progress_starting';
   }
 })();

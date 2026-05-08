@@ -34,7 +34,8 @@
 <body
   x-data="docTranslator()"
   x-init="init()"
-  :dir="targetLanguage === 'fa' || targetLanguage === 'ar' ? 'rtl' : 'ltr'"
+  x-cloak
+  :dir="locale === 'fa' ? 'rtl' : 'ltr'"
   class="min-h-screen bg-cream-100 text-ink-900 font-sans antialiased"
 >
   <!-- Header -->
@@ -45,22 +46,30 @@
           <path d="M4 4h12l4 4v12H4V4z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
           <path d="M8 12h8M8 16h6M8 8h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
         </svg>
-        <span class="font-semibold tracking-tight">DOCX Translator</span>
+        <span class="font-semibold tracking-tight" x-text="t('logo_label')">DOCX Translator</span>
       </a>
       <nav class="flex items-center gap-2 text-sm">
         <a
           href="/"
           class="px-3 py-1.5 rounded-lg text-ink-500 hover:text-ink-900 hover:bg-cream-200 transition"
-          title="Open the legacy UI"
+          :title="t('nav_legacy_title')"
+          x-text="t('nav_legacy')"
         >Legacy UI</a>
         <a
           href="https://github.com/Milomilo777/machine-translate-docx"
           class="px-3 py-1.5 rounded-lg text-ink-500 hover:text-ink-900 hover:bg-cream-200 transition"
           target="_blank" rel="noopener"
+          x-text="t('nav_github')"
         >GitHub</a>
         <button
+          @click="toggleLocale()"
+          :aria-label="t('nav_locale_aria')"
+          class="px-2.5 py-1.5 rounded-lg text-ink-500 hover:text-ink-900 hover:bg-cream-200 transition text-xs font-medium"
+          x-text="t('nav_locale')"
+        >فارسی</button>
+        <button
           @click="toggleTheme()"
-          :aria-label="theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'"
+          :aria-label="theme === 'dark' ? t('theme_to_light') : t('theme_to_dark')"
           class="px-2.5 py-1.5 rounded-lg text-ink-500 hover:text-ink-900 hover:bg-cream-200 transition"
         >
           <span x-show="theme === 'light'" aria-hidden="true">🌙</span>
@@ -76,13 +85,14 @@
   <main class="max-w-3xl mx-auto px-4 sm:px-6 py-10 sm:py-14">
     <!-- Hero -->
     <section class="text-center mb-10 sm:mb-14">
-      <h1 class="font-serif text-4xl sm:text-5xl font-semibold tracking-tight text-ink-900">
-        Translate a DOCX
-      </h1>
-      <p class="mt-3 text-ink-500 text-base sm:text-lg max-w-xl mx-auto">
-        Drop one or two Word files, pick a language, and download a polished translation.
-        Files cached for 36 hours, then permanently deleted.
-      </p>
+      <h1
+        class="font-serif text-4xl sm:text-5xl font-semibold tracking-tight text-ink-900"
+        x-text="t('title')"
+      >Translate a DOCX</h1>
+      <p
+        class="mt-3 text-ink-500 text-base sm:text-lg max-w-xl mx-auto"
+        x-text="t('subtitle')"
+      >Drop one or two Word files, pick a language, and download a polished translation. Files cached for 36 hours, then permanently deleted.</p>
     </section>
 
     <!-- Card: drop-zone + form -->
@@ -104,7 +114,7 @@
           dragActive ? 'border-brand-500 bg-brand-500/5' : 'border-cream-300 hover:border-brand-500',
           'p-8 sm:p-10 text-center'
         ]"
-        aria-label="Click or drop one to two .docx files"
+        :aria-label="t('drop_aria')"
       >
         <input
           x-ref="fileInput"
@@ -119,10 +129,11 @@
           <path d="M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
         <div class="mt-3 text-ink-700">
-          <span class="font-medium">Drag &amp; drop</span> or
-          <span class="text-brand-800 underline-offset-2 hover:underline">click to choose</span>
+          <span class="font-medium" x-text="t('drop_action_drag')">Drag &amp; drop</span>
+          <span x-text="t('drop_action_or')">or</span>
+          <span class="text-brand-800 underline-offset-2 hover:underline" x-text="t('drop_action_click')">click to choose</span>
         </div>
-        <div class="mt-1 text-xs text-ink-500">.docx only · up to 2 files · 50 MB each</div>
+        <div class="mt-1 text-xs text-ink-500" x-text="t('drop_constraints')">.docx only · up to 2 files · 50 MB each</div>
       </div>
 
       <!-- Selected files -->
@@ -139,7 +150,7 @@
             <button
               @click="removeFile(idx)"
               class="text-ink-400 hover:text-ink-900 text-sm rounded p-1 hover:bg-cream-200 transition"
-              :aria-label="`Remove ${f.name}`"
+              :aria-label="`${t('remove_file_aria')}: ${f.name}`"
             >✕</button>
           </li>
         </template>
@@ -148,7 +159,7 @@
       <!-- Options -->
       <div class="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
         <label class="block">
-          <span class="text-sm text-ink-700 font-medium">Source language</span>
+          <span class="text-sm text-ink-700 font-medium" x-text="t('label_source')">Source language</span>
           <select
             x-model="sourceLanguage"
             @change="onLanguageChange()"
@@ -161,7 +172,7 @@
         </label>
 
         <label class="block">
-          <span class="text-sm text-ink-700 font-medium">Target language</span>
+          <span class="text-sm text-ink-700 font-medium" x-text="t('label_target')">Target language</span>
           <select
             x-model="targetLanguage"
             @change="onLanguageChange()"
@@ -174,7 +185,7 @@
         </label>
 
         <label class="block">
-          <span class="text-sm text-ink-700 font-medium">Engine</span>
+          <span class="text-sm text-ink-700 font-medium" x-text="t('label_engine')">Engine</span>
           <select
             x-model="engine"
             @change="onEngineChange()"
@@ -187,14 +198,15 @@
         </label>
 
         <label class="block" x-show="showAiModel" x-cloak>
-          <span class="text-sm text-ink-700 font-medium">OpenAI model</span>
+          <span class="text-sm text-ink-700 font-medium" x-text="t('label_model')">OpenAI model</span>
           <select
             x-model="aiModel"
             class="mt-1 w-full rounded-lg border border-cream-300 bg-white px-3 py-2 text-sm focus:outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-500/20 transition"
           >
-            <option value="gpt-5.5">GPT-5.5 — recommended</option>
+            <!-- Model identifiers stay literal — they are technical IDs, not UI copy. -->
+            <option value="gpt-5.5"      :label="'GPT-5.5' + t('model_recommended')" x-text="'GPT-5.5' + t('model_recommended')"></option>
             <option value="gpt-5.4">GPT-5.4</option>
-            <option value="gpt-5.4-mini">GPT-5.4 mini — faster, cheaper</option>
+            <option value="gpt-5.4-mini" :label="'GPT-5.4 mini' + t('model_faster')" x-text="'GPT-5.4 mini' + t('model_faster')"></option>
           </select>
         </label>
       </div>
@@ -214,14 +226,14 @@
           <svg x-show="!running" width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <path d="M5 12l4 4L19 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
-          <span x-show="!running">Translate</span>
+          <span x-show="!running" x-text="t('btn_translate')">Translate</span>
           <span x-show="running" class="inline-flex items-center gap-2">
             <span class="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" aria-hidden="true"></span>
             <span x-text="progressLabel"></span>
           </span>
         </button>
-        <span class="text-xs text-ink-400" x-show="files.length === 1">1 file selected</span>
-        <span class="text-xs text-ink-400" x-show="files.length === 2">2 files queued (max)</span>
+        <span class="text-xs text-ink-400" x-show="files.length === 1" x-text="t('files_one')">1 file selected</span>
+        <span class="text-xs text-ink-400" x-show="files.length === 2" x-text="t('files_two')">2 files queued (max)</span>
       </div>
 
       <!-- Progress -->
@@ -237,14 +249,14 @@
           ></div>
         </div>
         <p class="mt-2 text-xs text-ink-400">
-          Job <span x-text="(currentJobIndex + 1)"></span> of <span x-text="files.length"></span> · <span x-text="currentFileName"></span>
+          <span x-text="t('progress_job')">Job</span> <span x-text="(currentJobIndex + 1)"></span> <span x-text="t('progress_of')">of</span> <span x-text="files.length"></span> · <span x-text="currentFileName"></span>
         </p>
       </div>
     </section>
 
     <!-- Results -->
     <section x-show="results.length" class="mt-8" x-cloak>
-      <h2 class="text-lg font-semibold mb-3">Downloads</h2>
+      <h2 class="text-lg font-semibold mb-3" x-text="t('results_heading')">Downloads</h2>
       <ul class="space-y-2">
         <template x-for="(r, idx) in results" :key="idx">
           <li class="flex items-center justify-between gap-3 rounded-lg bg-white border border-cream-300 px-4 py-3 shadow-soft">
@@ -254,12 +266,13 @@
                 <path d="M4 20h16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
               </svg>
               <span class="truncate text-sm" x-text="r.label"></span>
-              <span x-show="r.fromCache" class="text-[10px] uppercase tracking-wide bg-brand-500/10 text-brand-800 px-2 py-0.5 rounded-full">cached</span>
+              <span x-show="r.fromCache" class="text-[10px] uppercase tracking-wide bg-brand-500/10 text-brand-800 px-2 py-0.5 rounded-full" x-text="t('cached_badge')">cached</span>
             </div>
             <a
               :href="r.href"
               :download="r.filename"
               class="text-sm text-brand-800 hover:text-brand-700 font-medium"
+              x-text="t('download_link')"
             >Download</a>
           </li>
         </template>
@@ -273,23 +286,23 @@
       class="mt-6 p-4 rounded-lg border border-red-200 bg-red-50 text-red-900 text-sm"
       role="alert"
     >
-      <strong class="font-medium">Translation failed:</strong>
+      <strong class="font-medium" x-text="t('error_prefix')">Translation failed:</strong>
       <span x-text="error"></span>
     </div>
 
     <!-- Newsletter -->
     <section class="mt-12 sm:mt-16 bg-cream-50 border border-cream-300 rounded-2xl p-6 sm:p-8">
-      <h2 class="font-serif text-xl font-semibold text-ink-900">Stay in the loop</h2>
-      <p class="text-sm text-ink-500 mt-1">
+      <h2 class="font-serif text-xl font-semibold text-ink-900" x-text="t('newsletter_heading')">Stay in the loop</h2>
+      <p class="text-sm text-ink-500 mt-1" x-text="t('newsletter_blurb')">
         Optional. Get an email when a major update ships. No marketing, no spam.
       </p>
       <form @submit.prevent="subscribe()" class="mt-4 flex flex-col sm:flex-row gap-2">
-        <label for="newsletter-email" class="sr-only">Email address</label>
+        <label for="newsletter-email" class="sr-only" x-text="t('newsletter_email_label')">Email address</label>
         <input
           id="newsletter-email"
           type="email"
           required
-          placeholder="you@example.com"
+          :placeholder="t('newsletter_placeholder')"
           x-model="newsletterEmail"
           class="flex-1 rounded-lg border border-cream-300 bg-white px-3 py-2 text-sm focus:outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-500/20 transition"
         />
@@ -303,8 +316,8 @@
               : 'bg-ink-900 hover:bg-ink-700 text-white'
           ]"
         >
-          <span x-show="!newsletterPending">Subscribe</span>
-          <span x-show="newsletterPending">Sending…</span>
+          <span x-show="!newsletterPending" x-text="t('newsletter_subscribe')">Subscribe</span>
+          <span x-show="newsletterPending" x-text="t('newsletter_sending')">Sending…</span>
         </button>
       </form>
       <p
@@ -320,9 +333,10 @@
 
     <!-- Footer -->
     <footer class="mt-12 sm:mt-16 text-center text-xs text-ink-400">
-      <p>Files cached up to 36&nbsp;h then permanently deleted · Persian aligner runs only when target = Persian + OpenAI Translation+Polish</p>
+      <p x-text="t('footer_privacy')">Files cached up to 36&nbsp;h then permanently deleted · Persian aligner runs only when target = Persian + OpenAI Translation+Polish</p>
       <p class="mt-1">
-        Built on <a class="text-ink-500 hover:text-ink-900" href="https://github.com/Milomilo777/machine-translate-docx" target="_blank" rel="noopener">machine-translate-docx</a>
+        <span x-text="t('footer_built_on')">Built on</span>
+        <a class="text-ink-500 hover:text-ink-900" href="https://github.com/Milomilo777/machine-translate-docx" target="_blank" rel="noopener">machine-translate-docx</a>
       </p>
     </footer>
   </main>
