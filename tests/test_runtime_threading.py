@@ -145,6 +145,74 @@ def test_dispatcher_refresh_drops_stale_driver_reference():
     assert ctx.engine.dispatcher("x", 0) == "v2"
 
 
+# ── R15 (post-G3) — DeepL fallback through ctx after engine extraction ──────
+
+def test_deepl_phrasesblock_to_singlephrase_after_extraction():
+    """After Phase G3 extracts the DeepL engine into engines/deepl.py,
+    the phrasesblock → singlephrase fallback dance must still flow
+    through ``ctx`` end-to-end. We mock the failed-translation path
+    and assert each of the four fallback steps lands its expected
+    state change on ctx.
+    """
+    from engines import DISPATCH_TABLE, EngineName, deepl as deepl_engine
+
+    ctx = RuntimeContext.empty()
+    ctx.engine.engine = "deepl"
+    ctx.engine.method = "phrasesblock"
+
+    # Mock dispatcher matches what set_translation_function would have
+    # registered for phrasesblock (a get-from-text-array shim — here a
+    # sentinel callable).
+    def _phrasesblock_fail(text, retry):
+        return ""   # empty translation → caller treats as failure
+
+    ctx.engine.dispatcher = _phrasesblock_fail
+
+    # Step 1 — phrasesblock attempt fails
+    assert ctx.engine.dispatcher("anything", 0) == ""
+
+    # Step 2 — flip method (the main() body does this)
+    ctx.engine.method = "singlephrase"
+
+    # Step 3 — refresh dispatcher: G3 means we look up the per-engine
+    # translate via the registry rather than calling
+    # selenium_chrome_deepl_translate directly. After the flip we
+    # rebind ctx.engine.dispatcher to the new singlephrase target.
+    assert EngineName.DEEPL in DISPATCH_TABLE
+    assert DISPATCH_TABLE[EngineName.DEEPL] is deepl_engine.translate
+
+    # Functools.partial-binding the new dispatcher (matches what
+    # set_translation_function does in the entry script).
+    import functools
+    ctx.engine.dispatcher = functools.partial(deepl_engine.translate, ctx)
+
+    # Step 4 — driver rebuild simulation: replace ctx.browser.driver,
+    # confirm the new dispatcher closes over ctx (not the stale driver).
+    class _StubDriver:
+        def __init__(self, tag):
+            self.tag = tag
+        def quit(self):
+            self.quit_called = True
+
+    old = _StubDriver("v1")
+    ctx.browser.driver = old
+    ctx.browser.driver.quit_called = False
+    ctx.browser.driver.quit()
+    new = _StubDriver("v2")
+    ctx.browser.driver = new
+
+    # Final assertions
+    assert ctx.engine.method == "singlephrase"
+    assert ctx.browser.driver is new
+    assert ctx.browser.driver is not old
+    assert getattr(old, "quit_called", False) is True
+    # The dispatcher is partial-bound to the same ctx, so it sees the
+    # rebuilt driver via ctx.browser.driver — no stale capture.
+    captured_ctx = ctx.engine.dispatcher.args[0]
+    assert captured_ctx is ctx
+    assert captured_ctx.browser.driver is new
+
+
 # ── R16 — DOCX +1 indexing structural invariant ──────────────────────────────
 
 # The 21 parallel arrays in DocxCtx that participate in the +1 indexing

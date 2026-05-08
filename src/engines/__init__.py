@@ -20,6 +20,7 @@ from typing import Callable, Final
 from runtime import RuntimeContext
 
 from . import google
+from . import deepl
 from . import chatgpt_api
 
 __all__ = [
@@ -52,6 +53,9 @@ ACTIVE_ENGINES: Final[frozenset[EngineName]] = frozenset(EngineName)
 # via the legacy ``set_translation_function`` glue.
 DISPATCH_TABLE: Final[dict[EngineName, Callable[[RuntimeContext, str], tuple[bool, str]]]] = {
     EngineName.GOOGLE: google.translate,
-    # EngineName.DEEPL added in G3.
-    # EngineName.CHATGPT / CHATGPT_POLISH wired through chatgpt_api in G3+.
+    EngineName.DEEPL:  deepl.translate,
+    # EngineName.CHATGPT / CHATGPT_POLISH still flow through
+    # run_openai_single_call in chatgpt_api.py and the legacy
+    # block-loop dispatcher; a future phase will give them an
+    # Engine Protocol entry point too.
 }
