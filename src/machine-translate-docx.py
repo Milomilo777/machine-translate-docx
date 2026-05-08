@@ -573,7 +573,7 @@ parser = argparse.ArgumentParser()
 #parser.add_argument('--source-language', required = True, choices = Languages, help="Specify the source language!")
 parser.add_argument('--srclang', '-sl', required = False, help="Specify the default source language, en is default (hi,ja,ru,de,ru,hi,ja,in, etc)", default='en')
 parser.add_argument('--destlang', '--dl', required = False, help="Specify the destination language with 2 letter code (hi,ja,ru,de,ru,hi,ja,in, etc)")
-parser.add_argument('--engine', '-e', required = False, help="Specify the translation engine (google, deepl, yandex, chatgpt, perplexity)")
+parser.add_argument('--engine', '-e', required = False, help="Specify the translation engine (google, deepl, chatgpt, perplexity)")
 parser.add_argument('--enginemethod', '-m', required = False, help="Specify the method (javascript, phrasesblock, singlephrase, xlsxfile, textfile )")
 parser.add_argument('--aimodel', '-am', required = False, help="Specify the ai model when applicable")
 parser.add_argument('--docxfile', '-d', required = False, help="Input file name")
@@ -1195,7 +1195,7 @@ if translation_engine is not None:
 else:
     translation_engine = ""
 
-if translation_engine in ['yandex', 'perplexity', 'chatgpt', 'deepl']:
+if translation_engine in ['perplexity', 'chatgpt', 'deepl']:
     showbrowser = True
 elif translation_engine in ['deepl', 'chatgpt']:
     pass  # keep the value as is
@@ -1250,9 +1250,7 @@ elif translation_engine == 'chatgpt':
         engine_method = 'phrasesblock'
 
 elif translation_engine == 'perplexity':
-    if engine_method == 'api' or use_api == True:
-        engine_method = 'api'
-    elif engine_method  == 'webservice':
+    if engine_method  == 'webservice':
         engine_method = 'webservice'
     else:
         engine_method = 'phrasesblock'
@@ -1945,9 +1943,7 @@ def selenium_chrome_translate_maxchar_blocks():
                 return selenium_chrome_chatgpt_translate(text, attempt)
         
         if engine == "perplexity":
-            if method == "api":
-                return perplexity_api_translate(text, attempt)
-            elif method == "webservice":
+            if method == "webservice":
                 return selenium_webservice_perplexity_translate(text, attempt)
             else:
                 return selenium_chrome_perplexity_translate(text, attempt, 1)
@@ -2658,66 +2654,7 @@ def selenium_chrome_google_translate_xlsx_file(xlsx_file_path):
 
 
 
-def selenium_chrome_yandex_translate(to_translate):
-    try:
-        #https://translate.yandex.com/?lang=en-hu
-        #driver.get("https://translate.yandex.com/?lang=%s-%s&text=%s" % (src_lang,dest_lang,to_translate))
-        driver.get("https://translate.yandex.com/?lang=%s-%s" % (src_lang,dest_lang))
-        #(driver.page_source).encode('utf-8')
-
-        timeout_captcha = 200
-        alert_captcha = False
-        #while 'Unfortunately, it looks like the search request sent from your IP address are automated' in driver.page_source and timeout_captcha > 0:
-        while 'IP address' in driver.page_source and timeout_captcha > 0:
-            if not alert_captcha:
-                print("--------------------------------------------------------------------")
-                print("\nCAPTCHA : please fill requested information on browser to continue")
-                print("--------------------------------------------------------------------")
-            sleep(1)
-            timeout_captcha -=1
-            alert_captcha = True
-
-        input_element = "#textarea"
-        input_button = WebDriverWait(driver, 60).until(EC.presence_of_element_located((By.CSS_SELECTOR, "#fakeArea")))
-
-        input_button.send_keys (to_translate)
-
-        copy_translation_element = "//span[@id='copyButton']"
-        copy_translation_button = WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, copy_translation_element)))
-
-        copy_translation_button_class_attribute = copy_translation_button.get_attribute("class")
-        #print("val class=%s" % (copy_translation_button_class_attribute))
-
-        sleep(0.2)
-
-        timeout_copybutton_disabled = 60
-        while 'state-disabled' in copy_translation_button_class_attribute and timeout_copybutton_disabled > 0:
-            sleep(0.2)
-            copy_translation_button_class_attribute = copy_translation_button.get_attribute("class")
-            #print("val class=%s (%d)" % (copy_translation_button_class_attribute, timeout_copybutton_disabled))
-            timeout_copybutton_disabled -=1
-
-        actions = ActionChains(driver)
-        driver.set_window_size(800, 700)
-        actions.move_to_element(copy_translation_button).perform()
-        actions.move_to_element(copy_translation_button).perform()
-
-        sleep(0.1)
-
-        translation_result_element = "translation"
-        translation_result_box = WebDriverWait(driver, 60).until(EC.presence_of_element_located((translation_result_element)))
-        translation = translation_result_box.text
-        res = translation
-
-        translation = res
-
-    except Exception:
-        var = traceback.format_exc()
-        print(var)
-        sys.exit(9)
-    return translation
-
-def remove_span_tag(text):  
+def remove_span_tag(text):
     search_opening_html_span_tag = r'(?i)<span class="[a-zA-Z]+">'
     search_replace_opening_span = re.compile(search_opening_html_span_tag)
                 
@@ -4600,141 +4537,6 @@ def selenium_chrome_perplexity_translate(to_translate, retry_count, max_try_coun
     else:
         return False, translation
 
-total_cost = 0
-
-def perplexity_api_translate(to_translate, retry_count):
-    global src_lang_name, dest_lang_name, total_cost
-    
-    translation = ""
-    Translated = False
-    # Progress bar to show only when deepl also shows it on the browser
-    bar = None
-    global closed_cookies_accept_message_bool, close_install_extension_message_bool, deepl_nb_clear_cached_times
-    global engine_method, end_time, elapsed_time, json_configuration_array
-    
-    to_translate_phrases_array = to_translate.split("\n")
-    to_translate_phrases_array_len = len(to_translate_phrases_array)
-
-
-    str_prompt = f"""Translate the following text from {src_lang_name} to {dest_lang_name} for Supreme Master Television subtitles:
-Each input line must correspond to exactly one output line.
-Do not split, merge, or add any lines.
-Do not insert any line breaks within a line, even if the line is long.
-Only use a line break to move to the next input line.
-Do not add, remove, or split any lines.
-If a phrase is on multiple lines, it must remain on multiple lines, no merge.
-Do not echo text to be translated in the translation, and do not insert an introduction before the translation:
-Each output line must contain the full translation of the corresponding input line. The text has {to_translate_phrases_array_len} lines that must be translated in exactly {to_translate_phrases_array_len} lines.
-Your output MUST contain exactly {to_translate_phrases_array_len} lines, not one less, not one more.
-
-The text to be translated start after the first line containing only BEFORETEXTTOTRANSLATE and ends the line before the first occurence if the line containing only AFTERTEXTTOTRANSLATE:
-BEFORETEXTTOTRANSLATE
-{to_translate}
-AFTERTEXTTOTRANSLATE"""
-    
-    #print(str_prompt)
-
-    to_translate_phrases_array = to_translate.split("\n")
-    to_translate_phrases_array_len = len(to_translate_phrases_array)
-
-    try:
-        translation_page_openeing_loop_count = 4
-
-        input_nb_lines = len(to_translate.replace("\r", "").split("\n"))
-        
-        response = requests.post(
-            'https://api.perplexity.ai/chat/completions',
-            headers={
-                'Authorization': 'Bearer pplx-XvOkswrBo9ymsxvb78Yg2ZPUBOK4PxezBqiaZIgTJbStZZ',
-                'Content-Type': 'application/json'
-            },
-            json={
-                'model': 'sonar',
-                'messages': [
-                    {
-                        'role': 'user',
-                        'content': str_prompt
-                    }
-                ]
-            }
-        )
-
-        # Pretty-print the full JSON response
-        try:
-            print(json.dumps(response.json(), indent=2))
-        except json.JSONDecodeError:
-            print("Response is not JSON:", response.text)
-        
-        # Parse the JSON string
-        data = response.json()
-
-        # Get original content
-        original_content = data["choices"][0]["message"]["content"]
-
-        # Remove all whitespace before newlines
-        modified_content = re.sub(r'[ \t]+\n', '\n', original_content)
-
-        # Print the "content" value
-        print("Content:")
-        print(modified_content)
-
-        print("\nToken and cost values:")
-
-        # Print the specified usage and cost values line by line
-        print("prompt_tokens:", data["usage"]["prompt_tokens"])
-        print("completion_tokens:", data["usage"]["completion_tokens"])
-        print("total_tokens:", data["usage"]["total_tokens"])
-        print("input_tokens_cost:", data["usage"]["cost"]["input_tokens_cost"])
-        print("output_tokens_cost:", data["usage"]["cost"]["output_tokens_cost"])
-        print("total_cost:", data["usage"]["cost"]["total_cost"])
-        total_cost = total_cost + data["usage"]["cost"]["total_cost"]
-
-
-        # Split into lines and strip empty ones
-        result_lines = [line.strip() for line in modified_content.splitlines() if line.strip()]
-        
-        translated_phrases_array = result_lines
-        if translated_phrases_array is None:
-            translated_phrases_array_len = 0
-        else:
-            translated_phrases_array_len = len(translated_phrases_array)
-        
-        #print("result_lines:")
-        #print(result_lines)
-        
-        res = None
-
-        # for pos_remove in range(0,translated_phrases_array_len - to_translate_phrases_array_len):
-        if translated_phrases_array_len >= to_translate_phrases_array_len:
-            #print(f"input_nb_lines={input_nb_lines}")
-            translated_phrases_array = translated_phrases_array[:input_nb_lines]
-            #print("input_nb_lines: %s" % (input_nb_lines))
-            #print("array: %s" % (translated_phrases_array))
-            res = "\n".join(translated_phrases_array)
-            if translated_phrases_array_len > to_translate_phrases_array_len + 1:
-                print("Found %s lines out of %s lines" % (translated_phrases_array_len, to_translate_phrases_array_len))
-
-        if translated_phrases_array_len < to_translate_phrases_array_len:
-            res = ""
-            print(f"Error, not enough lines : {translated_phrases_array_len} out of {to_translate_phrases_array_len} lines")
-            print(f"Cleaning up perplexity cookies...")
-            driver.delete_all_cookies()
-            #input(str_prompt)
-            sleep(1)
-
-        #print("Translation:")
-        #print(res)
-
-            
-    except Exception:
-        var = traceback.format_exc()
-        print(var)
-        sleep(1)
-        # sys.exit(0)
-    return True, res
-
-
-
 def set_translation_function():
     global selenium_chrome_machine_translate_once
     if not splitonly:
@@ -4743,17 +4545,9 @@ def set_translation_function():
         if (engine_method == "phrasesblock"):
             print("maximum number of characters per block: %d" % MAX_TRANSLATION_BLOCK_SIZE)
 
-    if translation_engine == 'yandex':
-        print("Using translation_engine=%s" % (translation_engine))
-        selenium_chrome_machine_translate_once = selenium_chrome_yandex_translate
-    elif translation_engine == 'deepl':
+    if translation_engine == 'deepl':
         if engine_method == 'phrasesblock':
             selenium_chrome_machine_translate_once = selenium_chrome_translate_get_from_text_array
-        else:
-            selenium_chrome_machine_translate_once = selenium_chrome_deepl_translate
-    elif translation_engine == 'deepl':
-        if engine_method == 'api':
-            selenium_chrome_machine_translate_once = perplexity_api_translate 
         else:
             selenium_chrome_machine_translate_once = selenium_chrome_deepl_translate
     elif translation_engine == 'chatgpt':
@@ -5735,7 +5529,7 @@ def create_webdriver():
 
         #input("driver loaded and running")
         #driver.set_window_position(0, 350)
-        if translation_engine == 'yandex' or translation_engine == 'deepl':
+        if translation_engine == 'deepl':
             driver.set_window_position(0, 100)
             set_chrome_window_2_3_screen()
         else:
@@ -6267,7 +6061,7 @@ def get_translation_and_replace_after():
                             use_api = False
                             # Faster google Chrome translate failed, using Selenium as backup
 
-                            if translation_engine != 'yandex' and driver is None:
+                            if driver is None:
                                 print(f"[Line {inspect.currentframe().f_lineno}] Starting Chrome browser\n")
                                 
                                 service = Service()                                
@@ -6290,10 +6084,6 @@ def get_translation_and_replace_after():
                             driver = webdriver.Chrome(service=service, options=chrome_options)
 
                         if translation_engine == 'google' and driver is not None:
-                            driver.set_window_position(100, 100)
-                            driver.set_window_size(800, 700)
-
-                        if translation_engine == 'yandex' and driver is not None:
                             driver.set_window_position(100, 100)
                             driver.set_window_size(800, 700)
 
@@ -7646,20 +7436,6 @@ def save_docx_file():
 
 import os
 import re
-import shutil
-import time
-import platform
-
-import os
-import re
-import time
-import shutil
-import psutil
-import platform
-import sys
-
-import os
-import re
 import time
 import shutil
 import psutil
@@ -7819,10 +7595,6 @@ def main() -> int:
     
     
     get_robot_usage_comment()
-
-    if translation_engine == 'perplexity':
-        if engine_method == 'api':
-            print(f"Total cost: {total_cost}")
 
     try:
         #driver.maximize_window()
