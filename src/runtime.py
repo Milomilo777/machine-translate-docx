@@ -60,7 +60,12 @@ __all__ = [
 
 @dataclass
 class Flags:
-    """Boolean / argparse-derived flags that tweak control flow."""
+    """Boolean / argparse-derived flags that tweak control flow.
+
+    Path-shaped CLI inputs (input docx, computed output path, optional
+    xlsx replace file) live here too — they are CLI-derived state of
+    the same lifecycle as the booleans.
+    """
 
     use_api:           bool = False
     splitonly:         bool = False
@@ -73,6 +78,11 @@ class Flags:
     viewdocx:          bool = False
     verbose:           bool = False
     client_ip:         str | None = None
+
+    # Paths (CLI input + computed output)
+    word_file_to_translate:              str | None = None
+    word_file_to_translate_save_as_path: str | None = None
+    xlsxreplacefile:                     str | None = None
 
 
 # ── language ──────────────────────────────────────────────────────────────────

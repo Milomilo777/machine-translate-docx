@@ -247,6 +247,60 @@ def _get_ctx() -> RuntimeContext:
             _ctx.browser.deepl_sleep_wait_translation_seconds = deepl_sleep_wait_translation_seconds
         except NameError:
             pass
+        # F1.5 — DeepL session flags + OpenAI handles
+        try:
+            _ctx.browser.closed_cookies_accept_message_bool = closed_cookies_accept_message_bool
+        except NameError:
+            pass
+        try:
+            _ctx.browser.close_install_extension_message_bool = close_install_extension_message_bool
+        except NameError:
+            pass
+        try:
+            _ctx.browser.deepl_nb_clear_cached_times = deepl_nb_clear_cached_times
+        except NameError:
+            pass
+        try:
+            _ctx.browser.logged_into_deepl = logged_into_deepl
+        except NameError:
+            pass
+        try:
+            _ctx.openai.translator = oai_translator
+        except NameError:
+            pass
+        try:
+            _ctx.openai.polisher = oai_polisher
+        except NameError:
+            pass
+        try:
+            _ctx.openai.translation_log = translation_log
+        except NameError:
+            pass
+        # F1.5 — language + paths + translation_array
+        try:
+            _ctx.language.src_lang = src_lang
+        except NameError:
+            pass
+        try:
+            _ctx.language.dest_lang = dest_lang
+        except NameError:
+            pass
+        try:
+            _ctx.flags.word_file_to_translate = word_file_to_translate
+        except NameError:
+            pass
+        try:
+            _ctx.flags.use_api = use_api
+        except NameError:
+            pass
+        try:
+            _ctx.docx.translation_array = translation_array
+        except NameError:
+            pass
+        try:
+            _ctx.docx.blocks_nchar_max_to_translate_array = blocks_nchar_max_to_translate_array
+        except NameError:
+            pass
     return _ctx
 
 
@@ -1130,11 +1184,9 @@ def selenium_chrome_translate_get_from_text_array(to_translate, index):
     #input("In selenium_chrome_translate_get_from_text_array")
     return translation_array[index - 1]
     
-def selenium_chrome_google_translate(to_translate):
-    global found_google_cookies_consent_button, driver
-    global google_translate_first_page_loaded
+def selenium_chrome_google_translate(ctx: RuntimeContext, to_translate):
     
-    driver.execute_script("window.focus();")
+    ctx.browser.driver.execute_script("window.focus();")
     selenium_chrome_google_click_cookies_consent_button()
     
     try:
@@ -1145,8 +1197,8 @@ def selenium_chrome_google_translate(to_translate):
         #print("HERE **********")
         #input("Here")
             
-        #driver.get("https://translate.google.com/?sl=%s&tl=%s&text=%s&op=translate" % (src_lang,dest_lang,""))
-        #driver.get("https://translate.google.com/?sl=%s&tl=%s&op=translate&text=%s" % (src_lang,dest_lang,html.escape(to_translate)))
+        #ctx.browser.driver.get("https://translate.google.com/?sl=%s&tl=%s&text=%s&op=translate" % (ctx.language.src_lang,ctx.language.dest_lang,""))
+        #ctx.browser.driver.get("https://translate.google.com/?sl=%s&tl=%s&op=translate&text=%s" % (ctx.language.src_lang,ctx.language.dest_lang,html.escape(to_translate)))
         
         #print ("to_translate before using in url:")
         #print(to_translate)
@@ -1162,8 +1214,8 @@ def selenium_chrome_google_translate(to_translate):
         to_translate_escaped = to_translate_escaped.replace('&','%26')
         
         query_translation = {
-            "sl" : src_lang,
-            "tl" : dest_lang,
+            "sl" : ctx.language.src_lang,
+            "tl" : ctx.language.dest_lang,
             "docxfile" : to_translate
         }
         
@@ -1172,43 +1224,43 @@ def selenium_chrome_google_translate(to_translate):
         url = f"{base_url}?{encoded_params}"
         
         to_translate_add_new_line = '%0A '.join(to_translate_escaped.split('\n'))
-        translation_url = "https://translate.google.com/?sl=%s&tl=%s&op=translate&text=%s" % (src_lang,dest_lang,to_translate_add_new_line)
-        driver.get(translation_url)
+        translation_url = "https://translate.google.com/?sl=%s&tl=%s&op=translate&text=%s" % (ctx.language.src_lang,ctx.language.dest_lang,to_translate_add_new_line)
+        ctx.browser.driver.get(translation_url)
         #print(translation_url)
         
         # Wait for page to be loaded
         try:
-            (driver.page_source).encode('utf-8')
-            WebDriverWait(driver, 15).until(lambda driver: driver.execute_script('return document.readyState') == 'complete')
+            (ctx.browser.driver.page_source).encode('utf-8')
+            WebDriverWait(ctx.browser.driver, 15).until(lambda d: d.execute_script('return document.readyState') == 'complete')
         except:
             print("ERROR: Page load timeout reached.")
         
         
         try:
             # Wait up to 0.5 seconds for the button to appear
-            button = WebDriverWait(driver, 0.01).until(
+            button = WebDriverWait(ctx.browser.driver, 0.01).until(
                 EC.element_to_be_clickable((By.XPATH, "//button[.//span[text()='Accept all']]"))
             )
-            safe_click(driver, button)
+            safe_click(ctx.browser.driver, button)
             
-            driver.get(translation_url)
+            ctx.browser.driver.get(translation_url)
             
              # Wait for page to be loaded
             try:
-                (driver.page_source).encode('utf-8')
-                WebDriverWait(driver, 15).until(lambda driver: driver.execute_script('return document.readyState') == 'complete')
+                (ctx.browser.driver.page_source).encode('utf-8')
+                WebDriverWait(ctx.browser.driver, 15).until(lambda d: d.execute_script('return document.readyState') == 'complete')
             except:
                 print("ERROR: Page load timeout reached.")
             # Wait up to 0.5 seconds for the button to appear
-            button = WebDriverWait(driver, 0.01).until(
+            button = WebDriverWait(ctx.browser.driver, 0.01).until(
                 EC.element_to_be_clickable((By.XPATH, "//button[.//span[text()='Accept all']]"))
             )
-            safe_click(driver, button)
+            safe_click(ctx.browser.driver, button)
         except Exception:
             # Ignore if not found or not clickable
             pass
         try:
-            button = driver.find_element(By.XPATH, "//button[.//span[text()='Browse your files']]")
+            button = ctx.browser.driver.find_element(By.XPATH, "//button[.//span[text()='Browse your files']]")
             #print("Button is present")
         except:
             #print("Button not found") 
@@ -1235,22 +1287,22 @@ def selenium_chrome_google_translate(to_translate):
         input_element = "//textarea[@id='source']"
         input_element = "//textarea"
         
-        #input_button = WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, input_element)))))
-        #driver.find_element(By.XPATH, input_element).clear()
+        #input_button = WebDriverWait(ctx.browser.driver, 30).until(EC.presence_of_element_located((By.XPATH, input_element)))))
+        #ctx.browser.driver.find_element(By.XPATH, input_element).clear()
         #to_translate_utf8 = to_translate.decode('utf-8')
         to_translate_utf8 = to_translate
         #input_button.send_keys (to_translate_utf8)
 
         time.sleep(0.2)
-        #driver.execute_script('document.getElementById(\'//textarea[@id=\\\'source\\\']\').setAttribute(\'value\', \'Hello world !\');')
-        #driver.execute_script("arguments[0].value = arguments[1];", input_button, to_translate_utf8)
+        #ctx.browser.driver.execute_script('document.getElementById(\'//textarea[@id=\\\'source\\\']\').setAttribute(\'value\', \'Hello world !\');')
+        #ctx.browser.driver.execute_script("arguments[0].value = arguments[1];", input_button, to_translate_utf8)
         
         try:
             # Wait up to 0.5 seconds for the button to appear
-            button = WebDriverWait(driver, 0.05).until(
+            button = WebDriverWait(ctx.browser.driver, 0.05).until(
                 EC.element_to_be_clickable((By.XPATH, "//button[.//span[text()='Accept all']]"))
             )
-            safe_click(driver, button)
+            safe_click(ctx.browser.driver, button)
         except Exception:
             # Ignore if not found or not clickable
             pass
@@ -1263,27 +1315,27 @@ def selenium_chrome_google_translate(to_translate):
             copy_translation_element = "//button[@aria-label='Copy to clipboard' and not(@disabled)]"
             copy_translation_element = "//button[@aria-label='Copy to clipboard' and not(@disabled) and (@aria-disabled='false' or not(@aria-disabled))]"
             
-            copy_translation_button = WebDriverWait(driver, 15).until(EC.presence_of_element_located((By.XPATH, copy_translation_element)))
+            copy_translation_button = WebDriverWait(ctx.browser.driver, 15).until(EC.presence_of_element_located((By.XPATH, copy_translation_element)))
         except :
             var = traceback.format_exc()
             print(var)
             
         # EditTranslationElement = "xpath=//button/div[2]"
-        # EditTranslationButton = WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, EditTranslationElement)))))
+        # EditTranslationButton = WebDriverWait(ctx.browser.driver, 30).until(EC.presence_of_element_located((By.XPATH, EditTranslationElement)))))
         
-        # driver.execute_script("scrollBy(0,-1000);")
+        # ctx.browser.driver.execute_script("scrollBy(0,-1000);")
         # actions.move_to_element(EditTranslationButton).perform()
         # sleep(0.1)
-        #driver.set_window_size(800, 700)
-        # safe_click(driver, EditTranslationButton)
+        #ctx.browser.driver.set_window_size(800, 700)
+        # safe_click(ctx.browser.driver, EditTranslationButton)
         
-        res_element_xpath = "//textarea[@lang='%s']" % (dest_lang)
+        res_element_xpath = "//textarea[@lang='%s']" % (ctx.language.dest_lang)
         
         regex_still_translating_str = '$Translation'
         pos_separator_phonetic = 0
         #if re.search(regex_still_translating_str, to_translate_utf8):
         
-        driver.execute_script("window.focus();")
+        ctx.browser.driver.execute_script("window.focus();")
         selenium_chrome_google_click_cookies_consent_button()
     
         if re.search(regex_still_translating_str, to_translate):
@@ -1291,7 +1343,7 @@ def selenium_chrome_google_translate(to_translate):
             try:
                 #res_element_xpath = "//c-wiz/div/div[2]/c-wiz/div[2]/c-wiz/div[1]/div[2]/div[2]/c-wiz[2]/div[5]/div/div[3]/div[1]/div/div[1]/div[1]/textarea"
                 
-                result_element = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.XPATH, res_element_xpath)))
+                result_element = WebDriverWait(ctx.browser.driver, 10).until(EC.presence_of_element_located((By.XPATH, res_element_xpath)))
                 translation = result_element.get_attribute('innerHTML')
                 #translation = html.unescape(translation)
             except :
@@ -1301,9 +1353,9 @@ def selenium_chrome_google_translate(to_translate):
             try:
                 #res_element_xpath = "//c-wiz/div/div[2]/c-wiz/div[2]/c-wiz/div[1]/div[2]/div[2]/c-wiz[2]/div[5]/div/div[3]/div[1]/div/div[1]/div[1]/textarea"
                 #res_element_xpath = "xpath=//div[6]/div/div/span/span/span"
-                #res_element_xpath = "//textarea[@lang='%s']" % (dest_lang)
+                #res_element_xpath = "//textarea[@lang='%s']" % (ctx.language.dest_lang)
                 
-                result_element = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.XPATH, res_element_xpath)))
+                result_element = WebDriverWait(ctx.browser.driver, 10).until(EC.presence_of_element_located((By.XPATH, res_element_xpath)))
                 translation = result_element.get_attribute('innerHTML')
                 #translation = html.unescape(translation)
                 
@@ -1311,7 +1363,7 @@ def selenium_chrome_google_translate(to_translate):
                 #print(translation)
                 #print("*******************")
                 
-                #page_source_str = driver.page_source
+                #page_source_str = ctx.browser.driver.page_source
                 #print(":::::::::::::::::::::::::::::::::::::::::::::::::::::::")
                 #with open('before.html', 'w', encoding="utf-8") as f:
                 #    f.write(page_source_str)
@@ -1319,7 +1371,7 @@ def selenium_chrome_google_translate(to_translate):
                 #input("wait here")
                 
             except Exception:
-                #page_source_str = driver.page_source
+                #page_source_str = ctx.browser.driver.page_source
                 #print(":::::::::::::::::::::::::::::::::::::::::::::::::::::::")
                 #with open('before.html', 'w', encoding="utf-8") as f:
                 #    f.write(page_source_str)
@@ -1334,8 +1386,8 @@ def selenium_chrome_google_translate(to_translate):
                 print("")
                 time.sleep(1)
                 try:
-                    #result_element = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.CSS_SELECTOR, ".result"))))
-                    result_element = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.XPATH, res_element_xpath)))
+                    #result_element = WebDriverWait(ctx.browser.driver, 10).until(EC.presence_of_element_located((By.CSS_SELECTOR, ".result"))))
+                    result_element = WebDriverWait(ctx.browser.driver, 10).until(EC.presence_of_element_located((By.XPATH, res_element_xpath)))
                     
                     translation = result_element.get_attribute('innerHTML')
                     translation = translation.unescape(translation)
@@ -1356,7 +1408,7 @@ def selenium_chrome_google_translate(to_translate):
         var = traceback.format_exc()
         print(var)
    
-    page_source_str = driver.page_source
+    page_source_str = ctx.browser.driver.page_source
     #print(":::::::::::::::::::::::::::::::::::::::::::::::::::::::")
     #with open('before.html', 'w', encoding="utf-8") as f:
     #    f.write(page_source_str)
@@ -1373,13 +1425,7 @@ def selenium_chrome_google_translate(to_translate):
 
 
 
-def selenium_chrome_translate_maxchar_blocks():
-    global translation_errors_count
-    global deepl_sleep_wait_translation_seconds
-    global driver
-    global word_file_to_translate
-    global src_lang_name, dest_lang_name
-    global oai_translator, oai_polisher, translation_log
+def selenium_chrome_translate_maxchar_blocks(ctx: RuntimeContext):
     
     translation_succeded = True
     translated_blocks = []
@@ -1389,14 +1435,14 @@ def selenium_chrome_translate_maxchar_blocks():
     # ------------------------------------------------------------------
     def translate_once(engine, method, text, attempt):
         if engine == "deepl":
-            return selenium_chrome_deepl_translate(text, attempt)
+            return selenium_chrome_deepl_translate(_get_ctx(), text, attempt)
 
         if engine == "chatgpt":
             # ChatGPT-web (Selenium) was moved to src/engines/inactive/
             # chatgpt_web.py in Phase D. Only the API path remains active.
             if method == "api":
-                response, translated = oai_translator.translate(
-                    src_lang_name, dest_lang_name, text
+                response, translated = ctx.openai.translator.translate(
+                    ctx.language.src_lang_name, ctx.language.dest_lang_name, text
                 )
                 success = (
                     translated
@@ -1452,7 +1498,7 @@ def selenium_chrome_translate_maxchar_blocks():
         
         # Google fallback (last resort)
         selenium_chrome_google_click_cookies_consent_button()
-        translated = selenium_chrome_google_translate(line)
+        translated = selenium_chrome_google_translate(ctx, line)
         if translated:
             return translated.strip()
         
@@ -1462,43 +1508,43 @@ def selenium_chrome_translate_maxchar_blocks():
     # ------------------------------------------------------------------
     # ChatGPT API setup
     # ------------------------------------------------------------------
-    if translation_engine == "chatgpt" and engine_method == "api":
+    if ctx.engine.engine == "chatgpt" and ctx.engine.method == "api":
         ai_model = args.aimodel if args.aimodel else "gpt-5.5"
-        oai_translator = OpenAITranslator(model=ai_model)
-        oai_translator.set_filename(word_file_to_translate)
+        ctx.openai.translator = OpenAITranslator(model=ai_model)
+        ctx.openai.translator.set_filename(ctx.flags.word_file_to_translate)
 
         if args.with_polish:
             try:
-                oai_polisher = OpenAIPolisher(model=ai_model, dest_lang=dest_lang)
-                print(f"[INFO] Polish pass enabled (model={ai_model}, lang={dest_lang})")
+                ctx.openai.polisher = OpenAIPolisher(model=ai_model, dest_lang=ctx.language.dest_lang)
+                print(f"[INFO] Polish pass enabled (model={ai_model}, lang={ctx.language.dest_lang})")
             except FileNotFoundError as _e:
                 print(f"[WARN] Polish disabled: {_e}")
-                oai_polisher = None
+                ctx.openai.polisher = None
             import datetime as _dt
-            translation_log["run_info"] = {
+            ctx.openai.translation_log["run_info"] = {
                 "timestamp":   _dt.datetime.now().isoformat(timespec="seconds"),
-                "input_file":  word_file_to_translate,
+                "input_file":  ctx.flags.word_file_to_translate,
                 "model":       ai_model,
-                "source_lang": src_lang,
-                "dest_lang":   dest_lang,
+                "source_lang": ctx.language.src_lang,
+                "dest_lang":   ctx.language.dest_lang,
                 "with_polish": True,
             }
-            translation_log["blocks"] = []
+            ctx.openai.translation_log["blocks"] = []
     
     # ------------------------------------------------------------------
     # OpenAI single-call mode: entire file = ONE translate + ONE polish
     # ------------------------------------------------------------------
     _single_call_done = False
-    if translation_engine == "chatgpt" and engine_method == "api" and oai_translator is not None:
+    if ctx.engine.engine == "chatgpt" and ctx.engine.method == "api" and ctx.openai.translator is not None:
         from engines.chatgpt_api import run_openai_single_call
-        full_source = "\n".join(blocks_nchar_max_to_translate_array)
+        full_source = "\n".join(ctx.docx.blocks_nchar_max_to_translate_array)
         full_translated = run_openai_single_call(
-            oai_translator=oai_translator,
-            oai_polisher=oai_polisher,
+            oai_translator=ctx.openai.translator,
+            oai_polisher=ctx.openai.polisher,
             full_source=full_source,
-            src_lang_name=src_lang_name,
-            dest_lang_name=dest_lang_name,
-            translation_log=translation_log,
+            src_lang_name=ctx.language.src_lang_name,
+            dest_lang_name=ctx.language.dest_lang_name,
+            translation_log=ctx.openai.translation_log,
         )
         translated_blocks.append(full_translated)
         _single_call_done = True
@@ -1508,35 +1554,35 @@ def selenium_chrome_translate_maxchar_blocks():
     # ------------------------------------------------------------------
     if not _single_call_done:
       _progress_blk_emitted: set[int] = set()  # milestones already sent this job
-      for i, block in enumerate(blocks_nchar_max_to_translate_array):
+      for i, block in enumerate(ctx.docx.blocks_nchar_max_to_translate_array):
         print(
-            f"Translating block {i + 1}/{len(blocks_nchar_max_to_translate_array)} "
+            f"Translating block {i + 1}/{len(ctx.docx.blocks_nchar_max_to_translate_array)} "
             f"({len(block)} chars)"
         )
 
         success, translated = translate_once(
-            translation_engine, engine_method, block, attempt=0
+            ctx.engine.engine, ctx.engine.method, block, attempt=0
         )
 
         if not success:
-            if translation_engine == 'deepl':
+            if ctx.engine.engine == 'deepl':
                 print("Cleaning up cookies...")
-                driver.delete_all_cookies()
+                ctx.browser.driver.delete_all_cookies()
 
             print("Initial translation failed → recursive fallback")
-            translation_errors_count += 1
-            deepl_sleep_wait_translation_seconds *= 1.1
+            ctx.docx.translation_errors_count += 1
+            ctx.browser.deepl_sleep_wait_translation_seconds *= 1.1
 
             translated = translate_lines_block(
                 block.split("\n"),
-                translation_engine,
-                engine_method
+                ctx.engine.engine,
+                ctx.engine.method
             )
 
-        if oai_polisher is not None:
-            print(f"Polishing block {i + 1}/{len(blocks_nchar_max_to_translate_array)} ...")
+        if ctx.openai.polisher is not None:
+            print(f"Polishing block {i + 1}/{len(ctx.docx.blocks_nchar_max_to_translate_array)} ...")
             _translated_before_polish = translated
-            translated = oai_polisher.polish(block, translated)
+            translated = ctx.openai.polisher.polish(block, translated)
 
             _lines_before = _translated_before_polish.split("\n")
             _lines_after  = translated.split("\n")
@@ -1549,10 +1595,10 @@ def selenium_chrome_translate_maxchar_blocks():
             block_entry = {
                 "block_index":   i,
                 "source_text":   block,
-                "translation":   oai_translator.last_call_data.copy() if oai_translator else {},
-                "polish":        oai_polisher.last_call_data.copy(),
+                "translation":   ctx.openai.translator.last_call_data.copy() if ctx.openai.translator else {},
+                "polish":        ctx.openai.polisher.last_call_data.copy(),
             }
-            translation_log["blocks"].append(block_entry)
+            ctx.openai.translation_log["blocks"].append(block_entry)
 
         translated_blocks.append(translated)
 
@@ -1560,7 +1606,7 @@ def selenium_chrome_translate_maxchar_blocks():
         # Applies to all block-loop engines (Google, DeepL, Selenium, etc.).
         # The chatgpt single-call path emits its own PROGRESS markers and never
         # reaches this loop (_single_call_done = True skips us entirely).
-        _n_blks = len(blocks_nchar_max_to_translate_array)
+        _n_blks = len(ctx.docx.blocks_nchar_max_to_translate_array)
         if _n_blks > 0:
             _blk_pct = int(((i + 1) / _n_blks) * 100)
             for _m in (25, 50, 75):
@@ -1568,32 +1614,32 @@ def selenium_chrome_translate_maxchar_blocks():
                     print(f"PROGRESS:{_m}", flush=True)
                     _progress_blk_emitted.add(_m)
 
-        if i % 2 == 1 and translation_engine in ("chatgpt", "perplexity"):
+        if i % 2 == 1 and ctx.engine.engine in ("chatgpt", "perplexity"):
             print("Cleaning up cookies...")
-            driver.delete_all_cookies()
+            ctx.browser.driver.delete_all_cookies()
     
     # ------------------------------------------------------------------
     # Final validation
     # ------------------------------------------------------------------
     full_text = "\n".join(translated_blocks)
-    translation_array = full_text.split("\n")
+    ctx.docx.translation_array = full_text.split("\n")
 
-    # ── DIAGNOSTIC: confirm translation_array content ────────────────────
-    if oai_polisher is not None:
-        print(f"[DIAG] translation_array ready: {len(translation_array)} lines "
+    # ── DIAGNOSTIC: confirm ctx.docx.translation_array content ────────────────────
+    if ctx.openai.polisher is not None:
+        print(f"[DIAG] ctx.docx.translation_array ready: {len(ctx.docx.translation_array)} lines "
               f"(expected {docxfile_table_number_of_phrases}) — THIS IS THE POLISHED DATA")
-        if translation_array:
-            print(f"[DIAG] First line sample: {translation_array[0][:80]!r}")
+        if ctx.docx.translation_array:
+            print(f"[DIAG] First line sample: {ctx.docx.translation_array[0][:80]!r}")
     # ─────────────────────────────────────────────────────────────────────
 
-    if len(translation_array) != docxfile_table_number_of_phrases:
+    if len(ctx.docx.translation_array) != docxfile_table_number_of_phrases:
         print(
-            f"Line count mismatch: {len(translation_array)} != "
+            f"Line count mismatch: {len(ctx.docx.translation_array)} != "
             f"{docxfile_table_number_of_phrases}"
         )
         translation_succeded = False
     
-    return translation_succeded, translation_array
+    return translation_succeded, ctx.docx.translation_array
 
 
 def selenium_chrome_google_click_cookies_consent_button():
@@ -2399,16 +2445,17 @@ def set_chrome_window_2_3_screen(ctx: RuntimeContext):
         drv.set_window_size(850, 750)
         drv.set_window_position(0, 0)
         
-def deepl_close_messages():
-    """
-    Closes all common Deepl popups, messages, and dialogs.
-    No parameters needed.
-    """
-    global closed_cookies_accept_message_bool, close_install_extension_message_bool, driver
-    
-    close_install_extension_message_bool = False
+def deepl_close_messages(ctx: RuntimeContext):
+    """Close all common DeepL popups, messages, and dialogs.
 
-    # List of XPaths/CSS selectors for popups/messages
+    Threaded in Phase F1.5: reads/writes
+    ``ctx.browser.closed_cookies_accept_message_bool``,
+    ``ctx.browser.close_install_extension_message_bool``, and
+    ``ctx.browser.driver`` instead of the historical module globals.
+    """
+    drv = ctx.browser.driver
+    ctx.browser.close_install_extension_message_bool = False
+
     xpath_selectors = [
         "//button[contains(.,'Accept all cookies')]",
         "//button[contains(.,'Close')]",
@@ -2416,64 +2463,65 @@ def deepl_close_messages():
         "//button[contains(.,'Got it')]",
         "//button[contains(.,'Dismiss')]",
         "//div[@role='dialog']//button[@aria-label='Close']",
-        "//button[@aria-label='Close AI Labs banner button']",  # New AI Labs close button
+        "//button[@aria-label='Close AI Labs banner button']",
         "//div[@data-testid='above-navigation-banner']//button[.//svg]",
-        "//div[@data-testid='above-navigation-banner']//button"
+        "//div[@data-testid='above-navigation-banner']//button",
     ]
     css_selectors = [
-        ".w-6 > .flex"  # install extension popup
-        #"button[data-testid='side-panel-collapse-button']"
+        ".w-6 > .flex",   # install-extension popup
     ]
 
-    # Close elements by XPath
     for selector in xpath_selectors:
         try:
-            el = WebDriverWait(driver, 0.01).until(EC.presence_of_element_located((By.XPATH, selector)))
-            driver.execute_script("arguments[0].scrollIntoView({block: 'start', behavior: 'auto'});", el)
-            safe_click(driver, el)
-            # Mark cookies/extension as closed if relevant
+            el = WebDriverWait(drv, 0.01).until(
+                EC.presence_of_element_located((By.XPATH, selector))
+            )
+            drv.execute_script(
+                "arguments[0].scrollIntoView({block: 'start', behavior: 'auto'});", el
+            )
+            safe_click(drv, el)
             if "cookies" in selector.lower():
-                closed_cookies_accept_message_bool = True
+                ctx.browser.closed_cookies_accept_message_bool = True
             if "w-6" in selector:
-                close_install_extension_message_bool = True
-        except:
+                ctx.browser.close_install_extension_message_bool = True
+        except Exception:
             continue
 
-    # Close elements by CSS selector
     for selector in css_selectors:
         try:
-            el = WebDriverWait(driver, 0.01).until(EC.presence_of_element_located((By.CSS_SELECTOR, selector)))
-            driver.execute_script("arguments[0].scrollIntoView({block: 'start', behavior: 'auto'});", el)
-            safe_click(driver, el)
-            close_install_extension_message_bool = True
-        except:
+            el = WebDriverWait(drv, 0.01).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, selector))
+            )
+            drv.execute_script(
+                "arguments[0].scrollIntoView({block: 'start', behavior: 'auto'});", el
+            )
+            safe_click(drv, el)
+            ctx.browser.close_install_extension_message_bool = True
+        except Exception:
             continue
-    
-    if close_install_extension_message_bool:
-        #Call another time in case some messages because layers order
-        deepl_close_messages()
+
+    if ctx.browser.close_install_extension_message_bool:
+        # One more pass — some popups stack and only surface after the first close.
+        deepl_close_messages(ctx)
 
 
 
-def selenium_chrome_deepl_translate(to_translate, retry_count):
-    global logged_into_deepl
+def selenium_chrome_deepl_translate(ctx, to_translate, retry_count):
     translation = ""
     Translated = False
     # Progress bar to show only when deepl also shows it on the browser
     bar = None
-    global closed_cookies_accept_message_bool, close_install_extension_message_bool, deepl_nb_clear_cached_times
-    global engine_method, end_time, elapsed_time, json_configuration_array
     
     deepl_maximum_clear_cache_retry_key = ['deepl', 'maximum_clear_cache_retry']
-    deepl_maximum_clear_cache_retry = get_nested_value_from_json_array(json_configuration_array, deepl_maximum_clear_cache_retry_key)
+    deepl_maximum_clear_cache_retry = get_nested_value_from_json_array(ctx.config.json_configuration_array, deepl_maximum_clear_cache_retry_key)
     
     # Set variable to false if they are not globally defined
     try:
-        tmp_var = closed_cookies_accept_message_bool
-        tmp_var = close_install_extension_message_bool
+        tmp_var = ctx.browser.closed_cookies_accept_message_bool
+        tmp_var = ctx.browser.close_install_extension_message_bool
     except:
-        closed_cookies_accept_message_bool = False
-        close_install_extension_message_bool = False
+        ctx.browser.closed_cookies_accept_message_bool = False
+        ctx.browser.close_install_extension_message_bool = False
 
     to_translate_phrases_array = to_translate.split("\n")
     to_translate_phrases_array_len = len(to_translate_phrases_array)
@@ -2488,7 +2536,7 @@ def selenium_chrome_deepl_translate(to_translate, retry_count):
             # Retry loop to handle stale references
             for _ in range(3):
                 try:
-                    deepl_close_messages()
+                    deepl_close_messages(ctx)
                     
                     # Re-query the element every iteration
                     lang_elem = wait.until(
@@ -2607,29 +2655,29 @@ def selenium_chrome_deepl_translate(to_translate, retry_count):
         while translation_page_opened == False and translation_page_openeing_loop_count > 0:
             #print(f"{translation_page_openeing_loop_count} trying left")
             try:
-                # driver.get("https://www.deepl.com/translator#%s/%s/%s" % (src_lang,dest_lang, to_translate))
+                # ctx.browser.driver.get("https://www.deepl.com/translator#%s/%s/%s" % (src_lang,dest_lang, to_translate))
                 # Deepl has a bug for / in text to be translated
                 # must be replaced by %5C%2F
                 #translation_url = "https://www.deepl.com/translator#%s/%s/%s" % (
                 #src_lang, dest_lang, urllib.parse.quote(to_translate).replace("%5C", "%5C%5C").replace("/", "%5C%2F").replace("%7C", "%5C%7C"))
                 translation_url = "https://www.deepl.com/translator#%s/%s/" % (src_lang, dest_lang)
-                driver.get(translation_url)
+                ctx.browser.driver.get(translation_url)
                 try:
-                    (driver.page_source).encode('utf-8')
-                    WebDriverWait(driver, 15).until(lambda driver: driver.execute_script('return document.readyState') == 'complete')
+                    (ctx.browser.driver.page_source).encode('utf-8')
+                    WebDriverWait(ctx.browser.driver, 15).until(lambda d: d.execute_script('return document.readyState') == 'complete')
                 except:
                     pass
                 
                 # Make sure the target language matches with the target language code or at least the target language name
                 try:
-                    ensure_target_language(driver, dest_lang=dest_lang, dest_lang_name=dest_lang_name)
-                    WebDriverWait(driver, 15).until(lambda driver: driver.execute_script('return document.readyState') == 'complete')
+                    ensure_target_language(ctx.browser.driver, dest_lang=dest_lang, dest_lang_name=dest_lang_name)
+                    WebDriverWait(ctx.browser.driver, 15).until(lambda d: d.execute_script('return document.readyState') == 'complete')
                 except:
                     pass
                     
                 translation_page_opened = True
                 
-                deepl_close_messages()
+                deepl_close_messages(ctx)
                 
                 ############################################
                 # Copy the text inside using javascript
@@ -2648,7 +2696,7 @@ def selenium_chrome_deepl_translate(to_translate, retry_count):
                         textarea.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: ' ' }));
                     }
                     """
-                    driver.execute_script(js_script, to_translate)
+                    ctx.browser.driver.execute_script(js_script, to_translate)
                 except Exception:
                     pass  
                 
@@ -2656,20 +2704,20 @@ def selenium_chrome_deepl_translate(to_translate, retry_count):
                 print("Waiting for https://www.deepl.com/ ...")
                 sleep(1)
             translation_page_openeing_loop_count = translation_page_openeing_loop_count - 1
-            # driver.get("https://www.deepl.com/translator#%s/%s/Hello" % (src_lang,dest_lang))
+            # ctx.browser.driver.get("https://www.deepl.com/translator#%s/%s/Hello" % (src_lang,dest_lang))
 
         # Wait for page to be loaded
         try:
-            (driver.page_source).encode('utf-8')
-            WebDriverWait(driver, 15).until(lambda driver: driver.execute_script('return document.readyState') == 'complete')
-            
+            (ctx.browser.driver.page_source).encode('utf-8')
+            WebDriverWait(ctx.browser.driver, 15).until(lambda d: d.execute_script('return document.readyState') == 'complete')
+
             try:
                 # Accept cookies
                 deepl_accept_cookies_element = "//button[contains(.,'Accept')]"
-                deepl_accept_cookies_button = WebDriverWait(driver, 0.01).until(
+                deepl_accept_cookies_button = WebDriverWait(ctx.browser.driver, 0.01).until(
                     EC.presence_of_element_located((By.XPATH, deepl_accept_cookies_element)))
-                driver.execute_script("arguments[0].scrollIntoView();", deepl_accept_cookies_button)    
-                safe_click(driver, deepl_accept_cookies_button)
+                ctx.browser.driver.execute_script("arguments[0].scrollIntoView();", deepl_accept_cookies_button)    
+                safe_click(ctx.browser.driver, deepl_accept_cookies_button)
                 
             except:
                 pass
@@ -2679,7 +2727,7 @@ def selenium_chrome_deepl_translate(to_translate, retry_count):
             var = traceback.format_exc()
             print(var)
         
-        deepl_close_messages()
+        deepl_close_messages(ctx)
         
         # Wait for copy translation button
         # Removed on 2022-05-25
@@ -2687,23 +2735,23 @@ def selenium_chrome_deepl_translate(to_translate, retry_count):
         loop_counter_search_button = 4
         while (found_copy_button is False) and (loop_counter_search_button > 0):
             #print(f"loop {loop_counter_search_button}")
-            deepl_close_messages()
+            deepl_close_messages(ctx)
             
             try:
                 # Accept cookies
                 deepl_translation_section_element = "section[aria-labelledby='translation-target-heading']"
                 
-                deepl_translation_section = WebDriverWait(driver, 0.01).until(
+                deepl_translation_section = WebDriverWait(ctx.browser.driver, 0.01).until(
                     EC.presence_of_element_located(
                         (By.CSS_SELECTOR, deepl_translation_section_element)
                     )
                 )
-                is_visible = driver.execute_script("""
+                is_visible = ctx.browser.driver.execute_script("""
                     const r = arguments[0].getBoundingClientRect();
                     return (r.top >= 0 && r.bottom <= window.innerHeight);
                 """, copy_translation_button)
                 if not is_visible:
-                    driver.execute_script(
+                    ctx.browser.driver.execute_script(
                         "arguments[0].scrollIntoView({block: 'end'});",
                         copy_translation_button
                     )
@@ -2714,7 +2762,7 @@ def selenium_chrome_deepl_translate(to_translate, retry_count):
                 # Added on 2023-09-26
                 copy_translation_element = "//button[contains(@aria-label, 'Copy to clipboard')]" #//svg
                 #print(f"Looking for {copy_translation_element}")
-                copy_translation_button = WebDriverWait(driver, 0.2).until(
+                copy_translation_button = WebDriverWait(ctx.browser.driver, 0.2).until(
                     EC.presence_of_element_located((By.XPATH, copy_translation_element)))
                 
                 found_copy_button = True
@@ -2728,7 +2776,7 @@ def selenium_chrome_deepl_translate(to_translate, retry_count):
                     copy_translation_element = "#dl_translator"
                     #print(f"Looking for {copy_translation_element}")
 
-                    copy_translation_button = WebDriverWait(driver, 0.2).until(
+                    copy_translation_button = WebDriverWait(ctx.browser.driver, 0.2).until(
                         EC.presence_of_element_located((By.CSS_SELECTOR, copy_translation_element)))
                                                                                                                                       
                     found_copy_button = True
@@ -2740,7 +2788,7 @@ def selenium_chrome_deepl_translate(to_translate, retry_count):
                         copy_translation_element = ".lmt__target_toolbar_right > span path:nth-child(2)"
                         copy_translation_element = "div:nth-child(5) > svg"
                         #print(f"Looking for {copy_translation_element}")
-                        copy_translation_button = WebDriverWait(driver, 0.2).until(
+                        copy_translation_button = WebDriverWait(ctx.browser.driver, 0.2).until(
                             EC.presence_of_element_located((By.XPATH, copy_translation_element)))
                         found_copy_button = True
                     except:
@@ -2748,7 +2796,7 @@ def selenium_chrome_deepl_translate(to_translate, retry_count):
                         try:
                            copy_translation_element = ".lmt__target_toolbar_right > div > span svg"
                            #print(f"Looking for {copy_translation_element}")       
-                           copy_translation_button = WebDriverWait(driver, 0.2).until(
+                           copy_translation_button = WebDriverWait(ctx.browser.driver, 0.2).until(
                                EC.presence_of_element_located((By.CSS_SELECTOR, copy_translation_element)))
                            found_copy_button = True
                         except:
@@ -2765,26 +2813,26 @@ def selenium_chrome_deepl_translate(to_translate, retry_count):
         timeout_busy_translating = 50
         
         try:
-            busybox = WebDriverWait(driver, 0.3).until(EC.presence_of_element_located((By.CSS_SELECTOR, busy_element)))
-            attrs = driver.execute_script(
+            busybox = WebDriverWait(ctx.browser.driver, 0.3).until(EC.presence_of_element_located((By.CSS_SELECTOR, busy_element)))
+            attrs = ctx.browser.driver.execute_script(
                 'var items = {}; for (index = 0; index < arguments[0].attributes.length; ++index) { items[arguments[0].attributes[index].name] = arguments[0].attributes[index].value }; return items;',
                 busybox)
             busybox_innerhtml = busybox.get_attribute('innerHTML')
             while busybox_innerhtml != "" and timeout_busy_translating > 0:
                 sleep(0.3)
-                busybox = WebDriverWait(driver, 15).until(
+                busybox = WebDriverWait(ctx.browser.driver, 15).until(
                     EC.presence_of_element_located((By.CSS_SELECTOR, busy_element)))
                 busybox_innerhtml = busybox.get_attribute('innerHTML')
-                attrs = driver.execute_script(
+                attrs = ctx.browser.driver.execute_script(
                     'var items = {}; for (index = 0; index < arguments[0].attributes.length; ++index) { items[arguments[0].attributes[index].name] = arguments[0].attributes[index].value }; return items;',
                     busybox)
                 timeout_busy_translating -= 1
 
                 deepl_usage_limit_reached_element = "//button[contains(.,'Back to Translator')]"
                 try:
-                    deepl_usage_limit_reached_button = WebDriverWait(driver, 0.05).until(
+                    deepl_usage_limit_reached_button = WebDriverWait(ctx.browser.driver, 0.05).until(
                         EC.presence_of_element_located((By.XPATH, deepl_usage_limit_reached_element)))
-                    safe_click(driver, deepl_usage_limit_reached_button)
+                    safe_click(ctx.browser.driver, deepl_usage_limit_reached_button)
                     return False, ""
                 except:
                     pass
@@ -2796,44 +2844,44 @@ def selenium_chrome_deepl_translate(to_translate, retry_count):
             # Look for usage limit reached, and try pro for 30 days
             deepl_usage_limit_reached_element = "//button[contains(.,'Back to Translator')]"
             try:
-                deepl_usage_limit_reached_button = WebDriverWait(driver, 0.05).until(
+                deepl_usage_limit_reached_button = WebDriverWait(ctx.browser.driver, 0.05).until(
                     EC.presence_of_element_located((By.XPATH, deepl_usage_limit_reached_element)))
                 
                 limit_reached = True
-                #safe_click(driver, deepl_usage_limit_reached_button)
+                #safe_click(ctx.browser.driver, deepl_usage_limit_reached_button)
             except:
                 
                 pass
             # Sometimes the busy element does not show up, just ignore it and continue
             
-            deepl_close_messages()
+            deepl_close_messages(ctx)
             
             if limit_reached:
                 try:
-                    if deepl_nb_clear_cached_times is None:
-                        deepl_nb_clear_cached_times = 0
+                    if ctx.browser.deepl_nb_clear_cached_times is None:
+                        ctx.browser.deepl_nb_clear_cached_times = 0
                 except:
-                    deepl_nb_clear_cached_times = 0
+                    ctx.browser.deepl_nb_clear_cached_times = 0
                     
-                if deepl_nb_clear_cached_times > deepl_maximum_clear_cache_retry:
+                if ctx.browser.deepl_nb_clear_cached_times > deepl_maximum_clear_cache_retry:
                     return False, ""
                 print("Warning : deepl usage limit reached... retrying after cleaning cache.")
-                driver.delete_all_cookies()
-                driver.get("https://www.deepl.com")
-                closed_cookies_accept_message_bool = False
-                deepl_nb_clear_cached_times = deepl_nb_clear_cached_times + 1
-                logged_into_deepl = selenium_chrome_deepl_log_in(_get_ctx())
-                return selenium_chrome_deepl_translate(to_translate, retry_count)
+                ctx.browser.driver.delete_all_cookies()
+                ctx.browser.driver.get("https://www.deepl.com")
+                ctx.browser.closed_cookies_accept_message_bool = False
+                ctx.browser.deepl_nb_clear_cached_times = ctx.browser.deepl_nb_clear_cached_times + 1
+                ctx.browser.logged_into_deepl = selenium_chrome_deepl_log_in(_get_ctx())
+                return selenium_chrome_deepl_translate(ctx, to_translate, retry_count)
               
 
         #print("Scroll to copy_translation_button")
-        actions = ActionChains(driver)
+        actions = ActionChains(ctx.browser.driver)
         # actions.move_to_element(copy_translation_button).perform()
         # sleep(0.1)
 
         # Scroll the browser to the element's Y position
         try:
-            driver.execute_script(
+            ctx.browser.driver.execute_script(
                 "arguments[0].scrollIntoView({block: 'end'});",
                 copy_translation_button
             )
@@ -2851,15 +2899,15 @@ def selenium_chrome_deepl_translate(to_translate, retry_count):
         while copy_button_clicked_loop_count > 0 and (res == "" or res is None):
             #print(f"copy_button_clicked_loop_count : {copy_button_clicked_loop_count}")
             try:
-                #driver.execute_script("scrollBy(0,-1000);")
+                #ctx.browser.driver.execute_script("scrollBy(0,-1000);")
                 # clipboard.copy('')
                 #try:
                 #    actions.move_to_element(copy_translation_button).perform()
                 #except:
                 #    pass
                 sleep(0.05)
-                # driver.set_window_size(800, 700)
-                page_source_str = driver.page_source
+                # ctx.browser.driver.set_window_size(800, 700)
+                page_source_str = ctx.browser.driver.page_source
                 #print(":::::::::::::::::::::::::::::::::::::::::::::::::::::::")
                 #with open('before.html', 'w', encoding="utf-8") as f:
                 #    f.write(page_source_str)
@@ -2869,9 +2917,9 @@ def selenium_chrome_deepl_translate(to_translate, retry_count):
                 while page_source_str.find(still_translating_html_str) > 0 and wait_translation_finish_try > 0:
                     sleep(0.05)
                     print("Still translating...")
-                    page_source_str = driver.page_source
+                    page_source_str = ctx.browser.driver.page_source
                     # print(":::::::::::::::::::::::::::::::::::::::::::::::::::::::")
-                    # print(driver.page_source)
+                    # print(ctx.browser.driver.page_source)
                     wait_translation_finish_try = wait_translation_finish_try - 1
                     search_percent_re = "of characters translated\">(\d+)\% of characters translated</p>"
                     mo = re.search(search_percent_re, page_source_str)
@@ -2897,11 +2945,11 @@ def selenium_chrome_deepl_translate(to_translate, retry_count):
                     print("")
 
                 # print(":::::::::::::::::::::::::::::::::::::::::::::::::::::::")
-                # print(driver.page_source)
+                # print(ctx.browser.driver.page_source)
                 # print(":::::::::::::::::::::::::::::::::::::::::::::::::::::::")
                 # input("enter to click on button")
 
-                page_source_str = driver.page_source
+                page_source_str = ctx.browser.driver.page_source
                 # with open('after.html', 'w', encoding="utf-8") as f2:
                 #    f2.write(page_source_str)
                 # f2.close()
@@ -2912,7 +2960,7 @@ def selenium_chrome_deepl_translate(to_translate, retry_count):
                 try:
                     # Try to get the translation from the innerhtml of translation button
                     inner_html_plain_text_element = "//button[@class='lmt__translations_as_text__text_btn']"
-                    InnerHTMLPlainTextElement = WebDriverWait(driver, 1).until(
+                    InnerHTMLPlainTextElement = WebDriverWait(ctx.browser.driver, 1).until(
                         EC.presence_of_element_located((By.XPATH, inner_html_plain_text_element)))
                     translation_from_plain_text = InnerHTMLPlainTextElement.get_attribute('innerHTML')
                     res = translation_from_plain_text
@@ -2920,14 +2968,14 @@ def selenium_chrome_deepl_translate(to_translate, retry_count):
                     # if we cannot find translation button with translation the use the copy button
                     # previous_clipbboard = clipboard.paste()
                     # previous_clipbboard = pyperclip.paste()
-                    page_source_str = driver.page_source
+                    page_source_str = ctx.browser.driver.page_source
                     #with open('deepl_page_source.html', 'w', encoding="utf-8") as f:
                     #    f.write(page_source_str)
                     #    f.close()
                     res = ""
                     try:
                         try:
-                            translation_box = WebDriverWait(driver, 5).until(
+                            translation_box = WebDriverWait(ctx.browser.driver, 5).until(
                                 EC.presence_of_element_located(
                                     (By.CSS_SELECTOR,
                                      "d-textarea[data-testid='translator-target-input'] div[contenteditable='true']")
@@ -2943,7 +2991,7 @@ def selenium_chrome_deepl_translate(to_translate, retry_count):
                         #try:
                         #    #inner_html_translation_xpath_element = '//div[@contenteditable="true" and @role="textbox" and @aria-labelledby="translation-results-heading"]'
                         #    inner_html_translation_xpath_element = "//div[contains(@aria-labelledby, 'translation-target-heading')]"
-                        #    InnerHTMLTranslationElement = WebDriverWait(driver, 1).until(
+                        #    InnerHTMLTranslationElement = WebDriverWait(ctx.browser.driver, 1).until(
                         #        EC.presence_of_element_located((By.XPATH, inner_html_translation_xpath_element)))
                         #    
                         #    if InnerHTMLTranslationElement:
@@ -2959,7 +3007,7 @@ def selenium_chrome_deepl_translate(to_translate, retry_count):
                     
                         # Added on version 2022-05-31
                         #copy_translation_element = '//*[@id="headlessui-tabs-panel-7"]/div/div[1]/section/div/div[2]/div[3]/section/div[2]/div[3]/span[2]/span/span/button'
-                        #copy_translation_button = WebDriverWait(driver, 6).until(
+                        #copy_translation_button = WebDriverWait(ctx.browser.driver, 6).until(
                         #    EC.presence_of_element_located((By.XPATH, copy_translation_element)))
                         if not warned_using_clipboard and (res == "" or res == None):
                             print("Warning: Failed to get translation from html, copying from clipboard")
@@ -2968,7 +3016,7 @@ def selenium_chrome_deepl_translate(to_translate, retry_count):
                         if warned_using_clipboard and (res == "" or res == None):
                             #return False, None
                             clipboard.copy('')
-                            safe_click(driver, copy_translation_button)
+                            safe_click(ctx.browser.driver, copy_translation_button)
                             copy_button_clicked = True
                             res = clipboard.paste()
                             if len(res) == 0 or res == None:
@@ -3115,7 +3163,14 @@ def set_translation_function(ctx: RuntimeContext):
     R15: this is the function that re-points the dispatcher during the
     DeepL phrasesblock → singlephrase fallback. The structural test
     `test_engine_method_flip_via_ctx` pins the contract.
+
+    Ctx-aware engine functions (e.g. selenium_chrome_deepl_translate
+    after F1.5) accept ``(ctx, text, retry)``. The dispatcher caller in
+    selenium_chrome_machine_translate passes only ``(text, retry)`` so
+    we bind ``ctx`` here via functools.partial.
     """
+    import functools
+
     if not ctx.flags.splitonly:
         print("\ntranslation_engine=%s" % (ctx.engine.engine))
         print("engine_method=%s"        % (ctx.engine.method))
@@ -3126,7 +3181,7 @@ def set_translation_function(ctx: RuntimeContext):
         if ctx.engine.method == 'phrasesblock':
             ctx.engine.dispatcher = selenium_chrome_translate_get_from_text_array
         else:
-            ctx.engine.dispatcher = selenium_chrome_deepl_translate
+            ctx.engine.dispatcher = functools.partial(selenium_chrome_deepl_translate, ctx)
     elif ctx.engine.engine == 'chatgpt':
         # Same for API and web scraping
         ctx.engine.dispatcher = selenium_chrome_translate_get_from_text_array
@@ -3134,7 +3189,7 @@ def set_translation_function(ctx: RuntimeContext):
         if ctx.engine.method == 'textfile':
             ctx.engine.dispatcher = selenium_chrome_translate_get_from_text_array
         elif ctx.engine.method == 'singlephrase':
-            ctx.engine.dispatcher = selenium_chrome_google_translate
+            ctx.engine.dispatcher = functools.partial(selenium_chrome_google_translate, ctx)
         else:
             ctx.engine.dispatcher = selenium_chrome_translate_get_from_text_array
 
@@ -4523,7 +4578,7 @@ def translate_from_phrasesblock():
     #input("phrasesblock")
     print("Starting translation in %s using phrase blocks of %d characters..." % (translation_engine, MAX_TRANSLATION_BLOCK_SIZE))
 
-    translation_succeded, translation_array = selenium_chrome_translate_maxchar_blocks()
+    translation_succeded, translation_array = selenium_chrome_translate_maxchar_blocks(_get_ctx())
     try:
         os.remove(text_file_path)
         pass
