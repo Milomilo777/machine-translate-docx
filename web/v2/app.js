@@ -90,8 +90,11 @@
     [  0, 'progress_starting'],
   ];
 
-  // Expose the Alpine factory at module load time (Alpine reads x-data="docTranslator()").
-  window.docTranslator = function () {
+  // The factory body — single source of truth. Used both by the Alpine.data()
+  // registration below AND by the inline x-data="docTranslator()" attribute
+  // in index.html via window.docTranslator. The dual exposure protects against
+  // a startup race where Alpine evaluates x-data before app.js has loaded.
+  function buildDocTranslator() {
     return {
       // ── State ────────────────────────────────────────────────────────────
       languages: LANGUAGES,
@@ -381,7 +384,22 @@
         }
       },
     };
-  };
+  }
+
+  // Global form — used by the inline x-data="docTranslator()" attribute.
+  // Alpine evaluates x-data as a JS expression in the global scope, so this
+  // assignment must happen at module top-level, not inside any handler.
+  window.docTranslator = buildDocTranslator;
+
+  // Alpine-registry form — used when Alpine has already started by the time
+  // app.js runs. `alpine:init` fires once during Alpine bootstrap before the
+  // DOM walk, so registering here makes `Alpine.data('docTranslator', ...)`
+  // available for any future code paths that switch to the registry syntax.
+  document.addEventListener('alpine:init', () => {
+    if (window.Alpine && typeof window.Alpine.data === 'function') {
+      window.Alpine.data('docTranslator', buildDocTranslator);
+    }
+  });
 
   // ── Helpers shared by the factory ─────────────────────────────────────────
 
