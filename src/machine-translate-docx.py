@@ -367,6 +367,38 @@ def _get_ctx() -> RuntimeContext:
     return _ctx
 
 
+def _sync_globals_from_ctx(ctx: RuntimeContext) -> None:
+    """Mirror every populated attribute of ``ctx.docx`` (and selected
+    ``ctx.flags`` / ``ctx.language`` fields) onto this module's namespace
+    so legacy functions that still read by bare name see the populated
+    state.
+
+    Phase H bridge: rather than threading ~40 remaining functions one
+    at a time, we re-export the same objects under their historical
+    module-level names. Lists and dicts on ``ctx.docx`` are referenced
+    by identity, so any in-place mutation by a downstream helper is
+    visible through both names. After a full replacement (e.g.
+    ``ctx.docx.translation_array = new_list``), call this helper again
+    to refresh the module-level alias.
+
+    Called from ``main()`` at pipeline boundaries: after
+    ``read_and_parse_docx_document``, after ``translate_docx``, and
+    after the polish/aligner step. Cheap (one ``setattr`` per attr).
+    """
+    import sys as _sys
+    _mod = _sys.modules[__name__]
+    # Mirror every public dataclass field on ctx.docx.
+    for _name, _value in vars(ctx.docx).items():
+        if _name.startswith("_"):
+            continue
+        setattr(_mod, _name, _value)
+    # A few non-docx ctx fields are also read by bare name in legacy code.
+    if getattr(ctx.language, "dest_lang", None) is not None:
+        setattr(_mod, "dest_lang", ctx.language.dest_lang)
+    if getattr(ctx.language, "src_lang", None) is not None:
+        setattr(_mod, "src_lang", ctx.language.src_lang)
+
+
 # Track the child processes
 def kill_child_process():
     import time
@@ -4580,6 +4612,7 @@ def main() -> int:
     initialize_translation_memory_xlsx(ctx)
 
     read_and_parse_docx_document(ctx)
+    _sync_globals_from_ctx(ctx)  # Phase H bridge — see helper docstring
 
     create_webdriver(ctx)
 
@@ -4593,6 +4626,7 @@ def main() -> int:
         #    print("Failed to login into perplexity")
 
     translation_succeded = translate_docx(ctx)
+    _sync_globals_from_ctx(ctx)  # refresh module-level after translation_array etc. populated
 
     if ctx.browser.logged_into_deepl:
         selenium_chrome_deepl_log_off(ctx)
