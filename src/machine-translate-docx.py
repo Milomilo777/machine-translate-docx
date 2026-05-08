@@ -142,6 +142,15 @@ import inspect
 
 from xlsx_translation_memory import xlsx_translation_memory
 
+# Module-level translation-memory handle. Pre-refactor code assumed this
+# existed as a module-level global, but no top-level binding was ever
+# committed — `initialize_translation_memory_xlsx` only created a local
+# `xtm`, so every later read raised NameError once the code path ran
+# live (silent in tests because the F-012 mid-layer wasn't exercised).
+# Initialise as None here so `if xtm is not None` reads correctly when
+# `--xlsxreplacefile` is not provided.
+xtm = None
+
 import html
 
 from urllib.parse import urlencode, quote_plus
@@ -1865,6 +1874,7 @@ def selenium_chrome_machine_translate(ctx: RuntimeContext, to_translate, index):
     return translation
     
 def initialize_translation_memory_xlsx(ctx: RuntimeContext):
+    global xtm
     # If --xlsxreplacefile was provided in the command line
     if xlsxreplacefile is not None:
         print("xlsxreplacefile: %s" % (xlsxreplacefile))
