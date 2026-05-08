@@ -1425,57 +1425,16 @@ def selenium_chrome_translate_maxchar_blocks():
     # ------------------------------------------------------------------
     _single_call_done = False
     if translation_engine == "chatgpt" and engine_method == "api" and oai_translator is not None:
+        from engines.chatgpt_api import run_openai_single_call
         full_source = "\n".join(blocks_nchar_max_to_translate_array)
-        total_lines = len(full_source.split("\n"))
-        print(f"[INFO] OpenAI single-call mode: {total_lines} lines, {len(full_source)} chars")
-        # PROGRESS marker — picked up by local_launcher.py and surfaced in /status JSON.
-        # Pre-translate: file parsed, prompts loaded, ready to call OpenAI.
-        print("PROGRESS:15", flush=True)
-
-        _t_translate_start = time.time()
-        _, full_translated = oai_translator.translate(src_lang_name, dest_lang_name, full_source)
-        _t_translate = time.time() - _t_translate_start
-        print("PROGRESS:30", flush=True)
-        _td = oai_translator.last_call_data
-        print(
-            f"[TIMER] Translate: {_t_translate:.1f}s | "
-            f"tokens: {_td.get('total_tokens', '?')} "
-            f"(prompt {_td.get('prompt_tokens', '?')}, "
-            f"completion {_td.get('completion_tokens', '?')}, "
-            f"cached {_td.get('cached_tokens', 0)})"
+        full_translated = run_openai_single_call(
+            oai_translator=oai_translator,
+            oai_polisher=oai_polisher,
+            full_source=full_source,
+            src_lang_name=src_lang_name,
+            dest_lang_name=dest_lang_name,
+            translation_log=translation_log,
         )
-
-        if oai_polisher is not None:
-            print("[INFO] Polish pass (full document in one call) ...")
-            _t_polish_start = time.time()
-            _before_polish = full_translated
-            full_translated = oai_polisher.polish(full_source, full_translated)
-            _t_polish = time.time() - _t_polish_start
-            print("PROGRESS:65", flush=True)
-            _pd = oai_polisher.last_call_data
-            print(
-                f"[TIMER] Polish:    {_t_polish:.1f}s | "
-                f"tokens: {_pd.get('total_tokens', '?')} "
-                f"(prompt {_pd.get('prompt_tokens', '?')}, "
-                f"completion {_pd.get('completion_tokens', '?')}, "
-                f"cached {_pd.get('cached_tokens', 0)})"
-            )
-
-            _lines_before = _before_polish.split("\n")
-            _lines_after  = full_translated.split("\n")
-            _changed = sum(1 for a, b in zip(_lines_before, _lines_after) if a != b)
-            if full_translated == _before_polish:
-                print("[DIAG] Polish: NO CHANGE (check for API error above)")
-            else:
-                print(f"[DIAG] Polish: {_changed}/{len(_lines_before)} lines changed ✓")
-
-            translation_log["blocks"].append({
-                "block_index":  0,
-                "source_text":  full_source,
-                "translation":  oai_translator.last_call_data.copy() if oai_translator else {},
-                "polish":       oai_polisher.last_call_data.copy(),
-            })
-
         translated_blocks.append(full_translated)
         _single_call_done = True
 
