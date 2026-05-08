@@ -20,6 +20,11 @@
   --color-brand-500: #D97757;
   --color-brand-600: #C8704D;
   --color-brand-700: #B5613E;
+  /* AA-compliant darker variant for body text on cream-100. The lighter
+     500/600/700 shades fail WCAG 4.5:1 against cream — only 800 passes.
+     Used for inline links, the "click to choose" affordance, and download
+     anchors. */
+  --color-brand-800: #9F4D2D;
 
   --shadow-soft:  0 1px 2px rgba(31,30,27,0.04), 0 4px 12px rgba(31,30,27,0.04);
   --shadow-card:  0 1px 3px rgba(31,30,27,0.06), 0 8px 24px rgba(31,30,27,0.06);
@@ -44,6 +49,9 @@
   --color-brand-500: #E08A6E;
   --color-brand-600: #D97757;
   --color-brand-700: #C66744;
+  /* Dark theme: lighten brand-800 since the background flips dark — body
+     text needs ample luminance against #1F1E1B. */
+  --color-brand-800: #E89878;
 
   --shadow-soft:  0 1px 2px rgba(0,0,0,0.4), 0 4px 12px rgba(0,0,0,0.3);
   --shadow-card:  0 1px 3px rgba(0,0,0,0.5), 0 8px 24px rgba(0,0,0,0.4);
@@ -103,6 +111,28 @@ body {
 
 /* ── Hide [x-cloak] before Alpine initialises ──────────────────────────── */
 [x-cloak] { display: none !important; }
+
+/* ── Visually-hidden labels (screen-reader only) ───────────────────────────
+   Standard sr-only utility from the WAI-ARIA Authoring Practices. Used to
+   provide a programmatic <label for=…> association without consuming layout
+   space (e.g. the newsletter email field, where the visible heading already
+   describes the form). */
+.sr-only {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
+/* Brand-800 — Tailwind CDN config provides the light value (#9F4D2D);
+   we only need to flip it for dark mode (mirrors the pattern used for
+   .bg-cream-* and .text-ink-* below). */
+[data-theme="dark"] .text-brand-800 { color: var(--color-brand-800); }
 
 /* ── Reduce motion respectfully ────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {

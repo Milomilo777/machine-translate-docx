@@ -91,6 +91,18 @@
         document.documentElement.setAttribute('data-theme', this.theme);
         // Pick a sensible default engine for the saved target language.
         this.onLanguageChange();
+        // Sync <html lang=...> so screen readers + Google Translate detect
+        // the actual page language. Tracks targetLanguage when it's RTL.
+        this.syncHtmlLang();
+      },
+
+      // Update <html lang> to reflect the active target language for RTL
+      // locales (fa, ar, he). For LTR targets the page chrome stays English,
+      // so `lang="en"` remains the right value.
+      syncHtmlLang() {
+        const rtl = { fa: 'fa', ar: 'ar', he: 'he' };
+        const next = rtl[this.targetLanguage] || 'en';
+        document.documentElement.setAttribute('lang', next);
       },
 
       // ── Computed helpers ────────────────────────────────────────────────
@@ -134,6 +146,7 @@
           else this.engine = 'google';
         }
         this.onEngineChange();
+        this.syncHtmlLang();
       },
 
       onEngineChange() {

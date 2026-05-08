@@ -10,12 +10,16 @@
   <!-- Vazirmatn (Persian) + Inter (Latin) -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <!-- Only the weights we actually use (400 default + 500 medium + 600 semibold).
+       font-bold (700) is not referenced anywhere — dropping saves ~30 KB. -->
   <link
-    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Vazirmatn:wght@400;500;600;700&display=swap"
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Vazirmatn:wght@400;500;600&display=swap"
     rel="stylesheet"
   />
 
-  <!-- Tailwind via CDN. We override the palette in tailwind.config below. -->
+  <!-- Tailwind via CDN. We override the palette in tailwind.config below.
+       dns-prefetch warms the CDN host before the script tag fetches. -->
+  <link rel="dns-prefetch" href="https://cdn.tailwindcss.com" />
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
@@ -26,10 +30,13 @@
             fa: ['Vazirmatn', 'Inter', 'system-ui', 'sans-serif'],
           },
           colors: {
-            // Claude-inspired warm palette
+            // Claude-inspired warm palette.
+            // brand-800 is the AA-compliant darkest variant used for inline body
+            // text and links — earlier 500/600/700 only meet WCAG AA against
+            // cream-100 for large/decorative text.
             cream: { 50: '#FCFBF7', 100: '#FAF9F5', 200: '#F4F2EC', 300: '#EBE9E2' },
             ink:   { 900: '#1F1E1B', 700: '#3F3E3A', 500: '#73716D', 400: '#9A9893' },
-            brand: { 500: '#D97757', 600: '#C8704D', 700: '#B5613E' },
+            brand: { 500: '#D97757', 600: '#C8704D', 700: '#B5613E', 800: '#9F4D2D' },
           },
           borderRadius: { lg: '12px', xl: '16px', '2xl': '20px' },
           boxShadow: {
@@ -89,6 +96,9 @@
     </div>
   </header>
 
+  <!-- Image convention for v2: any future <img> must include loading="lazy"
+       (and an explicit width/height to avoid CLS). The current page uses
+       inline SVGs only — no raster images, so no lazy-loading needed yet. -->
   <main class="max-w-3xl mx-auto px-4 sm:px-6 py-10 sm:py-14">
     <!-- Hero -->
     <section class="text-center mb-10 sm:mb-14">
@@ -136,7 +146,7 @@
         </svg>
         <div class="mt-3 text-ink-700">
           <span class="font-medium">Drag &amp; drop</span> or
-          <span class="text-brand-600 underline-offset-2 hover:underline">click to choose</span>
+          <span class="text-brand-800 underline-offset-2 hover:underline">click to choose</span>
         </div>
         <div class="mt-1 text-xs text-ink-500">.docx only · up to 2 files · 50 MB each</div>
       </div>
@@ -270,12 +280,12 @@
                 <path d="M4 20h16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
               </svg>
               <span class="truncate text-sm" x-text="r.label"></span>
-              <span x-show="r.fromCache" class="text-[10px] uppercase tracking-wide bg-brand-500/10 text-brand-700 px-2 py-0.5 rounded-full">cached</span>
+              <span x-show="r.fromCache" class="text-[10px] uppercase tracking-wide bg-brand-500/10 text-brand-800 px-2 py-0.5 rounded-full">cached</span>
             </div>
             <a
               :href="r.href"
               :download="r.filename"
-              class="text-sm text-brand-600 hover:text-brand-700 font-medium"
+              class="text-sm text-brand-800 hover:text-brand-700 font-medium"
             >Download</a>
           </li>
         </template>
@@ -300,13 +310,14 @@
         Optional. Get an email when a major update ships. No marketing, no spam.
       </p>
       <form @submit.prevent="subscribe()" class="mt-4 flex flex-col sm:flex-row gap-2">
+        <label for="newsletter-email" class="sr-only">Email address</label>
         <input
+          id="newsletter-email"
           type="email"
           required
           placeholder="you@example.com"
           x-model="newsletterEmail"
           class="flex-1 rounded-lg border border-cream-300 bg-white px-3 py-2 text-sm focus:outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-500/20 transition"
-          aria-label="Email address"
         />
         <button
           type="submit"
