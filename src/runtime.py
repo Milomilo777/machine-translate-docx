@@ -84,6 +84,9 @@ class Flags:
     word_file_to_translate_save_as_path: str | None = None
     xlsxreplacefile:                     str | None = None
 
+    # OpenAI model selection (CLI --aimodel; defaults applied where used)
+    aimodel: str | None = None
+
 
 # ── language ──────────────────────────────────────────────────────────────────
 

@@ -205,6 +205,7 @@ from engines.deepl import (
     deepl_close_messages,
     selenium_chrome_deepl_translate,
 )
+from runner import selenium_chrome_translate_maxchar_blocks as _runner_translate_maxchar_blocks
 
 # Module-level RuntimeContext singleton — Phase F1 transition shim.
 # Lazily built by `_get_ctx()` on first call from any function that has
@@ -344,6 +345,15 @@ def _get_ctx() -> RuntimeContext:
         try:
             _ctx.flags.xlsxreplacefile = xlsxreplacefile
         except NameError:
+            pass
+        # G4 — aimodel + with_polish snapshots
+        try:
+            _ctx.flags.aimodel = args.aimodel
+        except (NameError, AttributeError):
+            pass
+        try:
+            _ctx.flags.with_polish = args.with_polish
+        except (NameError, AttributeError):
             pass
     return _ctx
 
@@ -1217,223 +1227,6 @@ def selenium_chrome_translate_get_from_text_array(to_translate, index):
     #input("In selenium_chrome_translate_get_from_text_array")
     return translation_array[index - 1]
     
-def selenium_chrome_translate_maxchar_blocks(ctx: RuntimeContext):
-    
-    translation_succeded = True
-    translated_blocks = []
-    
-    # ------------------------------------------------------------------
-    # Engine-agnostic single attempt
-    # ------------------------------------------------------------------
-    def translate_once(engine, method, text, attempt):
-        if engine == "deepl":
-            return selenium_chrome_deepl_translate(ctx, text, attempt)
-
-        if engine == "chatgpt":
-            # ChatGPT-web (Selenium) was moved to src/engines/inactive/
-            # chatgpt_web.py in Phase D. Only the API path remains active.
-            if method == "api":
-                response, translated = ctx.openai.translator.translate(
-                    ctx.language.src_lang_name, ctx.language.dest_lang_name, text
-                )
-                success = (
-                    translated
-                    and len(translated.split("\n")) == len(text.split("\n"))
-                )
-                return success, translated
-            raise ValueError(
-                f"chatgpt non-api method '{method}' is no longer supported "
-                f"(selenium engine moved to inactive)"
-            )
-
-        if engine == "perplexity":
-            # Perplexity-web (Selenium) was moved to src/engines/inactive/
-            # perplexity_web.py in Phase D. Only the webservice forwarder
-            # (HTTP → localhost:8000) remains in the active dispatcher.
-            if method == "webservice":
-                return selenium_webservice_perplexity_translate(ctx, text, attempt)
-            raise ValueError(
-                f"perplexity non-webservice method '{method}' is no longer "
-                f"supported (selenium engine moved to inactive)"
-            )
-
-        raise ValueError(f"Unknown translation engine: {engine}")
-    
-    # ------------------------------------------------------------------
-    # ONE recursive algorithm for ALL engines
-    # ------------------------------------------------------------------
-    def translate_lines_block(lines, engine, method, attempt=1):
-        if not lines:
-            return ""
-        
-        joined = "\n".join(lines)
-        success, translated = translate_once(engine, method, joined, attempt)
-        
-        if success and translated:
-            return translated.strip()
-        
-        # Split block if possible
-        if len(lines) > 1:
-            mid = len(lines) // 2
-            print(f"Splitting block of {len(lines)} lines...")
-            left = translate_lines_block(lines[:mid], engine, method, attempt)
-            right = translate_lines_block(lines[mid:], engine, method, attempt)
-            return (left + "\n" + right).strip()
-        
-        # Single-line fallback
-        line = lines[0]
-        print(f"Single-line fallback: {line}")
-        
-        success, translated = translate_once(engine, method, line, attempt)
-        if success and translated:
-            return translated.strip()
-        
-        # Google fallback (last resort)
-        selenium_chrome_google_click_cookies_consent_button(ctx)
-        translated = selenium_chrome_google_translate(ctx, line)
-        if translated:
-            return translated.strip()
-        
-        print(f"ERROR: Unable to translate line: {line}")
-        return "Unable to get translation."
-    
-    # ------------------------------------------------------------------
-    # ChatGPT API setup
-    # ------------------------------------------------------------------
-    if ctx.engine.engine == "chatgpt" and ctx.engine.method == "api":
-        ai_model = args.aimodel if args.aimodel else "gpt-5.5"
-        ctx.openai.translator = OpenAITranslator(model=ai_model)
-        ctx.openai.translator.set_filename(ctx.flags.word_file_to_translate)
-
-        if args.with_polish:
-            try:
-                ctx.openai.polisher = OpenAIPolisher(model=ai_model, dest_lang=ctx.language.dest_lang)
-                print(f"[INFO] Polish pass enabled (model={ai_model}, lang={ctx.language.dest_lang})")
-            except FileNotFoundError as _e:
-                print(f"[WARN] Polish disabled: {_e}")
-                ctx.openai.polisher = None
-            import datetime as _dt
-            ctx.openai.translation_log["run_info"] = {
-                "timestamp":   _dt.datetime.now().isoformat(timespec="seconds"),
-                "input_file":  ctx.flags.word_file_to_translate,
-                "model":       ai_model,
-                "source_lang": ctx.language.src_lang,
-                "dest_lang":   ctx.language.dest_lang,
-                "with_polish": True,
-            }
-            ctx.openai.translation_log["blocks"] = []
-    
-    # ------------------------------------------------------------------
-    # OpenAI single-call mode: entire file = ONE translate + ONE polish
-    # ------------------------------------------------------------------
-    _single_call_done = False
-    if ctx.engine.engine == "chatgpt" and ctx.engine.method == "api" and ctx.openai.translator is not None:
-        from engines.chatgpt_api import run_openai_single_call
-        full_source = "\n".join(ctx.docx.blocks_nchar_max_to_translate_array)
-        full_translated = run_openai_single_call(
-            oai_translator=ctx.openai.translator,
-            oai_polisher=ctx.openai.polisher,
-            full_source=full_source,
-            src_lang_name=ctx.language.src_lang_name,
-            dest_lang_name=ctx.language.dest_lang_name,
-            translation_log=ctx.openai.translation_log,
-        )
-        translated_blocks.append(full_translated)
-        _single_call_done = True
-
-    # ------------------------------------------------------------------
-    # Standard block loop (DeepL, Google, Selenium, and all other engines)
-    # ------------------------------------------------------------------
-    if not _single_call_done:
-      _progress_blk_emitted: set[int] = set()  # milestones already sent this job
-      for i, block in enumerate(ctx.docx.blocks_nchar_max_to_translate_array):
-        print(
-            f"Translating block {i + 1}/{len(ctx.docx.blocks_nchar_max_to_translate_array)} "
-            f"({len(block)} chars)"
-        )
-
-        success, translated = translate_once(
-            ctx.engine.engine, ctx.engine.method, block, attempt=0
-        )
-
-        if not success:
-            if ctx.engine.engine == 'deepl':
-                print("Cleaning up cookies...")
-                ctx.browser.driver.delete_all_cookies()
-
-            print("Initial translation failed → recursive fallback")
-            ctx.docx.translation_errors_count += 1
-            ctx.browser.deepl_sleep_wait_translation_seconds *= 1.1
-
-            translated = translate_lines_block(
-                block.split("\n"),
-                ctx.engine.engine,
-                ctx.engine.method
-            )
-
-        if ctx.openai.polisher is not None:
-            print(f"Polishing block {i + 1}/{len(ctx.docx.blocks_nchar_max_to_translate_array)} ...")
-            _translated_before_polish = translated
-            translated = ctx.openai.polisher.polish(block, translated)
-
-            _lines_before = _translated_before_polish.split("\n")
-            _lines_after  = translated.split("\n")
-            _changed = sum(1 for a, b in zip(_lines_before, _lines_after) if a != b)
-            if translated == _translated_before_polish:
-                print(f"[DIAG] Polish block {i+1}: NO CHANGE (check for API error or line-count mismatch above)")
-            else:
-                print(f"[DIAG] Polish block {i+1}: {_changed}/{len(_lines_before)} lines changed ✓")
-
-            block_entry = {
-                "block_index":   i,
-                "source_text":   block,
-                "translation":   ctx.openai.translator.last_call_data.copy() if ctx.openai.translator else {},
-                "polish":        ctx.openai.polisher.last_call_data.copy(),
-            }
-            ctx.openai.translation_log["blocks"].append(block_entry)
-
-        translated_blocks.append(translated)
-
-        # Emit 25/50/75 progress milestones proportional to block completion.
-        # Applies to all block-loop engines (Google, DeepL, Selenium, etc.).
-        # The chatgpt single-call path emits its own PROGRESS markers and never
-        # reaches this loop (_single_call_done = True skips us entirely).
-        _n_blks = len(ctx.docx.blocks_nchar_max_to_translate_array)
-        if _n_blks > 0:
-            _blk_pct = int(((i + 1) / _n_blks) * 100)
-            for _m in (25, 50, 75):
-                if _blk_pct >= _m and _m not in _progress_blk_emitted:
-                    print(f"PROGRESS:{_m}", flush=True)
-                    _progress_blk_emitted.add(_m)
-
-        if i % 2 == 1 and ctx.engine.engine in ("chatgpt", "perplexity"):
-            print("Cleaning up cookies...")
-            ctx.browser.driver.delete_all_cookies()
-    
-    # ------------------------------------------------------------------
-    # Final validation
-    # ------------------------------------------------------------------
-    full_text = "\n".join(translated_blocks)
-    ctx.docx.translation_array = full_text.split("\n")
-
-    # ── DIAGNOSTIC: confirm ctx.docx.translation_array content ────────────────────
-    if ctx.openai.polisher is not None:
-        print(f"[DIAG] ctx.docx.translation_array ready: {len(ctx.docx.translation_array)} lines "
-              f"(expected {docxfile_table_number_of_phrases}) — THIS IS THE POLISHED DATA")
-        if ctx.docx.translation_array:
-            print(f"[DIAG] First line sample: {ctx.docx.translation_array[0][:80]!r}")
-    # ─────────────────────────────────────────────────────────────────────
-
-    if len(ctx.docx.translation_array) != docxfile_table_number_of_phrases:
-        print(
-            f"Line count mismatch: {len(ctx.docx.translation_array)} != "
-            f"{docxfile_table_number_of_phrases}"
-        )
-        translation_succeded = False
-    
-    return translation_succeded, ctx.docx.translation_array
-
-
 def selenium_chrome_google_translate_text_file(ctx: RuntimeContext, text_file_path):
     try:
         
@@ -3299,7 +3092,10 @@ def translate_from_phrasesblock(ctx: RuntimeContext):
     #input("phrasesblock")
     print("Starting translation in %s using phrase blocks of %d characters..." % (ctx.engine.engine, ctx.config.max_translation_block_size))
 
-    translation_succeded, ctx.docx.translation_array = selenium_chrome_translate_maxchar_blocks(ctx)
+    translation_succeded, ctx.docx.translation_array = _runner_translate_maxchar_blocks(
+        ctx,
+        selenium_webservice_perplexity_translate=selenium_webservice_perplexity_translate,
+    )
     try:
         os.remove(text_file_path)
         pass
