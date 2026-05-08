@@ -186,6 +186,15 @@ from config import (
 )
 
 from runtime import RuntimeContext
+from selenium_utils import (
+    safe_click,
+    browser_fill_form_field_value,
+    set_chrome_window_2_3_screen,
+    create_webdriver,
+    minimize_browser,
+    clean_up_previous_chrome_selenium_drivers,
+    cleanup_selenium_chrome_temp_folders,
+)
 
 # Module-level RuntimeContext singleton — Phase F1 transition shim.
 # Lazily built by `_get_ctx()` on first call from any function that has
@@ -299,6 +308,31 @@ def _get_ctx() -> RuntimeContext:
             pass
         try:
             _ctx.docx.blocks_nchar_max_to_translate_array = blocks_nchar_max_to_translate_array
+        except NameError:
+            pass
+        # G1 — webdriver module + paths + remaining flags
+        try:
+            _ctx.browser.webdriver_module = webdriver
+        except NameError:
+            pass
+        try:
+            _ctx.browser.chrome_options = chrome_options
+        except NameError:
+            pass
+        try:
+            _ctx.flags.exitonsuccess = exitonsuccess
+        except NameError:
+            pass
+        try:
+            _ctx.flags.silent = silent
+        except NameError:
+            pass
+        try:
+            _ctx.flags.viewdocx = viewdocx
+        except NameError:
+            pass
+        try:
+            _ctx.flags.xlsxreplacefile = xlsxreplacefile
         except NameError:
             pass
     return _ctx
@@ -884,17 +918,6 @@ def print_os_info():
     platform.version(),
     platform.mac_ver(),
     ))
-
-def safe_click(driver, element):
-    try:
-        #safe_click(driver, element)
-        driver.execute_script("arguments[0].click();", element)
-    except WebDriverException:
-        # fallback for headless/minimized/hidden elements
-        print(f"Failed to click element: {e}")
-        # Optional: take a screenshot for debugging
-        # driver.save_screenshot("error.png")
-        pass
 
 if not os.path.exists(word_file_to_translate) :
     print("ERROR: File not found: %s" % (word_file_to_translate))
@@ -2396,43 +2419,6 @@ def selenium_chrome_deepl_log_off(ctx: RuntimeContext):
         print("Failed of Deepl, this can be ignored")
         return False
 
-def set_chrome_window_2_3_screen(ctx: RuntimeContext):
-    """Resize and position the Chrome window to roughly 5/7 of the screen.
-
-    Threaded in Phase F1.1: reads/writes the window-position cache through
-    ``ctx.browser.cached_window_pos`` (was the module-level
-    ``_cached_window_pos`` global) and the active driver through
-    ``ctx.browser.driver``.
-    """
-    drv = ctx.browser.driver
-    try:
-        # Get screen size directly from browser
-        screen_width  = drv.execute_script("return screen.availWidth;")
-        screen_height = drv.execute_script("return screen.availHeight;")
-
-        width  = min(int(screen_width  * 5 / 7), 1200)
-        height = min(int(screen_height * 5 / 7), 900)
-
-        if ctx.browser.cached_window_pos is None:
-            max_x_offset = int(screen_width  / 15)
-            max_y_offset = int(screen_height / 15)
-
-            x_pos = random.randint(0, max_x_offset)
-            y_pos = random.randint(0, max_y_offset)
-
-            ctx.browser.cached_window_pos = (x_pos, y_pos)
-        else:
-            x_pos, y_pos = ctx.browser.cached_window_pos
-
-        drv.set_window_size(width, height)
-        drv.set_window_position(x_pos, y_pos)
-
-    except Exception as e:
-        print(f"[Warning] Could not set Chrome window size/position: {e}")
-        print("[Info] Falling back to 850x750 at (0,0)")
-        drv.set_window_size(850, 750)
-        drv.set_window_position(0, 0)
-        
 def deepl_close_messages(ctx: RuntimeContext):
     """Close all common DeepL popups, messages, and dialogs.
 
@@ -4035,109 +4021,6 @@ def read_and_parse_docx_document(ctx: RuntimeContext):
             print(var)
             numerrors = numerrors + 1
 
-def clean_up_previous_chrome_selenium_drivers(current_driver_full_path):
-    found_previous_chrome_driver = False
-    
-    try:
-        list_driver_path = []
-        
-        if platform.system().lower() == 'windows':
-            userprofile_path = os.environ.get('USERPROFILE')
-            selenium_cache_folder = f"{userprofile_path}\\.cache\\selenium"
-            list_driver_path = glob.glob(f"{selenium_cache_folder}\\**\\chromedriver.exe", recursive=True)
-        else:
-            home_path = os.environ.get('HOME')
-            selenium_cache_folder = f"{home_path}/.cache/selenium"
-            list_driver_path = glob.glob(f"{selenium_cache_folder}/*/**/chromedriver", recursive=True)
-            
-        for driver_path in list_driver_path:
-            if driver_path == current_driver_full_path:
-                pass # Latest version of the driver, keep the file
-            else:
-                if os.path.exists(driver_path):
-                    try:
-                        if found_previous_chrome_driver == False:
-                            print("\nCleaning up old chrome driver files")
-                            found_previous_chrome_driver = True
-                        print(f"Removing previous chrome driver at {driver_path}")
-                        os.remove(driver_path)
-                    except:
-                        print(f"Unable to cleanup chrome driver at {driver_path}")
-                        
-        if len(list_driver_path) >= 2:
-            print(f"Keeping current chrome driver at {current_driver_full_path}")
-                
-    except:
-        var = traceback.format_exc()
-        print(var)
-        
-
-def create_webdriver(ctx: RuntimeContext):
-    if not ctx.flags.splitonly:
-        print("\nStarting translation using engine : %s" % (ctx.engine.engine.title()))
-
-    ctx.browser.driver_path = ""
-    
-    #if ctx.flags.use_api == False and not ctx.flags.splitonly:
-    if True:
-        print(f"Starting Chrome browser\n")
-        service = Service()
-        
-        if webdriver.__name__ == "undetected_chromedriver":
-            try:
-                from selenium import webdriver as selenium_webdriver
-                # Step 1: Get the ChromeDriver path using Selenium Manager
-                options_manager = selenium_webdriver.ChromeOptions()
-                # For headless mode, choose the new or old flag as per your Chrome version:
-                options_manager.add_argument('--headless')  # Recommended for latest Chrome/Chromium
-                # Alternatively, for compatibility with older versions, you can use:
-                # options.add_argument('--headless')
-
-                manager = selenium_webdriver.Chrome(options=options_manager)
-                ctx.browser.driver_path = manager.service.path
-                manager.quit()
-                print(f"Using selenium chrome driver path : {ctx.browser.driver_path}")
-            except:
-                pass
-            
-        try:
-            if ctx.browser.driver_path != "":
-                #print("Please wait while patching chrome driver to help prevent robot detections...")
-                #ctx.browser.chrome_options.add_argument(f"--proxy-server=http://37.120.133.137:3128")
-                driver = webdriver.Chrome(service=service, options=ctx.browser.chrome_options, driver_executable_path=ctx.browser.driver_path)
-                #driver.get("https://whatismyipaddress.com/")
-                #input("waiting for page to open")
-            else:
-                driver = webdriver.Chrome(service=service, options=ctx.browser.chrome_options)
-        except:
-            var = traceback.format_exc()
-            print(var)
-            print("An error occured during launching chrome. This may happen during google chrome automatic updates or if Google Chrome is not installed.")
-            print("You may start google chrome and open the menu Help -> About Google Chrome to see if there is an update running and retry machine translation after the update.")
-            print("Exiting, please retry.")
-            
-            print("\nDeveloper: %s" % (E_mail_str))
-            print("Program version: %s\n" % (PROGRAM_VERSION))
-            if not exitonsuccess:
-                input("Enter to close program")
-            
-            sys.exit(12)
-        
-        print("\nChrome started using driver at %s\n" % (driver.service.path))
-
-        #input("driver loaded and running")
-        #driver.set_window_position(0, 350)
-        if ctx.engine.engine == 'deepl':
-            driver.set_window_position(0, 100)
-            set_chrome_window_2_3_screen(ctx)
-        else:
-            set_chrome_window_2_3_screen(ctx)
-            #driver.set_window_size(400, 650)
-            
-    ctx.browser.numerrors_deepl = 0
-    numerrors_googletranslate= 0
-
-# Reverse a string
 def reverse_string(s):
     return s[::-1]
 
@@ -4731,16 +4614,6 @@ def get_translation_and_replace_after(ctx: RuntimeContext):
         Identical_with_without_separators = 'DIFFERENT<BR>'
         if phrase_separator_removed_str == web_translation_no_separators:
             Identical_with_without_separators = 'SAME<BR>'
-
-
-def minimize_browser():
-    if not use_api and not splitonly:
-        # Minimize browser
-        #print("Minimizing browser...")
-        try:
-            driver.minimize_window()
-        except:
-            pass
 
 
 def document_split_phrases(ctx: RuntimeContext):
@@ -5426,15 +5299,6 @@ def run_statistics(ctx: RuntimeContext):
     #time.sleep(10)
 
 
-def browser_fill_form_field_value(ctx: RuntimeContext, field_css_id, field_value):
-    try:
-        input_field = WebDriverWait(driver, 1).until(EC.presence_of_element_located((By.CSS_SELECTOR, field_css_id)))
-        input_field.send_keys (field_value)
-    except:
-        var = traceback.format_exc()
-        print(var)
-
-
 def get_robot_usage_comment(ctx: RuntimeContext):
     
     javascript_json_version_checker_url_key = ['version_checker', 'javascript_json_version_checker_url']
@@ -6017,81 +5881,6 @@ import psutil
 import platform
 import sys
 
-def cleanup_selenium_chrome_temp_folders():
-    """
-    Cleans up Selenium/Chrome temporary folders:
-      - Windows: Program Files + TEMP/TMP
-      - Linux/macOS: /tmp
-    Deletes only folders that were last modified more than 2 hours ago.
-    """
-    
-    system = platform.system().lower()
-    cutoff_time = time.time() - 1 * 60 * 60  # 1 hours
-    print("\n🧹 Cleaning Selenium/Chrome temp folders (older than 1 hour)")
-    
-    tmp_8char_pattern = re.compile(r'^tmp[a-zA-Z0-9_]{8}$')  # tmpXXXXXXXX
-    
-    if system == 'windows':
-        delete_patterns = [
-            r"scoped_dir\d{3,}_\d{6,}",
-            r"chrome_BITS_\d{3,}_\d{6,}",
-            r"chrome_PuffinComponentUnpacker_BeginUnzipping\d{3,}_\d{7,}",
-            r"chrome_url_fetcher_\d{3,}_\d{7,}",
-            tmp_8char_pattern.pattern
-        ]
-        
-        paths_to_check = [r"C:\Program Files"]
-        for env_var in ["TEMP", "TMP"]:
-            tmp_dir = os.environ.get(env_var)
-            if tmp_dir and os.path.isdir(tmp_dir):
-                paths_to_check.append(tmp_dir)
-        
-        for root_path in paths_to_check:
-            try:
-                folders = [f for f in os.listdir(root_path) if os.path.isdir(os.path.join(root_path, f))]
-            except PermissionError:
-                continue
-            
-            for folder in folders:
-                folder_path = os.path.join(root_path, folder)
-                if any(re.fullmatch(p, folder) for p in delete_patterns):
-                    try:
-                        last_mod = os.path.getmtime(folder_path)
-                        if last_mod < cutoff_time:
-                            print(f"⚠️  DELETING: {folder_path}")
-                            shutil.rmtree(folder_path, ignore_errors=True)
-                        else:
-                            # Skip folders modified within last 2 hours
-                            continue
-                    except Exception:
-                        continue
-    
-    elif system in ('linux', 'darwin'):
-        tmp_path = "/tmp"
-        try:
-            folders = [f for f in os.listdir(tmp_path) if os.path.isdir(os.path.join(tmp_path, f))]
-        except PermissionError:
-            folders = []
-        
-        for folder in folders:
-            if folder.startswith((".org.chromium.Chromium.", ".com.google.Chrome.")) or tmp_8char_pattern.fullmatch(folder):
-                folder_path = os.path.join(tmp_path, folder)
-                try:
-                    last_mod = os.path.getmtime(folder_path)
-                    if last_mod < cutoff_time:
-                        print(f"⚠️  DELETING: {folder_path}")
-                        shutil.rmtree(folder_path, ignore_errors=True)
-                    else:
-                        continue
-                except Exception:
-                    continue
-    
-    else:
-        print(f"Unsupported OS: {system}")
-
-
-
-
 def main() -> int:
     """Entry point. Builds the RuntimeContext from module-level state on
     first ``_get_ctx()`` call and threads it through every pipeline step.
@@ -6148,7 +5937,7 @@ def main() -> int:
 
     get_translation_and_replace_after(ctx)
 
-    minimize_browser()
+    minimize_browser(ctx)
 
     document_split_phrases(ctx)
 

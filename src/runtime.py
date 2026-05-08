@@ -195,13 +195,17 @@ class DocxCtx:
 class BrowserCtx:
     """Selenium WebDriver state plus per-engine session flags.
 
-    ``driver`` is the only field that changes after construction. The boolean
-    flags are sticky once-per-session triggers used by the engine code to
-    decide whether a cookie banner / install-extension overlay needs to be
-    closed (only on first encounter).
+    ``driver`` and ``webdriver_module`` are the two fields that change at
+    runtime: ``webdriver_module`` is the import target (selenium vs
+    undetected_chromedriver) chosen at module-import time based on the
+    requested engine, and ``driver`` is the live ``Chrome`` instance.
+    The boolean flags below are sticky once-per-session triggers used by
+    engine code to decide whether a cookie banner / install-extension
+    overlay needs to be closed (only on first encounter).
     """
 
-    driver:           Any = None         # selenium.webdriver.* instance
+    driver:           Any = None         # selenium.webdriver.* | undetected_chromedriver instance
+    webdriver_module: Any = None         # selenium.webdriver | undetected_chromedriver (module)
     chrome_options:   Any = None         # ChromeOptions
     chromedriverpath: str | None = None
     service:          Any = None         # selenium.webdriver.chrome.service.Service
