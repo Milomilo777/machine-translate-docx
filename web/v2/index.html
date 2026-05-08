@@ -8,7 +8,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <title>Document Translator</title>
+  <title>SMTV Document Translator</title>
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -20,151 +20,85 @@
   <link rel="stylesheet" href="/v2/tailwind.css" />
   <link rel="stylesheet" href="/v2/styles.css" />
 
-  <!-- Alpine is served from the project, not a CDN, so the page works
-       offline / behind a firewall. The defer attribute keeps order:
-       Alpine evaluates first, then app.js sets window.docTranslator,
-       then DOMContentLoaded fires and Alpine walks the DOM. -->
-  <script src="/v2/vendor/alpine.min.js" defer></script>
+  <!-- Plain-JS rewrite (2026-05-09): no Alpine, no async i18n. Every
+       interactive behaviour is wired by addEventListener in app.js so
+       the page works even if a single network request fails. -->
   <script src="/v2/app.js" defer></script>
 </head>
 
-<body
-  x-data="docTranslator()"
-  x-init="init()"
-  class="relative min-h-screen overflow-x-hidden bg-cream-100 text-ink-900 font-sans antialiased"
->
-  <!-- Decorative blobs (purely visual, behind content) -->
-  <div aria-hidden="true" class="pointer-events-none fixed inset-0 -z-10">
+<body class="page-shell">
+  <!-- Decorative blobs (purely visual, behind everything) -->
+  <div aria-hidden="true" class="blob-layer">
     <div class="blob blob-1"></div>
     <div class="blob blob-2"></div>
     <div class="blob blob-3"></div>
   </div>
 
   <!-- Header -->
-  <header class="border-b border-cream-300/70 bg-cream-50/70 backdrop-blur sticky top-0 z-30">
-    <div class="max-w-6xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
-      <a href="/v2/" class="flex items-center gap-2 text-ink-900 hover:text-brand-600 transition">
-        <span class="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-brand-500 text-white shadow-soft">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+  <header class="page-header">
+    <div class="header-inner">
+      <a href="/v2/" class="brand-link">
+        <span class="brand-mark">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <path d="M4 4h12l4 4v12H4V4z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
             <path d="M8 12h8M8 16h6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
           </svg>
         </span>
-        <span class="font-semibold tracking-tight">Document Translator</span>
+        <span class="brand-text">SMTV Translate</span>
       </a>
-      <nav class="flex items-center gap-1 sm:gap-2 text-sm">
-        <a
-          href="/"
-          class="px-3 py-1.5 rounded-lg text-ink-500 hover:text-ink-900 hover:bg-cream-200 transition"
-          title="Open the legacy UI"
-        >Legacy UI</a>
-        <a
-          href="https://github.com/translation-robot/machine-translate-docx"
-          class="px-3 py-1.5 rounded-lg text-ink-500 hover:text-ink-900 hover:bg-cream-200 transition"
-          target="_blank" rel="noopener"
-        >GitHub</a>
-        <button
-          @click="toggleTheme()"
-          aria-label="Toggle theme"
-          class="px-2.5 py-1.5 rounded-lg text-ink-500 hover:text-ink-900 hover:bg-cream-200 transition"
-        >
-          <span x-show="theme === 'light'" aria-hidden="true">🌙</span>
-          <span x-show="theme === 'dark'" aria-hidden="true">☀</span>
+      <nav class="header-nav">
+        <a href="/" class="nav-link" title="Open the legacy UI">Legacy UI</a>
+        <a href="https://github.com/translation-robot/machine-translate-docx" class="nav-link" target="_blank" rel="noopener">GitHub</a>
+        <button id="themeBtn" type="button" class="nav-link" aria-label="Toggle theme">
+          <span id="themeIconLight" aria-hidden="true">🌙</span>
+          <span id="themeIconDark" aria-hidden="true" class="hidden">☀</span>
         </button>
       </nav>
     </div>
   </header>
 
-  <main class="relative max-w-3xl mx-auto px-4 sm:px-6 py-12 sm:py-20">
-    <!-- Hero -->
-    <section class="text-center mb-10 sm:mb-14">
-      <span class="inline-flex items-center gap-2 rounded-full bg-cream-50 border border-cream-300/70 px-3 py-1 text-xs font-medium text-ink-500 shadow-soft">
-        <span class="w-1.5 h-1.5 rounded-full bg-brand-500"></span>
-        Persian · DeepL · Google · OpenAI
-      </span>
-      <h1 class="mt-5 font-display text-5xl sm:text-6xl font-semibold tracking-tight leading-[1.05]">
-        Translate your
-        <span class="title-accent">Word documents</span>
-      </h1>
-      <p class="mt-4 text-ink-500 text-base sm:text-lg max-w-xl mx-auto">
-        Drop one or two <code class="text-[0.85em] tabular text-ink-700 bg-cream-200/60 px-1.5 py-0.5 rounded">.docx</code> files,
-        pick a language and engine, then download a polished translation.
-      </p>
-    </section>
+  <!-- Main two-column layout, fits a single viewport -->
+  <main class="page-main">
+    <!-- Left: form -->
+    <section class="form-col">
+      <h1 class="page-title">SMTV Translate documents</h1>
 
-    <!-- Card: drop-zone + form -->
-    <section class="card-shell">
       <!-- Drop-zone -->
       <div
-        @dragover.prevent="dragActive = true"
-        @dragleave.prevent="dragActive = false"
-        @drop.prevent="onDrop($event)"
-        @click="$refs.fileInput.click()"
-        @keydown.enter="$refs.fileInput.click()"
-        @keydown.space.prevent="$refs.fileInput.click()"
+        id="dropZone"
+        class="drop-zone"
         role="button"
         tabindex="0"
-        :class="[
-          'group cursor-pointer rounded-2xl border-2 border-dashed transition-all duration-200',
-          dragActive
-            ? 'border-brand-500 bg-brand-500/8 scale-[1.01]'
-            : 'border-cream-300 bg-cream-50/40 hover:border-brand-500 hover:bg-cream-50',
-          'p-10 sm:p-14 text-center'
-        ]"
         aria-label="Click or drop one to two .docx files"
       >
         <input
-          x-ref="fileInput"
+          id="fileInput"
           type="file"
           accept=".docx"
           multiple
           class="hidden"
-          @change="onFileChosen($event)"
         />
-        <span class="mx-auto mb-4 inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-white border border-cream-300 shadow-soft group-hover:shadow-card transition">
-          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" class="text-brand-500" aria-hidden="true">
+        <span class="drop-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <path d="M12 16V4M12 4l-4 4M12 4l4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
             <path d="M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
         </span>
-        <div class="text-ink-900 font-medium">
+        <div class="drop-text">
           Drag &amp; drop, or
-          <span class="text-brand-800 underline-offset-4 hover:underline">click to choose</span>
+          <span class="drop-link">click to choose</span>
         </div>
-        <div class="mt-1.5 text-xs text-ink-500">.docx only · up to 2 files · 50&nbsp;MB each</div>
+        <div class="drop-hint">.docx · max 2 files · 50&nbsp;MB each</div>
       </div>
 
-      <!-- Selected files -->
-      <ul x-show="files.length" class="mt-4 space-y-2" x-cloak>
-        <template x-for="(f, idx) in files" :key="idx">
-          <li class="flex items-center justify-between gap-3 rounded-xl bg-cream-50 border border-cream-300 px-3 py-2.5">
-            <div class="min-w-0 flex items-center gap-3">
-              <span class="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-brand-500/10 text-brand-700">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                  <path d="M14 3v5h5M6 3h8l5 5v13H6V3z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
-                </svg>
-              </span>
-              <span class="truncate text-sm text-ink-900" x-text="f.name"></span>
-              <span class="text-xs text-ink-400 shrink-0 tabular" x-text="formatBytes(f.size)"></span>
-            </div>
-            <button
-              @click="removeFile(idx)"
-              class="text-ink-400 hover:text-ink-900 text-sm rounded-lg p-1.5 hover:bg-cream-200 transition"
-              aria-label="Remove file"
-            >✕</button>
-          </li>
-        </template>
-      </ul>
+      <!-- Selected files (compact, hidden when empty) -->
+      <ul id="fileList" class="file-list hidden"></ul>
 
-      <!-- Options
-           IMPORTANT: every <option> is rendered server-side so the
-           selects are populated even if Alpine fails to start (e.g. a
-           script error or a CDN block). x-model still binds the value;
-           Alpine just keeps state, it does not generate the options. -->
-      <div class="mt-7 grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <label class="block">
-          <span class="text-sm text-ink-700 font-medium">Source language</span>
-          <select x-model="sourceLanguage" @change="onLanguageChange()" class="form-select mt-1.5">
+      <!-- Form fields (2x2 grid) -->
+      <div class="form-grid">
+        <label class="form-field">
+          <span class="form-label">Source</span>
+          <select id="sourceLanguage" class="form-select">
             <option value="en">English</option>
             <option value="ar">Arabic</option>
             <option value="bg">Bulgarian</option>
@@ -196,9 +130,9 @@
           </select>
         </label>
 
-        <label class="block">
-          <span class="text-sm text-ink-700 font-medium">Target language</span>
-          <select x-model="targetLanguage" @change="onLanguageChange()" class="form-select mt-1.5">
+        <label class="form-field">
+          <span class="form-label">Target</span>
+          <select id="targetLanguage" class="form-select">
             <option value="fa">Persian</option>
             <option value="en">English</option>
             <option value="ar">Arabic</option>
@@ -230,19 +164,19 @@
           </select>
         </label>
 
-        <label class="block">
-          <span class="text-sm text-ink-700 font-medium">Translation engine</span>
-          <select x-model="engine" @change="onEngineChange()" class="form-select mt-1.5">
-            <option value="chatgpt-polish">OpenAI Translation + Polish (Persian)</option>
+        <label class="form-field">
+          <span class="form-label">Engine</span>
+          <select id="engine" class="form-select">
+            <option value="chatgpt-polish">OpenAI Translate + Polish (Persian)</option>
             <option value="deepl">DeepL</option>
             <option value="google">Google Translate</option>
             <option value="chatgpt">OpenAI API</option>
           </select>
         </label>
 
-        <label class="block" x-show="showAiModel" x-cloak>
-          <span class="text-sm text-ink-700 font-medium">OpenAI model</span>
-          <select x-model="aiModel" class="form-select mt-1.5">
+        <label class="form-field" id="aiModelField">
+          <span class="form-label">OpenAI model</span>
+          <select id="aiModel" class="form-select">
             <option value="gpt-5.5">GPT-5.5 — recommended</option>
             <option value="gpt-5.4">GPT-5.4</option>
             <option value="gpt-5.4-mini">GPT-5.4 mini — faster, cheaper</option>
@@ -250,164 +184,83 @@
         </label>
       </div>
 
-      <!-- Split (Google/DeepL only) -->
-      <div class="mt-5" x-show="showSplit" x-cloak>
-        <label class="inline-flex items-center gap-2.5 text-sm text-ink-700 cursor-pointer select-none">
-          <input
-            type="checkbox"
-            x-model="splitTranslate"
-            class="w-4 h-4 rounded border-cream-300 text-brand-500 focus:ring-2 focus:ring-brand-500/30 focus:ring-offset-0"
-          />
-          <span>Split long phrases before translating</span>
-        </label>
-      </div>
-
-      <!-- Translate button -->
-      <div class="mt-7 flex flex-wrap items-center gap-3">
-        <button
-          @click="translate()"
-          :disabled="!canTranslate || running"
-          :class="[
-            'inline-flex items-center gap-2 px-6 py-3 rounded-xl font-medium transition-all duration-150',
-            canTranslate && !running
-              ? 'btn-primary hover:-translate-y-px active:translate-y-0'
-              : 'bg-cream-200 text-ink-400 cursor-not-allowed'
-          ]"
-        >
-          <svg x-show="!running" width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-          <span x-show="!running">Translate document</span>
-          <span x-show="running" class="inline-flex items-center gap-2" x-cloak>
-            <span class="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" aria-hidden="true"></span>
-            <span x-text="progressLabel"></span>
+      <!-- Translate button + status -->
+      <div class="action-row">
+        <button id="translateBtn" type="button" class="btn-primary">
+          <span id="btnIdle" class="btn-idle">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            Translate document
+          </span>
+          <span id="btnRunning" class="btn-running hidden">
+            <span class="spinner" aria-hidden="true"></span>
+            <span id="btnRunningLabel">Working…</span>
           </span>
         </button>
-        <span class="text-xs text-ink-400" x-show="files.length === 1" x-cloak>1 file selected</span>
-        <span class="text-xs text-ink-400" x-show="files.length === 2" x-cloak>2 files queued (max)</span>
+        <span id="fileSelectedNote" class="action-note hidden"></span>
       </div>
 
-      <!-- Progress -->
-      <div x-show="running" class="mt-6" x-cloak>
-        <div class="flex items-center justify-between text-xs text-ink-500 mb-1.5">
-          <span x-text="progressLabel"></span>
-          <span class="tabular" x-text="progress + '%'"></span>
+      <!-- Progress (shown during run) -->
+      <div id="progressBox" class="progress-box hidden">
+        <div class="progress-meta">
+          <span id="progressLabel">Starting…</span>
+          <span id="progressPct" class="tabular">0%</span>
         </div>
-        <div class="h-2 rounded-full bg-cream-200 overflow-hidden">
-          <div
-            class="h-full bg-gradient-to-r from-brand-500 to-brand-700 transition-all duration-300"
-            :style="`width: ${progress}%`"
-          ></div>
+        <div class="progress-track">
+          <div id="progressFill" class="progress-fill"></div>
         </div>
-        <p class="mt-2 text-xs text-ink-400">
-          Job <span class="tabular" x-text="(currentJobIndex + 1)"></span> of <span class="tabular" x-text="files.length"></span> · <span x-text="currentFileName"></span>
+        <div id="progressJob" class="progress-job"></div>
+      </div>
+
+      <!-- Error -->
+      <div id="errorBox" class="error-box hidden" role="alert">
+        <strong>Translation failed:</strong>
+        <span id="errorText"></span>
+      </div>
+
+      <!-- Results -->
+      <ul id="resultsList" class="results-list hidden"></ul>
+    </section>
+
+    <!-- Right: sidebar info -->
+    <aside class="info-col">
+      <div class="info-card">
+        <h2 class="info-title">How it works</h2>
+        <p class="info-line">
+          Drop a Word file on the left, choose target language and engine, then download the result. Works for general docs and broadcast subtitles.
         </p>
       </div>
-    </section>
 
-    <!-- Results -->
-    <section x-show="results.length" class="mt-10" x-cloak>
-      <h2 class="text-lg font-semibold mb-3 flex items-center gap-2">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" class="text-brand-600" aria-hidden="true">
-          <path d="M5 12l5 5L20 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-        Downloads
-      </h2>
-      <ul class="space-y-2">
-        <template x-for="(r, idx) in results" :key="idx">
-          <li class="flex items-center justify-between gap-3 rounded-xl bg-white border border-cream-300 px-4 py-3 shadow-soft hover:shadow-card transition">
-            <div class="min-w-0 flex items-center gap-3">
-              <span class="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-brand-500/10 text-brand-700">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                  <path d="M14 3v5h5M6 3h8l5 5v13H6V3z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
-                </svg>
-              </span>
-              <span class="truncate text-sm" x-text="r.label"></span>
-              <span x-show="r.fromCache" class="text-[10px] uppercase tracking-wide bg-brand-500/10 text-brand-800 px-2 py-0.5 rounded-full">cached</span>
-            </div>
-            <a
-              :href="r.href"
-              :download="r.filename"
-              class="inline-flex items-center gap-1.5 text-sm text-brand-800 hover:text-brand-700 font-medium"
-            >
-              Download
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path d="M12 4v12m0 0l-4-4m4 4l4-4M4 20h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
-            </a>
-          </li>
-        </template>
-      </ul>
-    </section>
-
-    <!-- Error banner -->
-    <div
-      x-show="error"
-      x-cloak
-      class="mt-6 p-4 rounded-xl border border-red-200 bg-red-50 text-red-900 text-sm"
-      role="alert"
-    >
-      <strong class="font-medium">Translation failed:</strong>
-      <span x-text="error"></span>
-    </div>
-
-    <!-- Newsletter -->
-    <section class="mt-14 sm:mt-20 newsletter-shell">
-      <div class="flex items-start gap-4">
-        <span class="hidden sm:inline-flex shrink-0 items-center justify-center w-10 h-10 rounded-xl bg-brand-500/10 text-brand-700">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path d="M3 7l9 6 9-6M3 7v10a1 1 0 001 1h16a1 1 0 001-1V7M3 7l9-4 9 4" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
-          </svg>
-        </span>
-        <div class="flex-1 min-w-0">
-          <h2 class="font-display text-xl font-semibold text-ink-900">Stay in the loop</h2>
-          <p class="text-sm text-ink-500 mt-1">
-            Get an email when a major update ships.
-          </p>
-          <form @submit.prevent="subscribe()" class="mt-4 flex flex-col sm:flex-row gap-2">
-            <label for="newsletter-email" class="sr-only">Email address</label>
-            <input
-              id="newsletter-email"
-              type="email"
-              required
-              placeholder="you@example.com"
-              x-model="newsletterEmail"
-              class="form-input flex-1"
-            />
-            <button
-              type="submit"
-              :disabled="newsletterPending"
-              :class="[
-                'rounded-xl px-5 py-2.5 text-sm font-medium transition',
-                newsletterPending
-                  ? 'bg-cream-200 text-ink-400 cursor-not-allowed'
-                  : 'bg-ink-900 hover:bg-ink-700 text-white'
-              ]"
-            >
-              <span x-show="!newsletterPending">Subscribe</span>
-              <span x-show="newsletterPending" x-cloak>Sending…</span>
-            </button>
-          </form>
-          <p
-            x-show="newsletterMessage"
-            x-cloak
-            :class="[
-              'mt-3 text-sm',
-              newsletterOk ? 'text-emerald-700' : 'text-red-700'
-            ]"
-            x-text="newsletterMessage"
-          ></p>
-        </div>
+      <div class="info-card">
+        <h3 class="info-subtitle">Engines</h3>
+        <ul class="info-list">
+          <li><strong>OpenAI Translate + Polish</strong> — Persian only. Adds a quality polish pass and a bilingual aligned <em>Double</em> file for TV subtitles.</li>
+          <li><strong>DeepL</strong> — best for European languages.</li>
+          <li><strong>Google</strong> — widest language coverage.</li>
+          <li><strong>OpenAI API</strong> — single-call API translation.</li>
+        </ul>
       </div>
-    </section>
 
-    <!-- Footer -->
-    <footer class="mt-12 sm:mt-16 text-center text-xs text-ink-400">
-      <p>
-        Built on
-        <a class="text-ink-500 hover:text-ink-900 underline-offset-2 hover:underline" href="https://github.com/translation-robot/machine-translate-docx" target="_blank" rel="noopener">machine-translate-docx</a>
-      </p>
-    </footer>
+      <div class="info-card">
+        <h3 class="info-subtitle">Outputs &amp; cache</h3>
+        <ul class="info-list">
+          <li>Persian + Polish gives you up to three files: <code>_PER_TranslatePolish</code>, <code>_PER_Double</code>, <code>_PER_Classic</code>.</li>
+          <li>OpenAI results are cached server-side for 36&nbsp;h, then deleted.</li>
+          <li>Per upload: max 2 files, 50&nbsp;MB each.</li>
+        </ul>
+      </div>
+
+      <div class="info-card newsletter-card">
+        <h3 class="info-subtitle">Stay in the loop</h3>
+        <form id="newsletterForm" class="newsletter-form">
+          <label for="newsletterEmail" class="sr-only">Email address</label>
+          <input id="newsletterEmail" type="email" required placeholder="you@example.com" class="form-input" />
+          <button type="submit" id="newsletterBtn" class="btn-secondary">Subscribe</button>
+        </form>
+        <p id="newsletterMsg" class="newsletter-msg hidden"></p>
+      </div>
+    </aside>
   </main>
 </body>
 </html>

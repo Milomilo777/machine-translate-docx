@@ -1,15 +1,17 @@
 /* ──────────────────────────────────────────────────────────────────────────
-   Document Translator — v2 client logic (i18n-free rewrite, 2026-05-09)
-   Backend endpoints (shared with the legacy /index.ejs UI):
-      POST /upload      → multipart/form-data: file + sourceLanguage +
-                          targetLanguage + translationEngine + aiModel
+   SMTV Document Translator — v2 client (plain JS, 2026-05-09)
+   No framework. Every interactive behaviour is wired with
+   addEventListener so the page survives a missing CDN, a slow network,
+   or a runtime error in any other layer.
+
+   Backend endpoints (shared with /index.ejs):
+      POST /upload      → multipart: file + sourceLanguage + targetLanguage
+                          + translationEngine + aiModel + splitTranslate?
                           → { ok, jobId, cacheHit }
       GET  /status/:id  → { status, progress, filename, filename2,
                             filename3, error }
       GET  /download/<name> → docx bytes
       POST /subscribe   → JSON { email } → { ok, message }
-
-   Polling-based (no SSE). Up to two files queued sequentially.
    ────────────────────────────────────────────────────────────────────────── */
 
 (function () {
@@ -20,41 +22,7 @@
   const MAX_FILES        = 2;
   const MAX_FILE_BYTES   = 50 * 1024 * 1024; // 50 MB
 
-  // Mirrors the legacy languageDb so a user moving between UIs sees the
-  // same options. `deepl=false` removes the language from the engine list
-  // when it's the target.
-  const LANGUAGES = [
-    { name: 'English',                value: 'en',    deepl: false },
-    { name: 'Arabic',                 value: 'ar',    deepl: true  },
-    { name: 'Bulgarian',              value: 'bg',    deepl: true  },
-    { name: 'Chinese (Simplified)',   value: 'zh-CN', deepl: true  },
-    { name: 'Chinese (Traditional)',  value: 'zh-TW', deepl: true  },
-    { name: 'Czech',                  value: 'cs',    deepl: true  },
-    { name: 'French',                 value: 'fr',    deepl: true  },
-    { name: 'German',                 value: 'de',    deepl: true  },
-    { name: 'Hindi',                  value: 'hi',    deepl: true  },
-    { name: 'Hungarian',              value: 'hu',    deepl: true  },
-    { name: 'Indonesian',             value: 'id',    deepl: true  },
-    { name: 'Italian',                value: 'it',    deepl: true  },
-    { name: 'Japanese',               value: 'ja',    deepl: true  },
-    { name: 'Korean',                 value: 'ko',    deepl: true  },
-    { name: 'Malay',                  value: 'ms',    deepl: true  },
-    { name: 'Mongolian',              value: 'mn',    deepl: true  },
-    { name: 'Nepali',                 value: 'ne',    deepl: true  },
-    { name: 'Persian',                value: 'fa',    deepl: true  },
-    { name: 'Polish',                 value: 'pl',    deepl: true  },
-    { name: 'Punjabi',                value: 'pa',    deepl: true  },
-    { name: 'Romanian',               value: 'ro',    deepl: true  },
-    { name: 'Russian',                value: 'ru',    deepl: true  },
-    { name: 'Spanish',                value: 'es',    deepl: true  },
-    { name: 'Telugu',                 value: 'te',    deepl: true  },
-    { name: 'Thai',                   value: 'th',    deepl: false },
-    { name: 'Ukrainian',              value: 'uk',    deepl: true  },
-    { name: 'Urdu',                   value: 'ur',    deepl: true  },
-    { name: 'Vietnamese',             value: 'vi',    deepl: true  },
-  ];
-
-  const LS_KEYS = {
+  const LS = {
     source: 'v2.savedSourceLang',
     target: 'v2.savedTargetLang',
     theme:  'v2.theme',
@@ -63,8 +31,278 @@
   function lsGet(k, def) { try { return localStorage.getItem(k) ?? def; } catch (_) { return def; } }
   function lsSet(k, v)   { try { localStorage.setItem(k, v); } catch (_) {} }
 
-  // 9-bucket progress label table. The launcher emits PROGRESS:N markers and
-  // the entry script picks 5 anchor values; we map them back to a label.
+  // ── Mutable state ─────────────────────────────────────────────────────────
+  const state = {
+    files: [],
+    running: false,
+    currentJobIndex: 0,
+    progress: 0,
+  };
+
+  // ── DOM lookup helper — defers until the element actually exists.
+  function $(id) { return document.getElementById(id); }
+
+  // ── Boot ──────────────────────────────────────────────────────────────────
+  function boot() {
+    restoreTheme();
+    restoreLanguages();
+    syncEngineUI();
+    syncTargetEngineCascade();
+    wireDropZone();
+    wireFormControls();
+    wireTranslateButton();
+    wireNewsletter();
+    wireThemeButton();
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot);
+  } else {
+    boot();
+  }
+
+  // ── Theme ────────────────────────────────────────────────────────────────
+  function restoreTheme() {
+    const t = lsGet(LS.theme, 'light');
+    document.documentElement.setAttribute('data-theme', t);
+    paintThemeIcons(t);
+  }
+  function paintThemeIcons(theme) {
+    const light = $('themeIconLight');
+    const dark  = $('themeIconDark');
+    if (!light || !dark) return;
+    light.classList.toggle('hidden', theme === 'dark');
+    dark .classList.toggle('hidden', theme !== 'dark');
+  }
+  function wireThemeButton() {
+    const btn = $('themeBtn');
+    if (!btn) return;
+    btn.addEventListener('click', () => {
+      const cur = document.documentElement.getAttribute('data-theme') || 'light';
+      const next = cur === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      lsSet(LS.theme, next);
+      paintThemeIcons(next);
+    });
+  }
+
+  // ── Language defaults ────────────────────────────────────────────────────
+  function restoreLanguages() {
+    const src = $('sourceLanguage');
+    const tgt = $('targetLanguage');
+    if (src) src.value = lsGet(LS.source, 'en');
+    if (tgt) tgt.value = lsGet(LS.target, 'fa');
+  }
+
+  // When the user picks a target language, default the engine to the
+  // best fit if the current selection makes no sense any more.
+  function syncTargetEngineCascade() {
+    const tgt = $('targetLanguage');
+    const eng = $('engine');
+    if (!tgt || !eng) return;
+    const onChange = () => {
+      lsSet(LS.target, tgt.value);
+      // If the user just picked Persian, prefer chatgpt-polish; otherwise
+      // if the current engine is the Persian-only one, fall back to
+      // DeepL → Google.
+      if (tgt.value === 'fa' && eng.value !== 'chatgpt-polish' && eng.value !== 'chatgpt') {
+        eng.value = 'chatgpt-polish';
+      } else if (tgt.value !== 'fa' && eng.value === 'chatgpt-polish') {
+        eng.value = 'deepl';
+      }
+      syncEngineUI();
+    };
+    tgt.addEventListener('change', onChange);
+    const src = $('sourceLanguage');
+    if (src) src.addEventListener('change', () => lsSet(LS.source, src.value));
+    eng.addEventListener('change', syncEngineUI);
+  }
+
+  // Toggle the AI-model field's visibility based on the chosen engine.
+  function syncEngineUI() {
+    const eng = $('engine');
+    const aim = $('aiModelField');
+    if (!eng || !aim) return;
+    const showModel = (eng.value === 'chatgpt' || eng.value === 'chatgpt-polish');
+    aim.classList.toggle('hidden', !showModel);
+  }
+
+  // ── Drop zone + file input ───────────────────────────────────────────────
+  function wireDropZone() {
+    const zone  = $('dropZone');
+    const input = $('fileInput');
+    if (!zone || !input) return;
+
+    // Click anywhere on the zone (except on the input itself) → open dialog.
+    zone.addEventListener('click', (e) => {
+      if (e.target === input) return;
+      input.click();
+    });
+    zone.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        input.click();
+      }
+    });
+
+    // Drag-and-drop visual feedback + file capture.
+    zone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      zone.classList.add('drag-active');
+    });
+    zone.addEventListener('dragleave', () => {
+      zone.classList.remove('drag-active');
+    });
+    zone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      zone.classList.remove('drag-active');
+      const list = e.dataTransfer ? Array.from(e.dataTransfer.files) : [];
+      acceptFiles(list);
+    });
+
+    input.addEventListener('change', () => {
+      acceptFiles(Array.from(input.files || []));
+      input.value = ''; // allow re-selecting the same file
+    });
+  }
+
+  function acceptFiles(list) {
+    clearError();
+    for (const f of list) {
+      if (state.files.length >= MAX_FILES) break;
+      if (!f.name.toLowerCase().endsWith('.docx')) {
+        showError(`Skipped "${f.name}" — only .docx files are accepted.`);
+        continue;
+      }
+      if (f.size > MAX_FILE_BYTES) {
+        showError(`Skipped "${f.name}" — file is larger than 50 MB.`);
+        continue;
+      }
+      state.files.push(f);
+    }
+    renderFileList();
+    updateActionRow();
+  }
+
+  function renderFileList() {
+    const ul = $('fileList');
+    if (!ul) return;
+    ul.innerHTML = '';
+    state.files.forEach((f, idx) => {
+      const li = document.createElement('li');
+      li.className = 'file-row';
+      li.innerHTML = `
+        <span class="file-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M14 3v5h5M6 3h8l5 5v13H6V3z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+          </svg>
+        </span>
+        <span class="file-name"></span>
+        <span class="file-size tabular"></span>
+        <button type="button" class="file-remove" aria-label="Remove file">✕</button>
+      `;
+      li.querySelector('.file-name').textContent = f.name;
+      li.querySelector('.file-size').textContent = formatBytes(f.size);
+      li.querySelector('.file-remove').addEventListener('click', () => {
+        state.files.splice(idx, 1);
+        renderFileList();
+        updateActionRow();
+      });
+      ul.appendChild(li);
+    });
+    ul.classList.toggle('hidden', state.files.length === 0);
+  }
+
+  function updateActionRow() {
+    const btn  = $('translateBtn');
+    const note = $('fileSelectedNote');
+    if (btn) btn.disabled = state.files.length === 0 || state.running;
+    if (note) {
+      if (!state.files.length) { note.classList.add('hidden'); note.textContent = ''; }
+      else if (state.files.length === 1) { note.classList.remove('hidden'); note.textContent = '1 file selected'; }
+      else                                { note.classList.remove('hidden'); note.textContent = '2 files queued (max)'; }
+    }
+  }
+
+  // ── Form change persistence ─────────────────────────────────────────────
+  function wireFormControls() { /* persistence handled in syncTargetEngineCascade */ }
+
+  // ── Translate button ─────────────────────────────────────────────────────
+  function wireTranslateButton() {
+    const btn = $('translateBtn');
+    if (!btn) return;
+    btn.disabled = true;
+    btn.addEventListener('click', () => { void runTranslation(); });
+  }
+
+  async function runTranslation() {
+    if (!state.files.length || state.running) return;
+    state.running = true;
+    showRunningButton(true);
+    clearError();
+    clearResults();
+    setProgress(0, 'Starting…');
+    showProgress(true);
+
+    try {
+      for (let i = 0; i < state.files.length; i++) {
+        state.currentJobIndex = i;
+        updateProgressJob();
+        setProgress(0, 'Uploading…');
+        await translateOne(state.files[i]);
+      }
+    } catch (e) {
+      showError((e && e.message) ? e.message : 'Unknown error');
+    } finally {
+      state.running = false;
+      showRunningButton(false);
+      showProgress(false);
+      updateActionRow();
+    }
+  }
+
+  async function translateOne(file) {
+    const fd = new FormData();
+    fd.append('file', file, file.name);
+    fd.append('sourceLanguage',    $('sourceLanguage').value);
+    fd.append('targetLanguage',    $('targetLanguage').value);
+    fd.append('translationEngine', $('engine').value);
+    const eng = $('engine').value;
+    if (eng === 'chatgpt' || eng === 'chatgpt-polish') {
+      fd.append('aiModel', $('aiModel').value);
+    }
+    if (eng === 'google' || eng === 'deepl') {
+      fd.append('splitTranslate', 'true');
+    }
+
+    const upRes = await fetch('/upload', { method: 'POST', body: fd });
+    if (!upRes.ok) throw new Error(`Upload failed (HTTP ${upRes.status})`);
+    const upData = await upRes.json();
+    if (!upData.ok) throw new Error(upData.comment || 'Upload rejected');
+
+    const wasCached = !!upData.cacheHit;
+    if (wasCached) setProgress(100, 'Cached — instant download');
+
+    const status = await pollStatus(upData.jobId);
+    pushResults(status, wasCached);
+  }
+
+  async function pollStatus(jobId) {
+    const start = Date.now();
+    while (Date.now() - start < MAX_WAIT_MS) {
+      await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
+      let res;
+      try { res = await fetch('/status/' + encodeURIComponent(jobId)); }
+      catch (_) { continue; }
+      if (!res.ok) continue;
+      const data = await res.json();
+      if (typeof data.progress === 'number') setProgress(data.progress, bucketLabel(data.progress));
+      if (data.status === 'done')  return data;
+      if (data.status === 'error') throw new Error(data.error || 'Translation failed');
+    }
+    throw new Error('Timed out waiting for the backend');
+  }
+
   function bucketLabel(pct) {
     if (pct >= 100) return 'Finalising…';
     if (pct >=  90) return 'Saving output…';
@@ -77,265 +315,139 @@
     return 'Starting…';
   }
 
-  function buildDocTranslator() {
-    return {
-      // ── State ────────────────────────────────────────────────────────────
-      languages: LANGUAGES,
-      sourceLanguage: lsGet(LS_KEYS.source, 'en'),
-      targetLanguage: lsGet(LS_KEYS.target, 'fa'),
-      engine: 'chatgpt-polish',
-      aiModel: 'gpt-5.5',
-      splitTranslate: true,
-      files: [],
-      dragActive: false,
-
-      running: false,
-      currentJobIndex: 0,
-      currentFileName: '',
-      progress: 0,
-      progressLabel: 'Starting…',
-
-      results: [],
-      error: '',
-
-      newsletterEmail: '',
-      newsletterPending: false,
-      newsletterMessage: '',
-      newsletterOk: false,
-
-      theme: lsGet(LS_KEYS.theme, 'light'),
-
-      // ── Init ─────────────────────────────────────────────────────────────
-      init() {
-        document.documentElement.setAttribute('data-theme', this.theme);
-        // Pick a sensible default engine for the saved target language.
-        this.onLanguageChange();
-      },
-
-      // ── Computed helpers ────────────────────────────────────────────────
-      get targetLanguages() {
-        return this.languages.filter(l => l.value !== this.sourceLanguage);
-      },
-
-      get availableEngines() {
-        const isFa = this.targetLanguage === 'fa';
-        const tgt  = this.languages.find(l => l.value === this.targetLanguage);
-        const deeplOk = !!(tgt && tgt.deepl);
-        const opts = [
-          { value: 'google',         label: 'Google Translate' },
-          { value: 'chatgpt',        label: 'OpenAI API' },
-        ];
-        if (deeplOk) opts.unshift({ value: 'deepl', label: 'DeepL' });
-        if (isFa)    opts.push({ value: 'chatgpt-polish', label: 'OpenAI Translation + Polish (Persian)' });
-        return opts;
-      },
-
-      get showAiModel() {
-        return this.engine === 'chatgpt' || this.engine === 'chatgpt-polish';
-      },
-
-      get showSplit() {
-        // Mirrors the legacy: split section visible only for selenium engines,
-        // hidden for OpenAI engines (the aligner replaces splitting for fa+polish,
-        // and the API engine does single-call translation).
-        return this.engine === 'google' || this.engine === 'deepl';
-      },
-
-      get canTranslate() {
-        return this.files.length > 0 && !!this.targetLanguage && !!this.engine;
-      },
-
-      // ── Persistence + cascading defaults ────────────────────────────────
-      onLanguageChange() {
-        lsSet(LS_KEYS.source, this.sourceLanguage);
-        lsSet(LS_KEYS.target, this.targetLanguage);
-
-        // If the current engine is no longer offered for this target, pick a
-        // sensible default: chatgpt-polish for Persian, DeepL otherwise, else
-        // Google.
-        if (!this.availableEngines.find(o => o.value === this.engine)) {
-          if (this.targetLanguage === 'fa') this.engine = 'chatgpt-polish';
-          else if (this.availableEngines.find(o => o.value === 'deepl')) this.engine = 'deepl';
-          else this.engine = 'google';
-        }
-      },
-
-      onEngineChange() {
-        // Hook kept for future per-engine adjustments. The reactive getters
-        // (showAiModel, showSplit) handle UI visibility automatically.
-      },
-
-      // ── File handling ───────────────────────────────────────────────────
-      onDrop(e) {
-        this.dragActive = false;
-        const list = Array.from(e.dataTransfer?.files || []);
-        this.acceptFiles(list);
-      },
-
-      onFileChosen(e) {
-        const list = Array.from(e.target.files || []);
-        this.acceptFiles(list);
-        e.target.value = ''; // allow re-selecting the same file
-      },
-
-      acceptFiles(list) {
-        this.error = '';
-        for (const f of list) {
-          if (this.files.length >= MAX_FILES) break;
-          if (!f.name.toLowerCase().endsWith('.docx')) {
-            this.error = `Skipped "${f.name}" — only .docx files are accepted.`;
-            continue;
-          }
-          if (f.size > MAX_FILE_BYTES) {
-            this.error = `Skipped "${f.name}" — file is larger than 50 MB.`;
-            continue;
-          }
-          this.files.push(f);
-        }
-      },
-
-      removeFile(idx) {
-        this.files.splice(idx, 1);
-      },
-
-      formatBytes(n) {
-        if (n < 1024) return `${n} B`;
-        if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-        return `${(n / (1024 * 1024)).toFixed(1)} MB`;
-      },
-
-      // ── Translation flow ────────────────────────────────────────────────
-      async translate() {
-        if (!this.canTranslate || this.running) return;
-        this.running = true;
-        this.error = '';
-        this.results = [];
-        this.progress = 0;
-
-        try {
-          for (let i = 0; i < this.files.length; i++) {
-            this.currentJobIndex = i;
-            this.currentFileName = this.files[i].name;
-            this.progress = 0;
-            this.progressLabel = 'Uploading…';
-            await this.translateOne(this.files[i]);
-          }
-        } catch (e) {
-          this.error = (e && e.message) ? e.message : 'Unknown error';
-        } finally {
-          this.running = false;
-        }
-      },
-
-      async translateOne(file) {
-        const fd = new FormData();
-        fd.append('file', file, file.name);
-        fd.append('sourceLanguage',    this.sourceLanguage);
-        fd.append('targetLanguage',    this.targetLanguage);
-        fd.append('translationEngine', this.engine);
-        if (this.showAiModel) fd.append('aiModel', this.aiModel);
-        if (this.showSplit && this.splitTranslate) fd.append('splitTranslate', 'true');
-
-        const upRes = await fetch('/upload', { method: 'POST', body: fd });
-        if (!upRes.ok) throw new Error(`Upload failed (HTTP ${upRes.status})`);
-        const upData = await upRes.json();
-        if (!upData.ok) throw new Error(upData.comment || 'Upload rejected');
-
-        const wasCached = !!upData.cacheHit;
-        if (wasCached) {
-          this.progress = 100;
-          this.progressLabel = 'Cached — instant download';
-        }
-
-        const status = await this.pollStatus(upData.jobId);
-        this.collectResults(status, file.name, wasCached);
-      },
-
-      async pollStatus(jobId) {
-        const start = Date.now();
-        while (Date.now() - start < MAX_WAIT_MS) {
-          await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
-          let res;
-          try {
-            res = await fetch('/status/' + encodeURIComponent(jobId));
-          } catch (_) { continue; } // transient network — retry
-          if (!res.ok) continue;
-          const data = await res.json();
-          if (typeof data.progress === 'number') {
-            this.progress = data.progress;
-            this.progressLabel = bucketLabel(data.progress);
-          }
-          if (data.status === 'done')  return data;
-          if (data.status === 'error') throw new Error(data.error || 'Translation failed');
-        }
-        throw new Error('Timed out waiting for the backend');
-      },
-
-      collectResults(status, sourceName, wasCached) {
-        const push = (filename, suffix) => {
-          if (!filename) return;
-          this.results.push({
-            label:    `${stripPrefix(filename)} — ${suffix}`,
-            filename: stripPrefix(filename),
-            href:     '/download/' + encodeURIComponent(filename),
-            fromCache: wasCached,
-          });
-        };
-        push(status.filename,  'translated');
-        push(status.filename2, 'aligner double');
-        push(status.filename3, 'classic split');
-      },
-
-      // ── Theme toggle ────────────────────────────────────────────────────
-      toggleTheme() {
-        this.theme = this.theme === 'dark' ? 'light' : 'dark';
-        document.documentElement.setAttribute('data-theme', this.theme);
-        lsSet(LS_KEYS.theme, this.theme);
-      },
-
-      // ── Newsletter ──────────────────────────────────────────────────────
-      async subscribe() {
-        const email = (this.newsletterEmail || '').trim();
-        if (!email) return;
-        this.newsletterPending = true;
-        this.newsletterMessage = '';
-        try {
-          const res = await fetch('/subscribe', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email }),
-          });
-          const data = await res.json().catch(() => ({}));
-          this.newsletterOk = !!data.ok;
-          this.newsletterMessage = this.newsletterOk
-            ? (data.message === 'already subscribed' ? 'You are already on the list.' : 'Welcome! You will hear from us only on major releases.')
-            : (data.message || 'Subscription failed. Please try again.');
-          if (this.newsletterOk) this.newsletterEmail = '';
-        } catch (_) {
-          this.newsletterOk = false;
-          this.newsletterMessage = 'Network error. Please try again.';
-        } finally {
-          this.newsletterPending = false;
-        }
-      },
-    };
+  // ── DOM mutations: progress, error, results ─────────────────────────────
+  function setProgress(pct, label) {
+    state.progress = pct;
+    const fill  = $('progressFill');
+    const pctEl = $('progressPct');
+    const lbl   = $('progressLabel');
+    const blbl  = $('btnRunningLabel');
+    if (fill)  fill.style.width = pct + '%';
+    if (pctEl) pctEl.textContent = pct + '%';
+    if (lbl)   lbl.textContent   = label;
+    if (blbl)  blbl.textContent  = label;
   }
 
-  // Global form — used by the inline x-data="docTranslator()" attribute.
-  window.docTranslator = buildDocTranslator;
+  function showProgress(on) {
+    const box = $('progressBox');
+    if (box) box.classList.toggle('hidden', !on);
+  }
 
-  // Alpine-registry form — for any future code path that uses Alpine.data().
-  document.addEventListener('alpine:init', () => {
-    if (window.Alpine && typeof window.Alpine.data === 'function') {
-      window.Alpine.data('docTranslator', buildDocTranslator);
-    }
-  });
+  function updateProgressJob() {
+    const el = $('progressJob');
+    if (!el) return;
+    const idx = state.currentJobIndex + 1;
+    const total = state.files.length;
+    const name = state.files[state.currentJobIndex] ? state.files[state.currentJobIndex].name : '';
+    el.textContent = `Job ${idx} of ${total} · ${name}`;
+  }
 
-  // ── Helpers ───────────────────────────────────────────────────────────────
+  function showRunningButton(on) {
+    const idle = $('btnIdle');
+    const run  = $('btnRunning');
+    const btn  = $('translateBtn');
+    if (idle) idle.classList.toggle('hidden',  on);
+    if (run)  run.classList.toggle('hidden', !on);
+    if (btn)  btn.disabled = on || state.files.length === 0;
+  }
 
-  function stripPrefix(name) {
-    // The launcher prefixes saved files with `<ms>-` for collision safety;
-    // strip that for the user-facing label.
-    return name.replace(/^\d{10,}-/, '');
+  function showError(msg) {
+    const box = $('errorBox');
+    const txt = $('errorText');
+    if (txt) txt.textContent = msg;
+    if (box) box.classList.remove('hidden');
+  }
+  function clearError() {
+    const box = $('errorBox');
+    const txt = $('errorText');
+    if (txt) txt.textContent = '';
+    if (box) box.classList.add('hidden');
+  }
+
+  function clearResults() {
+    const ul = $('resultsList');
+    if (!ul) return;
+    ul.innerHTML = '';
+    ul.classList.add('hidden');
+  }
+
+  function pushResults(status, wasCached) {
+    const ul = $('resultsList');
+    if (!ul) return;
+    const add = (filename, suffix) => {
+      if (!filename) return;
+      const display = stripPrefix(filename);
+      const li = document.createElement('li');
+      li.className = 'result-row';
+      li.innerHTML = `
+        <span class="result-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M14 3v5h5M6 3h8l5 5v13H6V3z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+          </svg>
+        </span>
+        <span class="result-label"></span>
+        <a class="result-link"></a>
+      `;
+      li.querySelector('.result-label').textContent = `${display} — ${suffix}` + (wasCached ? '  (cached)' : '');
+      const a = li.querySelector('.result-link');
+      a.href = '/download/' + encodeURIComponent(filename);
+      a.setAttribute('download', display);
+      a.textContent = 'Download';
+      ul.appendChild(li);
+    };
+    add(status.filename,  'translated');
+    add(status.filename2, 'aligner double');
+    add(status.filename3, 'classic split');
+    if (ul.children.length) ul.classList.remove('hidden');
+  }
+
+  // ── Newsletter ───────────────────────────────────────────────────────────
+  function wireNewsletter() {
+    const form = $('newsletterForm');
+    if (!form) return;
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const input = $('newsletterEmail');
+      const btn   = $('newsletterBtn');
+      const msg   = $('newsletterMsg');
+      const email = (input.value || '').trim();
+      if (!email) return;
+      if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
+      try {
+        const res  = await fetch('/subscribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email }),
+        });
+        const data = await res.json().catch(() => ({}));
+        const ok = !!data.ok;
+        if (msg) {
+          msg.textContent = ok
+            ? (data.message === 'already subscribed' ? 'You are already on the list.' : 'Welcome! You will hear from us only on major releases.')
+            : (data.message || 'Subscription failed. Please try again.');
+          msg.classList.toggle('msg-ok',  ok);
+          msg.classList.toggle('msg-err', !ok);
+          msg.classList.remove('hidden');
+        }
+        if (ok && input) input.value = '';
+      } catch (_) {
+        if (msg) {
+          msg.textContent = 'Network error. Please try again.';
+          msg.classList.add('msg-err');
+          msg.classList.remove('msg-ok');
+          msg.classList.remove('hidden');
+        }
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Subscribe'; }
+      }
+    });
+  }
+
+  // ── Helpers ──────────────────────────────────────────────────────────────
+  function stripPrefix(name) { return name.replace(/^\d{10,}-/, ''); }
+  function formatBytes(n) {
+    if (n < 1024) return `${n} B`;
+    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+    return `${(n / (1024 * 1024)).toFixed(1)} MB`;
   }
 })();
