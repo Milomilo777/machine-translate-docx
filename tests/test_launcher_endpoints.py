@@ -1,0 +1,223 @@
+"""Regression tests for local_launcher.py — cache helpers + /subscribe.
+
+These pin the new endpoints introduced in commit 9a4d533 (v2-frontend feat):
+  - _cache_key:        deterministic sha256 over payload + lang + engine + model
+  - LocalState.cache_lookup / cache_store / _evict / cleanup_stale_cache
+  - _append_subscriber: idempotent line-delimited writes to subscribers.txt
+
+No HTTP, no subprocess, no OpenAI calls. Pure unit tests against module-level
+helpers and the LocalState class with monkeypatched paths.
+"""
+from __future__ import annotations
+
+import time
+from pathlib import Path
+
+import pytest
+
+import local_launcher
+from local_launcher import (
+    CACHE_TTL_SEC,
+    LocalState,
+    _append_subscriber,
+    _cache_key,
+)
+
+
+# ── helpers ──────────────────────────────────────────────────────────────────
+
+def _make_state(tmp_path: Path) -> LocalState:
+    """Build a LocalState rooted at tmp_path with mock backend.
+
+    Booting creates uploads/ logs/ views/ ssl/ cache/ subdirs and writes
+    placeholder SSL certs — all under tmp_path so the test is hermetic.
+    """
+    state = LocalState(
+        runtime_dir=tmp_path,
+        backend_mode="mock",
+        python_exe=Path("python"),
+        script_path=tmp_path / "fake-script.py",
+    )
+    state.boot()
+    return state
+
+
+def _write_dummy(path: Path, content: bytes = b"x") -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(content)
+    return path
+
+
+# ── _cache_key ───────────────────────────────────────────────────────────────
+
+def test_cache_key_deterministic():
+    payload = b"hello world" * 100
+    k1 = _cache_key(payload, "fa", "chatgpt-polish", "gpt-5.5")
+    k2 = _cache_key(payload, "fa", "chatgpt-polish", "gpt-5.5")
+    assert k1 == k2
+    assert len(k1) == 64  # sha256 hex
+
+
+def test_cache_key_diverges_on_byte_flip():
+    p1 = b"hello world"
+    p2 = b"hello worle"  # one byte changed
+    k1 = _cache_key(p1, "fa", "chatgpt", "gpt-5.5")
+    k2 = _cache_key(p2, "fa", "chatgpt", "gpt-5.5")
+    assert k1 != k2
+
+
+def test_cache_key_diverges_on_lang_engine_model():
+    payload = b"identical payload bytes"
+    k_lang   = _cache_key(payload, "ar", "chatgpt", "gpt-5.5")
+    k_engine = _cache_key(payload, "fa", "chatgpt-polish", "gpt-5.5")
+    k_model  = _cache_key(payload, "fa", "chatgpt", "gpt-5.4-mini")
+    base     = _cache_key(payload, "fa", "chatgpt", "gpt-5.5")
+    assert len({base, k_lang, k_engine, k_model}) == 4
+
+
+def test_cache_key_handles_none_model():
+    # Real call sites may pass ai_model=None — must not crash and must
+    # differ from the empty-string variant only by being equal to it
+    # (both encode as b"" per current implementation).
+    k_none  = _cache_key(b"x", "fa", "chatgpt", None)
+    k_empty = _cache_key(b"x", "fa", "chatgpt", "")
+    assert k_none == k_empty  # documented behaviour: None coerces to ""
+
+
+# ── LocalState.cache_lookup / cache_store ────────────────────────────────────
+
+def test_cache_lookup_returns_none_when_missing(tmp_path):
+    state = _make_state(tmp_path)
+    assert state.cache_lookup("nonexistent-key") is None
+
+
+def test_cache_lookup_evicts_stale_entry(tmp_path, monkeypatch):
+    state = _make_state(tmp_path)
+    src = _write_dummy(state.uploads_dir / "main.docx", b"main")
+    state.cache_store("k1", [("main", src)])
+    assert "k1" in state.cache
+
+    # Rewind the entry's timestamp past the TTL.
+    ts, paths = state.cache["k1"]
+    state.cache["k1"] = (ts - CACHE_TTL_SEC - 60, paths)
+
+    assert state.cache_lookup("k1") is None
+    assert "k1" not in state.cache  # purged on access
+
+
+def test_cache_lookup_evicts_when_paths_disappeared(tmp_path):
+    state = _make_state(tmp_path)
+    src = _write_dummy(state.uploads_dir / "main.docx", b"main")
+    state.cache_store("k2", [("main", src)])
+    assert "k2" in state.cache
+
+    # Simulate disk loss — delete the cached copy.
+    cached_copy = state.cache_dir / "k2" / "main.docx"
+    assert cached_copy.exists()
+    cached_copy.unlink()
+
+    assert state.cache_lookup("k2") is None
+    assert "k2" not in state.cache
+
+
+def test_cache_store_copies_files_into_cache_dir(tmp_path):
+    state = _make_state(tmp_path)
+    main = _write_dummy(state.uploads_dir / "alpha_PER_TranslatePolish.docx", b"main-bytes")
+    dbl  = _write_dummy(state.uploads_dir / "alpha_PER_Double.docx", b"double-bytes")
+
+    state.cache_store("k3", [("main", main), ("double", dbl)])
+
+    entry_dir = state.cache_dir / "k3"
+    assert entry_dir.is_dir()
+    assert (entry_dir / "alpha_PER_TranslatePolish.docx").read_bytes() == b"main-bytes"
+    assert (entry_dir / "alpha_PER_Double.docx").read_bytes() == b"double-bytes"
+
+    # The in-memory entry stores the cache_dir paths, not the upload paths.
+    _, stored = state.cache["k3"]
+    for kind, p in stored:
+        assert p.parent == entry_dir
+        assert kind in {"main", "double"}
+
+
+def test_cache_store_skips_missing_source(tmp_path):
+    state = _make_state(tmp_path)
+    real    = _write_dummy(state.uploads_dir / "real.docx", b"r")
+    missing = state.uploads_dir / "ghost.docx"  # never created
+    state.cache_store("k4", [("main", real), ("double", missing)])
+
+    _, stored = state.cache["k4"]
+    kinds = [k for k, _ in stored]
+    assert kinds == ["main"]  # ghost silently skipped
+
+
+def test_cleanup_stale_cache_evicts_old_entries(tmp_path):
+    state = _make_state(tmp_path)
+    fresh = _write_dummy(state.uploads_dir / "fresh.docx", b"f")
+    stale = _write_dummy(state.uploads_dir / "stale.docx", b"s")
+    state.cache_store("fresh-key", [("main", fresh)])
+    state.cache_store("stale-key", [("main", stale)])
+
+    # Age out only stale-key.
+    ts, paths = state.cache["stale-key"]
+    state.cache["stale-key"] = (ts - CACHE_TTL_SEC - 1, paths)
+
+    evicted = state.cleanup_stale_cache()
+    assert evicted == 1
+    assert "fresh-key" in state.cache
+    assert "stale-key" not in state.cache
+    assert not (state.cache_dir / "stale-key").exists()
+
+
+# ── _append_subscriber ───────────────────────────────────────────────────────
+
+def test_subscribe_valid_email_appends(tmp_path, monkeypatch):
+    sub_file = tmp_path / "subscribers.txt"
+    monkeypatch.setattr(local_launcher, "SUBSCRIBERS_FILE", sub_file)
+
+    ok, msg = _append_subscriber("alice@example.com")
+    assert ok is True
+    assert msg == "subscribed"
+    assert sub_file.read_text(encoding="utf-8").splitlines() == ["alice@example.com"]
+
+
+def test_subscribe_duplicate_is_idempotent(tmp_path, monkeypatch):
+    sub_file = tmp_path / "subscribers.txt"
+    monkeypatch.setattr(local_launcher, "SUBSCRIBERS_FILE", sub_file)
+
+    ok1, _ = _append_subscriber("bob@example.com")
+    ok2, msg2 = _append_subscriber("BOB@example.com")  # case-insensitive dedupe
+    assert ok1 is True
+    assert ok2 is True
+    assert msg2 == "already subscribed"
+    assert sub_file.read_text(encoding="utf-8").splitlines() == ["bob@example.com"]
+
+
+def test_subscribe_rejects_bad_format(tmp_path, monkeypatch):
+    sub_file = tmp_path / "subscribers.txt"
+    monkeypatch.setattr(local_launcher, "SUBSCRIBERS_FILE", sub_file)
+
+    for bad in ["not-an-email", "no@dot", "@nouser.com", "spaces in@it.com", ""]:
+        ok, _ = _append_subscriber(bad)
+        assert ok is False, f"should reject: {bad!r}"
+    assert not sub_file.exists()  # nothing written
+
+
+def test_subscribe_rejects_oversize(tmp_path, monkeypatch):
+    sub_file = tmp_path / "subscribers.txt"
+    monkeypatch.setattr(local_launcher, "SUBSCRIBERS_FILE", sub_file)
+
+    long_local = "a" * 250
+    huge = f"{long_local}@example.com"  # > 254 chars total
+    assert len(huge) > 254
+    ok, msg = _append_subscriber(huge)
+    assert ok is False
+    assert "long" in msg.lower()
+
+
+def test_subscribe_strips_and_lowercases(tmp_path, monkeypatch):
+    sub_file = tmp_path / "subscribers.txt"
+    monkeypatch.setattr(local_launcher, "SUBSCRIBERS_FILE", sub_file)
+
+    ok, _ = _append_subscriber("  Charlie@Example.COM  ")
+    assert ok is True
+    assert sub_file.read_text(encoding="utf-8").splitlines() == ["charlie@example.com"]

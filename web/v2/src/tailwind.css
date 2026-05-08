@@ -1,0 +1,10 @@
+/* Tailwind source — compiled into ../tailwind.css via the build:css npm
+   script. Edits here trigger a rebuild when watch:css is running.
+
+   Custom CSS lives in ../styles.css (theme tokens, dark-mode override,
+   sr-only utility, Vazirmatn polish). Do not duplicate utilities here —
+   put utility usage in index.html, theme tokens in styles.css. */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;

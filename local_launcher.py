@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import mimetypes
 import os
 import shutil
 import tempfile
@@ -24,6 +26,14 @@ import re as _re
 
 ROOT = Path(__file__).resolve().parent
 INDEX_FILE = ROOT / "index.ejs"
+WEB_V2_DIR = ROOT / "web" / "v2"
+SUBSCRIBERS_FILE = ROOT / "subscribers.txt"
+
+# 36-hour cache for API-translated files (sha256(payload) + lang + engine
+# + ai_model). Cache key + paths held in memory; payloads themselves stay on
+# disk under runtime_dir/cache/<hash>/. Pruned by start_cleanup_thread().
+CACHE_TTL_SEC = 36 * 60 * 60
+_API_ENGINES = frozenset({"chatgpt", "chatgpt-polish"})  # only API engines cache
 
 # ISO 639-2/B codes matching what machine-translate-docx.py produces via langcodes
 _LANG_ALPHA3B = {
@@ -47,6 +57,59 @@ def _sanitize_filename(name: str) -> str:
     name = name.replace("（", "(").replace("）", ")")
     name = name.replace("&", "")
     return name.strip() or "upload.docx"
+
+
+# ── 36-hour cache for API-translated outputs ─────────────────────────────────
+
+def _cache_key(payload: bytes, target_lang: str, engine: str,
+               ai_model: str | None) -> str:
+    """SHA-256 over payload + lang + engine + ai_model.
+
+    Two requests collide ONLY when the uploaded bytes are byte-identical AND
+    the language/engine/model triple matches. A one-byte difference in the
+    docx zip (e.g. different metadata, different timestamp) yields a
+    different key — by design.
+    """
+    h = hashlib.sha256()
+    h.update(payload)
+    h.update(b"\x00")
+    h.update(target_lang.encode("utf-8", errors="replace"))
+    h.update(b"\x00")
+    h.update(engine.encode("utf-8", errors="replace"))
+    h.update(b"\x00")
+    h.update((ai_model or "").encode("utf-8", errors="replace"))
+    return h.hexdigest()
+
+
+# ── Newsletter subscriber list ───────────────────────────────────────────────
+
+_RE_EMAIL = _re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def _append_subscriber(email: str) -> tuple[bool, str]:
+    """Append `email` to subscribers.txt if it validates and is new.
+
+    Returns (ok, message). The file is line-delimited UTF-8; existing
+    duplicates are silently ignored so re-submission is idempotent.
+    """
+    email = (email or "").strip().lower()
+    if not _RE_EMAIL.match(email):
+        return False, "invalid email format"
+    if len(email) > 254:
+        return False, "email too long"
+
+    try:
+        existing: set[str] = set()
+        if SUBSCRIBERS_FILE.exists():
+            with SUBSCRIBERS_FILE.open("r", encoding="utf-8") as f:
+                existing = {line.strip().lower() for line in f if line.strip()}
+        if email in existing:
+            return True, "already subscribed"
+        with SUBSCRIBERS_FILE.open("a", encoding="utf-8") as f:
+            f.write(email + "\n")
+        return True, "subscribed"
+    except Exception as exc:
+        return False, f"server error: {exc}"
 
 
 # Server-side upload limits
@@ -193,6 +256,7 @@ class LocalState:
         self.logs_dir = runtime_dir / "logs"
         self.views_dir = runtime_dir / "views"
         self.ssl_dir = runtime_dir / "ssl"
+        self.cache_dir = runtime_dir / "cache"
         self.count_file = runtime_dir / "count.txt"
         self.index_file = self.views_dir / "index.ejs"
         self.backend_mode = backend_mode
@@ -201,6 +265,10 @@ class LocalState:
         self.lock = threading.Lock()
         self.jobs: dict[str, Job] = {}
         self.total_uploads = 0
+        # cache_key → (timestamp, [(file_kind, abs_path)])
+        # file_kind ∈ {"main","double","classic"} matches Job's
+        # filename / filename2 / filename3 fields.
+        self.cache: dict[str, tuple[float, list[tuple[str, Path]]]] = {}
 
     def boot(self) -> None:
         for directory in [
@@ -209,6 +277,7 @@ class LocalState:
             self.logs_dir,
             self.views_dir,
             self.ssl_dir,
+            self.cache_dir,
         ]:
             directory.mkdir(parents=True, exist_ok=True)
 
@@ -259,8 +328,80 @@ class LocalState:
                 removed += 1
         return removed
 
+    # ── 36-hour cache ────────────────────────────────────────────────────────
+
+    def cache_lookup(self, key: str) -> list[tuple[str, Path]] | None:
+        """Return [(kind, path), ...] if a fresh entry exists, else None.
+
+        Stale entries (older than CACHE_TTL_SEC) are evicted on access.
+        Entries whose paths have disappeared from disk are also evicted.
+        """
+        with self.lock:
+            entry = self.cache.get(key)
+        if not entry:
+            return None
+        ts, paths = entry
+        if time.time() - ts > CACHE_TTL_SEC:
+            self._evict(key)
+            return None
+        for _, p in paths:
+            if not p.exists():
+                self._evict(key)
+                return None
+        return list(paths)
+
+    def cache_store(self, key: str, paths: list[tuple[str, Path]]) -> None:
+        """Copy `paths` into runtime/cache/<key>/ and remember them.
+
+        We copy (not move) so the live job's outputs remain in the uploads
+        directory — the launcher's existing /download/<name> route still
+        serves them. The cache copy is a backup that survives upload-dir
+        cleanup.
+        """
+        if not paths:
+            return
+        try:
+            entry_dir = self.cache_dir / key
+            entry_dir.mkdir(parents=True, exist_ok=True)
+            stored: list[tuple[str, Path]] = []
+            for kind, src in paths:
+                if not src.exists():
+                    continue
+                dst = entry_dir / src.name
+                if not dst.exists() or dst.stat().st_size != src.stat().st_size:
+                    shutil.copy2(src, dst)
+                stored.append((kind, dst))
+            with self.lock:
+                self.cache[key] = (time.time(), stored)
+        except Exception as exc:
+            print(f"[cache] store failed for {key[:12]}…: {exc}")
+
+    def _evict(self, key: str) -> None:
+        """Remove cache entry + its on-disk copies. Quiet on missing files."""
+        with self.lock:
+            entry = self.cache.pop(key, None)
+        if not entry:
+            return
+        entry_dir = self.cache_dir / key
+        try:
+            if entry_dir.exists():
+                shutil.rmtree(entry_dir, ignore_errors=True)
+        except Exception:
+            pass
+
+    def cleanup_stale_cache(self, max_age_sec: int = CACHE_TTL_SEC) -> int:
+        """Evict cache entries older than `max_age_sec`. Returns count evicted."""
+        now = time.time()
+        with self.lock:
+            stale = [k for k, (ts, _) in self.cache.items()
+                     if now - ts > max_age_sec]
+        for k in stale:
+            self._evict(k)
+        return len(stale)
+
     def start_cleanup_thread(self, interval_sec: int = 600, max_age_sec: int = 3600) -> None:
-        """Spawn a daemon thread that periodically prunes finished jobs."""
+        """Spawn a daemon thread that periodically prunes finished jobs and
+        stale cache entries (independent TTLs)."""
         def _loop():
             while True:
                 time.sleep(interval_sec)
@@ -268,6 +409,9 @@ class LocalState:
                     n = self.cleanup_old_jobs(max_age_sec=max_age_sec)
                     if n:
                         print(f"[cleanup] pruned {n} finished job(s) older than {max_age_sec}s")
+                    c = self.cleanup_stale_cache()
+                    if c:
+                        print(f"[cleanup] evicted {c} cache entr(ies) older than {CACHE_TTL_SEC}s")
                 except Exception as exc:
                     print(f"[cleanup] error: {exc}")
         threading.Thread(target=_loop, daemon=True, name="job-cleanup").start()
@@ -465,10 +609,79 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
             self._send_text("User-agent: *\nDisallow:\n")
             return
 
+        # ── v2 frontend (Claude-inspired UI) ─────────────────────────────────
+        # The legacy index.ejs continues to live at "/" untouched. v2 lives
+        # alongside it under /v2 and shares the same backend endpoints.
+        if path == "/v2" or path == "/v2/":
+            html_file = WEB_V2_DIR / "index.html"
+            if html_file.exists():
+                data = html_file.read_text(encoding="utf-8")
+                self.send_response(HTTPStatus.OK)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                self.wfile.write(data.encode("utf-8"))
+            else:
+                self._send_text("v2 frontend not deployed", HTTPStatus.NOT_FOUND)
+            return
+
+        if path.startswith("/v2/"):
+            relative = path.removeprefix("/v2/").lstrip("/")
+            # Reject path traversal and only serve files under web/v2/.
+            if ".." in relative.split("/") or relative.startswith("/"):
+                self._send_text("Not found", HTTPStatus.NOT_FOUND)
+                return
+            asset = (WEB_V2_DIR / relative).resolve()
+            try:
+                asset.relative_to(WEB_V2_DIR.resolve())
+            except ValueError:
+                self._send_text("Not found", HTTPStatus.NOT_FOUND)
+                return
+            if asset.is_file():
+                ctype, _ = mimetypes.guess_type(str(asset))
+                self.send_response(HTTPStatus.OK)
+                self.send_header("Content-Type", ctype or "application/octet-stream")
+                self.send_header("Content-Length", str(asset.stat().st_size))
+                self.send_header("Cache-Control", "public, max-age=300")
+                self.end_headers()
+                self.wfile.write(asset.read_bytes())
+                return
+            self._send_text("Not found", HTTPStatus.NOT_FOUND)
+            return
+
         self._send_text("Not found", HTTPStatus.NOT_FOUND)
 
     def do_POST(self):
         parsed = urlparse(self.path)
+
+        # Newsletter subscribe endpoint — accepts JSON {"email": "..."} OR
+        # multipart/form-data with field name "email". Used by the v2 UI
+        # but also accessible from any client.
+        if parsed.path == "/subscribe":
+            content_length = int(self.headers.get("Content-Length", "0"))
+            body = self.rfile.read(content_length)
+            ctype = (self.headers.get("Content-Type") or "").lower()
+            email = ""
+            if "application/json" in ctype:
+                try:
+                    email = (json.loads(body or b"{}").get("email") or "").strip()
+                except Exception:
+                    email = ""
+            elif "multipart/form-data" in ctype:
+                fields, _ = _parse_multipart(self.headers, body)
+                email = fields.get("email", "").strip()
+            else:
+                # urlencoded
+                from urllib.parse import parse_qs
+                qs = parse_qs(body.decode("utf-8", errors="replace"))
+                email = (qs.get("email", [""])[0] or "").strip()
+            ok, msg = _append_subscriber(email)
+            self._send_json(
+                {"ok": ok, "message": msg},
+                HTTPStatus.OK if ok else HTTPStatus.BAD_REQUEST,
+            )
+            return
+
         if parsed.path != "/upload":
             self._send_text("Not found", HTTPStatus.NOT_FOUND)
             return
@@ -511,6 +724,40 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
         sound_select = fields.get("soundSelect")
         split_translate = fields.get("splitTranslate", "false").lower() in {"true", "1", "on", "yes"}
 
+        # ── 36-hour cache short-circuit ──────────────────────────────────────
+        # Only API engines cache (chatgpt, chatgpt-polish). Selenium engines
+        # are stateful (cookie consent, login) and not worth caching.
+        cache_key: str | None = None
+        if translation_engine.lower() in _API_ENGINES:
+            cache_key = _cache_key(payload, target_language, translation_engine, ai_model)
+            cached = self.state.cache_lookup(cache_key)
+            if cached:
+                # Materialise the cached files back into the uploads dir
+                # under the new job's expected names so the existing
+                # /download/<name> route serves them unchanged.
+                fname = fname2 = fname3 = None
+                for kind, src in cached:
+                    dst = self.state.uploads_dir / src.name
+                    if not dst.exists():
+                        try:
+                            shutil.copy2(src, dst)
+                        except Exception as exc:
+                            print(f"[cache] copy-back failed: {exc}")
+                            cached = None
+                            break
+                    if kind == "main":   fname  = src.name
+                    if kind == "double": fname2 = src.name
+                    if kind == "classic": fname3 = src.name
+                if cached and fname:
+                    self.state.update_job(
+                        job_id, status="done",
+                        filename=fname, filename2=fname2, filename3=fname3,
+                        progress=100, error=None,
+                    )
+                    print(f"[cache hit] {cache_key[:12]}… reused {len(cached)} file(s) for job {job_id}")
+                    self._send_json({"ok": True, "jobId": job_id, "cacheHit": True})
+                    return
+
         print(f"[job {job_id}] upload={saved_name}")
         print(f"[job {job_id}] source={source_language} target={target_language} engine={translation_engine} split={split_translate}")
         print(f"[job {job_id}] splitEngine={split_engine or '(not sent)'} aiModel={ai_model or '(not sent)'} enableSound={enable_sound or '(not sent)'} soundSelect={sound_select or '(not sent)'}")
@@ -529,12 +776,13 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
                 ai_model,
                 enable_sound,
                 sound_select,
+                cache_key,
             ),
             daemon=True,
         )
         thread.start()
 
-        self._send_json({"ok": True, "jobId": job_id})
+        self._send_json({"ok": True, "jobId": job_id, "cacheHit": False})
 
     def _process_job(
         self,
@@ -549,6 +797,7 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
         ai_model: str | None,
         enable_sound: str | None,
         sound_select: str | None,
+        cache_key: str | None = None,
     ) -> None:
         _job_t0 = time.time()
         print(f"[job {job_id}] ▶ start — file: {original_name} | lang: {target_language} | engine: {translation_engine}")
@@ -621,6 +870,16 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
                 filename3=classic_path.name if classic_path else None,
                 error=None,
             )
+
+            # Cache outputs for 36 hours (API engines only — `cache_key` is
+            # only set for them in do_POST). Cache hits at the next upload
+            # of byte-identical input + same lang + engine + model.
+            if cache_key:
+                cache_paths: list[tuple[str, Path]] = [("main", output_path)]
+                if double_path:  cache_paths.append(("double", double_path))
+                if classic_path: cache_paths.append(("classic", classic_path))
+                self.state.cache_store(cache_key, cache_paths)
+
             _job_elapsed = time.time() - _job_t0
             print(f"[job {job_id}] ✓ done in {_job_elapsed:.0f}s -> {output_path.name}")
         except Exception as exc:

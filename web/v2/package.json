@@ -1,0 +1,20 @@
+{
+  "name": "v2",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Compiled Tailwind pipeline for the v2 frontend. Static files (index.html, app.js, styles.css, tailwind.css) are served by local_launcher.py at /v2/.",
+  "main": "app.js",
+  "scripts": {
+    "build:css": "tailwindcss -i src/tailwind.css -o tailwind.css --minify",
+    "watch:css": "tailwindcss -i src/tailwind.css -o tailwind.css --watch"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "autoprefixer": "^10.5.0",
+    "postcss": "^8.5.14",
+    "tailwindcss": "^3.4.19"
+  }
+}

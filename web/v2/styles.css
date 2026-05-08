@@ -1,0 +1,145 @@
+/* ──────────────────────────────────────────────────────────────────────────
+   Document Translator — v2 styles
+   Claude-inspired warm palette + Vazirmatn for Persian / Arabic.
+   Tailwind from CDN already covers most utility styling; this file holds
+   theme tokens, font polish, and the dark-mode override.
+   ────────────────────────────────────────────────────────────────────────── */
+
+:root {
+  /* Warm cream palette (Claude-inspired) */
+  --color-cream-50:  #FCFBF7;
+  --color-cream-100: #FAF9F5;
+  --color-cream-200: #F4F2EC;
+  --color-cream-300: #EBE9E2;
+
+  --color-ink-900:   #1F1E1B;
+  --color-ink-700:   #3F3E3A;
+  --color-ink-500:   #73716D;
+  --color-ink-400:   #9A9893;
+
+  --color-brand-500: #D97757;
+  --color-brand-600: #C8704D;
+  --color-brand-700: #B5613E;
+  /* AA-compliant darker variant for body text on cream-100. The lighter
+     500/600/700 shades fail WCAG 4.5:1 against cream — only 800 passes.
+     Used for inline links, the "click to choose" affordance, and download
+     anchors. */
+  --color-brand-800: #9F4D2D;
+
+  --shadow-soft:  0 1px 2px rgba(31,30,27,0.04), 0 4px 12px rgba(31,30,27,0.04);
+  --shadow-card:  0 1px 3px rgba(31,30,27,0.06), 0 8px 24px rgba(31,30,27,0.06);
+
+  --font-serif: ui-serif, Georgia, "Charter", "Tiempos", serif;
+  --font-sans:  Inter, Vazirmatn, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-fa:    Vazirmatn, Inter, system-ui, sans-serif;
+}
+
+/* ── Dark theme — softer Claude-night palette ─────────────────────────── */
+[data-theme="dark"] {
+  --color-cream-50:  #1B1A17;
+  --color-cream-100: #1F1E1B;
+  --color-cream-200: #2A2825;
+  --color-cream-300: #3A3833;
+
+  --color-ink-900:   #F4F2EC;
+  --color-ink-700:   #D8D5CC;
+  --color-ink-500:   #A4A199;
+  --color-ink-400:   #6F6D67;
+
+  --color-brand-500: #E08A6E;
+  --color-brand-600: #D97757;
+  --color-brand-700: #C66744;
+  /* Dark theme: lighten brand-800 since the background flips dark — body
+     text needs ample luminance against #1F1E1B. */
+  --color-brand-800: #E89878;
+
+  --shadow-soft:  0 1px 2px rgba(0,0,0,0.4), 0 4px 12px rgba(0,0,0,0.3);
+  --shadow-card:  0 1px 3px rgba(0,0,0,0.5), 0 8px 24px rgba(0,0,0,0.4);
+}
+
+/* Make Tailwind utilities resolve from these CSS vars so the dark switch
+   recolors everything in one motion. */
+[data-theme="dark"] .bg-cream-50  { background-color: var(--color-cream-50); }
+[data-theme="dark"] .bg-cream-100 { background-color: var(--color-cream-100); }
+[data-theme="dark"] .bg-cream-200 { background-color: var(--color-cream-200); }
+[data-theme="dark"] .bg-cream-300 { background-color: var(--color-cream-300); }
+[data-theme="dark"] .border-cream-300 { border-color: var(--color-cream-300); }
+[data-theme="dark"] .text-ink-900 { color: var(--color-ink-900); }
+[data-theme="dark"] .text-ink-700 { color: var(--color-ink-700); }
+[data-theme="dark"] .text-ink-500 { color: var(--color-ink-500); }
+[data-theme="dark"] .text-ink-400 { color: var(--color-ink-400); }
+[data-theme="dark"] .bg-white     { background-color: #232220; }
+[data-theme="dark"] select,
+[data-theme="dark"] input[type="email"],
+[data-theme="dark"] input[type="text"] {
+  background-color: #232220;
+  color: var(--color-ink-900);
+  border-color: var(--color-cream-300);
+}
+
+/* ── Typography polish ─────────────────────────────────────────────────── */
+
+body {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Use a true serif for marketing-style headings inside .font-serif. */
+.font-serif {
+  font-family: var(--font-serif);
+  letter-spacing: -0.01em;
+}
+
+/* RTL pages get Vazirmatn first. */
+[dir="rtl"] body,
+[dir="rtl"] input,
+[dir="rtl"] select,
+[dir="rtl"] button {
+  font-family: var(--font-fa);
+}
+
+/* Persian numerals look better with tabular-nums in counters. */
+.tabular { font-variant-numeric: tabular-nums; }
+
+/* ── Drop-zone glow on hover ───────────────────────────────────────────── */
+
+[role="button"][tabindex="0"]:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 4px rgba(217,119,87,0.18);
+}
+
+/* ── Hide [x-cloak] before Alpine initialises ──────────────────────────── */
+[x-cloak] { display: none !important; }
+
+/* ── Visually-hidden labels (screen-reader only) ───────────────────────────
+   Standard sr-only utility from the WAI-ARIA Authoring Practices. Used to
+   provide a programmatic <label for=…> association without consuming layout
+   space (e.g. the newsletter email field, where the visible heading already
+   describes the form). */
+.sr-only {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
+/* Brand-800 — Tailwind CDN config provides the light value (#9F4D2D);
+   we only need to flip it for dark mode (mirrors the pattern used for
+   .bg-cream-* and .text-ink-* below). */
+[data-theme="dark"] .text-brand-800 { color: var(--color-brand-800); }
+
+/* ── Reduce motion respectfully ────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  * { transition-duration: 0ms !important; animation-duration: 0ms !important; }
+}
+
+/* ── Mobile: tighten heading scales a touch ────────────────────────────── */
+@media (max-width: 480px) {
+  .font-serif.text-4xl { font-size: 2rem; line-height: 1.15; }
+}
