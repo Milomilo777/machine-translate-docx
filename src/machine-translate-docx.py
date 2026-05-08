@@ -1187,7 +1187,7 @@ def selenium_chrome_translate_get_from_text_array(to_translate, index):
 def selenium_chrome_google_translate(ctx: RuntimeContext, to_translate):
     
     ctx.browser.driver.execute_script("window.focus();")
-    selenium_chrome_google_click_cookies_consent_button()
+    selenium_chrome_google_click_cookies_consent_button(ctx)
     
     try:
         translation = ''
@@ -1336,7 +1336,7 @@ def selenium_chrome_google_translate(ctx: RuntimeContext, to_translate):
         #if re.search(regex_still_translating_str, to_translate_utf8):
         
         ctx.browser.driver.execute_script("window.focus();")
-        selenium_chrome_google_click_cookies_consent_button()
+        selenium_chrome_google_click_cookies_consent_button(ctx)
     
         if re.search(regex_still_translating_str, to_translate):
             time.sleep(4)
@@ -1435,7 +1435,7 @@ def selenium_chrome_translate_maxchar_blocks(ctx: RuntimeContext):
     # ------------------------------------------------------------------
     def translate_once(engine, method, text, attempt):
         if engine == "deepl":
-            return selenium_chrome_deepl_translate(_get_ctx(), text, attempt)
+            return selenium_chrome_deepl_translate(ctx, text, attempt)
 
         if engine == "chatgpt":
             # ChatGPT-web (Selenium) was moved to src/engines/inactive/
@@ -1459,7 +1459,7 @@ def selenium_chrome_translate_maxchar_blocks(ctx: RuntimeContext):
             # perplexity_web.py in Phase D. Only the webservice forwarder
             # (HTTP → localhost:8000) remains in the active dispatcher.
             if method == "webservice":
-                return selenium_webservice_perplexity_translate(_get_ctx(), text, attempt)
+                return selenium_webservice_perplexity_translate(ctx, text, attempt)
             raise ValueError(
                 f"perplexity non-webservice method '{method}' is no longer "
                 f"supported (selenium engine moved to inactive)"
@@ -1497,7 +1497,7 @@ def selenium_chrome_translate_maxchar_blocks(ctx: RuntimeContext):
             return translated.strip()
         
         # Google fallback (last resort)
-        selenium_chrome_google_click_cookies_consent_button()
+        selenium_chrome_google_click_cookies_consent_button(ctx)
         translated = selenium_chrome_google_translate(ctx, line)
         if translated:
             return translated.strip()
@@ -1642,12 +1642,7 @@ def selenium_chrome_translate_maxchar_blocks(ctx: RuntimeContext):
     return translation_succeded, ctx.docx.translation_array
 
 
-def selenium_chrome_google_click_cookies_consent_button():
-    global found_google_cookies_consent_button
-    global google_translate_first_page_loaded
-    global chrome_options
-    global driver
-    global chromedriverpath
+def selenium_chrome_google_click_cookies_consent_button(ctx: RuntimeContext):
     try:
         translation = ''
         browse_file_element_xpath = "//button[.//span[contains(text(), 'Browse ')]]"
@@ -1674,7 +1669,7 @@ def selenium_chrome_google_click_cookies_consent_button():
             pass
             
             
-        google_translate_first_page_loaded = True
+        ctx.browser.google_translate_first_page_loaded = True
         #print("Cookies consent button cliqued...")
     except Exception:
         #print("Error gaccepting google cookie consent.")
@@ -1682,16 +1677,13 @@ def selenium_chrome_google_click_cookies_consent_button():
         #print(var)
         
         
-def selenium_chrome_google_translate_text_file(text_file_path):
-    global found_google_cookies_consent_button
-    global google_translate_first_page_loaded
-    global docxfile_table_number_of_phrases
+def selenium_chrome_google_translate_text_file(ctx: RuntimeContext, text_file_path):
     try:
         
-        if not google_translate_first_page_loaded:
-            selenium_chrome_google_click_cookies_consent_button()
+        if not ctx.browser.google_translate_first_page_loaded:
+            selenium_chrome_google_click_cookies_consent_button(ctx)
         
-        driver.get("https://translate.google.com/?sl=%s&tl=%s&op=docs" % (src_lang,dest_lang))
+        driver.get("https://translate.google.com/?sl=%s&tl=%s&op=docs" % (ctx.language.src_lang,ctx.language.dest_lang))
         driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
         
         browse_file_element_xpath = "//label[contains(.,'Browse your computer')]"
@@ -1741,18 +1733,18 @@ def selenium_chrome_google_translate_text_file(text_file_path):
         text_translated_document_str = text_translated_document_str.replace('</pre></body></html>', '')
         text_translated_document_str = html.unescape(text_translated_document_str)
         
-        translation_array = text_translated_document_str.split('\n')
+        ctx.docx.translation_array = text_translated_document_str.split('\n')
         
-        text_translated_document_str_nb_lines = len(translation_array)
+        text_translated_document_str_nb_lines = len(ctx.docx.translation_array)
         
         #print ("text_translated_document_str_nb_linestext_translated_document_str_nb_lines: %s" % text_translated_document_str_nb_lines)
-        print ("docxfile_table_number_of_phrases: %s" % docxfile_table_number_of_phrases)
+        print ("docxfile_table_number_of_phrases: %s" % ctx.docx.docxfile_table_number_of_phrases)
         
-        if docxfile_table_number_of_phrases == text_translated_document_str_nb_lines:
+        if ctx.docx.docxfile_table_number_of_phrases == text_translated_document_str_nb_lines:
             #print("OK, we got the right number of translated lines !")
             pass
         else:
-            print("oups ! we got %s translated lines out of %s" % (text_translated_document_str_nb_lines, docxfile_table_number_of_phrases))
+            print("oups ! we got %s translated lines out of %s" % (text_translated_document_str_nb_lines, ctx.docx.docxfile_table_number_of_phrases))
             translation_succeded = False
         
         #print("text_translated_document_str:")
@@ -1763,11 +1755,10 @@ def selenium_chrome_google_translate_text_file(text_file_path):
         var = traceback.format_exc()
         print(var)
         sys.exit(7)
-    return translation_array
+    return ctx.docx.translation_array
     
     
-def selenium_chrome_google_translate_html_javascript_file(html_file_path):
-    global my_hazm_normalizer, showbrowser, driver
+def selenium_chrome_google_translate_html_javascript_file(ctx: RuntimeContext, html_file_path):
     html_file_path_escaped = html_file_path.replace('#','%23')
     file_url = 'file://' + html_file_path_escaped
     
@@ -1865,14 +1856,14 @@ def selenium_chrome_google_translate_html_javascript_file(html_file_path):
             #soup = BeautifulSoup(html_translation)
             soup = BeautifulSoup(html_translation, features="lxml")
             pTags = soup.find_all('p', {'class':"translation"})
-            translation_array = []
+            ctx.docx.translation_array = []
             for pTranstlation in pTags:
                 pData = pTranstlation.text
-                if dest_lang.lower() == 'fa':
+                if ctx.language.dest_lang.lower() == 'fa':
                    pData =  my_hazm_normalizer.normalize(text=pData)
-                translation_array.append(pData)
+                ctx.docx.translation_array.append(pData)
 
-            return (translation_array)
+            return (ctx.docx.translation_array)
   
         except:
             var = traceback.format_exc()
@@ -1881,22 +1872,22 @@ def selenium_chrome_google_translate_html_javascript_file(html_file_path):
             
             print("Here do something exit with session failed ")
                 
-            chrome_options = Options()
-            chrome_options.add_argument("--disable-web-security")
-            chrome_options.add_argument("--disable-xss-auditor")
-            chrome_options.add_argument("--log-level=3")  # fatal
-            chrome_options.add_argument("--lang=en-GB")
-            chrome_options.add_argument("--password-store=basic")
+            ctx.browser.chrome_options = Options()
+            ctx.browser.chrome_options.add_argument("--disable-web-security")
+            ctx.browser.chrome_options.add_argument("--disable-xss-auditor")
+            ctx.browser.chrome_options.add_argument("--log-level=3")  # fatal
+            ctx.browser.chrome_options.add_argument("--lang=en-GB")
+            ctx.browser.chrome_options.add_argument("--password-store=basic")
             
-            if not showbrowser:
-                chrome_options.add_argument("--headless")
+            if not ctx.flags.showbrowser:
+                ctx.browser.chrome_options.add_argument("--headless")
             
             docxfile_table_number_of_lines = numrows
-            if use_api or splitonly:
+            if ctx.flags.use_api or ctx.flags.splitonly:
                 print("\nCreating a new browser for stats")
                                                       
                 service = Service()                                
-                driver = webdriver.Chrome(service=service, options=chrome_options)
+                driver = webdriver.Chrome(service=service, options=ctx.browser.chrome_options)
                                     
                           
 
@@ -1993,17 +1984,14 @@ def get_last_downloaded_file_path():
     #shutil.move(dlFilename, os.path.join(download_dir,newFilename))
     return
 
-def selenium_chrome_google_translate_xlsx_file(xlsx_file_path):
-    global found_google_cookies_consent_button
-    global google_translate_first_page_loaded
-    global docxfile_table_number_of_phrases
+def selenium_chrome_google_translate_xlsx_file(ctx: RuntimeContext, xlsx_file_path):
     
     try:
         
-        if not google_translate_first_page_loaded:
-            selenium_chrome_google_click_cookies_consent_button()
+        if not ctx.browser.google_translate_first_page_loaded:
+            selenium_chrome_google_click_cookies_consent_button(ctx)
         
-        driver.get("https://translate.google.com/?sl=%s&tl=%s&op=docs" % (src_lang,dest_lang))
+        driver.get("https://translate.google.com/?sl=%s&tl=%s&op=docs" % (ctx.language.src_lang,ctx.language.dest_lang))
         driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
         
         browse_file_element_xpath = "//label[contains(.,'Browse your computer')]"
@@ -2090,32 +2078,32 @@ def selenium_chrome_google_translate_xlsx_file(xlsx_file_path):
         soup = BeautifulSoup(html_translation, features="lxml")
         soup = BeautifulSoup(html_translation)
         tdTag = soup.find_all("td")
-        translation_array = []
+        ctx.docx.translation_array = []
         for td in tdTag:
             pData = td.text
-            translation_array.append(td.text)
+            ctx.docx.translation_array.append(td.text)
             #res = soup.get_text()
             print(pData)
         #input("after pData")
-        print(translation_array)
+        print(ctx.docx.translation_array)
         print("__________________________")
         
         # text_translated_document_str = html_translation.replace('<html><head></head><body><pre>', '')
         # text_translated_document_str = text_translated_document_str.replace('</pre></body></html>', '')
         # text_translated_document_str = html.unescape(text_translated_document_str)
         
-        #translation_array = text_translated_document_str.split('\n')
+        #ctx.docx.translation_array = text_translated_document_str.split('\n')
         
-        text_translated_document_str_nb_lines = len(translation_array)
+        text_translated_document_str_nb_lines = len(ctx.docx.translation_array)
         
         #print ("text_translated_document_str_nb_linestext_translated_document_str_nb_lines: %s" % text_translated_document_str_nb_lines)
-        print ("docxfile_table_number_of_phrases: %s" % docxfile_table_number_of_phrases)
+        print ("docxfile_table_number_of_phrases: %s" % ctx.docx.docxfile_table_number_of_phrases)
         
-        if docxfile_table_number_of_phrases == text_translated_document_str_nb_lines:
+        if ctx.docx.docxfile_table_number_of_phrases == text_translated_document_str_nb_lines:
             #print("OK, we got the right number of translated lines !")
             pass
         else:
-            print("oups ! we got %s translated lines out of %s" % (text_translated_document_str_nb_lines, docxfile_table_number_of_phrases))
+            print("oups ! we got %s translated lines out of %s" % (text_translated_document_str_nb_lines, ctx.docx.docxfile_table_number_of_phrases))
             translation_succeded = False
         
         #print("text_translated_document_str:")
@@ -2126,7 +2114,7 @@ def selenium_chrome_google_translate_xlsx_file(xlsx_file_path):
         var = traceback.format_exc()
         print(var)
         sys.exit(8)
-    return translation_array
+    return ctx.docx.translation_array
 
 
 
@@ -2526,7 +2514,7 @@ def selenium_chrome_deepl_translate(ctx, to_translate, retry_count):
     to_translate_phrases_array = to_translate.split("\n")
     to_translate_phrases_array_len = len(to_translate_phrases_array)
 
-    set_chrome_window_2_3_screen(_get_ctx())
+    set_chrome_window_2_3_screen(ctx)
 
 
     def ensure_target_language(driver, dest_lang="fr", dest_lang_name="French", timeout=20):
@@ -2870,7 +2858,7 @@ def selenium_chrome_deepl_translate(ctx, to_translate, retry_count):
                 ctx.browser.driver.get("https://www.deepl.com")
                 ctx.browser.closed_cookies_accept_message_bool = False
                 ctx.browser.deepl_nb_clear_cached_times = ctx.browser.deepl_nb_clear_cached_times + 1
-                ctx.browser.logged_into_deepl = selenium_chrome_deepl_log_in(_get_ctx())
+                ctx.browser.logged_into_deepl = selenium_chrome_deepl_log_in(ctx)
                 return selenium_chrome_deepl_translate(ctx, to_translate, retry_count)
               
 
@@ -3228,8 +3216,7 @@ def selenium_chrome_machine_translate(ctx: RuntimeContext, to_translate, index):
         print("Error in selenium_chrome_machine_translate function.")
     return translation
     
-def initialize_translation_memory_xlsx():
-    global xtm
+def initialize_translation_memory_xlsx(ctx: RuntimeContext):
     # If --xlsxreplacefile was provided in the command line
     if xlsxreplacefile is not None:
         print("xlsxreplacefile: %s" % (xlsxreplacefile))
@@ -3316,8 +3303,7 @@ def get_run_shading_color(xml_run_str):
     return attrib_fill
 
 # Return cell_non_greyed_text (string), cell_is_gray (integer for boolean)
-def get_cell_data(cell,row_n):
-    global from_text_nb_lines_in_cell
+def get_cell_data(ctx: RuntimeContext, cell,row_n):
     cell_is_gray = None
     cell_is_red = None
     cell_non_greyed_text = ''
@@ -3407,7 +3393,7 @@ def get_cell_data(cell,row_n):
         #    #input("press enter")
         
     
-    from_text_nb_lines_in_cell[row_n-1] = n_cell_lines
+    ctx.docx.from_text_nb_lines_in_cell[row_n-1] = n_cell_lines
     #if n_cell_lines > 1:
     #    print("%d lines" % (n_cell_lines))
     #    #input("here")
@@ -3898,7 +3884,7 @@ def read_and_parse_docx_document(ctx: RuntimeContext):
                     #print(docx.from_text_is_greyed_table)
                     #print(docx.from_text_is_red_color_table)
                     #print("row_n=%d" % (row_n))
-                    cellvalue, docx.from_text_is_greyed_table[i], docx.from_text_is_red_color_table[i] = get_cell_data(cell,row_n)
+                    cellvalue, docx.from_text_is_greyed_table[i], docx.from_text_is_red_color_table[i] = get_cell_data(ctx, cell,row_n)
                     p_remove_pause
                     cellvalue = p_remove_pause.sub(' ', cellvalue)
                     cellvalue = p_remove_double_spaces.sub(' ', cellvalue)
@@ -4086,14 +4072,13 @@ def clean_up_previous_chrome_selenium_drivers(current_driver_full_path):
         print(var)
         
 
-def create_webdriver():
-    global driver, chromedriverpath, translation_engine, chrome_options, driver_path
-    if not splitonly:
-        print("\nStarting translation using engine : %s" % (translation_engine.title()))
+def create_webdriver(ctx: RuntimeContext):
+    if not ctx.flags.splitonly:
+        print("\nStarting translation using engine : %s" % (ctx.engine.engine.title()))
 
-    driver_path = ""
+    ctx.browser.driver_path = ""
     
-    #if use_api == False and not splitonly:
+    #if ctx.flags.use_api == False and not ctx.flags.splitonly:
     if True:
         print(f"Starting Chrome browser\n")
         service = Service()
@@ -4109,21 +4094,21 @@ def create_webdriver():
                 # options.add_argument('--headless')
 
                 manager = selenium_webdriver.Chrome(options=options_manager)
-                driver_path = manager.service.path
+                ctx.browser.driver_path = manager.service.path
                 manager.quit()
-                print(f"Using selenium chrome driver path : {driver_path}")
+                print(f"Using selenium chrome driver path : {ctx.browser.driver_path}")
             except:
                 pass
             
         try:
-            if driver_path != "":
+            if ctx.browser.driver_path != "":
                 #print("Please wait while patching chrome driver to help prevent robot detections...")
-                #chrome_options.add_argument(f"--proxy-server=http://37.120.133.137:3128")
-                driver = webdriver.Chrome(service=service, options=chrome_options, driver_executable_path=driver_path)
+                #ctx.browser.chrome_options.add_argument(f"--proxy-server=http://37.120.133.137:3128")
+                driver = webdriver.Chrome(service=service, options=ctx.browser.chrome_options, driver_executable_path=ctx.browser.driver_path)
                 #driver.get("https://whatismyipaddress.com/")
                 #input("waiting for page to open")
             else:
-                driver = webdriver.Chrome(service=service, options=chrome_options)
+                driver = webdriver.Chrome(service=service, options=ctx.browser.chrome_options)
         except:
             var = traceback.format_exc()
             print(var)
@@ -4142,14 +4127,14 @@ def create_webdriver():
 
         #input("driver loaded and running")
         #driver.set_window_position(0, 350)
-        if translation_engine == 'deepl':
+        if ctx.engine.engine == 'deepl':
             driver.set_window_position(0, 100)
-            set_chrome_window_2_3_screen(_get_ctx())
+            set_chrome_window_2_3_screen(ctx)
         else:
-            set_chrome_window_2_3_screen(_get_ctx())
+            set_chrome_window_2_3_screen(ctx)
             #driver.set_window_size(400, 650)
             
-    numerrors_deepl = 0
+    ctx.browser.numerrors_deepl = 0
     numerrors_googletranslate= 0
 
 # Reverse a string
@@ -4157,12 +4142,11 @@ def reverse_string(s):
     return s[::-1]
 
 
-def generate_html_file_from_phrases_for_google_translate_javascript():
+def generate_html_file_from_phrases_for_google_translate_javascript(ctx: RuntimeContext):
     #input("Here")
-    global dest_lang_name, html_file_path, docxfile_table_number_of_phrases
     print("Generating html page.")
 
-    docxfile_table_number_of_phrases = 0
+    ctx.docx.docxfile_table_number_of_phrases = 0
     html_to_translate = '''<html lang=%s >
 <head>
   <meta charset="UTF-8">
@@ -4257,11 +4241,8 @@ window.onload = function(){
         print(var)
 
 
-def generate_text_file_from_phrases(text_file_path):
-    global dest_lang_name
-    global docxfile_table_number_of_phrases
-    global xtm
-    docxfile_table_number_of_phrases = 0
+def generate_text_file_from_phrases(ctx: RuntimeContext, text_file_path):
+    ctx.docx.docxfile_table_number_of_phrases = 0
     print("Generating text file for google translation...")
     #if xtm.wb is not None:
     if xtm is not None:
@@ -4270,7 +4251,7 @@ def generate_text_file_from_phrases(text_file_path):
     text_to_translate_array = []
     
     for i, line in enumerate(from_text_table):
-        item = from_text_by_phrase_separator_table[i]
+        item = ctx.docx.from_text_by_phrase_separator_table[i]
         item = item.strip()
         
         item_searched_and_replaced_before = item
@@ -4289,7 +4270,7 @@ def generate_text_file_from_phrases(text_file_path):
             #text_to_translate = text_to_translate + '''%s
 #''' % (item)
             text_to_translate_array.append(item_searched_and_replaced_before)
-            docxfile_table_number_of_phrases = docxfile_table_number_of_phrases + 1
+            ctx.docx.docxfile_table_number_of_phrases = ctx.docx.docxfile_table_number_of_phrases + 1
     #print (text_to_translate)
     #print (text_to_translate_array)
     
@@ -4314,11 +4295,8 @@ def generate_text_file_from_phrases(text_file_path):
         print(var)
         
 
-def generate_xlsx_file_from_phrases(xlsx_file_path):
-    global dest_lang_name
-    global docxfile_table_number_of_phrases
-    global xtm
-    docxfile_table_number_of_phrases = 0
+def generate_xlsx_file_from_phrases(ctx: RuntimeContext, xlsx_file_path):
+    ctx.docx.docxfile_table_number_of_phrases = 0
     print("Generating xlsx file for google translation...")
     #if xtm.wb is not None:
     if xtm is not None:
@@ -4327,7 +4305,7 @@ def generate_xlsx_file_from_phrases(xlsx_file_path):
     text_to_translate_array = []
     
     for i, line in enumerate(from_text_table):
-        item = from_text_by_phrase_separator_table[i]
+        item = ctx.docx.from_text_by_phrase_separator_table[i]
         item = item.strip()
         
         item_searched_and_replaced_before = item
@@ -4346,7 +4324,7 @@ def generate_xlsx_file_from_phrases(xlsx_file_path):
             #text_to_translate = text_to_translate + '''%s
             #''' % (item)
             text_to_translate_array.append(item_searched_and_replaced_before)
-            docxfile_table_number_of_phrases = docxfile_table_number_of_phrases + 1
+            ctx.docx.docxfile_table_number_of_phrases = ctx.docx.docxfile_table_number_of_phrases + 1
     #print (text_to_translate)
     #print (text_to_translate_array)
     
@@ -4397,31 +4375,27 @@ def deepl_double_linefeed_between_phrases(dest_lang):
                        'ro', 'ru', 'sk', 'sl', 'sv', 'tr', 'uk', 'vi', 'zh-hant', 'zh-hans')
     return dest_lang not in single_linefeed_phrase_separator_langs
 
-def generate_char_blocks_array_from_phrases(text_file_path):
-    global dest_lang_name, dest_lang, translation_engine
-    global docxfile_table_number_of_phrases
-    global xtm
-    global blocks_nchar_max_to_translate_array
-    docxfile_table_number_of_phrases = 0
-    print("Generating %d character blocks for translation..." % (MAX_TRANSLATION_BLOCK_SIZE))
+def generate_char_blocks_array_from_phrases(ctx: RuntimeContext, text_file_path):
+    ctx.docx.docxfile_table_number_of_phrases = 0
+    print("Generating %d character blocks for translation..." % (ctx.config.max_translation_block_size))
     #if xtm.wb is not None:
     if xtm is not None:
         print("Replacing text before using excel file...\n")
     text_to_translate = ''
     text_to_translate_array = []
-    blocks_nchar_max_to_translate_array = []
+    ctx.docx.blocks_nchar_max_to_translate_array = []
     
     double_linefeed_between_phrases = False
     phrase_separator = "\n"
     phrase_separator_len = 1
-    if translation_engine == 'deepl':
-        if deepl_double_linefeed_between_phrases(dest_lang):
+    if ctx.engine.engine == 'deepl':
+        if deepl_double_linefeed_between_phrases(ctx.language.dest_lang):
             double_linefeed_between_phrases = False
             phrase_separator = "\n\n"
             phrase_separator_len = 2
     
     for i, line in enumerate(from_text_table):
-        item = from_text_by_phrase_separator_table[i]
+        item = ctx.docx.from_text_by_phrase_separator_table[i]
         item = item.strip()
         
         item_searched_and_replaced_before = item
@@ -4440,7 +4414,7 @@ def generate_char_blocks_array_from_phrases(text_file_path):
             #text_to_translate = text_to_translate + '''%s
 #''' % (item)
             text_to_translate_array.append(item_searched_and_replaced_before)
-            docxfile_table_number_of_phrases = docxfile_table_number_of_phrases + 1
+            ctx.docx.docxfile_table_number_of_phrases = ctx.docx.docxfile_table_number_of_phrases + 1
                 
     #print (text_to_translate)
     #print (text_to_translate_array)
@@ -4461,7 +4435,7 @@ def generate_char_blocks_array_from_phrases(text_file_path):
         #print("%d : '%s'" % (index, text_to_translate_array[index]))
         current_phrase_str = text_to_translate_array[index]
         
-        if current_text_block_len + len(current_phrase_str) <= MAX_TRANSLATION_BLOCK_SIZE + phrase_separator_len:
+        if current_text_block_len + len(current_phrase_str) <= ctx.config.max_translation_block_size + phrase_separator_len:
             if len(current_text_block) == 0:
                 current_text_block = current_phrase_str
                 current_text_block_len = len(current_text_block)
@@ -4475,8 +4449,8 @@ def generate_char_blocks_array_from_phrases(text_file_path):
                 #print("current_text_block")
                 #print(current_text_block)
         else:
-            blocks_nchar_max_to_translate_array.append(current_text_block)
-            #print("Current block of %d characters:\n-------------------------------------------------" % (MAX_TRANSLATION_BLOCK_SIZE))
+            ctx.docx.blocks_nchar_max_to_translate_array.append(current_text_block)
+            #print("Current block of %d characters:\n-------------------------------------------------" % (ctx.config.max_translation_block_size))
             #print("current_text_block")
             #print(current_text_block)
             #print("end")
@@ -4490,14 +4464,14 @@ def generate_char_blocks_array_from_phrases(text_file_path):
             #input("------------------------------------------\nType enter to continue")
         
         if index == (len(text_to_translate_array) - 1):
-            blocks_nchar_max_to_translate_array.append(current_text_block)
-            #print("Current block of %d characters:\n-------------------------------------------------"  % (MAX_TRANSLATION_BLOCK_SIZE))
+            ctx.docx.blocks_nchar_max_to_translate_array.append(current_text_block)
+            #print("Current block of %d characters:\n-------------------------------------------------"  % (ctx.config.max_translation_block_size))
             #print(current_text_block.split("\n"))
             #print("------------------------------------------\nBlock size : %d" % (current_text_block_len))
             #input("------------------------------------------\nType enter to continue")
     
     #print("blocks_nchar_max_to_translate_array:")
-    #print("\n******************************************\n".join(blocks_nchar_max_to_translate_array))
+    #print("\n******************************************\n".join(ctx.docx.blocks_nchar_max_to_translate_array))
     #print ("len(text_to_translate_array) = %d " % (len(text_to_translate_array) - 1)) 
 
     #print("text_to_translate=\n%s" % (text_to_translate))
@@ -4512,33 +4486,30 @@ def generate_char_blocks_array_from_phrases(text_file_path):
         print(var)
 
 
-def google_translate_from_text_file():
-    global docx_file_name, translation_array
-    #word_file_to_translate
+def google_translate_from_text_file(ctx: RuntimeContext):
+    #ctx.flags.word_file_to_translate
     text_file_path = docx_file_name + '.txt'
     text_file_full_path = os.path.realpath(text_file_path)
     #print("text_file_full_path=%s" % text_file_full_path)
-    generate_text_file_from_phrases(text_file_full_path)
+    generate_text_file_from_phrases(ctx, text_file_full_path)
     #input("There")
     #input("Here, press enter:")
     print("Starting translation in google using text file...")
-    translation_array = selenium_chrome_google_translate_text_file(text_file_full_path)
+    ctx.docx.translation_array = selenium_chrome_google_translate_text_file(ctx, text_file_full_path)
     try:
         os.remove(text_file_path)
         pass
     except:
         pass
 
-def google_translate_from_html_javascript():
-    global translation_array
-    global html_file_path
+def google_translate_from_html_javascript(ctx: RuntimeContext):
     #input("There")
     #input("Here, press enter:")
     print("Starting translation in google using html file...")
     
-    generate_html_file_from_phrases_for_google_translate_javascript()
+    generate_html_file_from_phrases_for_google_translate_javascript(ctx)
     
-    translation_array = selenium_chrome_google_translate_html_javascript_file(html_file_path)
+    ctx.docx.translation_array = selenium_chrome_google_translate_html_javascript_file(ctx, html_file_path)
     
     try:
         #input("before remove html file")
@@ -4547,38 +4518,36 @@ def google_translate_from_html_javascript():
     except:
         pass
 
-    return translation_array
+    return ctx.docx.translation_array
 
-def google_translate_from_html_xlsxfile():
-    global word_file_to_translate, translation_array
-    xlsx_file_path = word_file_to_translate + '.xlsx'
+def google_translate_from_html_xlsxfile(ctx: RuntimeContext):
+    xlsx_file_path = ctx.flags.word_file_to_translate + '.xlsx'
     xlsx_file_full_path = os.path.realpath(xlsx_file_path)
     #print("text_file_full_path=%s" % text_file_full_path)
-    generate_xlsx_file_from_phrases(xlsx_file_full_path)
+    generate_xlsx_file_from_phrases(ctx, xlsx_file_full_path)
     #input("There")
     #input("Here, press enter:")
     print("Starting translation in google using text file...")
-    translation_array = selenium_chrome_google_translate_xlsx_file(xlsx_file_full_path)
+    ctx.docx.translation_array = selenium_chrome_google_translate_xlsx_file(ctx, xlsx_file_full_path)
     try:
         os.remove(xlsx_file_full_path)
         pass
     except:
         pass
 
-def translate_from_phrasesblock():
-    global docx_file_name, translation_array, translation_engine
+def translate_from_phrasesblock(ctx: RuntimeContext):
     text_file_path = docx_file_name + '.txt'
     text_file_full_path = os.path.realpath(text_file_path)
     #print("text_file_full_path=%s" % text_file_full_path)
-    #generate_text_file_from_phrases(text_file_full_path)
-    generate_char_blocks_array_from_phrases(text_file_full_path)
+    #generate_text_file_from_phrases(ctx, text_file_full_path)
+    generate_char_blocks_array_from_phrases(ctx, text_file_full_path)
 
     translation_succeded = True
 
     #input("phrasesblock")
-    print("Starting translation in %s using phrase blocks of %d characters..." % (translation_engine, MAX_TRANSLATION_BLOCK_SIZE))
+    print("Starting translation in %s using phrase blocks of %d characters..." % (ctx.engine.engine, ctx.config.max_translation_block_size))
 
-    translation_succeded, translation_array = selenium_chrome_translate_maxchar_blocks(_get_ctx())
+    translation_succeded, ctx.docx.translation_array = selenium_chrome_translate_maxchar_blocks(ctx)
     try:
         os.remove(text_file_path)
         pass
@@ -4593,15 +4562,15 @@ def translate_docx():
     # Engine-method specific translators
     # ------------------------------------------------------------------
     if engine_method == "textfile":
-        google_translate_from_text_file()
+        google_translate_from_text_file(ctx)
         return translation_succeded
 
     if engine_method == "javascript":
-        google_translate_from_html_javascript()
+        google_translate_from_html_javascript(ctx)
         return translation_succeded
 
     if engine_method == "xlsxfile":
-        google_translate_from_html_xlsxfile()
+        google_translate_from_html_xlsxfile(ctx)
         return translation_succeded
 
     # ------------------------------------------------------------------
@@ -4617,20 +4586,19 @@ def translate_docx():
         use_phrasesblock = engine_method in ("phrasesblock", "webservice")
 
     if use_phrasesblock:
-        translation_succeded = translate_from_phrasesblock()
+        translation_succeded = translate_from_phrasesblock(ctx)
 
     return translation_succeded
 
 
 
-def get_translation_and_replace_after():
-    global driver, from_text_by_phrase_separator_table, to_text_by_phrase_separator_table, numerrors_deepl, use_api
+def get_translation_and_replace_after(ctx: RuntimeContext):
     phrase_no = 0
 
-    # ── DIAGNOSTIC: confirm we enter here with polished translation_array ─
-    if oai_polisher is not None:
-        print(f"[DIAG] get_translation_and_replace_after: translation_array has "
-              f"{len(translation_array)} lines — distributing into to_text_by_phrase_separator_table")
+    # ── DIAGNOSTIC: confirm we enter here with polished ctx.docx.translation_array ─
+    if ctx.openai.polisher is not None:
+        print(f"[DIAG] get_translation_and_replace_after: ctx.docx.translation_array has "
+              f"{len(ctx.docx.translation_array)} lines — distributing into ctx.docx.to_text_by_phrase_separator_table")
     # ─────────────────────────────────────────────────────────────────────
 
     p_remove_pause = re.compile('(?i)<pause>')
@@ -4638,9 +4606,9 @@ def get_translation_and_replace_after():
     p_remove_parenthesis_spaces = re.compile('\( +')
 
     for i, line in enumerate(from_text_table):
-        item = from_text_by_phrase_separator_table[i]
+        item = ctx.docx.from_text_by_phrase_separator_table[i]
         item = item.strip()
-        from_language = src_lang
+        from_language = ctx.language.src_lang
         phrase_separator_removed_str = ''
 
         p_remove_separator = re.compile(line_separator_regex_str)
@@ -4662,51 +4630,51 @@ def get_translation_and_replace_after():
                         item_searched_and_replaced_before, nb_searched_and_replaced_before = xtm.search_and_replace_text('before', item)
                         if item_searched_and_replaced_before.strip() == '' or item_searched_and_replaced_before is None:
                             continue
-                if splitonly:
+                if ctx.flags.splitonly:
                     web_translation_separators = get_translated_cells_content (i, item_searched_and_replaced_before)
-                elif use_api:
+                elif ctx.flags.use_api:
                     try:
                         web_translation_separators = ""
-                        #if use_api:
-                        #    translation = oai_translator.translate(item_searched_and_replaced_before, src=src_lang, dest=dest_lang)
+                        #if ctx.flags.use_api:
+                        #    translation = ctx.openai.translator.translate(item_searched_and_replaced_before, src=ctx.language.src_lang, dest=ctx.language.dest_lang)
                         #    web_translation_separators = translation.text
                         if not len(web_translation_separators) > 0:
-                            use_api = False
+                            ctx.flags.use_api = False
                             # Faster google Chrome translate failed, using Selenium as backup
 
                             if driver is None:
                                 print(f"[Line {inspect.currentframe().f_lineno}] Starting Chrome browser\n")
                                 
                                 service = Service()                                
-                                driver = webdriver.Chrome(service=service, options=chrome_options)
+                                driver = webdriver.Chrome(service=service, options=ctx.browser.chrome_options)
                                 
                                 driver.set_window_position(100, 100)
                                 driver.set_window_size(800, 700)
                                 #driver.set_window_size(400, 650)
 
                             print("phrase_no=%d" % phrase_no)
-                            web_translation_separators = selenium_chrome_machine_translate(_get_ctx(), item_searched_and_replaced_before, phrase_no)
+                            web_translation_separators = selenium_chrome_machine_translate(ctx, item_searched_and_replaced_before, phrase_no)
                     except Exception:
-                        use_api = False
+                        ctx.flags.use_api = False
                         # Faster google Chrome translate failed, using Selenium as backup
 
                         if driver is not None:
                             print(f"Starting Chrome browser\n")
                             
                             service = Service()                                
-                            driver = webdriver.Chrome(service=service, options=chrome_options)
+                            driver = webdriver.Chrome(service=service, options=ctx.browser.chrome_options)
 
-                        if translation_engine == 'google' and driver is not None:
+                        if ctx.engine.engine == 'google' and driver is not None:
                             driver.set_window_position(100, 100)
                             driver.set_window_size(800, 700)
 
                         print("phrase_no = %d" % phrase_no)
-                        web_translation_separators = selenium_chrome_machine_translate(_get_ctx(), item_searched_and_replaced_before, phrase_no)
+                        web_translation_separators = selenium_chrome_machine_translate(ctx, item_searched_and_replaced_before, phrase_no)
                 else:
-                    if engine_method == "singlephrase" and translation_engine == 'deepl':
-                        translation_succeded, web_translation_separators  = selenium_chrome_machine_translate(_get_ctx(), item_searched_and_replaced_before, phrase_no)
+                    if ctx.engine.method == "singlephrase" and ctx.engine.engine == 'deepl':
+                        translation_succeded, web_translation_separators  = selenium_chrome_machine_translate(ctx, item_searched_and_replaced_before, phrase_no)
                     else:
-                        web_translation_separators = selenium_chrome_machine_translate(_get_ctx(), item_searched_and_replaced_before, phrase_no)
+                        web_translation_separators = selenium_chrome_machine_translate(ctx, item_searched_and_replaced_before, phrase_no)
                         
                 #web_translation_separators = translation.text
                 phrase_separator_removed_str = p_remove_double_spaces.sub(' ', web_translation_separators)
@@ -4720,29 +4688,29 @@ def get_translation_and_replace_after():
                         #print("Replaced phrase :\n'%s'" % (web_translation_separators_searched_and_replaced))
                         phrase_separator_removed_str = web_translation_separators_searched_and_replaced
 
-                if dest_lang in right_to_left_languages_list.keys():
+                if ctx.language.dest_lang in right_to_left_languages_list.keys():
                     #phrase_separator_removed_aligned_str = reverse_string (phrase_separator_removed_str)
                     #phrase_separator_removed_aligned_str = "\u202B" + phrase_separator_removed_str + "\u202C"
                     phrase_separator_removed_aligned_str = get_display(phrase_separator_removed_str)
                 else:
                     phrase_separator_removed_aligned_str = phrase_separator_removed_str
                 try:
-                    if splitonly:
+                    if ctx.flags.splitonly:
                         print("Translated text :'%s'\n" % (phrase_separator_removed_aligned_str))
                     else:
-                        print("%s translation (%s):'%s'" % (translation_engine.title() ,dest_lang_name, phrase_separator_removed_aligned_str))
+                        print("%s translation (%s):'%s'" % (ctx.engine.engine.title() ,ctx.language.dest_lang_name, phrase_separator_removed_aligned_str))
                 except Exception:
                     print("")
                     print("Google translation='%s'" % (phrase_separator_removed_str.encode('utf8').decode('utf8')))
-                if web_translation_separators.strip() == '' and not splitonly:
+                if web_translation_separators.strip() == '' and not ctx.flags.splitonly:
                     print("Error translating='%s'" % (item))
-                to_text_by_phrase_separator_table[i] = phrase_separator_removed_str
+                ctx.docx.to_text_by_phrase_separator_table[i] = phrase_separator_removed_str
                 phrase_separator_removed_str = p_remove_separator.sub(' ', phrase_separator_removed_str)
                 phrase_separator_removed_str.strip()
                 to_text_by_phrase_separator_removed_table[i] = phrase_separator_removed_str
         except Exception:
             var = traceback.format_exc()
-            numerrors_deepl = numerrors_deepl + 1
+            ctx.browser.numerrors_deepl = ctx.browser.numerrors_deepl + 1
             web_translation_separators = var
             print("ERROR:%s" % (var))
 
@@ -4750,7 +4718,7 @@ def get_translation_and_replace_after():
         try:
             web_translation_no_separators = ''
             if item.strip() != '':
-                #google_translation_res = translator.translate(item, src=src_lang, dest='fr')
+                #google_translation_res = translator.translate(item, src=ctx.language.src_lang, dest='fr')
                 #time.sleep(5)
                 #web_translation_no_separators = pydeepl.translate(item, to_language)
                 phrase_separator_removed_str = p_remove_double_spaces.sub(' ', web_translation_no_separators)
@@ -4775,32 +4743,30 @@ def minimize_browser():
             pass
 
 
-def document_split_phrases():
+def document_split_phrases(ctx: RuntimeContext):
     # Split phrases into multiple lines to match source language number of lines
-    global docxfile_table_number_of_phrases, docxfile_table_number_of_characters, phrase_number_of_words, docxfile_table_number_of_words, split_engine
-    global src_lang_name, dest_lang_name, oai_translator
 
     oai_sub_splitter = None
-    if split_engine == "openai":
-        if oai_translator is not None:
-            oai_sub_splitter = OpenAISubtitleSplitter(filename=word_file_to_translate, doc_id=oai_translator.get_doc_id())
+    if ctx.flags.split_engine == "openai":
+        if ctx.openai.translator is not None:
+            oai_sub_splitter = OpenAISubtitleSplitter(filename=ctx.flags.word_file_to_translate, doc_id=ctx.openai.translator.get_doc_id())
         else:
             oai_sub_splitter = OpenAISubtitleSplitter()
     
     for i, line in enumerate(from_text_table):
-        if to_text_by_phrase_separator_table[i] != '':
-            #docxfile_table_number_of_phrases = docxfile_table_number_of_phrases + 1
-            docxfile_table_number_of_characters = docxfile_table_number_of_characters + len(from_text_by_phrase_separator_table[i])
-            phrase_number_of_words = len(from_text_by_phrase_separator_table[i].strip().split(" "))
-            #print("Phrase to split: %s" % (from_text_by_phrase_separator_table[i]))
-            #print("number of words: %d" % (phrase_number_of_words))
-            docxfile_table_number_of_words = docxfile_table_number_of_words + phrase_number_of_words
+        if ctx.docx.to_text_by_phrase_separator_table[i] != '':
+            #ctx.docx.docxfile_table_number_of_phrases = ctx.docx.docxfile_table_number_of_phrases + 1
+            ctx.docx.docxfile_table_number_of_characters = ctx.docx.docxfile_table_number_of_characters + len(ctx.docx.from_text_by_phrase_separator_table[i])
+            ctx.docx.phrase_number_of_words = len(ctx.docx.from_text_by_phrase_separator_table[i].strip().split(" "))
+            #print("Phrase to split: %s" % (ctx.docx.from_text_by_phrase_separator_table[i]))
+            #print("number of words: %d" % (ctx.docx.phrase_number_of_words))
+            ctx.docx.docxfile_table_number_of_words = ctx.docx.docxfile_table_number_of_words + ctx.docx.phrase_number_of_words
             input_phrase_lines = ""
             #translation_result_using_separator[i] = []
             #translation_result_phrase_array[i] = []
             
             try:
-                current_line = to_text_by_phrase_separator_table[i]
+                current_line = ctx.docx.to_text_by_phrase_separator_table[i]
                 # Using () as separator for splitting phrases, not used anymore
                 #lines = current_line.split(line_separator_nospace_str)
                 str_translation_len = len(current_line)
@@ -4858,7 +4824,7 @@ def document_split_phrases():
                     # --- Try 2 times with default model ---
                     for attempt in range(2):
                         response, lines = oai_sub_splitter.split_phrase(
-                            src_lang_name, dest_lang_name, input_phrase_lines, current_line
+                            ctx.language.src_lang_name, ctx.language.dest_lang_name, input_phrase_lines, current_line
                         )
 
                         lines = normalize(lines)
@@ -4873,7 +4839,7 @@ def document_split_phrases():
                     oai_sub_splitter.set_model('gpt-5.5')
 
                     response, lines = oai_sub_splitter.split_phrase(
-                        src_lang_name, dest_lang_name, input_phrase_lines, current_line
+                        ctx.language.src_lang_name, ctx.language.dest_lang_name, input_phrase_lines, current_line
                     )
 
                     # --- Final handling ---
@@ -4902,13 +4868,13 @@ def document_split_phrases():
                     if local_avg > MAX_LINE_SIZE:
                         local_avg = math.ceil(local_avg)
 
-                    tokens = tokenize_text_to_array(current_line, dest_lang)
-                    lines = divide_array(tokens, dest_lang, local_avg + 4)
+                    tokens = tokenize_text_to_array(current_line, ctx.language.dest_lang)
+                    lines = divide_array(tokens, ctx.language.dest_lang, local_avg + 4)
 
                     divide_max_try = MAX_LINE_SIZE
                     while (len(lines) > str_nb_lines) and (divide_max_try > 0):
                         local_avg += 1
-                        lines = divide_array(tokens, dest_lang, local_avg + 4)
+                        lines = divide_array(tokens, ctx.language.dest_lang, local_avg + 4)
                         divide_max_try -= 1
 
                     divide_max_try = MAX_LINE_SIZE
@@ -4917,7 +4883,7 @@ def document_split_phrases():
 
                     while (len(lines) <= str_nb_lines) and (len(lines) >= 1) and (divide_max_try > 0):
                         local_avg -= 1
-                        attempt_lines = divide_array(tokens, dest_lang, local_avg + 4)
+                        attempt_lines = divide_array(tokens, ctx.language.dest_lang, local_avg + 4)
 
                         if len(attempt_lines) <= str_nb_lines:
                             lines = attempt_lines
@@ -4931,7 +4897,7 @@ def document_split_phrases():
                 if str_nb_lines == 1:
                     lines_divided = [current_line]
                 if str_nb_lines > 1:
-                    if split_engine == "openai":
+                    if ctx.flags.split_engine == "openai":
                         lines_divided = split_with_openai()
                         
                         number_lines = len(lines_divided)
@@ -4981,13 +4947,13 @@ def document_split_phrases():
                 try:
                     print(
                         "Splitting phrase : %s (%d) = %d lines"
-                        % (to_text_by_phrase_separator_table[i], i, str_nb_lines)
+                        % (ctx.docx.to_text_by_phrase_separator_table[i], i, str_nb_lines)
                     )
                 except Exception:
                     try:
                         print(
                             "%s (%d): %d "
-                            % (to_text_by_phrase_separator_table[i].encode("utf-8"), i, str_nb_lines)
+                            % (ctx.docx.to_text_by_phrase_separator_table[i].encode("utf-8"), i, str_nb_lines)
                         )
                     except Exception:
                         print("(unable to print content to screen) (%d): %d" % (i, str_nb_lines))
@@ -5134,7 +5100,7 @@ def print_console_docx_file_translated():
 
             if not split_translation:
                 translation_cell_text = to_text_by_phrase_separator_table[row_n]
-                prepare_and_clear_cell_for_writing(_get_ctx(), row_n, translation_cell_text)
+                prepare_and_clear_cell_for_writing(ctx, row_n, translation_cell_text)
                 if dest_lang in right_to_left_languages_list.keys():
                     #translation_cell_aligned_text = reverse_string (translation_cell_text)
                     #translation_cell_aligned_text = "\u202B" + translation_cell_text + "\u202C"
@@ -5172,7 +5138,7 @@ def print_console_docx_file_translated():
                         if cell_line_pos == 0:
                             #print("cell_line_pos=%d" % cell_line_pos)
                             if splitonly:
-                                prepare_and_clear_cell_for_writing(_get_ctx(), current_cell_row, translation_phrase_line_str)
+                                prepare_and_clear_cell_for_writing(ctx, current_cell_row, translation_phrase_line_str)
                             else:
                             #prepare_and_clear_cell_for_writing(current_cell_row, translation_phrase_line_str)
                                 cell_set_1st_paragraph(current_cell_row, translation_phrase_line_str)
@@ -5211,10 +5177,10 @@ def print_console_docx_file_translated():
 #word.Application.ActiveWindow.Close()
 #word.Application.Quit()
 
-def set_docx_properties_comment_for_history():
+def set_docx_properties_comment_for_history(ctx: RuntimeContext):
     now = datetime.datetime.now()
     dt_string = now.strftime("%d/%m/%Y %H:%M:%S")
-    docxdoc.core_properties.comments = "Document translated by SMTV Robot version %s using %s engine on %s." % (PROGRAM_VERSION, translation_engine, dt_string)
+    docxdoc.core_properties.comments = "Document translated by SMTV Robot version %s using %s engine on %s." % (PROGRAM_VERSION, ctx.engine.engine, dt_string)
 
 
 
@@ -5232,27 +5198,24 @@ def local_time_offset(t=None):
     return localtimezone
 
 
-def run_statistics():
-    global use_api
-    global splitonly, driver
-    global engine_method, end_time, elapsed_time, json_configuration_array, client_ip
+def run_statistics(ctx: RuntimeContext):
     
     statistics_html_statistics_form_url_key = ['statistics', 'html_statistics_form_url']
-    statistics_html_statistics_form_url = get_nested_value_from_json_array(json_configuration_array, statistics_html_statistics_form_url_key)
+    statistics_html_statistics_form_url = get_nested_value_from_json_array(ctx.config.json_configuration_array, statistics_html_statistics_form_url_key)
     
     bool_print_stats = False
     
     try:
-        if splitonly:
+        if ctx.flags.splitonly:
             action = "splitonly"
         else:
             action = "translate"
         
-        docxfile_size = os.path.getsize(word_file_to_translate)
-        if use_api == True:
-            engine_method = "api"
-        elif engine_method is None or engine_method == "":
-            engine_method = "web"
+        docxfile_size = os.path.getsize(ctx.flags.word_file_to_translate)
+        if ctx.flags.use_api == True:
+            ctx.engine.method = "api"
+        elif ctx.engine.method is None or ctx.engine.method == "":
+            ctx.engine.method = "web"
         
         if xlsxreplacefile is not None:
             xlsxreplacefile_splitted = os.path.splitext(os.path.basename(xlsxreplacefile))
@@ -5287,13 +5250,13 @@ def run_statistics():
         cpu_count = psutil.cpu_count()
         mem_total = psutil.virtual_memory().total
         
-        cost_google_translate = 20 * docxfile_table_number_of_characters / 1000000
+        cost_google_translate = 20 * ctx.docx.docxfile_table_number_of_characters / 1000000
         
         local_time_offset_str = local_time_offset()
         
         docxfile_page_count = None
         try:
-            document = zipfile.ZipFile(word_file_to_translate)
+            document = zipfile.ZipFile(ctx.flags.word_file_to_translate)
             dxml = document.read('docProps/app.xml')
             uglyXml = xml.dom.minidom.parseString(dxml)
             docxfile_page_count = uglyXml.getElementsByTagName('Pages')[0].childNodes[0].nodeValue
@@ -5319,26 +5282,26 @@ def run_statistics():
         if bool_print_stats:
             print("Statistics:")
             print("program_version: %s" % (PROGRAM_VERSION))
-            print("client_ip: %s" % (client_ip))
+            print("client_ip: %s" % (ctx.flags.client_ip))
             #https://stackoverflow.com/questions/1695183/how-to-percent-encode-url-parameters-in-python
             
-            print("docxfile: %s" % (word_file_to_translate))
+            print("docxfile: %s" % (ctx.flags.word_file_to_translate))
             print("action: %s" % (action))
-            print("destlang_code: %s" % (dest_lang))
-            print("destlang_name: %s" % (dest_lang_name))
+            print("destlang_code: %s" % (ctx.language.dest_lang))
+            print("destlang_name: %s" % (ctx.language.dest_lang_name))
             print("docxfile: %s" % (docx_file_name))
             print("docxfile_page_count: %s" % docxfile_page_count)
             print("docxfile_size: %s" % (docxfile_size))
             print("docxfile_table_number_of_lines: %s" % (numrows))
-            print("docxfile_table_number_of_phrases: %s" % (docxfile_table_number_of_phrases))
-            print("docxfile_table_number_of_words: %s" % (docxfile_table_number_of_words))
-            print("docxfile_table_number_of_characters: %s" % (docxfile_table_number_of_characters))
-            print("engine: %s" % (translation_engine))
+            print("docxfile_table_number_of_phrases: %s" % (ctx.docx.docxfile_table_number_of_phrases))
+            print("docxfile_table_number_of_words: %s" % (ctx.docx.docxfile_table_number_of_words))
+            print("docxfile_table_number_of_characters: %s" % (ctx.docx.docxfile_table_number_of_characters))
+            print("engine: %s" % (ctx.engine.engine))
             print("xlsxreplacefile: %s" % (xlsxreplacefile_name))
             print("destfont: %s" % (dest_font))
-            print("splitonly: %s" % (splitonly))
+            print("splitonly: %s" % (ctx.flags.splitonly))
             print("split_translation: %s" % (split_translation))
-            print("showbrowser: %s" % (showbrowser))
+            print("showbrowser: %s" % (ctx.flags.showbrowser))
             print("start_time: %s" % (start_time))
             print("end_time: %s" % (end_time))
             print("elapsed_time: %s" % ((elapsed_time)))
@@ -5366,41 +5329,41 @@ def run_statistics():
             print(f"cost_google_translate: {cost_google_translate:.2f}$")
             print("")
         
-        #if use_api == False and not splitonly:
-        chrome_options = Options()
-        chrome_options.add_argument("--disable-web-security")
-        chrome_options.add_argument("--disable-xss-auditor")
-        chrome_options.add_argument("--log-level=3")  # fatal
-        chrome_options.add_argument("--lang=en-GB")
-        chrome_options.add_argument("--password-store=basic")
+        #if ctx.flags.use_api == False and not ctx.flags.splitonly:
+        ctx.browser.chrome_options = Options()
+        ctx.browser.chrome_options.add_argument("--disable-web-security")
+        ctx.browser.chrome_options.add_argument("--disable-xss-auditor")
+        ctx.browser.chrome_options.add_argument("--log-level=3")  # fatal
+        ctx.browser.chrome_options.add_argument("--lang=en-GB")
+        ctx.browser.chrome_options.add_argument("--password-store=basic")
         
-        if not showbrowser:
-            chrome_options.add_argument("--headless")
+        if not ctx.flags.showbrowser:
+            ctx.browser.chrome_options.add_argument("--headless")
         
         docxfile_table_number_of_lines = numrows
-        if use_api or splitonly:
+        if ctx.flags.use_api or ctx.flags.splitonly:
             print("\nCreating a new browser for stats")
             
                                                                
-            driver = webdriver.Chrome(service=service, options=chrome_options)
+            driver = webdriver.Chrome(service=service, options=ctx.browser.chrome_options)
             service = Service()
         
         query_params = {
             "program_version" : PROGRAM_VERSION,
-            "engine" : translation_engine,
-            "engine_method" : engine_method,
+            "engine" : ctx.engine.engine,
+            "engine_method" : ctx.engine.method,
             "action" : action,
-            "destlang_code" : dest_lang,
-            "destlang_name" : dest_lang_name,
+            "destlang_code" : ctx.language.dest_lang,
+            "destlang_name" : ctx.language.dest_lang_name,
             "docxfile_size" : docxfile_size,
             "docxfile_table_number_of_lines" : docxfile_table_number_of_lines,
-            "docxfile_table_number_of_phrases" : docxfile_table_number_of_phrases,
-            "docxfile_table_number_of_words" : docxfile_table_number_of_words,
-            "docxfile_table_number_of_characters" : docxfile_table_number_of_characters,
+            "docxfile_table_number_of_phrases" : ctx.docx.docxfile_table_number_of_phrases,
+            "docxfile_table_number_of_words" : ctx.docx.docxfile_table_number_of_words,
+            "docxfile_table_number_of_characters" : ctx.docx.docxfile_table_number_of_characters,
             "xlsxreplacefile" : xlsxreplacefile_name,
             "destfont" : dest_font,
             "split_translation" : split_translation,
-            "showbrowser" : showbrowser,
+            "showbrowser" : ctx.flags.showbrowser,
             "start_time" : start_time,
             "end_time" : end_time,
             "elapsed_time" : elapsed_time,
@@ -5426,7 +5389,7 @@ def run_statistics():
             "docxfile_page_count" : docxfile_page_count,
             "platform_node" : platform_node,
             "docxfile" : docx_file_name,
-            "client_ip" : client_ip
+            "client_ip" : ctx.flags.client_ip
         }
         
         base_url = statistics_html_statistics_form_url
@@ -5463,7 +5426,7 @@ def run_statistics():
     #time.sleep(10)
 
 
-def browser_fill_form_field_value(field_css_id, field_value):
+def browser_fill_form_field_value(ctx: RuntimeContext, field_css_id, field_value):
     try:
         input_field = WebDriverWait(driver, 1).until(EC.presence_of_element_located((By.CSS_SELECTOR, field_css_id)))
         input_field.send_keys (field_value)
@@ -5472,18 +5435,15 @@ def browser_fill_form_field_value(field_css_id, field_value):
         print(var)
 
 
-def get_robot_usage_comment():
-    global use_api
-    global splitonly, driver
-    global engine_method, end_time, elapsed_time, json_configuration_array, str_needs_update
+def get_robot_usage_comment(ctx: RuntimeContext):
     
     javascript_json_version_checker_url_key = ['version_checker', 'javascript_json_version_checker_url']
-    javascript_json_version_checker_url = get_nested_value_from_json_array(json_configuration_array, javascript_json_version_checker_url_key)
+    javascript_json_version_checker_url = get_nested_value_from_json_array(ctx.config.json_configuration_array, javascript_json_version_checker_url_key)
         
-    if use_api == True:
-        engine_method = "api"
-    elif engine_method is None or engine_method == "":
-        engine_method = "web"
+    if ctx.flags.use_api == True:
+        ctx.engine.method = "api"
+    elif ctx.engine.method is None or ctx.engine.method == "":
+        ctx.engine.method = "web"
     
     if xlsxreplacefile is not None:
         xlsxreplacefile_splitted = os.path.splitext(os.path.basename(xlsxreplacefile))
@@ -5509,44 +5469,44 @@ def get_robot_usage_comment():
     
 
     try:
-        driver.get(javascript_json_version_checker_url)
+        ctx.browser.driver.get(javascript_json_version_checker_url)
         bool_print_stats = False
 
         json_obj = json5.loads("{}")
 
         json_obj["program_version"] = PROGRAM_VERSION
-        json_obj["docxfile"] = word_file_to_translate
+        json_obj["docxfile"] = ctx.flags.word_file_to_translate
 
-        if splitonly:
+        if ctx.flags.splitonly:
             json_obj['action'] = "splitonly"
         else:
             json_obj['action'] = "translate"
 
-        json_obj["destlang_code"] = dest_lang
-        json_obj["destlang_name"] = dest_lang_name
+        json_obj["destlang_code"] = ctx.language.dest_lang
+        json_obj["destlang_name"] = ctx.language.dest_lang_name
         json_obj["docxfile"] = "%s%s" % (docx_file_name,"'")
         json_obj["docxfile_table_number_of_lines"] = numrows
-        json_obj["docxfile_table_number_of_phrases"] = docxfile_table_number_of_phrases
-        json_obj["docxfile_table_number_of_words"] = docxfile_table_number_of_words
-        json_obj["docxfile_table_number_of_characters"] = docxfile_table_number_of_characters
-        json_obj["engine"] = translation_engine
-        json_obj["engine_method"] = engine_method
+        json_obj["docxfile_table_number_of_phrases"] = ctx.docx.docxfile_table_number_of_phrases
+        json_obj["docxfile_table_number_of_words"] = ctx.docx.docxfile_table_number_of_words
+        json_obj["docxfile_table_number_of_characters"] = ctx.docx.docxfile_table_number_of_characters
+        json_obj["engine"] = ctx.engine.engine
+        json_obj["engine_method"] = ctx.engine.method
         json_obj["xlsxreplacefile"] = xlsxreplacefile_name
         if dest_font is not None:
             json_obj["destfont"] = "%s" % dest_font
-        json_obj["splitonly"] = splitonly
+        json_obj["splitonly"] = ctx.flags.splitonly
         json_obj["split_translation"] = split_translation
-        json_obj["showbrowser"] = showbrowser
+        json_obj["showbrowser"] = ctx.flags.showbrowser
         json_obj["start_time"] = "%s" % start_time
         json_obj["end_time"] = "%s" % end_time
         json_obj["elapsed_time"] = "%s" % elapsed_time
 
         try:
-            docxfile_size = os.path.getsize(word_file_to_translate)
+            docxfile_size = os.path.getsize(ctx.flags.word_file_to_translate)
             json_obj["docxfile_size"] = docxfile_size
-            if use_api == True:
+            if ctx.flags.use_api == True:
                 json_obj['engine_method'] = "api"
-            elif engine_method is None or engine_method == "":
+            elif ctx.engine.method is None or ctx.engine.method == "":
                 json_obj['engine_method'] = "web"
 
             if xlsxreplacefile is not None:
@@ -5585,13 +5545,13 @@ def get_robot_usage_comment():
             json_obj['cpu_count'] = psutil.cpu_count()
             json_obj['mem_total'] = psutil.virtual_memory().total
 
-            cost_google_translate = 20 * docxfile_table_number_of_characters / 1000000
+            cost_google_translate = 20 * ctx.docx.docxfile_table_number_of_characters / 1000000
 
             local_time_offset_str = local_time_offset()
 
             docxfile_page_count = None
             try:
-                document = zipfile.ZipFile(word_file_to_translate)
+                document = zipfile.ZipFile(ctx.flags.word_file_to_translate)
                 dxml = document.read('docProps/app.xml')
                 uglyXml = xml.dom.minidom.parseString(dxml)
                 docxfile_page_count = uglyXml.getElementsByTagName('Pages')[0].childNodes[0].nodeValue
@@ -5621,16 +5581,16 @@ def get_robot_usage_comment():
             print("Checking for program updates...")
             print("-------------------------------\n")
 
-            element_json_robot = WebDriverWait(driver, 1).until(
+            element_json_robot = WebDriverWait(ctx.browser.driver, 1).until(
                     EC.presence_of_element_located((By.ID, "json_robot")))
-            driver.execute_script("arguments[0].innerText = arguments[1]", element_json_robot, json.dumps(json_obj))
+            ctx.browser.driver.execute_script("arguments[0].innerText = arguments[1]", element_json_robot, json.dumps(json_obj))
 
-            element_submit = WebDriverWait(driver, 1).until(
+            element_submit = WebDriverWait(ctx.browser.driver, 1).until(
                     EC.presence_of_element_located((By.ID, "submit")))
-            safe_click(driver, element_submit)
-            driver.execute_script("arguments[0].click();", element_submit)
+            safe_click(ctx.browser.driver, element_submit)
+            ctx.browser.driver.execute_script("arguments[0].click();", element_submit)
 
-            html_translation = driver.page_source
+            html_translation = ctx.browser.driver.page_source
             # soup = BeautifulSoup(html_translation)
             soup = BeautifulSoup(html_translation, features="lxml")
             soup_div_text = soup.find('div', id='message_text')
@@ -5648,33 +5608,33 @@ def get_robot_usage_comment():
 
             return 0;
             try:
-                print(driver.capabilities['browserVersion'])
+                print(ctx.browser.driver.capabilities['browserVersion'])
             except:
                 pass
-            print(driver.name)
+            print(ctx.browser.driver.name)
 
             if bool_print_stats:
                 print("Statistics:")
                 print("program_version: %s" % (PROGRAM_VERSION))
                 # https://stackoverflow.com/questions/1695183/how-to-percent-encode-url-parameters-in-python
 
-                print("docxfile: %s" % (word_file_to_translate))
+                print("docxfile: %s" % (ctx.flags.word_file_to_translate))
                 print("action: %s" % (action))
-                print("destlang_code: %s" % (dest_lang))
-                print("destlang_name: %s" % (dest_lang_name))
+                print("destlang_code: %s" % (ctx.language.dest_lang))
+                print("destlang_name: %s" % (ctx.language.dest_lang_name))
                 print("docxfile: %s" % (docx_file_name))
                 print("docxfile_page_count: %s" % docxfile_page_count)
                 print("docxfile_size: %s" % (docxfile_size))
                 print("docxfile_table_number_of_lines: %s" % (numrows))
-                print("docxfile_table_number_of_phrases: %s" % (docxfile_table_number_of_phrases))
-                print("docxfile_table_number_of_words: %s" % (docxfile_table_number_of_words))
-                print("docxfile_table_number_of_characters: %s" % (docxfile_table_number_of_characters))
-                print("engine: %s" % (translation_engine))
+                print("docxfile_table_number_of_phrases: %s" % (ctx.docx.docxfile_table_number_of_phrases))
+                print("docxfile_table_number_of_words: %s" % (ctx.docx.docxfile_table_number_of_words))
+                print("docxfile_table_number_of_characters: %s" % (ctx.docx.docxfile_table_number_of_characters))
+                print("engine: %s" % (ctx.engine.engine))
                 print("xlsxreplacefile: %s" % (xlsxreplacefile_name))
                 print("destfont: %s" % (dest_font))
-                print("splitonly: %s" % (splitonly))
+                print("splitonly: %s" % (ctx.flags.splitonly))
                 print("split_translation: %s" % (split_translation))
-                print("showbrowser: %s" % (showbrowser))
+                print("showbrowser: %s" % (ctx.flags.showbrowser))
                 print("start_time: %s" % (start_time))
                 print("end_time: %s" % (end_time))
                 print("elapsed_time: %s" % ((elapsed_time)))
@@ -5701,7 +5661,7 @@ def get_robot_usage_comment():
                 print(f"cost_google_translate: {cost_google_translate:.2f}$")
                 print("")
 
-            # if use_api == False and not splitonly:
+            # if ctx.flags.use_api == False and not ctx.flags.splitonly:
             chrome_options = Options()
             chrome_options.add_argument("--disable-web-security")
             chrome_options.add_argument("--disable-xss-auditor")
@@ -5709,76 +5669,76 @@ def get_robot_usage_comment():
             chrome_options.add_argument("--lang=en-GB")
             chrome_options.add_argument("--password-store=basic")
 
-            driver.get("https://forms.gle/YeYYUYY5SNo6MKkB8")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(1) .whsOnd", "REMOTE_ADDR")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(2) .whsOnd", "country_name")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(3) .whsOnd", "remote_location_text")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(4) .whsOnd", "HTTP_USER_AGENT")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(5) .whsOnd", "program_version")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(6) .whsOnd", "docxfile")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(7) .whsOnd", "docxfile_page_count")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(8) .whsOnd", "docxfile_size")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(9) .whsOnd", "docxfile_table_number_of_lines")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(10) .whsOnd", "docxfile_table_number_of_words")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(11) .whsOnd", "docxfile_table_number_of_characters")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(12) .whsOnd", "action")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(13) .whsOnd", "destlang_code")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(14) .whsOnd", "destlang_name")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(15) .whsOnd", "engine")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(16) .whsOnd", "engine_method")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(17) .whsOnd", "xlsxreplacefile")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(18) .whsOnd", "destfont")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(19) .whsOnd", "split_translation")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(20) .whsOnd", "splitonly")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(21) .whsOnd", "showbrowser")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(22) .whsOnd", "server_time")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(23) .whsOnd", "start_time")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(24) .whsOnd", "end_time")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(25) .whsOnd", "elapsed_time")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(26) .whsOnd", "replacebeforelistsize")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(27) .whsOnd", "replacebeforelistreplaced")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(28) .whsOnd", "replaceafterlistsize")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(29) .whsOnd", "replaceafterlistreplaced")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(30) .whsOnd", "donotsplitlistsize")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(31) .whsOnd", "donotsplitfound")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(32) .whsOnd", "platform_uname")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(33) .whsOnd", "platform_system")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(34) .whsOnd", "platform_node")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(35) .whsOnd", "platform_release")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(36) .whsOnd", "platform_version")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(37) .whsOnd", "platform_machine")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(38) .whsOnd", "platform_processor")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(39) .whsOnd", "cpu_count")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(40) .whsOnd", "mem_total")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(41) .whsOnd", "local_time_offset")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(42) .whsOnd", "docxfile_table_number_of_phrases")
+            ctx.browser.driver.get("https://forms.gle/YeYYUYY5SNo6MKkB8")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(1) .whsOnd", "REMOTE_ADDR")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(2) .whsOnd", "country_name")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(3) .whsOnd", "remote_location_text")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(4) .whsOnd", "HTTP_USER_AGENT")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(5) .whsOnd", "program_version")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(6) .whsOnd", "docxfile")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(7) .whsOnd", "docxfile_page_count")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(8) .whsOnd", "docxfile_size")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(9) .whsOnd", "docxfile_table_number_of_lines")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(10) .whsOnd", "docxfile_table_number_of_words")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(11) .whsOnd", "docxfile_table_number_of_characters")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(12) .whsOnd", "action")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(13) .whsOnd", "destlang_code")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(14) .whsOnd", "destlang_name")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(15) .whsOnd", "engine")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(16) .whsOnd", "engine_method")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(17) .whsOnd", "xlsxreplacefile")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(18) .whsOnd", "destfont")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(19) .whsOnd", "split_translation")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(20) .whsOnd", "splitonly")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(21) .whsOnd", "showbrowser")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(22) .whsOnd", "server_time")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(23) .whsOnd", "start_time")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(24) .whsOnd", "end_time")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(25) .whsOnd", "elapsed_time")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(26) .whsOnd", "replacebeforelistsize")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(27) .whsOnd", "replacebeforelistreplaced")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(28) .whsOnd", "replaceafterlistsize")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(29) .whsOnd", "replaceafterlistreplaced")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(30) .whsOnd", "donotsplitlistsize")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(31) .whsOnd", "donotsplitfound")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(32) .whsOnd", "platform_uname")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(33) .whsOnd", "platform_system")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(34) .whsOnd", "platform_node")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(35) .whsOnd", "platform_release")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(36) .whsOnd", "platform_version")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(37) .whsOnd", "platform_machine")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(38) .whsOnd", "platform_processor")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(39) .whsOnd", "cpu_count")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(40) .whsOnd", "mem_total")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(41) .whsOnd", "local_time_offset")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(42) .whsOnd", "docxfile_table_number_of_phrases")
 
-            if not showbrowser:
+            if not ctx.flags.showbrowser:
                 chrome_options.add_argument("--headless")
 
             docxfile_table_number_of_lines = numrows
-            if use_api or splitonly:
+            if ctx.flags.use_api or ctx.flags.splitonly:
                 print("\nCreating a new browser for stats")
                 
                 service = Service()
-                driver = webdriver.Chrome(service=service, options=chrome_options)
+                ctx.browser.driver = webdriver.Chrome(service=service, options=chrome_options)
 
             query_params = {
                 "program_version": PROGRAM_VERSION,
-                "engine": translation_engine,
-                "engine_method": engine_method,
+                "engine": ctx.engine.engine,
+                "engine_method": ctx.engine.method,
                 "action": action,
-                "destlang_code": dest_lang,
-                "destlang_name": dest_lang_name,
+                "destlang_code": ctx.language.dest_lang,
+                "destlang_name": ctx.language.dest_lang_name,
                 "docxfile_size": docxfile_size,
                 "docxfile_table_number_of_lines": docxfile_table_number_of_lines,
-                "docxfile_table_number_of_phrases": docxfile_table_number_of_phrases,
-                "docxfile_table_number_of_words": docxfile_table_number_of_words,
-                "docxfile_table_number_of_characters": docxfile_table_number_of_characters,
+                "docxfile_table_number_of_phrases": ctx.docx.docxfile_table_number_of_phrases,
+                "docxfile_table_number_of_words": ctx.docx.docxfile_table_number_of_words,
+                "docxfile_table_number_of_characters": ctx.docx.docxfile_table_number_of_characters,
                 "xlsxreplacefile": xlsxreplacefile_name,
                 "destfont": dest_font,
                 "split_translation": split_translation,
-                "showbrowser": showbrowser,
+                "showbrowser": ctx.flags.showbrowser,
                 "start_time": start_time,
                 "end_time": end_time,
                 "elapsed_time": elapsed_time,
@@ -5810,17 +5770,17 @@ def get_robot_usage_comment():
             encoded_params = urlencode(query_params, quote_via=quote_plus)
             url = f"{base_url}?{encoded_params}"
 
-            driver.get(url)
+            ctx.browser.driver.get(url)
             # time.sleep(20)
 
             submit_stats_element = "//input[@value='Submit']"
             try:
-                submit_stats_button = WebDriverWait(driver, 1).until(
+                submit_stats_button = WebDriverWait(ctx.browser.driver, 1).until(
                     EC.presence_of_element_located((By.XPATH, submit_stats_element)))
                 submit_stats_button.submit()
                 # time.sleep(1)
                 submited_div_element = "//div[@id='form_post_submitted']"
-                submited_div = WebDriverWait(driver, 5).until(
+                submited_div = WebDriverWait(ctx.browser.driver, 5).until(
                     EC.presence_of_element_located((By.XPATH, submited_div_element)))
                 print("statistics updated")
             except:
@@ -5843,27 +5803,29 @@ def get_robot_usage_comment():
 
 
 # Open the default app for the docx file
-def open_app_docx_file():
-    global word_file_to_translate_save_as_path
-    
+def open_app_docx_file(ctx: RuntimeContext):
+    """Open the saved DOCX in the OS default handler.
+
+    Threaded in Phase F1.6: reads ``ctx.flags.word_file_to_translate_save_as_path``
+    in place of the historical module global.
+    """
+    out_path = ctx.flags.word_file_to_translate_save_as_path
     try:
         if platform.system() == 'Windows':
-            subprocess.Popen(["start", "", word_file_to_translate_save_as_path], shell=True)
+            subprocess.Popen(["start", "", out_path], shell=True)
         elif platform.system() == "Darwin":  # macOS
-            subprocess.Popen(["open", word_file_to_translate_save_as_path])
+            subprocess.Popen(["open", out_path])
         elif platform.system() == "Linux":  # Linux
-            subprocess.Popen(["xdg-open", word_file_to_translate_save_as_path])
+            subprocess.Popen(["xdg-open", out_path])
         else:
             print("Unsupported operating system.")
-            
     except Exception as e:
         print("Error:", e)
-        print("Warning, unable to open file %s." % (word_file_to_translate_save_as_path))
-def save_docx_file():
-    global docxdoc, word_file_to_translate, word_file_to_translate_save_as_path
+        print("Warning, unable to open file %s." % (out_path))
+def save_docx_file(ctx: RuntimeContext):
     
     lang_name = ""
-    lang_code = dest_lang
+    lang_code = ctx.language.dest_lang
     
     # Find valid two letter code (Norwegian is invalid nb, but should be no)
     try:
@@ -5890,33 +5852,33 @@ def save_docx_file():
     except:
         lang_alpha3b_code = None
 
-    word_file_to_translate_save_as_path = word_file_to_translate
+    ctx.flags.word_file_to_translate_save_as_path = ctx.flags.word_file_to_translate
     if lang_alpha3b_code is not None:
         find_alpha3_code_suffix = f"(?i)_{lang_alpha3b_code}.docx$"
-        if not re.search(find_alpha3_code_suffix, word_file_to_translate):
-            word_file_to_translate_save_as_path = re.sub("(?i)_{lang_alpha3b_code}.docx$", f".docx", word_file_to_translate)
+        if not re.search(find_alpha3_code_suffix, ctx.flags.word_file_to_translate):
+            ctx.flags.word_file_to_translate_save_as_path = re.sub("(?i)_{lang_alpha3b_code}.docx$", f".docx", ctx.flags.word_file_to_translate)
             lang_alpha3b_code = lang_alpha3b_code.upper()
-            polish_tag = "_TranslatePolish" if with_polish else ""
-            word_file_to_translate_save_as_path = re.sub("(?i).docx$", f"_{lang_alpha3b_code}{polish_tag}.docx", word_file_to_translate)
+            polish_tag = "_TranslatePolish" if ctx.flags.with_polish else ""
+            ctx.flags.word_file_to_translate_save_as_path = re.sub("(?i).docx$", f"_{lang_alpha3b_code}{polish_tag}.docx", ctx.flags.word_file_to_translate)
             print(f"\nAdding file name suffix _{lang_alpha3b_code}{polish_tag}.")
 
-    if os.path.exists(word_file_to_translate_save_as_path):
-        stem = re.sub(r'(?i)\.docx$', '', word_file_to_translate_save_as_path)
+    if os.path.exists(ctx.flags.word_file_to_translate_save_as_path):
+        stem = re.sub(r'(?i)\.docx$', '', ctx.flags.word_file_to_translate_save_as_path)
         idx = 1
         while os.path.exists(f"{stem}_{idx}.docx"):
             idx += 1
-        word_file_to_translate_save_as_path = f"{stem}_{idx}.docx"
-        print(f"[INFO] Output file already exists — saving as: {word_file_to_translate_save_as_path}")
+        ctx.flags.word_file_to_translate_save_as_path = f"{stem}_{idx}.docx"
+        print(f"[INFO] Output file already exists — saving as: {ctx.flags.word_file_to_translate_save_as_path}")
 
     local_time_offset()
 
     file_saved = 0
     while file_saved == 0:
         try:
-            docxdoc.save(word_file_to_translate_save_as_path)
+            docxdoc.save(ctx.flags.word_file_to_translate_save_as_path)
             file_saved = 1
-            if with_polish and translation_log.get("blocks"):
-                log_path = re.sub(r"(?i)\.docx$", "_log.json", word_file_to_translate_save_as_path)
+            if ctx.flags.with_polish and ctx.openai.translation_log.get("blocks"):
+                log_path = re.sub(r"(?i)\.docx$", "_log.json", ctx.flags.word_file_to_translate_save_as_path)
                 write_translation_log(log_path)
 
             # ── helpers for the three split passes ───────────────────────────────
@@ -5991,9 +5953,9 @@ def save_docx_file():
             # Classic  (_PER_Classic.docx)  = simple word-wrap split, no AI
             # Double   (_PER_Double.docx)   = FA-specific mechanical aligner (llm_threshold=0)
             # Guard: only for Persian + chatgpt-polish pipeline
-            if with_polish and dest_lang.startswith('fa'):
+            if ctx.flags.with_polish and ctx.language.dest_lang.startswith('fa'):
                 _ai_model_align  = 'gpt-5.4-mini'  # aligner always uses mini — never change
-                _stem_path       = re.sub(r'(?i)\.docx$', '', word_file_to_translate)
+                _stem_path       = re.sub(r'(?i)\.docx$', '', ctx.flags.word_file_to_translate)
                 _classic_path    = f"{_stem_path}_PER_Classic.docx"
                 _double_path     = f"{_stem_path}_PER_Double.docx"
 
@@ -6003,7 +5965,7 @@ def save_docx_file():
                 try:
                     print(f"\n[INFO] Running Classic split -> {_classic_path}")
                     _t0 = time.time()
-                    _cs = _simple_split_docx(word_file_to_translate_save_as_path, _classic_path)
+                    _cs = _simple_split_docx(ctx.flags.word_file_to_translate_save_as_path, _classic_path)
                     print(
                         f"[TIMER] Classic: {time.time()-_t0:.1f}s"
                         f" | processed: {_cs.get('rows_processed','?')}"
@@ -6026,7 +5988,7 @@ def save_docx_file():
                         llm_threshold=0,   # never call LLM
                         token_budget=0,
                     )
-                    _ds = _double_aligner.align(word_file_to_translate_save_as_path, _double_path)
+                    _ds = _double_aligner.align(ctx.flags.word_file_to_translate_save_as_path, _double_path)
                     print(
                         f"[TIMER] Double:  {time.time()-_t0:.1f}s"
                         f" | groups: {_ds.get('groups','?')}"
@@ -6131,120 +6093,111 @@ def cleanup_selenium_chrome_temp_folders():
 
 
 def main() -> int:
-    global driver, E_mail_str, end_time, elapsed_time, translation_engine, engine_method, tried_login_in_deepl, viewdocx, word_file_to_translate_save_as_path
-    global logged_into_deepl, deepl_nb_clear_cached_times, version_checker_sleep_seconds_on_update
+    """Entry point. Builds the RuntimeContext from module-level state on
+    first ``_get_ctx()`` call and threads it through every pipeline step.
+
+    F1.6 wire-up: zero ``global`` statements remain in this function.
+    Pipeline state lives on ``ctx``; module globals are only referenced
+    where they remain authoritative (start_time, str_needs_update,
+    version_checker_sleep_seconds_on_update, xtm, exitonsuccess, silent,
+    PROGRAM_VERSION — these are not threaded because they are owned by
+    module-level setup outside ``main()``).
+    """
+    ctx = _get_ctx()
     translation_succeded = False
 
-    set_translation_function(_get_ctx())
-    initialize_translation_memory_xlsx()
+    set_translation_function(ctx)
+    initialize_translation_memory_xlsx(ctx)
 
-    read_and_parse_docx_document(_get_ctx())
+    read_and_parse_docx_document(ctx)
 
-    create_webdriver()
+    create_webdriver(ctx)
 
-    if translation_engine == 'deepl':
-        logged_into_deepl = selenium_chrome_deepl_log_in(_get_ctx())
-        
-    if translation_engine == 'perplexity':
+    if ctx.engine.engine == 'deepl':
+        ctx.browser.logged_into_deepl = selenium_chrome_deepl_log_in(ctx)
+
+    if ctx.engine.engine == 'perplexity':
         pass
         #logged_into_perplexity = selenium_chrome_perplexity_wait_log_in
         #if not logged_into_perplexity:
         #    print("Failed to login into perplexity")
 
     translation_succeded = translate_docx()
-    
-    if logged_into_deepl:
-        selenium_chrome_deepl_log_off(_get_ctx())
 
-    # R15: DeepL phrasesblock → singlephrase fallback. Threaded in F1.4
-    # so the dispatcher refresh sees the flipped method through ctx.
-    # The structural test is `test_engine_method_flip_via_ctx` in
-    # tests/test_runtime_threading.py.
-    if translation_succeded == False and translation_engine == 'deepl' and engine_method == 'phrasesblock':
-        engine_method = 'singlephrase'
-        _get_ctx().engine.method = 'singlephrase'
-        set_translation_function(_get_ctx())
+    if ctx.browser.logged_into_deepl:
+        selenium_chrome_deepl_log_off(ctx)
+
+    # R15: DeepL phrasesblock → singlephrase fallback. F1.4 + F1.6:
+    # the dispatcher refresh sees the flipped method through ctx, the
+    # rebuilt driver is reassigned to ctx.browser.driver, and no module
+    # global is read or written. The structural tests
+    # `test_engine_method_flip_via_ctx`,
+    # `test_driver_rebuild_via_ctx`, and
+    # `test_dispatcher_refresh_drops_stale_driver_reference` cover this.
+    if (translation_succeded is False
+            and ctx.engine.engine == 'deepl'
+            and ctx.engine.method == 'phrasesblock'):
+        ctx.engine.method = 'singlephrase'
+        set_translation_function(ctx)
         try:
-            driver.close()
-            driver.quit()
+            ctx.browser.driver.close()
+            ctx.browser.driver.quit()
         except Exception:
             pass
-        create_webdriver()
+        create_webdriver(ctx)
 
-    
-    get_translation_and_replace_after()
+    get_translation_and_replace_after(ctx)
 
     minimize_browser()
 
-    #input("before create_translation_split_prompts")
-    #create_translation_split_prompts()
-    #input("after create_translation_split_prompts")
-    document_split_phrases()
+    document_split_phrases(ctx)
 
     write_destination_language_in_docx_cell()
 
     print_console_docx_file_translated()
-    set_docx_properties_comment_for_history()
+    set_docx_properties_comment_for_history(ctx)
 
-    end_time = datetime.datetime.now()
+    _end_time = datetime.datetime.now()
+    _elapsed_time = _end_time - start_time
 
-    elapsed_time = end_time - start_time
+    run_statistics(ctx)
+    save_docx_file(ctx)
 
-    run_statistics()
-    save_docx_file()
-    
     if viewdocx:
-        print(f"Opening document : {word_file_to_translate_save_as_path}")
-        open_app_docx_file()
-    end_time = datetime.datetime.now()
+        print(f"Opening document : {ctx.flags.word_file_to_translate_save_as_path}")
+        open_app_docx_file(ctx)
+    _end_time = datetime.datetime.now()
+    _elapsed_time = _end_time - start_time
 
-    elapsed_time = end_time - start_time
-
-    if xlsxreplacefile is not None:
+    if ctx.flags.xlsxreplacefile is not None:
         xtm.print_replaced_items_number_of_replacements('before')
         xtm.print_replaced_items_number_of_replacements('after')
         xtm.print_do_not_split_number_of_matches('keep_on_same_line')
 
-    if driver is not None:
-        clean_up_previous_chrome_selenium_drivers(driver.service.path)
-        
-    print("\nTranslation ended, file saved. Elasped time: %s (h:mm:ss.mmm)" % (elapsed_time))
-    print("\nSaved file name: %s" % (word_file_to_translate_save_as_path))
-    
-    
-    get_robot_usage_comment()
+    if ctx.browser.driver is not None:
+        clean_up_previous_chrome_selenium_drivers(ctx.browser.driver.service.path)
+
+    print("\nTranslation ended, file saved. Elasped time: %s (h:mm:ss.mmm)" % (_elapsed_time))
+    print("\nSaved file name: %s" % (ctx.flags.word_file_to_translate_save_as_path))
+
+    get_robot_usage_comment(ctx)
 
     try:
-        #driver.maximize_window()
         print("\nClosing chrome browser...")
-        
-        driver_before_close_time = datetime.datetime.now()
-        driver.close()
-        driver_after_close_time = datetime.datetime.now()
-        driver.quit()
-        
-        driver_after_quit_time = datetime.datetime.now()
-
-        driver_close_time = driver_after_close_time - driver_before_close_time
-        driver_quit_time = driver_after_quit_time - driver_after_close_time
-        driver_close_quit_time = driver_after_quit_time - driver_before_close_time
-        
-        #print("\nDriver close time: %s (h:mm:ss.mmm)" % (driver_close_time))
-        #print("\nDriver quit time: %s (h:mm:ss.mmm)" % (driver_quit_time))
-        #print("\nDriver close and quit time: %s (h:mm:ss.mmm)" % (driver_close_quit_time))
-    except:
+        ctx.browser.driver.close()
+        ctx.browser.driver.quit()
+    except Exception:
         var = traceback.format_exc()
         print(var)
-        pass
 
-    if dest_lang_name is None or dest_lang_name == "":
-        if not splitonly:
+    if ctx.language.dest_lang_name is None or ctx.language.dest_lang_name == "":
+        if not ctx.flags.splitonly:
             print("\n*********************************************************************************")
-            print("WARNING: Target language name for %s not found. Translation may have have failed." % (dest_lang))
+            print("WARNING: Target language name for %s not found. Translation may have have failed." % (ctx.language.dest_lang))
             print("*********************************************************************************\n")
 
     cleanup_selenium_chrome_temp_folders()
-    
+
     print("\nDeveloper: %s" % (E_mail_str))
     print("Program version: %s\n" % (PROGRAM_VERSION))
     if not exitonsuccess and not silent:
