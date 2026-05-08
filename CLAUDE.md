@@ -133,5 +133,6 @@ Both files are served for download when the aligner runs.
 - [`docs/refactor-roadmap.md`](docs/refactor-roadmap.md) — Phase A→G design rationale
 - [`docs/post-refactor-audit.md`](docs/post-refactor-audit.md) — post-refactor audit (D1-D7 + 15 findings)
 - [`docs/phase-F-blocked.md`](docs/phase-F-blocked.md) — original F1 blocker note
+- [`docs/v2-frontend-hardening.md`](docs/v2-frontend-hardening.md) — v2 hardening sprint (5 phases) summary
 - [`web/v2/README.md`](web/v2/README.md) — v2 frontend stack, deploy, file map
 - [`PROJECT_MEMORY.md`](PROJECT_MEMORY.md) — active constraints, recent changes
