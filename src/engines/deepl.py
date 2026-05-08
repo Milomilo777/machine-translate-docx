@@ -34,18 +34,15 @@ Public API
 """
 from __future__ import annotations
 
-import json
 import re
 import time
 import traceback
 from time import sleep
 
 import progressbar
-import requests
 
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.common.exceptions import (
@@ -775,7 +772,7 @@ def selenium_chrome_deepl_translate(ctx: RuntimeContext, to_translate, retry_cou
                     # print(":::::::::::::::::::::::::::::::::::::::::::::::::::::::")
                     # print(ctx.browser.driver.page_source)
                     wait_translation_finish_try = wait_translation_finish_try - 1
-                    search_percent_re = "of characters translated\">(\d+)\% of characters translated</p>"
+                    search_percent_re = r'of characters translated">(\d+)\% of characters translated</p>'
                     mo = re.search(search_percent_re, page_source_str)
                     if mo:
                         try:
