@@ -1,31 +1,23 @@
-"""Aligner split / triple-guard / content-type tests.
+"""Aligner split / triple-guard / bigram tests.
 
-These cover the deterministic core that runs without an OpenAI client.
-No network calls. No DOCX I/O. Pure-function checks only.
+Covers the deterministic core of the v2.0 mechanical aligner. No network
+calls. No DOCX I/O. Module-level pure-function checks only.
 """
 from openai_tools.aligner_per import (
     FASubtitleAligner,
     MAX_CHARS,
     PROTECTED_BIGRAMS,
     ZWNJ,
-    _BREAK_RATIO_BY_TYPE,
-    _BUILTIN_CUES,
+    _bigram_bad_positions,
     _display_len,
+    _distribute_to_rows,
+    _enforce_no_triple,
+    _is_bridge,
+    _split_for_n_rows,
 )
 
 
-def _make_aligner() -> FASubtitleAligner:
-    """Construct an aligner without touching the OpenAI client / cues file."""
-    a = FASubtitleAligner.__new__(FASubtitleAligner)
-    a.model         = "gpt-5.4-mini"
-    a.llm_threshold = 0
-    a.token_budget  = 40_000
-    a.tokens_used   = 0
-    a.last_stats    = {}
-    a.client        = None
-    a._cues         = _BUILTIN_CUES
-    return a
-
+# ── module-level helpers ──────────────────────────────────────────────────────
 
 def test_display_len_excludes_zwnj():
     text = "می" + ZWNJ + "گویم"
@@ -33,43 +25,76 @@ def test_display_len_excludes_zwnj():
 
 
 def test_protected_bigram_listed():
-    # Sanity check the bigram set exists and contains a representative entry.
-    # _bigram_bad_positions then ensures we never split inside one.
+    # The bigram set must contain a representative entry; _bigram_bad_positions
+    # then ensures we never split inside one.
     assert "از طریق" in PROTECTED_BIGRAMS
-    a = _make_aligner()
     text = "این کار از طریق همکاری انجام می‌شود"
-    bad  = a._bigram_bad_positions(text)
-    # Position right after "از" (i.e. the space inside "از طریق") must be marked.
+    bad  = _bigram_bad_positions(text)
     az_pos = text.find("از")
+    # The position right after "از " (start of the second word in the bigram)
+    # must be flagged as bad.
     assert (az_pos + len("از") + 1) in bad
 
 
 def test_no_triple_emitted_for_quadruple():
-    a = _make_aligner()
-    out = a._enforce_no_triple(["X", "X", "X", "X"])
+    out = _enforce_no_triple(["X", "X", "X", "X"])
     # First two kept, third+ replaced with empty so row count stays constant.
     assert out == ["X", "X", "", ""]
 
 
 def test_sentinel_breaks_run_in_no_triple():
-    a = _make_aligner()
     sent = "\x00GROUP_BOUNDARY\x00"
     # X X then sentinel then X — the trailing X must NOT be suppressed because
-    # the sentinel breaks the consecutive run.
-    out = a._enforce_no_triple(["X", "X", sent, "X"])
+    # the sentinel breaks the consecutive run (sentinel is non-empty content
+    # different from X, which resets the run counter).
+    out = _enforce_no_triple(["X", "X", sent, "X"])
     assert out == ["X", "X", sent, "X"]
 
 
-def test_max_chars_hard_limit_after_split():
-    a = _make_aligner()
-    long = "این یک متن بسیار طولانی فارسی است که باید به چند تکه کوتاه‌تر تقسیم شود تا روی صفحه جا شود"
-    chunks = a._split_distinct(long, 4)
+def test_split_for_n_rows_respects_max_chars():
+    long = (
+        "این یک متن بسیار طولانی فارسی است که باید به چند تکه کوتاه‌تر "
+        "تقسیم شود تا روی صفحه جا شود"
+    )
+    chunks = _split_for_n_rows(long, 4)
+    assert chunks
     for c in chunks:
         assert _display_len(c) <= MAX_CHARS
 
 
-def test_break_ratio_table_complete():
-    # The five known content types must all have an entry. Missing one would
-    # silently fall back to the default ratio.
-    expected = {"narration", "spiritual", "news_attr", "dialogue", "ingredient"}
-    assert set(_BREAK_RATIO_BY_TYPE.keys()) == expected
+def test_distribute_to_rows_pads_via_doubles():
+    # 2 chunks → 4 rows: must produce doubles (no triples).
+    chunks = ["aaa", "bbb"]
+    rows = _distribute_to_rows(chunks, 4)
+    assert len(rows) == 4
+    # Each chunk must appear at least once, and no chunk three times in a row.
+    for i in range(len(rows) - 2):
+        assert not (rows[i] == rows[i + 1] == rows[i + 2])
+
+
+def test_is_bridge_detects_timestamp_row():
+    # Timecode-only English content is a bridge row that must be skipped.
+    assert _is_bridge("00:01 - 00:05", "")
+    # Empty EN is a bridge row regardless of FA content.
+    assert _is_bridge("", "متن فارسی")
+    # Plain prose is NOT a bridge row.
+    assert not _is_bridge("Hello world", "سلام دنیا")
+
+
+# ── FASubtitleAligner construction ────────────────────────────────────────────
+
+def test_fasubtitle_aligner_default_attrs():
+    a = FASubtitleAligner()
+    # Aligner v2 hardcodes the model and accepts (but ignores) llm_threshold
+    # and token_budget for backwards compatibility.
+    assert a.model == "gpt-5.4-mini"
+    assert a.llm_threshold == 0
+    assert a.token_budget == 0
+    assert a.last_stats == {}
+
+
+def test_fasubtitle_aligner_accepts_legacy_kwargs():
+    # Old call sites pass these — must not raise.
+    a = FASubtitleAligner(model="gpt-5.4-mini", llm_threshold=70, token_budget=40_000)
+    assert a.llm_threshold == 70
+    assert a.token_budget == 40_000

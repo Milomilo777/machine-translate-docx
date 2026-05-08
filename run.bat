@@ -92,7 +92,6 @@ SET DESTLANG=fr
 SET SPLIT= 
 SET SPLIT=--split
 
-SET ENGINE=yandex
 SET ENGINE=google
 SET ENGINE=deepl
 

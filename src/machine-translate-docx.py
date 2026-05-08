@@ -170,6 +170,194 @@ import atexit
 
 import random
 
+from config import (
+    DefaultJsonConfiguration,
+    validate_json_string,
+    get_nested_value_from_json_array,
+    google_translate_lang_codes,
+    deepl_translate_lang_codes,
+    office_language_tags,
+    right_to_left_languages_list,
+    eol_array,
+    eol_conditional_array,
+    bol_array,
+    MAX_LINE_SIZE,
+    COUNTRY_QUERY_HTTP_TIMEOUT,
+)
+
+from runtime import RuntimeContext
+from selenium_utils import (
+    safe_click,
+    browser_fill_form_field_value,
+    set_chrome_window_2_3_screen,
+    create_webdriver,
+    minimize_browser,
+    clean_up_previous_chrome_selenium_drivers,
+    cleanup_selenium_chrome_temp_folders,
+)
+from engines.google import (
+    selenium_chrome_google_translate,
+    selenium_chrome_google_click_cookies_consent_button,
+)
+from engines.deepl import (
+    selenium_chrome_deepl_log_in,
+    selenium_chrome_deepl_log_off,
+    deepl_close_messages,
+    selenium_chrome_deepl_translate,
+)
+from runner import selenium_chrome_translate_maxchar_blocks as _runner_translate_maxchar_blocks
+
+# Module-level RuntimeContext singleton — Phase F1 transition shim.
+# Lazily built by `_get_ctx()` on first call from any function that has
+# already been threaded with a `ctx` parameter. Phase F1.6 collapses this
+# helper into an explicit `ctx = RuntimeContext.empty()` at the top of
+# main(); until then, threaded functions can be called from un-threaded
+# callers without a signature cascade.
+_ctx: RuntimeContext | None = None
+
+
+def _get_ctx() -> RuntimeContext:
+    """Return the singleton RuntimeContext, snapshotting current module-level
+    globals on first call. Threaded callers should propagate their own
+    parameter where possible — this helper exists only to bridge un-threaded
+    callers to threaded callees during the F1 transition."""
+    global _ctx
+    if _ctx is None:
+        _ctx = RuntimeContext.empty()
+        # Snapshot whatever module-level globals are already populated by
+        # import time. The dataclass defaults cover anything that is not.
+        # Each F1.x batch may extend this snapshot as it threads more
+        # globals.
+        try:
+            _ctx.browser.driver = driver
+        except NameError:
+            pass
+        try:
+            _ctx.language.src_lang_name  = src_lang_name
+            _ctx.language.dest_lang_name = dest_lang_name
+        except NameError:
+            pass
+        # F1.2 — configuration snapshot
+        try:
+            _ctx.config.json_configuration_array = json_configuration_array
+        except NameError:
+            pass
+        try:
+            _ctx.config.max_translation_block_size = MAX_TRANSLATION_BLOCK_SIZE
+        except NameError:
+            pass
+        # F1.4 — engine + flags snapshot
+        try:
+            _ctx.engine.engine = translation_engine
+        except NameError:
+            pass
+        try:
+            _ctx.engine.method = engine_method
+        except NameError:
+            pass
+        try:
+            _ctx.flags.splitonly = splitonly
+        except NameError:
+            pass
+        try:
+            _ctx.docx.translation_errors_count = translation_errors_count
+        except NameError:
+            pass
+        try:
+            _ctx.browser.deepl_sleep_wait_translation_seconds = deepl_sleep_wait_translation_seconds
+        except NameError:
+            pass
+        # F1.5 — DeepL session flags + OpenAI handles
+        try:
+            _ctx.browser.closed_cookies_accept_message_bool = closed_cookies_accept_message_bool
+        except NameError:
+            pass
+        try:
+            _ctx.browser.close_install_extension_message_bool = close_install_extension_message_bool
+        except NameError:
+            pass
+        try:
+            _ctx.browser.deepl_nb_clear_cached_times = deepl_nb_clear_cached_times
+        except NameError:
+            pass
+        try:
+            _ctx.browser.logged_into_deepl = logged_into_deepl
+        except NameError:
+            pass
+        try:
+            _ctx.openai.translator = oai_translator
+        except NameError:
+            pass
+        try:
+            _ctx.openai.polisher = oai_polisher
+        except NameError:
+            pass
+        try:
+            _ctx.openai.translation_log = translation_log
+        except NameError:
+            pass
+        # F1.5 — language + paths + translation_array
+        try:
+            _ctx.language.src_lang = src_lang
+        except NameError:
+            pass
+        try:
+            _ctx.language.dest_lang = dest_lang
+        except NameError:
+            pass
+        try:
+            _ctx.flags.word_file_to_translate = word_file_to_translate
+        except NameError:
+            pass
+        try:
+            _ctx.flags.use_api = use_api
+        except NameError:
+            pass
+        try:
+            _ctx.docx.translation_array = translation_array
+        except NameError:
+            pass
+        try:
+            _ctx.docx.blocks_nchar_max_to_translate_array = blocks_nchar_max_to_translate_array
+        except NameError:
+            pass
+        # G1 — webdriver module + paths + remaining flags
+        try:
+            _ctx.browser.webdriver_module = webdriver
+        except NameError:
+            pass
+        try:
+            _ctx.browser.chrome_options = chrome_options
+        except NameError:
+            pass
+        try:
+            _ctx.flags.exitonsuccess = exitonsuccess
+        except NameError:
+            pass
+        try:
+            _ctx.flags.silent = silent
+        except NameError:
+            pass
+        try:
+            _ctx.flags.viewdocx = viewdocx
+        except NameError:
+            pass
+        try:
+            _ctx.flags.xlsxreplacefile = xlsxreplacefile
+        except NameError:
+            pass
+        # G4 — aimodel + with_polish snapshots
+        try:
+            _ctx.flags.aimodel = args.aimodel
+        except (NameError, AttributeError):
+            pass
+        try:
+            _ctx.flags.with_polish = args.with_polish
+        except (NameError, AttributeError):
+            pass
+    return _ctx
+
+
 # Track the child processes
 def kill_child_process():
     import time
@@ -224,221 +412,9 @@ my_hazm_normalizer = None
 #from hazm import Normalizer
 #import hazm
 
-# Get key value from an array of json strings, ['deepl','account','email'] for example
-# The first json object containing the key value is returned or default_when_none value.
-def validate_json_string(json_string):
-    try:
-        if type(json_string) is str:
-            json_string
-        elif type(json_string) is bytes:
-            pass # OK
-        else:
-            return False
-        json_obj = json5.loads(json_string)
-        if json_obj is None:
-            return False
-        return True
-        
-    except:
-        var = traceback.format_exc()
-        print(var)
-        return False
+# validate_json_string + get_nested_value_from_json_array + DefaultJsonConfiguration
+# now live in src/config.py.
 
-# Get key value from an array of json strings, ['deepl','account','email'] key for example
-# The first json object containing the key value is returned or default_when_none value.
-def get_nested_value_from_json_array(json_array, keys, default_when_none = None):
-    try:
-        for json_str in json_array:
-            try:
-                json_obj = json5.loads(json_str)
-                value = None
-                
-                for key in keys:
-                    if key in json_obj:
-                        json_obj = json_obj[key]
-                    else:
-                        json_obj = None
-                if json_obj is not None:
-                    return json_obj
-            except:
-                pass
-        
-        return default_when_none
-        
-    except json.JSONDecodeError:
-        print("Invalid JSON input")
-        return default_when_none
-
-# Remove the _ a the end of the email and password key name
-DefaultJsonConfiguration = """{
-    "local_configuration":{
-        "json_filename_path": "configuration.json"
-    },
-	"deepl": {
-		"account": {
-			"email_": "********@gmail.com",
-			"password_": "********",
-			"type": "free",
-			"maximum_character_block": 1500
-		},
-		"no_account": {
-			"maximum_character_block": 1500
-		},
-        "maximum_clear_cache_retry" : 20
-	},
-	"google": {
-        "lang_codes" : {
-        'af': 'Afrikaans',
-        'sq': 'Albanian',
-        'am': 'Amharic',
-        'ar': 'Arabic',
-        'hy': 'Armenian',
-        'az': 'Azerbaijani',
-        'eu': 'Basque',
-        'be': 'Belarusian',
-        'bn': 'Bengali',
-        'bs': 'Bosnian',
-        'bg': 'Bulgarian',
-        'ca': 'Catalan',
-        'ceb': 'Cebuano',
-        'zh': 'Chinese (simplified)',
-        'zh-CN': 'Chinese (simplified)',
-        'zh-TW': 'Chinese (traditional)',
-        'co': 'Corsican',
-        'hr': 'Croatian',
-        'cs': 'Czech',
-        'da': 'Danish',
-        'nl': 'Dutch',
-        'en': 'English',
-        'eo': 'Esperanto',
-        'et': 'Estonian',
-        'fi': 'Finnish',
-        'fr': 'French',
-        'fy': 'Frisian',
-        'gl': 'Galician',
-        'ka': 'Georgian',
-        'de': 'German',
-        'el': 'Greek',
-        'gu': 'Gujarati',
-        'ht': 'Haitian Creole',
-        'ha': 'Hausa',
-        'haw': 'Hawaiian',
-        'iw': 'Hebrew',
-        'hi': 'Hindi',
-        'hmn': 'Hmong',
-        'hu': 'Hungarian',
-        'is': 'Icelandic',
-        'ig': 'Igbo',
-        'id': 'Indonesian',
-        'ga': 'Irish',
-        'it': 'Italian',
-        'ja': 'Japanese',
-        'jv': 'Javanese',
-        'kn': 'Kannada',
-        'kk': 'Kazakh',
-        'km': 'Khmer',
-        'ko': 'Korean',
-        'ku': 'Kurdish',
-        'ky': 'Kyrgyz',
-        'lo': 'Lao',
-        'la': 'Latin',
-        'lv': 'Latvian',
-        'lt': 'Lithuanian',
-        'lb': 'Luxembourgish',
-        'mk': 'Macedonian',
-        'mg': 'Malagasy',
-        'ms': 'Malay',
-        'ml': 'Malayalam',
-        'mt': 'Maltese',
-        'mi': 'Maori',
-        'mr': 'Marathi',
-        'mn': 'Mongolian',
-        'my': 'Myanmar (Burmese)',
-        'ne': 'Nepali',
-        'no': 'Norwegian',
-        'ny': 'Nyanja (Chichewa)',
-        'ps': 'Pashto',
-        'fa': 'Persian',
-        'pl': 'Polish',
-        'pt': 'Portuguese (Portugal, Brazil)',
-        'pa': 'Punjabi',
-        'ro': 'Romanian',
-        'ru': 'Russian',
-        'sm': 'Samoan',
-        'gd': 'Scots Gaelic',
-        'sr': 'Serbian',
-        'st': 'Sesotho',
-        'sn': 'Shona',
-        'sd': 'Sindhi',
-        'si': 'Sinhala (Sinhalese)',
-        'sk': 'Slovak',
-        'sl': 'Slovenian',
-        'so': 'Somali',
-        'es': 'Spanish',
-        'su': 'Sundanese',
-        'sw': 'Swahili',
-        'sv': 'Swedish',
-        'tl': 'Tagalog (Filipino)',
-        'tg': 'Tajik',
-        'ta': 'Tamil',
-        'te': 'Telugu',
-        'th': 'Thai',
-        'tr': 'Turkish',
-        'uk': 'Ukrainian',
-        'ur': 'Urdu',
-        'uz': 'Uzbek',
-        'vi': 'Vietnamese',
-        'cy': 'Welsh',
-        'xh': 'Xhosa',
-        'yi': 'Yiddish',
-        'yo': 'Yoruba',
-        'zu': 'Zulu'
-        },
-		"javascript_translation": {},
-		"html_translation_form": {
-			"maximum_character_block": 5000
-		}
-	},
-	"perplexity": {
-		"account": {
-			"maximum_character_block": 950
-		}
-	},
-	"chatgpt": {
-		"no_account": {
-			"maximum_character_block": 1000
-		},
-		"api": {
-			"maximum_character_block": 220000
-		},
-        "usage_violation_message" : "Your request was flagged as potentially violating our usage policy. Please try again with a different prompt."
-	},
-	"statistics": {
-		"html_statistics_form_url": "https://contactdirectavecdieu.net/robot-stats.php",
-		"google_sheets_statistics": {
-			"no_account": {
-				"google_account": "to be determined"
-			}
-		}
-	},
-	"version_checker": {
-	  "javascript_json_version_checker_url": "https://translation-robot.github.io/machine-translate-docx/src/robot_js_query.html",
-      "sleep_seconds_on_update": 30
-	},
-	"location": {
-	  "primary_country_checker_url": "http://ip-api.com/json/",
-	  "secondary_country_checker_url": "https://www.contactdirectavecdieu.net/geoip/index.php",
-      "http_query_timeout" : 3
-	},
-	"chrome_driver": {
-      "restricted_countries": ["North Korea", "Iran", "Syria", "Sudan", "Cuba", "Crimea"],
-      "mirror_url": "https://www.contactdirectavecdieu.net/known-good-versions-with-downloads.php"
-    },
-    "document": {
-      "microsoft_colors_link_reference" : "https://learn.microsoft.com/en-us/office/vba/api/word.wdcolor",
-      "shading_color_ignore_text" : ['FFD320', 'D9D9D9', 'BFBFBF', 'A6A6A6', '808080', 'FF00FF', 'FF0000', 'F3F3F3', 'E6E6E6', 'E0E0E0', 'CCCCCC', 'C0C0C0', 'B3B3B3', 'A0A0A0', '999999', '8C8C8C',  '737373', '666666', '606060', '595959', '4C4C4C', '404040', '333333', '262626', '202020', '191919', '0C0C0C', '002060', '000080', 'FFCCFF', 'CC99FF']
-    }
-}"""
 
 def test_internet(host="8.8.8.8", port=53, timeout=3):
     """
@@ -573,7 +549,7 @@ parser = argparse.ArgumentParser()
 #parser.add_argument('--source-language', required = True, choices = Languages, help="Specify the source language!")
 parser.add_argument('--srclang', '-sl', required = False, help="Specify the default source language, en is default (hi,ja,ru,de,ru,hi,ja,in, etc)", default='en')
 parser.add_argument('--destlang', '--dl', required = False, help="Specify the destination language with 2 letter code (hi,ja,ru,de,ru,hi,ja,in, etc)")
-parser.add_argument('--engine', '-e', required = False, help="Specify the translation engine (google, deepl, yandex, chatgpt, perplexity)")
+parser.add_argument('--engine', '-e', required = False, help="Specify the translation engine (google, deepl, chatgpt, perplexity)")
 parser.add_argument('--enginemethod', '-m', required = False, help="Specify the method (javascript, phrasesblock, singlephrase, xlsxfile, textfile )")
 parser.add_argument('--aimodel', '-am', required = False, help="Specify the ai model when applicable")
 parser.add_argument('--docxfile', '-d', required = False, help="Input file name")
@@ -624,287 +600,6 @@ if args.docxfile is None:
 
 use_html = False
 
-google_translate_lang_codes = {
-    'af': 'Afrikaans',
-    'sq': 'Albanian',
-    'am': 'Amharic',
-    'ar': 'Arabic',
-    'hy': 'Armenian',
-    'az': 'Azerbaijani',
-    'eu': 'Basque',
-    'be': 'Belarusian',
-    'bn': 'Bengali',
-    'bs': 'Bosnian',
-    'bg': 'Bulgarian',
-    'ca': 'Catalan',
-    'ceb': 'Cebuano',
-    'zh': 'Chinese (simplified)',
-    'zh-CN': 'Chinese (simplified)',
-    'zh-TW': 'Chinese (traditional)',
-    'co': 'Corsican',
-    'hr': 'Croatian',
-    'cs': 'Czech',
-    'da': 'Danish',
-    'nl': 'Dutch',
-    'en': 'English',
-    'eo': 'Esperanto',
-    'et': 'Estonian',
-    'fi': 'Finnish',
-    'fr': 'French',
-    'fy': 'Frisian',
-    'gl': 'Galician',
-    'ka': 'Georgian',
-    'de': 'German',
-    'el': 'Greek',
-    'gu': 'Gujarati',
-    'ht': 'Haitian Creole',
-    'ha': 'Hausa',
-    'haw': 'Hawaiian',
-    'iw': 'Hebrew',
-    'hi': 'Hindi',
-    'hmn': 'Hmong',
-    'hu': 'Hungarian',
-    'is': 'Icelandic',
-    'ig': 'Igbo',
-    'id': 'Indonesian',
-    'ga': 'Irish',
-    'it': 'Italian',
-    'ja': 'Japanese',
-    'jv': 'Javanese',
-    'kn': 'Kannada',
-    'kk': 'Kazakh',
-    'km': 'Khmer',
-    'ko': 'Korean',
-    'ku': 'Kurdish',
-    'ky': 'Kyrgyz',
-    'lo': 'Lao',
-    'la': 'Latin',
-    'lv': 'Latvian',
-    'lt': 'Lithuanian',
-    'lb': 'Luxembourgish',
-    'mk': 'Macedonian',
-    'mg': 'Malagasy',
-    'ms': 'Malay',
-    'ml': 'Malayalam',
-    'mt': 'Maltese',
-    'mi': 'Maori',
-    'mr': 'Marathi',
-    'mn': 'Mongolian',
-    'my': 'Myanmar (Burmese)',
-    'ne': 'Nepali',
-    'no': 'Norwegian',
-    'ny': 'Nyanja (Chichewa)',
-    'ps': 'Pashto',
-    'fa': 'Persian',
-    'pl': 'Polish',
-    'pt': 'Portuguese (Portugal, Brazil)',
-    'pa': 'Punjabi',
-    'ro': 'Romanian',
-    'ru': 'Russian',
-    'sm': 'Samoan',
-    'gd': 'Scots Gaelic',
-    'sr': 'Serbian',
-    'st': 'Sesotho',
-    'sn': 'Shona',
-    'sd': 'Sindhi',
-    'si': 'Sinhala (Sinhalese)',
-    'sk': 'Slovak',
-    'sl': 'Slovenian',
-    'so': 'Somali',
-    'es': 'Spanish',
-    'su': 'Sundanese',
-    'sw': 'Swahili',
-    'sv': 'Swedish',
-    'tl': 'Tagalog (Filipino)',
-    'tg': 'Tajik',
-    'ta': 'Tamil',
-    'te': 'Telugu',
-    'th': 'Thai',
-    'tr': 'Turkish',
-    'uk': 'Ukrainian',
-    'ur': 'Urdu',
-    'uz': 'Uzbek',
-    'vi': 'Vietnamese',
-    'cy': 'Welsh',
-    'xh': 'Xhosa',
-    'yi': 'Yiddish',
-    'yo': 'Yoruba',
-    'zu': 'Zulu'
-    }
-
-deepl_translate_lang_codes = {
-    'ace': 'Acehnese',
-    'af': 'Afrikaans',
-    'sq': 'Albanian',
-    'ar': 'Arabic',
-    'an': 'Aragonese',
-    'hy': 'Armenian',
-    'as': 'Assamese',
-    'ay': 'Aymara',
-    'az': 'Azerbaijani',
-    'ba': 'Bashkir',
-    'eu': 'Basque',
-    'be': 'Belarusian',
-    'bn': 'Bengali',
-    'bho': 'Bhojpuri',
-    'bs': 'Bosnian',
-    'br': 'Breton',
-    'bg': 'Bulgarian',
-    'my': 'Burmese',
-    'yue': 'Cantonese',
-    'ca': 'Catalan',
-    'ceb': 'Cebuano',
-    'zh-hans': 'Chinese (simplified)',
-    'zh-hant': 'Chinese (traditional)',
-    'hr': 'Croatian',
-    'cs': 'Czech',
-    'da': 'Danish',
-    'prs': 'Dari',
-    'nl': 'Dutch',
-    'en-us': 'English (American)',
-    'en-gb': 'English (British)',
-    'eo': 'Esperanto',
-    'et': 'Estonian',
-    'fi': 'Finnish',
-    'fr': 'French',
-    'gl': 'Galician',
-    'ka': 'Georgian',
-    'de': 'German',
-    'el': 'Greek',
-    'gn': 'Guarani',
-    'gu': 'Gujarati',
-    'ht': 'Haitian Creole',
-    'ha': 'Hausa',
-    'he': 'Hebrew',
-    'hi': 'Hindi',
-    'hu': 'Hungarian',
-    'is': 'Icelandic',
-    'ig': 'Igbo',
-    'id': 'Indonesian',
-    'ga': 'Irish',
-    'it': 'Italian',
-    'ja': 'Japanese',
-    'jv': 'Javanese',
-    'pam': 'Kapampangan',
-    'kk': 'Kazakh',
-    'gom': 'Konkani',
-    'ko': 'Korean',
-    'kmr': 'Kurdish (Kurmanji)',
-    'ckb': 'Kurdish (Sorani)',
-    'ky': 'Kyrgyz',
-    'la': 'Latin',
-    'lv': 'Latvian',
-    'ln': 'Lingala',
-    'lt': 'Lithuanian',
-    'lmo': 'Lombard',
-    'lb': 'Luxembourgish',
-    'mk': 'Macedonian',
-    'mai': 'Maithili',
-    'mg': 'Malagasy',
-    'ms': 'Malay',
-    'ml': 'Malayalam',
-    'mt': 'Maltese',
-    'mi': 'Maori',
-    'mr': 'Marathi',
-    'mn': 'Mongolian',
-    'ne': 'Nepali',
-    'nb': 'Norwegian (bokmål)',
-    'oc': 'Occitan',
-    'om': 'Oromo',
-    'pag': 'Pangasinan',
-    'ps': 'Pashto',
-    'fa': 'Persian',
-    'pl': 'Polish',
-    'pt-pt': 'Portuguese',
-    'pt-br': 'Portuguese (Brazilian)',
-    'pa': 'Punjabi',
-    'qu': 'Quechua',
-    'ro': 'Romanian',
-    'ru': 'Russian',
-    'sa': 'Sanskrit',
-    'sr': 'Serbian',
-    'st': 'Sesotho',
-    'scn': 'Sicilian',
-    'sk': 'Slovak',
-    'sl': 'Slovenian',
-    'es': 'Spanish',
-    'es-419': 'Spanish (Latin American)',
-    'su': 'Sundanese',
-    'sw': 'Swahili',
-    'sv': 'Swedish',
-    'tl': 'Tagalog',
-    'tg': 'Tajik',
-    'ta': 'Tamil',
-    'tt': 'Tatar',
-    'te': 'Telugu',
-    'ts': 'Tsonga',
-    'tn': 'Tswana',
-    'tr': 'Turkish',
-    'tk': 'Turkmen',
-    'uk': 'Ukrainian',
-    'ur': 'Urdu',
-    'uz': 'Uzbek',
-    'vi': 'Vietnamese',
-    'cy': 'Welsh',
-    'wo': 'Wolof',
-    'xh': 'Xhosa',
-    'yi': 'Yiddish',
-    'zu': 'Zulu'
-}
-
-# This is to set docx document language for spelling
-office_language_tags = {
-    'ar': 'ar-SA',
-    'bg': 'bg-BG',
-    'zh': 'zh-CN',
-    'zh': 'zh-TW',
-    'hr': 'hr-HR',
-    'cs': 'cs-CZ',
-    'da': 'da-DK',
-    'nl': 'nl-NL',
-    'en': 'en-US',
-    'et': 'et-EE',
-    'fi': 'fi-FI',
-    'fr': 'fr-FR',
-    'de': 'de-DE',
-    'el': 'el-GR',
-    'he': 'he-IL',
-    'hi': 'hi-IN',
-    'hu': 'hu-HU',
-    'id': 'id-ID',
-    'it': 'it-IT',
-    'ja': 'ja-JP',
-    'kk': 'kk-KZ',
-    'ko': 'ko-KR',
-    'lv': 'lv-LV',
-    'lt': 'lt-LT',
-    'ms': 'ms-MY',
-    'nb': 'nb-NO',
-    'pl': 'pl-PL',
-    'pt': 'pt-BR',
-    'pt': 'pt-PT',
-    'ro': 'ro-RO',
-    'ru': 'ru-RU',
-    'sr': 'sr-latn-RS',
-    'sk': 'sk-SK',
-    'sl': 'sl-SI',
-    'es': 'es-ES',
-    'sv': 'sv-SE',
-    'th': 'th-TH',
-    'tr': 'tr-TR',
-    'uk': 'uk-UA',
-    'vi': 'vi-VN'
-}
-
-right_to_left_languages_list = {
-    'am': 'Amharic',
-    'ar': 'Arabic',
-    'az': 'Azerbaijani',
-    'iw': 'Hebrew',
-    'ku': 'Kurdish',
-    'fa': 'Persian',
-    'ur': 'Urdu'
-    }
 
 script_folder = os.path.dirname(os.path.realpath(__file__))
 os_path = os.environ["PATH"]
@@ -924,135 +619,10 @@ line_separator_regex_str = ' ?\(\) ?'
 
 #pp = pprint.PrettyPrinter(indent=4)
 
-# ... = \u2026 Horizontal ellipsis
-# ”  = \u201D Right double quotation mark
-eol_array = ['\. {0,}$', '\! {0,}$', '\? {0,}$',  '[\.\!\?\'] ?["”\'\)] {0,}$', u'\u2026 {0,}$',
-    '। {0,}$', # Hindi period
-    '。 {0,}$', '？ {0,}$', '！ {0,}$', # Chinese and Japanese period
-    '։ {0,}$', #ARMENIAN FULL STOP	U+0589	ARMENIAN FULL STOP	
-    '։ {0,}$', #full stop, georgian	U+0589	ARMENIAN FULL STOP	
-    '։ {0,}$', #FULL STOP, ARMENIAN	U+0589	ARMENIAN FULL STOP	
-    '։ {0,}$', #georgian full stop	U+0589	ARMENIAN FULL STOP	
-    '۔ {0,}$', #ARABIC FULL STOP	U+06D4	ARABIC FULL STOP	
-    '۔ {0,}$', #FULL STOP, ARABIC	U+06D4	ARABIC FULL STOP	
-    '܁ {0,}$', #SYRIAC SUPRALINEAR FULL STOP	U+0701	SYRIAC SUPRALINEAR FULL STOP	
-    '܂ {0,}$', #SYRIAC SUBLINEAR FULL STOP	U+0702	SYRIAC SUBLINEAR FULL STOP	
-    '። {0,}$', #ETHIOPIC FULL STOP	U+1362	ETHIOPIC FULL STOP	
-    '። {0,}$', #FULL STOP, ETHIOPIC	U+1362	ETHIOPIC FULL STOP	
-    '᙮ {0,}$', #CANADIAN SYLLABICS FULL STOP	U+166E	CANADIAN SYLLABICS FULL STOP	
-    '᙮ {0,}$', #FULL STOP, CANADIAN SYLLABICS	U+166E	CANADIAN SYLLABICS FULL STOP	
-    '᙮ {0,}$', #SYLLABICS FULL STOP, CANADIAN	U+166E	CANADIAN SYLLABICS FULL STOP	
-    '᠃ {0,}$', #MONGOLIAN FULL STOP	U+1803	MONGOLIAN FULL STOP	
-    '᠃ {0,}$', #FULL STOP, MONGOLIAN	U+1803	MONGOLIAN FULL STOP	
-    '᠉ {0,}$', #MONGOLIAN MANCHU FULL STOP	U+1809	MONGOLIAN MANCHU FULL STOP	
-    '᠉ {0,}$', #FULL STOP, MONGOLIAN MANCHU	U+1809	MONGOLIAN MANCHU FULL STOP	
-    '᠉ {0,}$', #MANCHU FULL STOP, MONGOLIAN	U+1809	MONGOLIAN MANCHU FULL STOP	
-    '⒈ {0,}$', #DIGIT ONE FULL STOP	U+2488	DIGIT ONE FULL STOP	
-    '⒉ {0,}$', #DIGIT TWO FULL STOP	U+2489	DIGIT TWO FULL STOP	
-    '⒊ {0,}$', #DIGIT THREE FULL STOP	U+248A	DIGIT THREE FULL STOP	
-    '⒋ {0,}$', #DIGIT FOUR FULL STOP	U+248B	DIGIT FOUR FULL STOP	
-    '⒌ {0,}$', #DIGIT FIVE FULL STOP	U+248C	DIGIT FIVE FULL STOP	
-    '⒍ {0,}$', #DIGIT SIX FULL STOP	U+248D	DIGIT SIX FULL STOP	
-    '⒎ {0,}$', #DIGIT SEVEN FULL STOP	U+248E	DIGIT SEVEN FULL STOP	
-    '⒏ {0,}$', #DIGIT EIGHT FULL STOP	U+248F	DIGIT EIGHT FULL STOP	
-    '⒐ {0,}$', #DIGIT NINE FULL STOP	U+2490	DIGIT NINE FULL STOP	
-    '⒑ {0,}$', #NUMBER TEN FULL STOP	U+2491	NUMBER TEN FULL STOP	
-    '⒒ {0,}$', #NUMBER ELEVEN FULL STOP	U+2492	NUMBER ELEVEN FULL STOP	
-    '⒓ {0,}$', #NUMBER TWELVE FULL STOP	U+2493	NUMBER TWELVE FULL STOP	
-    '⒔ {0,}$', #NUMBER THIRTEEN FULL STOP	U+2494	NUMBER THIRTEEN FULL STOP	
-    '⒕ {0,}$', #NUMBER FOURTEEN FULL STOP	U+2495	NUMBER FOURTEEN FULL STOP	
-    '⒖ {0,}$', #NUMBER FIFTEEN FULL STOP	U+2496	NUMBER FIFTEEN FULL STOP	
-    '⒗ {0,}$', #NUMBER SIXTEEN FULL STOP	U+2497	NUMBER SIXTEEN FULL STOP	
-    '⒘ {0,}$', #NUMBER SEVENTEEN FULL STOP	U+2498	NUMBER SEVENTEEN FULL STOP	
-    '⒙ {0,}$', #NUMBER EIGHTEEN FULL STOP	U+2499	NUMBER EIGHTEEN FULL STOP	
-    '⒚ {0,}$', #NUMBER NINETEEN FULL STOP	U+249A	NUMBER NINETEEN FULL STOP	
-    '⒛ {0,}$', #NUMBER TWENTY FULL STOP	U+249B	NUMBER TWENTY FULL STOP	
-    '⳹ {0,}$', #COPTIC OLD NUBIAN FULL STOP	U+2CF9	COPTIC OLD NUBIAN FULL STOP	
-    '⳾ {0,}$', #COPTIC FULL STOP	U+2CFE	COPTIC FULL STOP	
-    '⸼ {0,}$', #STENOGRAPHIC FULL STOP	U+2E3C	STENOGRAPHIC FULL STOP	
-    '。 {0,}$', #IDEOGRAPHIC FULL STOP	U+3002	IDEOGRAPHIC FULL STOP	
-    '。 {0,}$', #FULL STOP, IDEOGRAPHIC	U+3002	IDEOGRAPHIC FULL STOP	
-    '꓿ {0,}$', #LISU PUNCTUATION FULL STOP	U+A4FF	LISU PUNCTUATION FULL STOP	
-    '꘎ {0,}$', #VAI FULL STOP	U+A60E	VAI FULL STOP	
-    '꛳ {0,}$', #BAMUM FULL STOP	U+A6F3	BAMUM FULL STOP	
-    '︒ {0,}$', #PRESENTATION FORM FOR VERTICAL IDEOGRAPHIC FULL STOP	U+FE12	PRESENTATION FORM FOR VERTICAL IDEOGRAPHIC FULL STOP	
-    '﹒ {0,}$', #SMALL FULL STOP	U+FE52	SMALL FULL STOP	
-    '． {0,}$', #FULLWIDTH FULL STOP	U+FF0E	FULLWIDTH FULL STOP	
-    '｡ {0,}$', #HALFWIDTH IDEOGRAPHIC FULL STOP	U+FF61	HALFWIDTH IDEOGRAPHIC FULL STOP	
-    '! {0,}$', #EXCLAMATION MARK	U+0021	EXCLAMATION MARK	
-    '¡ {0,}$', #INVERTED EXCLAMATION MARK	U+00A1	INVERTED EXCLAMATION MARK	
-    '¡ {0,}$', #EXCLAMATION MARK, INVERTED	U+00A1	INVERTED EXCLAMATION MARK	
-    'ǃ {0,}$', #latin letter exclamation mark	U+01C3	LATIN LETTER RETROFLEX CLICK	
-    'ǃ {0,}$', #exclamation mark, latin letter	U+01C3	LATIN LETTER RETROFLEX CLICK	
-    'ǃ {0,}$', #LATIN LETTER EXCLAMATION MARK	U+01C3	LATIN LETTER RETROFLEX CLICK	
-    '՜ {0,}$', #ARMENIAN EXCLAMATION MARK	U+055C	ARMENIAN EXCLAMATION MARK	
-    '՜ {0,}$', #EXCLAMATION MARK, ARMENIAN	U+055C	ARMENIAN EXCLAMATION MARK	
-    '߹ {0,}$', #NKO EXCLAMATION MARK	U+07F9	NKO EXCLAMATION MARK	
-    '᥄ {0,}$', #LIMBU EXCLAMATION MARK	U+1944	LIMBU EXCLAMATION MARK	
-    '᥄ {0,}$', #EXCLAMATION MARK, LIMBU	U+1944	LIMBU EXCLAMATION MARK	
-    '‼ {0,}$', #DOUBLE EXCLAMATION MARK	U+203C	DOUBLE EXCLAMATION MARK	
-    '‼ {0,}$', #EXCLAMATION MARK, DOUBLE	U+203C	DOUBLE EXCLAMATION MARK	
-    '⁈ {0,}$', #QUESTION EXCLAMATION MARK	U+2048	QUESTION EXCLAMATION MARK	
-    '⁈ {0,}$', #EXCLAMATION MARK, QUESTION	U+2048	QUESTION EXCLAMATION MARK	
-    '❕ {0,}$', #WHITE EXCLAMATION MARK ORNAMENT	U+2755	WHITE EXCLAMATION MARK ORNAMENT	
-    '❕ {0,}$', #EXCLAMATION MARK ORNAMENT, WHITE	U+2755	WHITE EXCLAMATION MARK ORNAMENT	
-    '❗ {0,}$', #HEAVY EXCLAMATION MARK SYMBOL	U+2757	HEAVY EXCLAMATION MARK SYMBOL	
-    '❢ {0,}$', #HEAVY EXCLAMATION MARK ORNAMENT	U+2762	HEAVY EXCLAMATION MARK ORNAMENT	
-    '❢ {0,}$', #EXCLAMATION MARK ORNAMENT, HEAVY	U+2762	HEAVY EXCLAMATION MARK ORNAMENT	
-    '❣ {0,}$', #HEAVY HEART EXCLAMATION MARK ORNAMENT	U+2763	HEAVY HEART EXCLAMATION MARK ORNAMENT	
-    '⹓ {0,}$', #MEDIEVAL EXCLAMATION MARK	U+2E53	MEDIEVAL EXCLAMATION MARK	
-    'ꜝ {0,}$', #MODIFIER LETTER RAISED EXCLAMATION MARK	U+A71D	MODIFIER LETTER RAISED EXCLAMATION MARK	
-    'ꜞ {0,}$', #MODIFIER LETTER RAISED INVERTED EXCLAMATION MARK	U+A71E	MODIFIER LETTER RAISED INVERTED EXCLAMATION MARK	
-    'ꜟ {0,}$', #MODIFIER LETTER LOW INVERTED EXCLAMATION MARK	U+A71F	MODIFIER LETTER LOW INVERTED EXCLAMATION MARK	
-    '︕ {0,}$', #PRESENTATION FORM FOR VERTICAL EXCLAMATION MARK	U+FE15	PRESENTATION FORM FOR VERTICAL EXCLAMATION MARK	
-    '﹗ {0,}$', #SMALL EXCLAMATION MARK	U+FE57	SMALL EXCLAMATION MARK	
-    '！ {0,}$', #FULLWIDTH EXCLAMATION MARK	U+FF01	FULLWIDTH EXCLAMATION MARK	
-    '！ {0,}$', #FULLWIDTH EXCLAMATION MARK	U+FF01	FULLWIDTH EXCLAMATION MARK	
-    '; {0,}$', #question mark, greek	U+003B	SEMICOLON	
-    '\; {0,}$', #greek question mark	U+003B	SEMICOLON	
-    '\? {0,}$', #QUESTION MARK	U+003F	QUESTION MARK	
-    '¿ {0,}$', #INVERTED QUESTION MARK	U+00BF	INVERTED QUESTION MARK	
-    '¿ {0,}$', #question mark, turned	U+00BF	INVERTED QUESTION MARK	
-    '¿ {0,}$', #QUESTION MARK, INVERTED	U+00BF	INVERTED QUESTION MARK	
-    '¿ {0,}$', #turned question mark	U+00BF	INVERTED QUESTION MARK	
-    '; {0,}$', #GREEK QUESTION MARK	U+037E	GREEK QUESTION MARK	
-    '; {0,}$', #QUESTION MARK, GREEK	U+037E	GREEK QUESTION MARK	
-    '՞ {0,}$', #ARMENIAN QUESTION MARK	U+055E	ARMENIAN QUESTION MARK	
-    '՞ {0,}$', #QUESTION MARK, ARMENIAN	U+055E	ARMENIAN QUESTION MARK	
-    '؟ {0,}$', #ARABIC QUESTION MARK	U+061F	ARABIC QUESTION MARK	
-    '؟ {0,}$', #QUESTION MARK, ARABIC	U+061F	ARABIC QUESTION MARK	
-    '፧ {0,}$', #ETHIOPIC QUESTION MARK	U+1367	ETHIOPIC QUESTION MARK	
-    '፧ {0,}$', #QUESTION MARK, ETHIOPIC	U+1367	ETHIOPIC QUESTION MARK	
-    '᥅ {0,}$', #LIMBU QUESTION MARK	U+1945	LIMBU QUESTION MARK	
-    '᥅ {0,}$', #QUESTION MARK, LIMBU	U+1945	LIMBU QUESTION MARK	
-    '⁇ {0,}$', #DOUBLE QUESTION MARK	U+2047	DOUBLE QUESTION MARK	
-    '⁇ {0,}$', #QUESTION MARK, DOUBLE	U+2047	DOUBLE QUESTION MARK	
-    '⁉ {0,}$', #EXCLAMATION QUESTION MARK	U+2049	EXCLAMATION QUESTION MARK	
-    '⁉ {0,}$', #QUESTION MARK, EXCLAMATION	U+2049	EXCLAMATION QUESTION MARK	
-    '❓ {0,}$', #BLACK QUESTION MARK ORNAMENT	U+2753	BLACK QUESTION MARK ORNAMENT	
-    '❓ {0,}$', #QUESTION MARK ORNAMENT, BLACK	U+2753	BLACK QUESTION MARK ORNAMENT
-    '❔ {0,}$', #WHITE QUESTION MARK ORNAMENT	U+2754	WHITE QUESTION MARK ORNAMENT	
-    '❔ {0,}$', #QUESTION MARK ORNAMENT, WHITE	U+2754	WHITE QUESTION MARK ORNAMENT	
-    '⩻ {0,}$', #LESS-THAN WITH QUESTION MARK ABOVE	U+2A7B	LESS-THAN WITH QUESTION MARK ABOVE	
-    '⩼ {0,}$', #GREATER-THAN WITH QUESTION MARK ABOVE	U+2A7C	GREATER-THAN WITH QUESTION MARK ABOVE	
-    '⳺ {0,}$', #COPTIC OLD NUBIAN DIRECT QUESTION MARK	U+2CFA	COPTIC OLD NUBIAN DIRECT QUESTION MARK	
-    '⳻ {0,}$', #COPTIC OLD NUBIAN INDIRECT QUESTION MARK	U+2CFB	COPTIC OLD NUBIAN INDIRECT QUESTION MARK	
-    '⸮ {0,}$', #REVERSED QUESTION MARK	U+2E2E	REVERSED QUESTION MARK	
-    '⹔ {0,}$', #MEDIEVAL QUESTION MARK	U+2E54	MEDIEVAL QUESTION MARK	
-    '꘏ {0,}$', #VAI QUESTION MARK	U+A60F	VAI QUESTION MARK	
-    '꛷ {0,}$', #BAMUM QUESTION MARK	U+A6F7	BAMUM QUESTION MARK	
-    '︖ {0,}$', #PRESENTATION FORM FOR VERTICAL QUESTION MARK	U+FE16	PRESENTATION FORM FOR VERTICAL QUESTION MARK	
-    '﹖ {0,}$', #SMALL QUESTION MARK	U+FE56	SMALL QUESTION MARK	
-    '？ {0,}$', #FULLWIDTH QUESTION MARK	U+FF1F	FULLWIDTH QUESTION MARK	
-]
-eol_conditional_array = ['\" {0,}$', u'\u201D {0,}$', u'\)']
-bol_array = ['^[A-Z]']
 
 html_file_path = ''
 
 nb_character_total = 0
-MAX_LINE_SIZE = 36
-COUNTRY_QUERY_HTTP_TIMEOUT = 3
 
 # Maximum 5000 characters on the free version
 # but only 1500 if not logged on to deepl with free version
@@ -1195,7 +765,7 @@ if translation_engine is not None:
 else:
     translation_engine = ""
 
-if translation_engine in ['yandex', 'perplexity', 'chatgpt', 'deepl']:
+if translation_engine in ['perplexity', 'chatgpt', 'deepl']:
     showbrowser = True
 elif translation_engine in ['deepl', 'chatgpt']:
     pass  # keep the value as is
@@ -1250,9 +820,7 @@ elif translation_engine == 'chatgpt':
         engine_method = 'phrasesblock'
 
 elif translation_engine == 'perplexity':
-    if engine_method == 'api' or use_api == True:
-        engine_method = 'api'
-    elif engine_method  == 'webservice':
+    if engine_method  == 'webservice':
         engine_method = 'webservice'
     else:
         engine_method = 'phrasesblock'
@@ -1370,17 +938,6 @@ def print_os_info():
     platform.version(),
     platform.mac_ver(),
     ))
-
-def safe_click(driver, element):
-    try:
-        #safe_click(driver, element)
-        driver.execute_script("arguments[0].click();", element)
-    except WebDriverException:
-        # fallback for headless/minimized/hidden elements
-        print(f"Failed to click element: {e}")
-        # Optional: take a screenshot for debugging
-        # driver.save_screenshot("error.png")
-        pass
 
 if not os.path.exists(word_file_to_translate) :
     print("ERROR: File not found: %s" % (word_file_to_translate))
@@ -1670,556 +1227,13 @@ def selenium_chrome_translate_get_from_text_array(to_translate, index):
     #input("In selenium_chrome_translate_get_from_text_array")
     return translation_array[index - 1]
     
-def selenium_chrome_google_translate(to_translate):
-    global found_google_cookies_consent_button, driver
-    global google_translate_first_page_loaded
-    
-    driver.execute_script("window.focus();")
-    selenium_chrome_google_click_cookies_consent_button()
-    
-    try:
-        translation = ''
-        #to_translate_encoding = chardet.detect(bytes(to_translate))['encoding']
-        #print("to_translate_encoding=%s" % (to_translate_encoding))
-        
-        #print("HERE **********")
-        #input("Here")
-            
-        #driver.get("https://translate.google.com/?sl=%s&tl=%s&text=%s&op=translate" % (src_lang,dest_lang,""))
-        #driver.get("https://translate.google.com/?sl=%s&tl=%s&op=translate&text=%s" % (src_lang,dest_lang,html.escape(to_translate)))
-        
-        #print ("to_translate before using in url:")
-        #print(to_translate)
-        #print ("***************")
-        
-        
-        #to_translate_escaped = html.escape(to_translate)
-        to_translate_escaped = to_translate
-        # This is necessary because & in the text to be translated will from the remaining
-        # from the text fild in the URL and will not translate after the &
-        
-        to_translate_escaped = to_translate_escaped.replace('%','%25')
-        to_translate_escaped = to_translate_escaped.replace('&','%26')
-        
-        query_translation = {
-            "sl" : src_lang,
-            "tl" : dest_lang,
-            "docxfile" : to_translate
-        }
-        
-        base_url = "https://translate.google.com/"
-        encoded_params = urlencode(query_translation, quote_via=quote_plus)
-        url = f"{base_url}?{encoded_params}"
-        
-        to_translate_add_new_line = '%0A '.join(to_translate_escaped.split('\n'))
-        translation_url = "https://translate.google.com/?sl=%s&tl=%s&op=translate&text=%s" % (src_lang,dest_lang,to_translate_add_new_line)
-        driver.get(translation_url)
-        #print(translation_url)
-        
-        # Wait for page to be loaded
-        try:
-            (driver.page_source).encode('utf-8')
-            WebDriverWait(driver, 15).until(lambda driver: driver.execute_script('return document.readyState') == 'complete')
-        except:
-            print("ERROR: Page load timeout reached.")
-        
-        
-        try:
-            # Wait up to 0.5 seconds for the button to appear
-            button = WebDriverWait(driver, 0.01).until(
-                EC.element_to_be_clickable((By.XPATH, "//button[.//span[text()='Accept all']]"))
-            )
-            safe_click(driver, button)
-            
-            driver.get(translation_url)
-            
-             # Wait for page to be loaded
-            try:
-                (driver.page_source).encode('utf-8')
-                WebDriverWait(driver, 15).until(lambda driver: driver.execute_script('return document.readyState') == 'complete')
-            except:
-                print("ERROR: Page load timeout reached.")
-            # Wait up to 0.5 seconds for the button to appear
-            button = WebDriverWait(driver, 0.01).until(
-                EC.element_to_be_clickable((By.XPATH, "//button[.//span[text()='Accept all']]"))
-            )
-            safe_click(driver, button)
-        except Exception:
-            # Ignore if not found or not clickable
-            pass
-        try:
-            button = driver.find_element(By.XPATH, "//button[.//span[text()='Browse your files']]")
-            #print("Button is present")
-        except:
-            #print("Button not found") 
-            pass
-            
-        
-        #print("---------------------------------------------------------")
-        #print("translation_url")
-        #print(translation_url)
-        #print("---------------------------------------------------------")
-        #print("*********************************************************")
-        #print("url")
-        #print(url)
-        #print("*********************************************************")
-        
-        #print("to_translate_add_new_line:")
-        #print(to_translate_add_new_line)
-        #print ("***************")
-        #input("Here")
-
-        #input("Here")
-        
-        input_element = "//div[@id='input-wrap']/textarea"
-        input_element = "//textarea[@id='source']"
-        input_element = "//textarea"
-        
-        #input_button = WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, input_element)))))
-        #driver.find_element(By.XPATH, input_element).clear()
-        #to_translate_utf8 = to_translate.decode('utf-8')
-        to_translate_utf8 = to_translate
-        #input_button.send_keys (to_translate_utf8)
-
-        time.sleep(0.2)
-        #driver.execute_script('document.getElementById(\'//textarea[@id=\\\'source\\\']\').setAttribute(\'value\', \'Hello world !\');')
-        #driver.execute_script("arguments[0].value = arguments[1];", input_button, to_translate_utf8)
-        
-        try:
-            # Wait up to 0.5 seconds for the button to appear
-            button = WebDriverWait(driver, 0.05).until(
-                EC.element_to_be_clickable((By.XPATH, "//button[.//span[text()='Accept all']]"))
-            )
-            safe_click(driver, button)
-        except Exception:
-            # Ignore if not found or not clickable
-            pass
-
-        try:
-            copy_translation_element = "//div[4]/div[4]/div"
-            copy_translation_element = "//i[contains(.,'content_copy')]"
-            copy_translation_element = "//button[contains(., 'Copy translation')]"
-            copy_translation_element = "//button[@aria-label='Copy translation']"
-            copy_translation_element = "//button[@aria-label='Copy to clipboard' and not(@disabled)]"
-            copy_translation_element = "//button[@aria-label='Copy to clipboard' and not(@disabled) and (@aria-disabled='false' or not(@aria-disabled))]"
-            
-            copy_translation_button = WebDriverWait(driver, 15).until(EC.presence_of_element_located((By.XPATH, copy_translation_element)))
-        except :
-            var = traceback.format_exc()
-            print(var)
-            
-        # EditTranslationElement = "xpath=//button/div[2]"
-        # EditTranslationButton = WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, EditTranslationElement)))))
-        
-        # driver.execute_script("scrollBy(0,-1000);")
-        # actions.move_to_element(EditTranslationButton).perform()
-        # sleep(0.1)
-        #driver.set_window_size(800, 700)
-        # safe_click(driver, EditTranslationButton)
-        
-        res_element_xpath = "//textarea[@lang='%s']" % (dest_lang)
-        
-        regex_still_translating_str = '$Translation'
-        pos_separator_phonetic = 0
-        #if re.search(regex_still_translating_str, to_translate_utf8):
-        
-        driver.execute_script("window.focus();")
-        selenium_chrome_google_click_cookies_consent_button()
-    
-        if re.search(regex_still_translating_str, to_translate):
-            time.sleep(4)
-            try:
-                #res_element_xpath = "//c-wiz/div/div[2]/c-wiz/div[2]/c-wiz/div[1]/div[2]/div[2]/c-wiz[2]/div[5]/div/div[3]/div[1]/div/div[1]/div[1]/textarea"
-                
-                result_element = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.XPATH, res_element_xpath)))
-                translation = result_element.get_attribute('innerHTML')
-                #translation = html.unescape(translation)
-            except :
-                var = traceback.format_exc()
-                print(var)
-        else:
-            try:
-                #res_element_xpath = "//c-wiz/div/div[2]/c-wiz/div[2]/c-wiz/div[1]/div[2]/div[2]/c-wiz[2]/div[5]/div/div[3]/div[1]/div/div[1]/div[1]/textarea"
-                #res_element_xpath = "xpath=//div[6]/div/div/span/span/span"
-                #res_element_xpath = "//textarea[@lang='%s']" % (dest_lang)
-                
-                result_element = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.XPATH, res_element_xpath)))
-                translation = result_element.get_attribute('innerHTML')
-                #translation = html.unescape(translation)
-                
-                #print("translation:")
-                #print(translation)
-                #print("*******************")
-                
-                #page_source_str = driver.page_source
-                #print(":::::::::::::::::::::::::::::::::::::::::::::::::::::::")
-                #with open('before.html', 'w', encoding="utf-8") as f:
-                #    f.write(page_source_str)
-                #f.close()
-                #input("wait here")
-                
-            except Exception:
-                #page_source_str = driver.page_source
-                #print(":::::::::::::::::::::::::::::::::::::::::::::::::::::::")
-                #with open('before.html', 'w', encoding="utf-8") as f:
-                #    f.write(page_source_str)
-                #f.close()
-                #input("wait here")
-                
-                var = traceback.format_exc()
-                print(var)
-            while re.search(regex_still_translating_str, translation):
-                print("")
-                print("Still waiting for translation........")
-                print("")
-                time.sleep(1)
-                try:
-                    #result_element = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.CSS_SELECTOR, ".result"))))
-                    result_element = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.XPATH, res_element_xpath)))
-                    
-                    translation = result_element.get_attribute('innerHTML')
-                    translation = translation.unescape(translation)
-                    
-                    #print("translation:")
-                    #print(translation)
-                    #print("*******************")
-                except Exception:
-                    var = traceback.format_exc()
-                    print(var)
-
-        #pos_new_line = translation.find("\n")
-        #if pos_new_line > 0:
-        #    translation = translation[0:pos_new_line]
-        #    #print("\n\npos_new_line=%s\n\n\n" % (pos_new_line))
-
-    except Exception:
-        var = traceback.format_exc()
-        print(var)
-   
-    page_source_str = driver.page_source
-    #print(":::::::::::::::::::::::::::::::::::::::::::::::::::::::")
-    #with open('before.html', 'w', encoding="utf-8") as f:
-    #    f.write(page_source_str)
-    #f.close()
-    #input("wait here")
-                
-    #print("returned translation:")
-    #print("#########################")
-    #print(translation)
-    #print("#########################")
-    #input("press enter")
-    #print(f"google translation:{translation}")
-    return translation
-
-
-
-def selenium_chrome_translate_maxchar_blocks():
-    global translation_errors_count
-    global deepl_sleep_wait_translation_seconds
-    global driver
-    global word_file_to_translate
-    global src_lang_name, dest_lang_name
-    global oai_translator, oai_polisher, translation_log
-    
-    translation_succeded = True
-    translated_blocks = []
-    
-    # ------------------------------------------------------------------
-    # Engine-agnostic single attempt
-    # ------------------------------------------------------------------
-    def translate_once(engine, method, text, attempt):
-        if engine == "deepl":
-            return selenium_chrome_deepl_translate(text, attempt)
-        
-        if engine == "chatgpt":
-            if method == "api":
-                response, translated = oai_translator.translate(
-                    src_lang_name, dest_lang_name, text
-                )
-                success = (
-                    translated
-                    and len(translated.split("\n")) == len(text.split("\n"))
-                )
-                return success, translated
-            else:
-                return selenium_chrome_chatgpt_translate(text, attempt)
-        
-        if engine == "perplexity":
-            if method == "api":
-                return perplexity_api_translate(text, attempt)
-            elif method == "webservice":
-                return selenium_webservice_perplexity_translate(text, attempt)
-            else:
-                return selenium_chrome_perplexity_translate(text, attempt, 1)
-        
-        raise ValueError(f"Unknown translation engine: {engine}")
-    
-    # ------------------------------------------------------------------
-    # ONE recursive algorithm for ALL engines
-    # ------------------------------------------------------------------
-    def translate_lines_block(lines, engine, method, attempt=1):
-        if not lines:
-            return ""
-        
-        joined = "\n".join(lines)
-        success, translated = translate_once(engine, method, joined, attempt)
-        
-        if success and translated:
-            return translated.strip()
-        
-        # Split block if possible
-        if len(lines) > 1:
-            mid = len(lines) // 2
-            print(f"Splitting block of {len(lines)} lines...")
-            left = translate_lines_block(lines[:mid], engine, method, attempt)
-            right = translate_lines_block(lines[mid:], engine, method, attempt)
-            return (left + "\n" + right).strip()
-        
-        # Single-line fallback
-        line = lines[0]
-        print(f"Single-line fallback: {line}")
-        
-        success, translated = translate_once(engine, method, line, attempt)
-        if success and translated:
-            return translated.strip()
-        
-        # Google fallback (last resort)
-        selenium_chrome_google_click_cookies_consent_button()
-        translated = selenium_chrome_google_translate(line)
-        if translated:
-            return translated.strip()
-        
-        print(f"ERROR: Unable to translate line: {line}")
-        return "Unable to get translation."
-    
-    # ------------------------------------------------------------------
-    # ChatGPT API setup
-    # ------------------------------------------------------------------
-    if translation_engine == "chatgpt" and engine_method == "api":
-        ai_model = args.aimodel if args.aimodel else "gpt-5.5"
-        oai_translator = OpenAITranslator(model=ai_model)
-        oai_translator.set_filename(word_file_to_translate)
-
-        if args.with_polish:
-            try:
-                oai_polisher = OpenAIPolisher(model=ai_model, dest_lang=dest_lang)
-                print(f"[INFO] Polish pass enabled (model={ai_model}, lang={dest_lang})")
-            except FileNotFoundError as _e:
-                print(f"[WARN] Polish disabled: {_e}")
-                oai_polisher = None
-            import datetime as _dt
-            translation_log["run_info"] = {
-                "timestamp":   _dt.datetime.now().isoformat(timespec="seconds"),
-                "input_file":  word_file_to_translate,
-                "model":       ai_model,
-                "source_lang": src_lang,
-                "dest_lang":   dest_lang,
-                "with_polish": True,
-            }
-            translation_log["blocks"] = []
-    
-    # ------------------------------------------------------------------
-    # OpenAI single-call mode: entire file = ONE translate + ONE polish
-    # ------------------------------------------------------------------
-    _single_call_done = False
-    if translation_engine == "chatgpt" and engine_method == "api" and oai_translator is not None:
-        full_source = "\n".join(blocks_nchar_max_to_translate_array)
-        total_lines = len(full_source.split("\n"))
-        print(f"[INFO] OpenAI single-call mode: {total_lines} lines, {len(full_source)} chars")
-        # PROGRESS marker — picked up by local_launcher.py and surfaced in /status JSON.
-        # Pre-translate: file parsed, prompts loaded, ready to call OpenAI.
-        print("PROGRESS:15", flush=True)
-
-        _t_translate_start = time.time()
-        _, full_translated = oai_translator.translate(src_lang_name, dest_lang_name, full_source)
-        _t_translate = time.time() - _t_translate_start
-        print("PROGRESS:30", flush=True)
-        _td = oai_translator.last_call_data
-        print(
-            f"[TIMER] Translate: {_t_translate:.1f}s | "
-            f"tokens: {_td.get('total_tokens', '?')} "
-            f"(prompt {_td.get('prompt_tokens', '?')}, "
-            f"completion {_td.get('completion_tokens', '?')}, "
-            f"cached {_td.get('cached_tokens', 0)})"
-        )
-
-        if oai_polisher is not None:
-            print("[INFO] Polish pass (full document in one call) ...")
-            _t_polish_start = time.time()
-            _before_polish = full_translated
-            full_translated = oai_polisher.polish(full_source, full_translated)
-            _t_polish = time.time() - _t_polish_start
-            print("PROGRESS:65", flush=True)
-            _pd = oai_polisher.last_call_data
-            print(
-                f"[TIMER] Polish:    {_t_polish:.1f}s | "
-                f"tokens: {_pd.get('total_tokens', '?')} "
-                f"(prompt {_pd.get('prompt_tokens', '?')}, "
-                f"completion {_pd.get('completion_tokens', '?')}, "
-                f"cached {_pd.get('cached_tokens', 0)})"
-            )
-
-            _lines_before = _before_polish.split("\n")
-            _lines_after  = full_translated.split("\n")
-            _changed = sum(1 for a, b in zip(_lines_before, _lines_after) if a != b)
-            if full_translated == _before_polish:
-                print("[DIAG] Polish: NO CHANGE (check for API error above)")
-            else:
-                print(f"[DIAG] Polish: {_changed}/{len(_lines_before)} lines changed ✓")
-
-            translation_log["blocks"].append({
-                "block_index":  0,
-                "source_text":  full_source,
-                "translation":  oai_translator.last_call_data.copy() if oai_translator else {},
-                "polish":       oai_polisher.last_call_data.copy(),
-            })
-
-        translated_blocks.append(full_translated)
-        _single_call_done = True
-
-    # ------------------------------------------------------------------
-    # Standard block loop (DeepL, Google, Selenium, and all other engines)
-    # ------------------------------------------------------------------
-    if not _single_call_done:
-      _progress_blk_emitted: set[int] = set()  # milestones already sent this job
-      for i, block in enumerate(blocks_nchar_max_to_translate_array):
-        print(
-            f"Translating block {i + 1}/{len(blocks_nchar_max_to_translate_array)} "
-            f"({len(block)} chars)"
-        )
-
-        success, translated = translate_once(
-            translation_engine, engine_method, block, attempt=0
-        )
-
-        if not success:
-            if translation_engine == 'deepl':
-                print("Cleaning up cookies...")
-                driver.delete_all_cookies()
-
-            print("Initial translation failed → recursive fallback")
-            translation_errors_count += 1
-            deepl_sleep_wait_translation_seconds *= 1.1
-
-            translated = translate_lines_block(
-                block.split("\n"),
-                translation_engine,
-                engine_method
-            )
-
-        if oai_polisher is not None:
-            print(f"Polishing block {i + 1}/{len(blocks_nchar_max_to_translate_array)} ...")
-            _translated_before_polish = translated
-            translated = oai_polisher.polish(block, translated)
-
-            _lines_before = _translated_before_polish.split("\n")
-            _lines_after  = translated.split("\n")
-            _changed = sum(1 for a, b in zip(_lines_before, _lines_after) if a != b)
-            if translated == _translated_before_polish:
-                print(f"[DIAG] Polish block {i+1}: NO CHANGE (check for API error or line-count mismatch above)")
-            else:
-                print(f"[DIAG] Polish block {i+1}: {_changed}/{len(_lines_before)} lines changed ✓")
-
-            block_entry = {
-                "block_index":   i,
-                "source_text":   block,
-                "translation":   oai_translator.last_call_data.copy() if oai_translator else {},
-                "polish":        oai_polisher.last_call_data.copy(),
-            }
-            translation_log["blocks"].append(block_entry)
-
-        translated_blocks.append(translated)
-
-        # Emit 25/50/75 progress milestones proportional to block completion.
-        # Applies to all block-loop engines (Google, DeepL, Selenium, etc.).
-        # The chatgpt single-call path emits its own PROGRESS markers and never
-        # reaches this loop (_single_call_done = True skips us entirely).
-        _n_blks = len(blocks_nchar_max_to_translate_array)
-        if _n_blks > 0:
-            _blk_pct = int(((i + 1) / _n_blks) * 100)
-            for _m in (25, 50, 75):
-                if _blk_pct >= _m and _m not in _progress_blk_emitted:
-                    print(f"PROGRESS:{_m}", flush=True)
-                    _progress_blk_emitted.add(_m)
-
-        if i % 2 == 1 and translation_engine in ("chatgpt", "perplexity"):
-            print("Cleaning up cookies...")
-            driver.delete_all_cookies()
-    
-    # ------------------------------------------------------------------
-    # Final validation
-    # ------------------------------------------------------------------
-    full_text = "\n".join(translated_blocks)
-    translation_array = full_text.split("\n")
-
-    # ── DIAGNOSTIC: confirm translation_array content ────────────────────
-    if oai_polisher is not None:
-        print(f"[DIAG] translation_array ready: {len(translation_array)} lines "
-              f"(expected {docxfile_table_number_of_phrases}) — THIS IS THE POLISHED DATA")
-        if translation_array:
-            print(f"[DIAG] First line sample: {translation_array[0][:80]!r}")
-    # ─────────────────────────────────────────────────────────────────────
-
-    if len(translation_array) != docxfile_table_number_of_phrases:
-        print(
-            f"Line count mismatch: {len(translation_array)} != "
-            f"{docxfile_table_number_of_phrases}"
-        )
-        translation_succeded = False
-    
-    return translation_succeded, translation_array
-
-
-def selenium_chrome_google_click_cookies_consent_button():
-    global found_google_cookies_consent_button
-    global google_translate_first_page_loaded
-    global chrome_options
-    global driver
-    global chromedriverpath
-    try:
-        translation = ''
-        browse_file_element_xpath = "//button[.//span[contains(text(), 'Browse ')]]"
-        
-        #driver.get("https://translate.google.com/")
-        
-        #Wait for page status loaded to be complete
-        WebDriverWait(driver, 15).until(lambda driver: driver.execute_script('return document.readyState') == 'complete')
-        
-        try:
-            # Wait up to 0.5 seconds for the button to appear
-            button = WebDriverWait(driver, 0.01).until(
-                EC.element_to_be_clickable((By.XPATH, "//button[.//span[text()='Accept all']]"))
-            )
-            safe_click(driver, button)
-        except Exception:
-            # Ignore if not found or not clickable
-            pass
-        try:
-            button = driver.find_element(By.XPATH, "//button[.//span[text()='Browse your files']]")
-            #print("Button is present")
-        except:
-            #print("Button not found") 
-            pass
-            
-            
-        google_translate_first_page_loaded = True
-        #print("Cookies consent button cliqued...")
-    except Exception:
-        #print("Error gaccepting google cookie consent.")
-        var = traceback.format_exc()
-        #print(var)
-        
-        
-def selenium_chrome_google_translate_text_file(text_file_path):
-    global found_google_cookies_consent_button
-    global google_translate_first_page_loaded
-    global docxfile_table_number_of_phrases
+def selenium_chrome_google_translate_text_file(ctx: RuntimeContext, text_file_path):
     try:
         
-        if not google_translate_first_page_loaded:
-            selenium_chrome_google_click_cookies_consent_button()
+        if not ctx.browser.google_translate_first_page_loaded:
+            selenium_chrome_google_click_cookies_consent_button(ctx)
         
-        driver.get("https://translate.google.com/?sl=%s&tl=%s&op=docs" % (src_lang,dest_lang))
+        driver.get("https://translate.google.com/?sl=%s&tl=%s&op=docs" % (ctx.language.src_lang,ctx.language.dest_lang))
         driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
         
         browse_file_element_xpath = "//label[contains(.,'Browse your computer')]"
@@ -2269,18 +1283,18 @@ def selenium_chrome_google_translate_text_file(text_file_path):
         text_translated_document_str = text_translated_document_str.replace('</pre></body></html>', '')
         text_translated_document_str = html.unescape(text_translated_document_str)
         
-        translation_array = text_translated_document_str.split('\n')
+        ctx.docx.translation_array = text_translated_document_str.split('\n')
         
-        text_translated_document_str_nb_lines = len(translation_array)
+        text_translated_document_str_nb_lines = len(ctx.docx.translation_array)
         
         #print ("text_translated_document_str_nb_linestext_translated_document_str_nb_lines: %s" % text_translated_document_str_nb_lines)
-        print ("docxfile_table_number_of_phrases: %s" % docxfile_table_number_of_phrases)
+        print ("docxfile_table_number_of_phrases: %s" % ctx.docx.docxfile_table_number_of_phrases)
         
-        if docxfile_table_number_of_phrases == text_translated_document_str_nb_lines:
+        if ctx.docx.docxfile_table_number_of_phrases == text_translated_document_str_nb_lines:
             #print("OK, we got the right number of translated lines !")
             pass
         else:
-            print("oups ! we got %s translated lines out of %s" % (text_translated_document_str_nb_lines, docxfile_table_number_of_phrases))
+            print("oups ! we got %s translated lines out of %s" % (text_translated_document_str_nb_lines, ctx.docx.docxfile_table_number_of_phrases))
             translation_succeded = False
         
         #print("text_translated_document_str:")
@@ -2291,11 +1305,10 @@ def selenium_chrome_google_translate_text_file(text_file_path):
         var = traceback.format_exc()
         print(var)
         sys.exit(7)
-    return translation_array
+    return ctx.docx.translation_array
     
     
-def selenium_chrome_google_translate_html_javascript_file(html_file_path):
-    global my_hazm_normalizer, showbrowser, driver
+def selenium_chrome_google_translate_html_javascript_file(ctx: RuntimeContext, html_file_path):
     html_file_path_escaped = html_file_path.replace('#','%23')
     file_url = 'file://' + html_file_path_escaped
     
@@ -2393,14 +1406,14 @@ def selenium_chrome_google_translate_html_javascript_file(html_file_path):
             #soup = BeautifulSoup(html_translation)
             soup = BeautifulSoup(html_translation, features="lxml")
             pTags = soup.find_all('p', {'class':"translation"})
-            translation_array = []
+            ctx.docx.translation_array = []
             for pTranstlation in pTags:
                 pData = pTranstlation.text
-                if dest_lang.lower() == 'fa':
+                if ctx.language.dest_lang.lower() == 'fa':
                    pData =  my_hazm_normalizer.normalize(text=pData)
-                translation_array.append(pData)
+                ctx.docx.translation_array.append(pData)
 
-            return (translation_array)
+            return (ctx.docx.translation_array)
   
         except:
             var = traceback.format_exc()
@@ -2409,22 +1422,22 @@ def selenium_chrome_google_translate_html_javascript_file(html_file_path):
             
             print("Here do something exit with session failed ")
                 
-            chrome_options = Options()
-            chrome_options.add_argument("--disable-web-security")
-            chrome_options.add_argument("--disable-xss-auditor")
-            chrome_options.add_argument("--log-level=3")  # fatal
-            chrome_options.add_argument("--lang=en-GB")
-            chrome_options.add_argument("--password-store=basic")
+            ctx.browser.chrome_options = Options()
+            ctx.browser.chrome_options.add_argument("--disable-web-security")
+            ctx.browser.chrome_options.add_argument("--disable-xss-auditor")
+            ctx.browser.chrome_options.add_argument("--log-level=3")  # fatal
+            ctx.browser.chrome_options.add_argument("--lang=en-GB")
+            ctx.browser.chrome_options.add_argument("--password-store=basic")
             
-            if not showbrowser:
-                chrome_options.add_argument("--headless")
+            if not ctx.flags.showbrowser:
+                ctx.browser.chrome_options.add_argument("--headless")
             
             docxfile_table_number_of_lines = numrows
-            if use_api or splitonly:
+            if ctx.flags.use_api or ctx.flags.splitonly:
                 print("\nCreating a new browser for stats")
                                                       
                 service = Service()                                
-                driver = webdriver.Chrome(service=service, options=chrome_options)
+                driver = webdriver.Chrome(service=service, options=ctx.browser.chrome_options)
                                     
                           
 
@@ -2521,17 +1534,14 @@ def get_last_downloaded_file_path():
     #shutil.move(dlFilename, os.path.join(download_dir,newFilename))
     return
 
-def selenium_chrome_google_translate_xlsx_file(xlsx_file_path):
-    global found_google_cookies_consent_button
-    global google_translate_first_page_loaded
-    global docxfile_table_number_of_phrases
+def selenium_chrome_google_translate_xlsx_file(ctx: RuntimeContext, xlsx_file_path):
     
     try:
         
-        if not google_translate_first_page_loaded:
-            selenium_chrome_google_click_cookies_consent_button()
+        if not ctx.browser.google_translate_first_page_loaded:
+            selenium_chrome_google_click_cookies_consent_button(ctx)
         
-        driver.get("https://translate.google.com/?sl=%s&tl=%s&op=docs" % (src_lang,dest_lang))
+        driver.get("https://translate.google.com/?sl=%s&tl=%s&op=docs" % (ctx.language.src_lang,ctx.language.dest_lang))
         driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
         
         browse_file_element_xpath = "//label[contains(.,'Browse your computer')]"
@@ -2618,32 +1628,32 @@ def selenium_chrome_google_translate_xlsx_file(xlsx_file_path):
         soup = BeautifulSoup(html_translation, features="lxml")
         soup = BeautifulSoup(html_translation)
         tdTag = soup.find_all("td")
-        translation_array = []
+        ctx.docx.translation_array = []
         for td in tdTag:
             pData = td.text
-            translation_array.append(td.text)
+            ctx.docx.translation_array.append(td.text)
             #res = soup.get_text()
             print(pData)
         #input("after pData")
-        print(translation_array)
+        print(ctx.docx.translation_array)
         print("__________________________")
         
         # text_translated_document_str = html_translation.replace('<html><head></head><body><pre>', '')
         # text_translated_document_str = text_translated_document_str.replace('</pre></body></html>', '')
         # text_translated_document_str = html.unescape(text_translated_document_str)
         
-        #translation_array = text_translated_document_str.split('\n')
+        #ctx.docx.translation_array = text_translated_document_str.split('\n')
         
-        text_translated_document_str_nb_lines = len(translation_array)
+        text_translated_document_str_nb_lines = len(ctx.docx.translation_array)
         
         #print ("text_translated_document_str_nb_linestext_translated_document_str_nb_lines: %s" % text_translated_document_str_nb_lines)
-        print ("docxfile_table_number_of_phrases: %s" % docxfile_table_number_of_phrases)
+        print ("docxfile_table_number_of_phrases: %s" % ctx.docx.docxfile_table_number_of_phrases)
         
-        if docxfile_table_number_of_phrases == text_translated_document_str_nb_lines:
+        if ctx.docx.docxfile_table_number_of_phrases == text_translated_document_str_nb_lines:
             #print("OK, we got the right number of translated lines !")
             pass
         else:
-            print("oups ! we got %s translated lines out of %s" % (text_translated_document_str_nb_lines, docxfile_table_number_of_phrases))
+            print("oups ! we got %s translated lines out of %s" % (text_translated_document_str_nb_lines, ctx.docx.docxfile_table_number_of_phrases))
             translation_succeded = False
         
         #print("text_translated_document_str:")
@@ -2654,70 +1664,11 @@ def selenium_chrome_google_translate_xlsx_file(xlsx_file_path):
         var = traceback.format_exc()
         print(var)
         sys.exit(8)
-    return translation_array
+    return ctx.docx.translation_array
 
 
 
-def selenium_chrome_yandex_translate(to_translate):
-    try:
-        #https://translate.yandex.com/?lang=en-hu
-        #driver.get("https://translate.yandex.com/?lang=%s-%s&text=%s" % (src_lang,dest_lang,to_translate))
-        driver.get("https://translate.yandex.com/?lang=%s-%s" % (src_lang,dest_lang))
-        #(driver.page_source).encode('utf-8')
-
-        timeout_captcha = 200
-        alert_captcha = False
-        #while 'Unfortunately, it looks like the search request sent from your IP address are automated' in driver.page_source and timeout_captcha > 0:
-        while 'IP address' in driver.page_source and timeout_captcha > 0:
-            if not alert_captcha:
-                print("--------------------------------------------------------------------")
-                print("\nCAPTCHA : please fill requested information on browser to continue")
-                print("--------------------------------------------------------------------")
-            sleep(1)
-            timeout_captcha -=1
-            alert_captcha = True
-
-        input_element = "#textarea"
-        input_button = WebDriverWait(driver, 60).until(EC.presence_of_element_located((By.CSS_SELECTOR, "#fakeArea")))
-
-        input_button.send_keys (to_translate)
-
-        copy_translation_element = "//span[@id='copyButton']"
-        copy_translation_button = WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, copy_translation_element)))
-
-        copy_translation_button_class_attribute = copy_translation_button.get_attribute("class")
-        #print("val class=%s" % (copy_translation_button_class_attribute))
-
-        sleep(0.2)
-
-        timeout_copybutton_disabled = 60
-        while 'state-disabled' in copy_translation_button_class_attribute and timeout_copybutton_disabled > 0:
-            sleep(0.2)
-            copy_translation_button_class_attribute = copy_translation_button.get_attribute("class")
-            #print("val class=%s (%d)" % (copy_translation_button_class_attribute, timeout_copybutton_disabled))
-            timeout_copybutton_disabled -=1
-
-        actions = ActionChains(driver)
-        driver.set_window_size(800, 700)
-        actions.move_to_element(copy_translation_button).perform()
-        actions.move_to_element(copy_translation_button).perform()
-
-        sleep(0.1)
-
-        translation_result_element = "translation"
-        translation_result_box = WebDriverWait(driver, 60).until(EC.presence_of_element_located((translation_result_element)))
-        translation = translation_result_box.text
-        res = translation
-
-        translation = res
-
-    except Exception:
-        var = traceback.format_exc()
-        print(var)
-        sys.exit(9)
-    return translation
-
-def remove_span_tag(text):  
+def remove_span_tag(text):
     search_opening_html_span_tag = r'(?i)<span class="[a-zA-Z]+">'
     search_replace_opening_span = re.compile(search_opening_html_span_tag)
                 
@@ -2744,180 +1695,11 @@ def remove_span_tag(text):
 
 
 
-def selenium_chrome_deepl_log_in():
-    global json_configuration_array, MAX_TRANSLATION_BLOCK_SIZE
-    
-    deepl_account_email_key = ['deepl', 'account', 'email']
-    deepl_account_email = get_nested_value_from_json_array(json_configuration_array, deepl_account_email_key)
-    
-    deepl_account_password_key = ['deepl', 'account', 'password']
-    deepl_account_password = get_nested_value_from_json_array(json_configuration_array, deepl_account_password_key)
-        
-    deepl_account_enabled_key = ['deepl', 'account', 'enabled']
-    deepl_account_enabled = get_nested_value_from_json_array(json_configuration_array, deepl_account_enabled_key)
-    
-    #driver.maximize_window()
-
-    try:
-        driver.get("https://www.deepl.com/translator")
-        
-        try:
-        
-            try:
-                # Accept cookies
-                deepl_accept_cookies_element = "//button[contains(.,'Accept')]"
-                deepl_accept_cookies_button = WebDriverWait(driver, 1).until(
-                    EC.presence_of_element_located((By.XPATH, deepl_accept_cookies_element)))
-                driver.execute_script("arguments[0].scrollIntoView();", deepl_accept_cookies_button)    
-                safe_click(driver, deepl_accept_cookies_button)
-                
-            except:
-                pass
-
-            # Close the cookies message box if it is there
-            try:
-                if closed_cookies_accept_message_bool == False:
-                    # Accept cookies
-                    deepl_accept_cookies_element = "//button[contains(.,'Close')]"
-                    deepl_accept_cookies_button = WebDriverWait(driver, 1).until(
-                        EC.presence_of_element_located((By.XPATH, deepl_accept_cookies_element)))
-                    safe_click(driver, deepl_accept_cookies_button)
-                    closed_cookies_accept_message_bool = True
-            except:
-                pass
-                
-            try:
-                # close install extension message
-                driver.get("https://www.deepl.com/translator")
-                deepl_close_deepl_extension_element = ".w-6 > .flex"
-                deepl_close_deepl_extension_button = WebDriverWait(driver, 0.05).until(
-                    EC.presence_of_element_located((By.CSS_SELECTOR, deepl_close_deepl_extension_element)))
-                safe_click(driver, deepl_close_deepl_extension_button)
-            except:
-                pass
-        
-            # End function if no email or password are provided
-            if (deepl_account_email is None) or (deepl_account_email is None):
-                return False
-            elif deepl_account_enabled == False:
-                return False
-            
-            driver.set_window_position(0, 50)
-            driver.set_window_size(800, 700)
-            driver.get("https://www.deepl.com/en/login/")
-
-            try:
-                # Accept cookies
-                deepl_accept_cookies_element = "//button[contains(.,'Accept all cookies')]"
-                deepl_accept_cookies_button = WebDriverWait(driver, 0.05).until(
-                    EC.presence_of_element_located((By.XPATH, deepl_accept_cookies_element)))
-                driver.execute_script("arguments[0].scrollIntoView();", deepl_accept_cookies_button)    
-                safe_click(driver, deepl_accept_cookies_button)
-                
-            except:
-                pass       
-            
-            # Fill username 
-            deepl_login_email_element = "//input[@name='email']"
-            deepl_login_email_field = WebDriverWait(driver, 2).until(
-                EC.presence_of_element_located((By.XPATH, deepl_login_email_element)))
-            deepl_login_email_field.send_keys(deepl_account_email)
-            
-            # Fill password
-            deepl_login_password_element = "//input[@name='password']"
-            deepl_login_password_field = WebDriverWait(driver, 1).until(
-                EC.presence_of_element_located((By.XPATH, deepl_login_password_element)))
-            deepl_login_password_field.send_keys(deepl_account_password)
-            sleep(1)
-
-            # Close the cookies message box if it is there
-            try:
-                if closed_cookies_accept_message_bool == False:
-                    # Accept cookies
-                    deepl_accept_cookies_element = "//button[contains(.,'Close')]"
-                    deepl_accept_cookies_button = WebDriverWait(driver, 0.5).until(
-                        EC.presence_of_element_located((By.XPATH, deepl_accept_cookies_element)))
-                    safe_click(driver, deepl_accept_cookies_button)
-                    closed_cookies_accept_message_bool = True
-            except:
-                pass
-                
-            try:
-                # Accept cookies
-                deepl_accept_cookies_element = "//button[contains(.,'Accept all cookies')]"
-                deepl_accept_cookies_button = WebDriverWait(driver, 0.05).until(
-                    EC.presence_of_element_located((By.XPATH, deepl_accept_cookies_element)))
-                driver.execute_script("arguments[0].scrollIntoView();", deepl_accept_cookies_button)    
-                safe_click(driver, deepl_accept_cookies_button)
-                
-            except:
-                pass       
-            
-            # Submit login
-            deepl_login_submit_element = "//form/button"
-            deepl_login_submit_element = "//input[@name='submit']"
-            deepl_login_submit_element = "//button[contains(.,'Log in')]"
-            deepl_login_submit_button = WebDriverWait(driver, 3).until(
-                EC.presence_of_element_located((By.XPATH, deepl_login_submit_element)))
-            driver.execute_script("arguments[0].scrollIntoView();", deepl_login_submit_button)    
-            sleep(1.5)
-            try:
-                safe_click(driver, deepl_login_submit_button)
-            except:
-                pass
-            
-            try:
-                # Check account button exist
-                deepl_login_menu_element = ".dl_header_menu_v2__buttons__opener"
-                deepl_login_menu_button = WebDriverWait(driver, 3).until(
-                    EC.presence_of_element_located((By.CSS_SELECTOR, deepl_login_menu_element)))
-                safe_click(driver, deepl_login_menu_button)
-                # Close the opener dialog, not required but cleaner
-                sleep(0.1)
-                safe_click(driver, deepl_login_menu_button)
-            except:
-                pass
-            
-            try:
-                # Close the annoying plugin for deepl if displayed - bug : it does not find this element
-                deepl_plugin_dialog_element = ".w-6 path"
-                deepl_plugin_dialog_button = WebDriverWait(driver, 0.05).until(
-                    EC.presence_of_element_located((By.CSS_SELECTOR, deepl_plugin_dialog_element)))
-                safe_click(driver, deepl_plugin_dialog_button)
-            except:
-                # Just ignore if this plugin dialog does not appear
-                pass
-            
-            # Success change block size if value exists
-            deepl_max_char_bloc_size_key = ['deepl', 'account','maximum_character_block']
-            deepl_maximum_character_block = get_nested_value_from_json_array(json_configuration_array, deepl_max_char_bloc_size_key)
-            
-            if isinstance(deepl_maximum_character_block, int):
-                if deepl_maximum_character_block > MAX_TRANSLATION_BLOCK_SIZE:
-                    MAX_TRANSLATION_BLOCK_SIZE = deepl_maximum_character_block
-                    print("\nRobot is now logged in Deepl using %s account." % (deepl_account_email))
-                    print("Changing the value of maximum number of characters per block: %s\n" % (MAX_TRANSLATION_BLOCK_SIZE))
-                
-            return True
-            
-        except:
-            var = traceback.format_exc()
-            print(var)
-            print("Failed to login into Deepl, continuing without being logged on.")
-            driver.set_window_size(800, 700)
-            return False
-
-    except:
-        var = traceback.format_exc()
-        print(var)
-        print("Failed to login into Deepl, continuing without being logged on.")
-        driver.set_window_size(800, 700)
-        return False
-
-
 def selenium_chrome_perplexity_wait_log_in():
-    global json_configuration_array, MAX_TRANSLATION_BLOCK_SIZE
-    
+    """Phase F1.2: drops vestigial global declarations — neither
+    json_configuration_array nor MAX_TRANSLATION_BLOCK_SIZE is read or
+    written in this function body. (The only caller is currently
+    commented-out in main().)"""
     driver.set_window_size(600, 600)
     #driver.maximize_window()
 
@@ -2942,1184 +1724,6 @@ def selenium_chrome_perplexity_wait_log_in():
     return False
 
 
-
-def selenium_chrome_deepl_log_off():
-    global json_configuration_array, MAX_TRANSLATION_BLOCK_SIZE
-
-    try:
-        driver.get("https://www.deepl.com/")
-        
-        try:
-            
-            # Open account menu by clicking the account button
-            deepl_login_menu_element = ".dl_header_menu_v2__buttons__opener"
-            deepl_login_menu_button = WebDriverWait(driver, 9).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, deepl_login_menu_element)))
-            safe_click(driver, deepl_login_menu_button)
-            
-            try:
-                # Open account menu by clicking the account button
-                deepl_logout_menu_element = "//button[contains(.,'Log out')]"
-                deepl_logout_menu_button = WebDriverWait(driver, 1).until(
-                    EC.presence_of_element_located((By.XPATH, deepl_logout_menu_element)))
-                safe_click(driver, deepl_logout_menu_button)
-                print("\nRobot is now logged off Deepl account.")
-                
-            except:
-                # Just ignore if this plugin dialog does not appear
-                print("Unable to log off from Deepl, this can be ignored.")
-                pass
-                
-            return True
-            
-        except:
-            var = traceback.format_exc()
-            print(var)
-            print("Failed of Deepl, this can be ignored")
-            return False
-
-    except:
-        var = traceback.format_exc()
-        print(var)
-        print("Failed of Deepl, this can be ignored")
-        return False
-
-# Module-level cache
-_cached_window_pos = None
-
-def set_chrome_window_2_3_screen():
-    global driver
-    global _cached_window_pos
-
-    try:
-        # Get screen size directly from browser
-        screen_width = driver.execute_script("return screen.availWidth;")
-        screen_height = driver.execute_script("return screen.availHeight;")
-
-        width = min(int(screen_width * 5 / 7), 1200)
-        height = min(int(screen_height * 5 / 7), 900)
-
-        if _cached_window_pos is None:
-            max_x_offset = int(screen_width / 15)
-            max_y_offset = int(screen_height / 15)
-
-            import random
-            x_pos = random.randint(0, max_x_offset)
-            y_pos = random.randint(0, max_y_offset)
-
-            _cached_window_pos = (x_pos, y_pos)
-        else:
-            x_pos, y_pos = _cached_window_pos
-
-        driver.set_window_size(width, height)
-        driver.set_window_position(x_pos, y_pos)
-
-    except Exception as e:
-        print(f"[Warning] Could not set Chrome window size/position: {e}")
-        print("[Info] Falling back to 850x750 at (0,0)")
-        driver.set_window_size(850, 750)
-        driver.set_window_position(0, 0)
-        
-def deepl_close_messages():
-    """
-    Closes all common Deepl popups, messages, and dialogs.
-    No parameters needed.
-    """
-    global closed_cookies_accept_message_bool, close_install_extension_message_bool, driver
-    
-    close_install_extension_message_bool = False
-
-    # List of XPaths/CSS selectors for popups/messages
-    xpath_selectors = [
-        "//button[contains(.,'Accept all cookies')]",
-        "//button[contains(.,'Close')]",
-        "//button[contains(.,'Accept')]",
-        "//button[contains(.,'Got it')]",
-        "//button[contains(.,'Dismiss')]",
-        "//div[@role='dialog']//button[@aria-label='Close']",
-        "//button[@aria-label='Close AI Labs banner button']",  # New AI Labs close button
-        "//div[@data-testid='above-navigation-banner']//button[.//svg]",
-        "//div[@data-testid='above-navigation-banner']//button"
-    ]
-    css_selectors = [
-        ".w-6 > .flex"  # install extension popup
-        #"button[data-testid='side-panel-collapse-button']"
-    ]
-
-    # Close elements by XPath
-    for selector in xpath_selectors:
-        try:
-            el = WebDriverWait(driver, 0.01).until(EC.presence_of_element_located((By.XPATH, selector)))
-            driver.execute_script("arguments[0].scrollIntoView({block: 'start', behavior: 'auto'});", el)
-            safe_click(driver, el)
-            # Mark cookies/extension as closed if relevant
-            if "cookies" in selector.lower():
-                closed_cookies_accept_message_bool = True
-            if "w-6" in selector:
-                close_install_extension_message_bool = True
-        except:
-            continue
-
-    # Close elements by CSS selector
-    for selector in css_selectors:
-        try:
-            el = WebDriverWait(driver, 0.01).until(EC.presence_of_element_located((By.CSS_SELECTOR, selector)))
-            driver.execute_script("arguments[0].scrollIntoView({block: 'start', behavior: 'auto'});", el)
-            safe_click(driver, el)
-            close_install_extension_message_bool = True
-        except:
-            continue
-    
-    if close_install_extension_message_bool:
-        #Call another time in case some messages because layers order
-        deepl_close_messages()
-
-
-
-def selenium_chrome_deepl_translate(to_translate, retry_count):
-    global logged_into_deepl
-    translation = ""
-    Translated = False
-    # Progress bar to show only when deepl also shows it on the browser
-    bar = None
-    global closed_cookies_accept_message_bool, close_install_extension_message_bool, deepl_nb_clear_cached_times
-    global engine_method, end_time, elapsed_time, json_configuration_array
-    
-    deepl_maximum_clear_cache_retry_key = ['deepl', 'maximum_clear_cache_retry']
-    deepl_maximum_clear_cache_retry = get_nested_value_from_json_array(json_configuration_array, deepl_maximum_clear_cache_retry_key)
-    
-    # Set variable to false if they are not globally defined
-    try:
-        tmp_var = closed_cookies_accept_message_bool
-        tmp_var = close_install_extension_message_bool
-    except:
-        closed_cookies_accept_message_bool = False
-        close_install_extension_message_bool = False
-
-    to_translate_phrases_array = to_translate.split("\n")
-    to_translate_phrases_array_len = len(to_translate_phrases_array)
-
-    set_chrome_window_2_3_screen()
-    
-    
-    def ensure_target_language(driver, dest_lang="fr", dest_lang_name="French", timeout=20):
-        try:
-            wait = WebDriverWait(driver, timeout)
-
-            # Retry loop to handle stale references
-            for _ in range(3):
-                try:
-                    deepl_close_messages()
-                    
-                    # Re-query the element every iteration
-                    lang_elem = wait.until(
-                        EC.presence_of_element_located(
-                            (By.CSS_SELECTOR, '[data-testid="translator-target-lang"]')
-                        )
-                    )
-                    current_code = lang_elem.get_attribute("dl-selected-lang")
-                    if current_code is not None:
-                        current_code = current_code.lower()
-
-                    if current_code == dest_lang:
-                        return  # Already correct
-
-                    # Open selector
-                    wait.until(
-                        EC.element_to_be_clickable(
-                            (By.CSS_SELECTOR, '[data-testid="translator-target-lang-btn"]')
-                        )
-                    ).click()
-
-                    # Select language by visible name
-                    option = wait.until(
-                        EC.element_to_be_clickable(
-                            (By.XPATH, f"//button[.//text()[contains(., '{dest_lang_name}')]]")
-                        )
-                    )
-                    option.click()
-
-                    # Verify switch completed
-                    wait.until(
-                        lambda d: d.find_element(
-                            By.CSS_SELECTOR,
-                            '[data-testid="translator-target-lang"]'
-                        ).get_attribute("dl-selected-lang") == dest_lang
-                    )
-
-                    return  # Success
-                except StaleElementReferenceException:
-                    # Element got replaced; retry
-                    continue
-
-            print(f"[WARNING] Failed to ensure target language '{dest_lang_name}' ({dest_lang}): stale element after retries")
-
-        except Exception as e:
-            print(f"[WARNING] Failed to ensure target language '{dest_lang_name}' ({dest_lang}): {e}")
-            
-    def ensure_target_language_new_error(driver,
-                           dest_lang="zh-hans",
-                           dest_lang_name="Chinese (Simplified)",
-                           timeout=15):
-
-        wait = WebDriverWait(driver, timeout)
-
-        dest_lang = dest_lang.lower()
-        dest_lang_name = dest_lang_name.lower()
-
-        try:
-            # 1️⃣ Check if already selected (avoid opening dropdown)
-            current = wait.until(
-                EC.presence_of_element_located(
-                    (By.CSS_SELECTOR, '[data-testid="translator-target-lang"]')
-                )
-            ).get_attribute("dl-selected-lang")
-
-            if current and current.lower() == dest_lang:
-                return
-
-            # 2️⃣ Open dropdown
-            wait.until(
-                EC.element_to_be_clickable(
-                    (By.CSS_SELECTOR, '[data-testid="translator-target-lang-btn"]')
-                )
-            ).click()
-
-            # 3️⃣ Try direct click by data-testid (MOST STABLE)
-            normalized_code = dest_lang.replace("-hans", "-Hans").replace("-hant", "-Hant").replace("-br", "-BR")
-
-            try:
-                locator = (By.CSS_SELECTOR,
-                           f'[data-testid="translator-lang-option-{normalized_code}"]')
-
-                wait.until(EC.element_to_be_clickable(locator)).click()
-
-            except TimeoutException:
-                # 4️⃣ Fallback: match by visible text (case insensitive)
-                xpath = (
-                    "//button[@role='option' and "
-                    "contains(translate(normalize-space(string(.)), "
-                    "'ABCDEFGHIJKLMNOPQRSTUVWXYZ', "
-                    "'abcdefghijklmnopqrstuvwxyz'), "
-                    f"'{dest_lang_name}')]"
-                )
-
-                wait.until(EC.element_to_be_clickable((By.XPATH, xpath))).click()
-
-            # 5️⃣ Wait until switch confirmed
-            wait.until(
-                lambda d: d.find_element(
-                    By.CSS_SELECTOR,
-                    '[data-testid="translator-target-lang"]'
-                ).get_attribute("dl-selected-lang").lower() == dest_lang
-            )
-
-        except Exception as e:
-            #var = traceback.format_exc()
-            #print(var)
-            return False
-            #print(f"[WARNING] Failed to ensure target language '{dest_lang_name}' ({dest_lang}): {e}")
-            
-    try:
-        translation_page_openeing_loop_count = 4
-        translation_page_opened = False
-        
-        # Open Deepl translation page
-        while translation_page_opened == False and translation_page_openeing_loop_count > 0:
-            #print(f"{translation_page_openeing_loop_count} trying left")
-            try:
-                # driver.get("https://www.deepl.com/translator#%s/%s/%s" % (src_lang,dest_lang, to_translate))
-                # Deepl has a bug for / in text to be translated
-                # must be replaced by %5C%2F
-                #translation_url = "https://www.deepl.com/translator#%s/%s/%s" % (
-                #src_lang, dest_lang, urllib.parse.quote(to_translate).replace("%5C", "%5C%5C").replace("/", "%5C%2F").replace("%7C", "%5C%7C"))
-                translation_url = "https://www.deepl.com/translator#%s/%s/" % (src_lang, dest_lang)
-                driver.get(translation_url)
-                try:
-                    (driver.page_source).encode('utf-8')
-                    WebDriverWait(driver, 15).until(lambda driver: driver.execute_script('return document.readyState') == 'complete')
-                except:
-                    pass
-                
-                # Make sure the target language matches with the target language code or at least the target language name
-                try:
-                    ensure_target_language(driver, dest_lang=dest_lang, dest_lang_name=dest_lang_name)
-                    WebDriverWait(driver, 15).until(lambda driver: driver.execute_script('return document.readyState') == 'complete')
-                except:
-                    pass
-                    
-                translation_page_opened = True
-                
-                deepl_close_messages()
-                
-                ############################################
-                # Copy the text inside using javascript
-                ############################################
-                try:
-                    js_script = """
-                    // Select DeepL's editable input area
-                    var textarea = document.querySelector('d-textarea[data-testid="translator-source-input"] div[contenteditable="true"]');
-                    if (textarea) {
-                        // Set plain text content (not HTML)
-                        textarea.textContent = arguments[0];
-
-                        // Simulate real user input so DeepL's JS reacts
-                        textarea.dispatchEvent(new InputEvent('input', { bubbles: true }));
-                        textarea.dispatchEvent(new Event('change', { bubbles: true }));
-                        textarea.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: ' ' }));
-                    }
-                    """
-                    driver.execute_script(js_script, to_translate)
-                except Exception:
-                    pass  
-                
-            except:
-                print("Waiting for https://www.deepl.com/ ...")
-                sleep(1)
-            translation_page_openeing_loop_count = translation_page_openeing_loop_count - 1
-            # driver.get("https://www.deepl.com/translator#%s/%s/Hello" % (src_lang,dest_lang))
-
-        # Wait for page to be loaded
-        try:
-            (driver.page_source).encode('utf-8')
-            WebDriverWait(driver, 15).until(lambda driver: driver.execute_script('return document.readyState') == 'complete')
-            
-            try:
-                # Accept cookies
-                deepl_accept_cookies_element = "//button[contains(.,'Accept')]"
-                deepl_accept_cookies_button = WebDriverWait(driver, 0.01).until(
-                    EC.presence_of_element_located((By.XPATH, deepl_accept_cookies_element)))
-                driver.execute_script("arguments[0].scrollIntoView();", deepl_accept_cookies_button)    
-                safe_click(driver, deepl_accept_cookies_button)
-                
-            except:
-                pass
-            #print("Page loaded completed")
-        except:
-            # print("Waiting for the input_element...")
-            var = traceback.format_exc()
-            print(var)
-        
-        deepl_close_messages()
-        
-        # Wait for copy translation button
-        # Removed on 2022-05-25
-        found_copy_button = False
-        loop_counter_search_button = 4
-        while (found_copy_button is False) and (loop_counter_search_button > 0):
-            #print(f"loop {loop_counter_search_button}")
-            deepl_close_messages()
-            
-            try:
-                # Accept cookies
-                deepl_translation_section_element = "section[aria-labelledby='translation-target-heading']"
-                
-                deepl_translation_section = WebDriverWait(driver, 0.01).until(
-                    EC.presence_of_element_located(
-                        (By.CSS_SELECTOR, deepl_translation_section_element)
-                    )
-                )
-                is_visible = driver.execute_script("""
-                    const r = arguments[0].getBoundingClientRect();
-                    return (r.top >= 0 && r.bottom <= window.innerHeight);
-                """, copy_translation_button)
-                if not is_visible:
-                    driver.execute_script(
-                        "arguments[0].scrollIntoView({block: 'end'});",
-                        copy_translation_button
-                    )
-            except:
-                pass
-            
-            try:
-                # Added on 2023-09-26
-                copy_translation_element = "//button[contains(@aria-label, 'Copy to clipboard')]" #//svg
-                #print(f"Looking for {copy_translation_element}")
-                copy_translation_button = WebDriverWait(driver, 0.2).until(
-                    EC.presence_of_element_located((By.XPATH, copy_translation_element)))
-                
-                found_copy_button = True
-                #print(f"Loop {loop_counter_search_button}, found xpath button: {copy_translation_element}")
-                #print(f"Found xpath button: {copy_translation_element}")
-                time.sleep(0.2)
-                
-            except:
-                #print(f"Except loop {loop_counter_search_button}, not found xpath button: {copy_translation_element}")
-                try:
-                    copy_translation_element = "#dl_translator"
-                    #print(f"Looking for {copy_translation_element}")
-
-                    copy_translation_button = WebDriverWait(driver, 0.2).until(
-                        EC.presence_of_element_located((By.CSS_SELECTOR, copy_translation_element)))
-                                                                                                                                      
-                    found_copy_button = True
-                    #print(f"Found xpath button: {copy_translation_element}")
-                    
-                except:
-                    try:
-                        # Version 2022-03-09
-                        copy_translation_element = ".lmt__target_toolbar_right > span path:nth-child(2)"
-                        copy_translation_element = "div:nth-child(5) > svg"
-                        #print(f"Looking for {copy_translation_element}")
-                        copy_translation_button = WebDriverWait(driver, 0.2).until(
-                            EC.presence_of_element_located((By.XPATH, copy_translation_element)))
-                        found_copy_button = True
-                    except:
-                        # Version 2022-03-30
-                        try:
-                           copy_translation_element = ".lmt__target_toolbar_right > div > span svg"
-                           #print(f"Looking for {copy_translation_element}")       
-                           copy_translation_button = WebDriverWait(driver, 0.2).until(
-                               EC.presence_of_element_located((By.CSS_SELECTOR, copy_translation_element)))
-                           found_copy_button = True
-                        except:
-                           #print("Copy button not found !!")
-                           pass
-            #print("Incrementing loop_counter_search_button")
-            loop_counter_search_button = loop_counter_search_button - 1
-        
-        busy_element = ".lmt__textarea_separator__border_inner"
-        # busy_element = "//div[@id='dl_translator']/div/div/div[5]"
-        sleep(deepl_sleep_wait_translation_seconds)
-
-        busybox_innerhtml = ""
-        timeout_busy_translating = 50
-        
-        try:
-            busybox = WebDriverWait(driver, 0.3).until(EC.presence_of_element_located((By.CSS_SELECTOR, busy_element)))
-            attrs = driver.execute_script(
-                'var items = {}; for (index = 0; index < arguments[0].attributes.length; ++index) { items[arguments[0].attributes[index].name] = arguments[0].attributes[index].value }; return items;',
-                busybox)
-            busybox_innerhtml = busybox.get_attribute('innerHTML')
-            while busybox_innerhtml != "" and timeout_busy_translating > 0:
-                sleep(0.3)
-                busybox = WebDriverWait(driver, 15).until(
-                    EC.presence_of_element_located((By.CSS_SELECTOR, busy_element)))
-                busybox_innerhtml = busybox.get_attribute('innerHTML')
-                attrs = driver.execute_script(
-                    'var items = {}; for (index = 0; index < arguments[0].attributes.length; ++index) { items[arguments[0].attributes[index].name] = arguments[0].attributes[index].value }; return items;',
-                    busybox)
-                timeout_busy_translating -= 1
-
-                deepl_usage_limit_reached_element = "//button[contains(.,'Back to Translator')]"
-                try:
-                    deepl_usage_limit_reached_button = WebDriverWait(driver, 0.05).until(
-                        EC.presence_of_element_located((By.XPATH, deepl_usage_limit_reached_element)))
-                    safe_click(driver, deepl_usage_limit_reached_button)
-                    return False, ""
-                except:
-                    pass
-        except:
-            #var = traceback.format_exc()
-            #print(var)
-            limit_reached = False
-
-            # Look for usage limit reached, and try pro for 30 days
-            deepl_usage_limit_reached_element = "//button[contains(.,'Back to Translator')]"
-            try:
-                deepl_usage_limit_reached_button = WebDriverWait(driver, 0.05).until(
-                    EC.presence_of_element_located((By.XPATH, deepl_usage_limit_reached_element)))
-                
-                limit_reached = True
-                #safe_click(driver, deepl_usage_limit_reached_button)
-            except:
-                
-                pass
-            # Sometimes the busy element does not show up, just ignore it and continue
-            
-            deepl_close_messages()
-            
-            if limit_reached:
-                try:
-                    if deepl_nb_clear_cached_times is None:
-                        deepl_nb_clear_cached_times = 0
-                except:
-                    deepl_nb_clear_cached_times = 0
-                    
-                if deepl_nb_clear_cached_times > deepl_maximum_clear_cache_retry:
-                    return False, ""
-                print("Warning : deepl usage limit reached... retrying after cleaning cache.")
-                driver.delete_all_cookies()
-                driver.get("https://www.deepl.com")
-                closed_cookies_accept_message_bool = False
-                deepl_nb_clear_cached_times = deepl_nb_clear_cached_times + 1
-                logged_into_deepl = selenium_chrome_deepl_log_in()
-                return selenium_chrome_deepl_translate(to_translate, retry_count)
-              
-
-        #print("Scroll to copy_translation_button")
-        actions = ActionChains(driver)
-        # actions.move_to_element(copy_translation_button).perform()
-        # sleep(0.1)
-
-        # Scroll the browser to the element's Y position
-        try:
-            driver.execute_script(
-                "arguments[0].scrollIntoView({block: 'end'});",
-                copy_translation_button
-            )
-        except:
-            pass
-
-        copy_button_clicked = False
-        copy_button_clicked_loop_count = 7
-        res = ""
-        still_translating_html_str = 'div class="lmt__progress_popup lmt__progress_popup--visible lmt__progress_popup--visible_2" dl-test="translator-progress-popup"'
-        
-        # When failing to get translation from HTML, use button copy and clipboard and warn user.
-        warned_using_clipboard = False
-        
-        while copy_button_clicked_loop_count > 0 and (res == "" or res is None):
-            #print(f"copy_button_clicked_loop_count : {copy_button_clicked_loop_count}")
-            try:
-                #driver.execute_script("scrollBy(0,-1000);")
-                # clipboard.copy('')
-                #try:
-                #    actions.move_to_element(copy_translation_button).perform()
-                #except:
-                #    pass
-                sleep(0.05)
-                # driver.set_window_size(800, 700)
-                page_source_str = driver.page_source
-                #print(":::::::::::::::::::::::::::::::::::::::::::::::::::::::")
-                #with open('before.html', 'w', encoding="utf-8") as f:
-                #    f.write(page_source_str)
-                #    f.close()
-                wait_translation_finish_try = 400
-                block_translation_percent_done = 0
-                while page_source_str.find(still_translating_html_str) > 0 and wait_translation_finish_try > 0:
-                    sleep(0.05)
-                    print("Still translating...")
-                    page_source_str = driver.page_source
-                    # print(":::::::::::::::::::::::::::::::::::::::::::::::::::::::")
-                    # print(driver.page_source)
-                    wait_translation_finish_try = wait_translation_finish_try - 1
-                    search_percent_re = "of characters translated\">(\d+)\% of characters translated</p>"
-                    mo = re.search(search_percent_re, page_source_str)
-                    if mo:
-                        try:
-                            if bar is None:
-                                bar = progressbar.ProgressBar().start()
-                                bar.maxval = 100
-
-                            block_previous_translation_percent_done = block_translation_percent_done
-                            block_translation_percent_done = mo.group(1)
-                            if block_previous_translation_percent_done != block_translation_percent_done:
-                                # print ("found percent: %s" %block_translation_percent_done)
-                                bar.update(int(block_translation_percent_done))
-                        except:
-                            pass
-
-                    # input("of characters translated")
-                
-                if bar is not None:
-                    bar.update(100)
-                    bar = None
-                    print("")
-
-                # print(":::::::::::::::::::::::::::::::::::::::::::::::::::::::")
-                # print(driver.page_source)
-                # print(":::::::::::::::::::::::::::::::::::::::::::::::::::::::")
-                # input("enter to click on button")
-
-                page_source_str = driver.page_source
-                # with open('after.html', 'w', encoding="utf-8") as f2:
-                #    f2.write(page_source_str)
-                # f2.close()
-                # input("wait html")
-
-                # print("Done waiting for translation")
-
-                try:
-                    # Try to get the translation from the innerhtml of translation button
-                    inner_html_plain_text_element = "//button[@class='lmt__translations_as_text__text_btn']"
-                    InnerHTMLPlainTextElement = WebDriverWait(driver, 1).until(
-                        EC.presence_of_element_located((By.XPATH, inner_html_plain_text_element)))
-                    translation_from_plain_text = InnerHTMLPlainTextElement.get_attribute('innerHTML')
-                    res = translation_from_plain_text
-                except:
-                    # if we cannot find translation button with translation the use the copy button
-                    # previous_clipbboard = clipboard.paste()
-                    # previous_clipbboard = pyperclip.paste()
-                    page_source_str = driver.page_source
-                    #with open('deepl_page_source.html', 'w', encoding="utf-8") as f:
-                    #    f.write(page_source_str)
-                    #    f.close()
-                    res = ""
-                    try:
-                        try:
-                            translation_box = WebDriverWait(driver, 5).until(
-                                EC.presence_of_element_located(
-                                    (By.CSS_SELECTOR,
-                                     "d-textarea[data-testid='translator-target-input'] div[contenteditable='true']")
-                                )
-                            )
-
-                            res = translation_box.get_attribute("innerText")
-                        except:
-                            var = traceback.format_exc()
-                            print(var)
-                            res = ""
-                        
-                        #try:
-                        #    #inner_html_translation_xpath_element = '//div[@contenteditable="true" and @role="textbox" and @aria-labelledby="translation-results-heading"]'
-                        #    inner_html_translation_xpath_element = "//div[contains(@aria-labelledby, 'translation-target-heading')]"
-                        #    InnerHTMLTranslationElement = WebDriverWait(driver, 1).until(
-                        #        EC.presence_of_element_located((By.XPATH, inner_html_translation_xpath_element)))
-                        #    
-                        #    if InnerHTMLTranslationElement:
-                        #        # Get the plain text from the element
-                        #        translation_from_plain_text = InnerHTMLTranslationElement.text
-                        #        #print("Plain Text: %s " % (translation_from_plain_text))
-                        #    else:
-                        #        print("Element not found")
-                        #    res = translation_from_plain_text
-                        #except:
-                        #    var = traceback.format_exc()
-                        #    print(var)
-                    
-                        # Added on version 2022-05-31
-                        #copy_translation_element = '//*[@id="headlessui-tabs-panel-7"]/div/div[1]/section/div/div[2]/div[3]/section/div[2]/div[3]/span[2]/span/span/button'
-                        #copy_translation_button = WebDriverWait(driver, 6).until(
-                        #    EC.presence_of_element_located((By.XPATH, copy_translation_element)))
-                        if not warned_using_clipboard and (res == "" or res == None):
-                            print("Warning: Failed to get translation from html, copying from clipboard")
-                            warned_using_clipboard = True
-                            
-                        if warned_using_clipboard and (res == "" or res == None):
-                            #return False, None
-                            clipboard.copy('')
-                            safe_click(driver, copy_translation_button)
-                            copy_button_clicked = True
-                            res = clipboard.paste()
-                            if len(res) == 0 or res == None:
-                                print("Error : failed to get translation from Deepl.")
-                                return False, ""
-                            
-                    except:
-                        var = traceback.format_exc()
-                        print(var)
-                        #print("res : %s" %(res))
-                        pass
-                    #return False, None
-                    # res = pyperclip.paste()
-                    # print(res)
-
-                # id="target-dummydiv"
-                # contains the translation
-                res = res.replace("\r", "")
-                res = re.sub(r"\n+", "\n", res)
-                res = remove_span_tag(res)
-                
-                input_nb_lines = len(re.sub(r"\n+", "\n", to_translate).replace("\r", "").split("\n"))
-
-                translated_phrases_array = res.split("\n")
-                if translated_phrases_array is None:
-                    translated_phrases_array_len = 0
-                else:
-                    translated_phrases_array_len = len(translated_phrases_array)
-                
-                translated_phrases_array = translated_phrases_array[:input_nb_lines]
-                
-                to_translate_phrases_array_len = input_nb_lines
-                
-                #print(input_nb_lines)
-                #print(re.sub(r"\n+", "\n", to_translate).replace("\r", "").split("\n"))
-                #print(translated_phrases_array_len)
-                #print(translated_phrases_array)
-                #print(translated_phrases_array_len)
-                #print(to_translate_phrases_array_len)
-                #input("Wait")
-                
-                # for pos_remove in range(0,translated_phrases_array_len - to_translate_phrases_array_len):
-                if translated_phrases_array_len == to_translate_phrases_array_len:
-                    res = "\n".join(translated_phrases_array)
-                    
-                if translated_phrases_array_len < to_translate_phrases_array_len or translated_phrases_array_len > to_translate_phrases_array_len:
-                    res = ""
-
-            except:
-                #print(f"Found exception on loop {copy_button_clicked_loop_count}")
-                if copy_button_clicked_loop_count < 20:
-                    print("Waiting for the copy button...")
-                    #var = traceback.format_exc()
-                    #print(var)
-            copy_button_clicked_loop_count = copy_button_clicked_loop_count - 1
-        
-        # translation = res
-        translation = "\n".join(translated_phrases_array)
-        # print("translation=%s" % (translation))
-        # input("Press enter to continue")
-    except Exception:
-        var = traceback.format_exc()
-        print(var)
-        sleep(1)
-        # sys.exit(0)
-    if res == "":
-        return False, ""
-    else:
-        return True, translation
-
-
-
-def selenium_chrome_chatgpt_translate(to_translate, retry_count):
-    global logged_into_chatgpt, src_lang_name, dest_lang_name
-    
-    translation = ""
-    Translated = False
-    # Progress bar to show only when deepl also shows it on the browser
-    bar = None
-    global closed_cookies_accept_message_bool, close_install_extension_message_bool, deepl_nb_clear_cached_times
-    global engine_method, end_time, elapsed_time, json_configuration_array
-    
-    res = ""
-    
-    deepl_maximum_clear_cache_retry_key = ['deepl', 'maximum_clear_cache_retry']
-    deepl_maximum_clear_cache_retry = get_nested_value_from_json_array(json_configuration_array, deepl_maximum_clear_cache_retry_key)
-    
-    # Set variable to false if they are not globally defined
-    try:
-        tmp_var = closed_cookies_accept_message_bool
-        tmp_var = close_install_extension_message_bool
-    except:
-        closed_cookies_accept_message_bool = False
-        close_install_extension_message_bool = False
-
-    to_translate_phrases_array = to_translate.split("\n")
-    to_translate_phrases_array_len = len(to_translate_phrases_array)
-
-    set_chrome_window_2_3_screen()
-
-    try:
-        translation_page_openeing_loop_count = 4
-        translation_page_opened = False
-        
-        # Open ChatGPT translation page
-        while translation_page_opened == False and translation_page_openeing_loop_count > 0:
-            #print(f"{translation_page_openeing_loop_count} trying left")
-            try:
-                driver.delete_all_cookies()
-                driver.get("https://chatgpt.com/")
-                #sleep(1)
-
-                translation_page_opened = True
-            except:
-                print("Waiting for https://chatgpt.com/ ...")
-                sleep(1)
-            translation_page_openeing_loop_count = translation_page_openeing_loop_count - 1
-        
-        try:
-            # Wait up to 1 second for the button to appear
-            button = WebDriverWait(driver, 0.2).until(
-                EC.element_to_be_clickable((By.XPATH, "//button[contains(., 'Accept all')]"))
-            )
-            safe_click(driver, button)
-            #print("✅ Clicked the 'Accept all' button.")
-        except Exception:
-            #print("⚠️ 'Accept all' button not found or not clickable (ignored).")
-            pass
-        
-        try:
-            # Wait until the link is visible
-            stay_logged_out_link = stop_button = WebDriverWait(driver, 1.2).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, "button[aria-label='Close']"))
-            )
-            
-            # Click the link
-            safe_click(driver, stay_logged_out_link)
-        except:
-            pass
-
-        try:
-            # Wait until the link is visible
-            stay_logged_out_link = stop_button = WebDriverWait(driver, 1.2).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, "button[aria-label='Close']"))
-            )
-
-            # Click the link
-            safe_click(driver, stay_logged_out_link)
-        except:
-            pass
-
-        try:
-            WebDriverWait(driver, 0.3).until(
-                EC.element_to_be_clickable((By.XPATH, "//a[contains(text(), 'Stay logged out')]"))
-            ).click()
-        except Exception:
-            pass  # ignore if not found or not clickable
-
-        # Locate the contenteditable div
-        textarea = driver.find_element(By.XPATH, "//div[@id='prompt-textarea']")
-
-        # Send text to the element
-        safe_click(driver, textarea)
-
-        #time.sleep(5)
-        #textarea.send_keys("Translate this from English to Persian:")
-
-        # Sending a new line using Keys.RETURN for proper formatting
-        #textarea.send_keys(Keys.SHIFT + Keys.ENTER)
-
-        #textarea.send_keys("I was lying with my eyes closed,")
-        #textarea.send_keys(Keys.SHIFT + Keys.ENTER)
-
-
-        # The string that needs to be sent
-        # Max 4,096 characters ?
-        
-        str_prompt = build_translation_prompt(src_lang_name, dest_lang_name, to_translate)
-        
-        #print (str_prompt)
-        
-        lines = str_prompt.split('\n')
-
-        # Split the string on new lines
-        lines = str_prompt.splitlines()
-
-        # Wrap each line in <p>...</p>
-        wrapped_lines = [f"<p>{line}</p>" for line in lines]
-
-        # Join all wrapped lines into a single string
-        output_string = "".join(wrapped_lines)
-        
-        #print(f"to_translate_phrases_array_len={to_translate_phrases_array_len}")
-
-        # JavaScript to set the content of the contenteditable div
-        js_script = """
-        var textarea = document.getElementById('prompt-textarea');
-        textarea.innerHTML = arguments[0];
-        """
-
-        # Execute JavaScript to inject the text into the div
-        driver.execute_script(js_script, output_string)
-
-        # Send each line to the textarea
-        #for i, line in enumerate(lines):
-        #    textarea.send_keys(line)  # Send the current line
-            
-        #    # If it's not the last line, send SHIFT + ENTER to move to the next line
-        #    if i < len(lines) - 1:
-        #        textarea.send_keys(Keys.SHIFT + Keys.RETURN)
-
-        # Wait for the button to appear with a timeout of 3 seconds
-        sleep(1)
-        #button = WebDriverWait(driver, 3).until(
-        #    EC.presence_of_element_located((By.XPATH, "//button[@aria-label='Send prompt' and @data-testid='send-button']"))
-        #)
-        
-        #button = WebDriverWait(driver, 3).until(
-        #    EC.presence_of_element_located((By.CSS_SELECTOR, "#composer-submit-button > svg.icon > path"))
-        #)
-
-        try:
-            button = driver.find_element(By.CSS_SELECTOR, 'button[data-testid="close-button"]')
-            safe_click(driver, button)
-        except:
-            pass
-
-        # Locate the button element using its attributes
-        button_submit_prompt = driver.find_element(By.ID, "composer-submit-button")
-        
-        driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", button_submit_prompt)
-
-        # Click the button
-        safe_click(driver, button_submit_prompt)
-
-
-        # Set a timeout value for waiting for the element
-        timeout = 1  # Timeout after 10 seconds if not found
-        found_stop_streaming_button = False
-        
-        max_wait_time = 40  # Maximum number of seconds to wait
-        start_time = time.time()
-        found_stop_streaming_button = False
-
-        while time.time() - start_time < max_wait_time:
-            try:
-                # Search for the button with aria-label="Stop streaming"
-                stop_button = WebDriverWait(driver, timeout).until(
-                    EC.presence_of_element_located((By.XPATH, "//button[@aria-label='Stop streaming']"))
-                )
-                
-                # Element found, perform action (if any)
-                if not found_stop_streaming_button:
-                    #print("Found the 'Stop streaming' button. Waiting for the stop steaming button to disappear")
-                    found_stop_streaming_button = True
-                    
-                
-                # Sleep for 0.5 seconds before checking again
-                time.sleep(0.25)
-                
-                try:
-                    close_button = WebDriverWait(driver, 0.01).until(
-                        EC.presence_of_element_located((By.CSS_SELECTOR, "button[data-testid='answer-mode-tabs-tab-search']"))
-                    )
-
-                    close_button = driver.find_element(By.CSS_SELECTOR, "button[data-testid='answer-mode-tabs-tab-search']")
-
-                    # Send PAGE_DOWN to the body (or active element)
-                    driver.find_element(By.TAG_NAME, "body").send_keys(Keys.PAGE_DOWN)
-                    #print("Button clicked and PAGE_DOWN sent")
-                except:
-                    try:
-                        body = driver.find_element(By.TAG_NAME, "body")
-                        body.send_keys(Keys.PAGE_DOWN)
-                    except:
-                        #print("Cannot find html body...")
-                        pass
-                
-                try:
-                    # Wait until the link is visible
-                    stay_logged_out_link = WebDriverWait(driver, 0.01).until(
-                        EC.presence_of_element_located((By.CSS_SELECTOR, "button[aria-label='Close']"))
-                    )
-
-                    # Click the link
-                    safe_click(driver, stay_logged_out_link)
-                except:
-                    pass
-
-                try:
-                    WebDriverWait(driver, 0.3).until(
-                        EC.element_to_be_clickable((By.XPATH, "//a[contains(text(), 'Stay logged out')]"))
-                    ).click()
-                except Exception:
-                    pass  # ignore if not found or not clickable
-                    
-                try:
-                    # Wait briefly (0.5s) for the Close button to appear and be clickable
-                    close_button = WebDriverWait(driver, 0.05).until(
-                        EC.element_to_be_clickable((By.CSS_SELECTOR, "button[data-testid='close-button']"))
-                    )
-                    safe_click(driver, close_button)
-                    #print("✅ Clicked the 'Close' button.")
-                except Exception:
-                    #print("⚠️ 'Close' button not found or not clickable (ignored).")
-                    pass
-                    
-                # Scroll down the page to see the translation
-                try:
-                    button = driver.find_element(
-                        By.CSS_SELECTOR,
-                        "button.cursor-pointer.absolute.z-30.rounded-full.bg-clip-padding.border.text-token-text-secondary"
-                    )
-                    safe_click(driver, button)
-                except Exception:
-                    pass  # Ignore if not found or not clickable
-                
-            except Exception as e:
-                # If the element is no longer found or any other exception occurs
-                #print("Element not found or timeout reached. Stopping the loop.")
-                
-                driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-                break
-
-        # Wait for the button to appear with a timeout of 3 seconds
-        #button = WebDriverWait(driver, 3).until(
-        #    EC.presence_of_element_located((By.XPATH, "//button[@aria-label='Dictate button']"))
-        #)
-
-        page_source_str = driver.page_source
-
-
-        # Parse the HTML with BeautifulSoup
-        soup = BeautifulSoup(page_source_str, 'html.parser')
-
-        # Find all the article tags
-        articles = soup.find_all('article')
-
-        #print(len(articles))
-
-        second_article_html = str(articles[1])
-        #print (second_article_html)
-        #print()
-
-
-        # Get the text of the last article element
-        last_article_text = articles[-1].get_text()
-
-        # Print the extracted text
-        #print(last_article_text)
-
-        lines = None
-
-        # Find the div with class "markdown"
-        markdown_div = articles[1].find('div', class_='markdown')
-
-        # Check if the div exists and then process the text
-        if markdown_div:
-            # Step 1: Replace all </p><p> with <br/>
-            html_str = str(markdown_div)
-            html_str = html_str.replace('</p><p>', '<br/><br/>')
-
-            # Reparse the modified HTML to a BeautifulSoup object again
-            markdown_div = BeautifulSoup(html_str, 'html.parser')
-
-            # Step 2: Define a complex delimiter for <br/>
-            delimiter = 'random_complex_delimiter_123456'
-            delimiter_paragraph = f"<p>{delimiter}</p>"
-
-            # Step 3: Replace <br/> tags with the complex delimiter
-            for line_break in markdown_div.find_all('br'):
-                line_break.insert_before(BeautifulSoup(delimiter_paragraph, 'html.parser'))
-                line_break.unwrap()  # Remove the <br> tag after inserting the delimiter
-                
-
-            # Get the full text with the complex delimiter and print it
-            markdown_text_with_delimiter = markdown_div.get_text()
-
-            # Output the result
-            #print(markdown_text_with_delimiter)
-            #input("After markdown text split")
-            
-            lines = markdown_text_with_delimiter.split(delimiter)
-            if(len(lines) == 1):
-                lines = markdown_text_with_delimiter.split("\n")
-                
-            lines = [line.replace('\n', '') for line in lines]
-            #print("to_translate")
-            #print(to_translate)
-            #print(lines)
-            #print("after print lines")
-
-        else:
-            print("Error : No div with class 'markdown' found.")
-
-        translated_phrases_array = lines
-        if translated_phrases_array is None:
-            translated_phrases_array_len = 0
-        else:
-            translated_phrases_array_len = len(translated_phrases_array)
-        #print(f"translated_phrases_array_len={translated_phrases_array_len}")
-        
-        input_nb_lines = len(to_translate.replace("\r", "").split("\n"))
-        # for pos_remove in range(0,translated_phrases_array_len - to_translate_phrases_array_len):
-        if translated_phrases_array_len >= to_translate_phrases_array_len:
-            #print(f"input_nb_lines={input_nb_lines}")
-            translated_phrases_array = translated_phrases_array[:input_nb_lines]
-            #print("input_nb_lines: %s" % (input_nb_lines))
-            #print("array: %s" % (translated_phrases_array))
-            res = "\n".join(translated_phrases_array)
-            if translated_phrases_array_len > to_translate_phrases_array_len:
-                print("Too many lines found in translation...")
-                res = ""
-                translated_phrases_array = ""
-                translated_phrases_array_len = 0
-                print("Found %s lines out of %s lines" % (translated_phrases_array_len, to_translate_phrases_array_len))
-
-        if translated_phrases_array_len < to_translate_phrases_array_len:
-            res = ""
-            print("Warning, not enough lines found in translation. Retrying.")
-            print("Cleaning up chatgpt cookies...")
-            driver.delete_all_cookies()
-
-        translation = "\n".join(lines)
-        #input("After markdown text")
-        # Get the text inside this div
-        #if assistant_div:
-        #    assistant_text = assistant_div.get_text()
-        #    print(assistant_text)
-        #else:
-        #    print("No div with data-message-author-role='assistant' found.")
-        
-        # Step 1: Click the 3-dot conversation options button
-        try:
-            menu_button = WebDriverWait(driver, 0.25).until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, 'button[data-testid="conversation-options-button"]'))
-            )
-            safe_click(driver, menu_button)
-
-            # Step 2: Wait for and click the "Delete" button by visible text
-            delete_button = WebDriverWait(driver, 0.25).until(
-                EC.element_to_be_clickable((By.XPATH, "//*/text()[normalize-space(.)='Delete']/parent::*"))
-            )
-            safe_click(driver, delete_button)
-            
-            # Step: Click the red "Delete" confirmation button
-            confirm_delete_button = WebDriverWait(driver, 0.25).until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, 'button[data-testid="delete-conversation-confirm-button"]'))
-            )
-            safe_click(driver, confirm_delete_button)
-        except:
-            pass
-        
-            
-    except Exception:
-        var = traceback.format_exc()
-        try:
-            #This content may violate our usage policies.
-            if "This content may violate our usage policies." in driver.page_source:
-                print("Chatgpt returned an error : This content may violate our usage policies.")
-            else:
-                print(var)
-        except:
-            pass
-        #input("Wait")
-    if res is not None and res != "":
-        return True, translation
-    else:
-        return False, ""
-
-def click_verify_human_checkbox_if_present(driver, timeout=50):
-    """
-    If a DIV containing the text "Verify you are human" has an input[type=checkbox] inside,
-    scroll it into view and click it. Ignore errors and return True if clicked, False otherwise.
-    """
-    
-    try:
-        WebDriverWait(driver, 20).until(EC.frame_to_be_available_and_switch_to_it((By.CSS_SELECTOR,"iframe[title='Widget containing a Cloudflare security challenge']")))
-        WebDriverWait(driver, 20).until(EC.element_to_be_clickable((By.CSS_SELECTOR, "input[type='checkbox']"))).click()
-    except:
-        input("Did not find checkbox")
-        
-    return
-
-    # Wait for iframe to load (Cloudflare Turnstile usually has "cf-chl-widget" or similar in its ID)
-    iframe = WebDriverWait(driver, timeout).until(
-        EC.presence_of_element_located((By.CSS_SELECTOR, "iframe[src*='challenges.cloudflare.com']"))
-    )
-
-    # Switch into the iframe
-    driver.switch_to.frame(iframe)
-
-    # Now find the checkbox inside the iframe
-    checkbox = WebDriverWait(driver, timeout).until(
-        EC.element_to_be_clickable((By.XPATH, "//input[@type='checkbox']"))
-    )
-    safe_click(driver, checkbox)
-
-    # Switch back to main page
-    driver.switch_to.default_content()
-    return
-    
-    xpath = "//div[contains(., 'Verify you are human')]//input[@type='checkbox']"
-    try:
-        # wait briefly for presence (not necessarily visible/clickable)
-        checkbox = WebDriverWait(driver, timeout).until(
-            EC.presence_of_element_located((By.XPATH, xpath))
-        )
-    except TimeoutException:
-        input("Didn't find checkbox")
-        return False
-
-    try:
-        # Scroll into view
-        driver.execute_script("arguments[0].scrollIntoView({block: 'center', inline: 'center'});", checkbox)
-    except WebDriverException:
-        # ignore scrolling errors
-        pass
-
-    try:
-        # Use JS click for maximum reliability (avoids overlay / intercepted click issues)
-        driver.execute_script("arguments[0].click();", checkbox)
-        return True
-    except (JavascriptException, WebDriverException):
-        # fallback to normal click if JS click fails
-        try:
-            safe_click(driver, checkbox)
-            return True
-        except Exception:
-            return False
 
 def build_translation_prompt(source_lang, dest_lang, text):
     lines = text.split("\n")
@@ -4164,652 +1768,103 @@ def build_translation_prompt(source_lang, dest_lang, text):
 
     return prompt
 
-def perplexity_close_messages():
-    """
-    Closes all common Deepl popups, messages, and dialogs.
-    No parameters needed.
-    """
-    global closed_cookies_accept_message_bool, close_install_extension_message_bool, driver
-    
-    close_install_extension_message_bool = False
-
-    # List of XPaths/CSS selectors for popups/messages
-    xpath_selectors = [
-       "//*/text()[normalize-space(.)='Accept All Cookies']/parent::*"
-    ]
-    css_selectors = [
-        "div.relative.w-full.overflow-hidden.rounded-lg",
-        "button[data-testid='floating-signup-close-button']",
-        "button[data-testid='floating-card-upsell-dismiss']"
-    ]
-
-    # Close elements by XPath
-    for selector in xpath_selectors:
-        try:
-            el = WebDriverWait(driver, 0.01).until(EC.presence_of_element_located((By.XPATH, selector)))
-            driver.execute_script("arguments[0].scrollIntoView();", el)
-            safe_click(driver, el)
-            # Mark cookies/extension as closed if relevant
-            if "cookies" in selector.lower():
-                closed_cookies_accept_message_bool = True
-            if "w-6" in selector:
-                close_install_extension_message_bool = True
-        except:
-            continue
-
-    # Close elements by CSS selector
-    for selector in css_selectors:
-        try:
-            el = WebDriverWait(driver, 0.01).until(EC.presence_of_element_located((By.CSS_SELECTOR, selector)))
-            driver.execute_script("arguments[0].scrollIntoView();", el)
-            safe_click(driver, el)
-            close_install_extension_message_bool = True
-        except:
-            continue
-    
-    if close_install_extension_message_bool:
-        #Call another time in case some messages because layers order
-        deepl_close_messages()
-
-def selenium_webservice_perplexity_translate(to_translate, retry_count):
-    global src_lang_name, dest_lang_name
+def selenium_webservice_perplexity_translate(ctx: RuntimeContext, to_translate, retry_count):
+    """HTTP forwarder for Perplexity webservice. Threaded in Phase F1.1:
+    reads ``ctx.language.src_lang_name`` and ``ctx.language.dest_lang_name``
+    in place of the historical module globals."""
     try:
         url = "http://127.0.0.1:8000/translate"
         payload = {
-            "src_lang_name": src_lang_name,
-            "dest_lang_name": dest_lang_name,
-            "text": to_translate,
-            "engine": "perplexity",
-            "retry_count": 2
+            "src_lang_name":  ctx.language.src_lang_name,
+            "dest_lang_name": ctx.language.dest_lang_name,
+            "text":           to_translate,
+            "engine":         "perplexity",
+            "retry_count":    2,
         }
         response = requests.post(url, json=payload)
         translation = response.json()['translation']
         return True, translation
-    except:
+    except Exception:
         return False, ""
 
 
-def selenium_chrome_perplexity_translate(to_translate, retry_count, max_try_count):
-    global logged_into_chatgpt, src_lang_name, dest_lang_name, chrome_options, bloc_number, service, chrome_options
-    
-    translation = ""
-    Translated = False
-    # Progress bar to show only when deepl also shows it on the browser
-    bar = None
-    global closed_cookies_accept_message_bool, close_install_extension_message_bool, deepl_nb_clear_cached_times
-    global engine_method, end_time, elapsed_time, json_configuration_array
-    
-    to_translate_phrases_array = to_translate.split("\n")
-    to_translate_phrases_array_len = len(to_translate_phrases_array)
-    
-    if retry_count >= 1:
-        print(f"Retrying perplexity translation : {retry_count}/{max_try_count} time")
-        
-    str_prompt = build_translation_prompt(src_lang_name, dest_lang_name, to_translate)
-    
-    #print(str_prompt)
-    
-    # Set variable to false if they are not globally defined
-    try:
-        tmp_var = closed_cookies_accept_message_bool
-        tmp_var = close_install_extension_message_bool
-    except:
-        closed_cookies_accept_message_bool = False
-        close_install_extension_message_bool = False
+def set_translation_function(ctx: RuntimeContext):
+    """Resolve the per-call dispatcher for the active engine + method.
 
-    to_translate_phrases_array = to_translate.split("\n")
-    to_translate_phrases_array_len = len(to_translate_phrases_array)
+    Threaded in Phase F1.4: writes ``ctx.engine.dispatcher`` instead of
+    the historical module-level pointer
+    ``selenium_chrome_machine_translate_once``. Reads engine + method
+    + max-block-size + splitonly through ``ctx`` instead of globals.
 
-    set_chrome_window_2_3_screen()
-    
+    R15: this is the function that re-points the dispatcher during the
+    DeepL phrasesblock → singlephrase fallback. The structural test
+    `test_engine_method_flip_via_ctx` pins the contract.
 
-    try:
-        translation_page_openeing_loop_count = 4
-        translation_page_opened = False
-        
-       # 1️ Open Google homepage
-        driver.get("https://www.google.com/?hl=en&gl=us")
+    Ctx-aware engine functions (e.g. selenium_chrome_deepl_translate
+    after F1.5) accept ``(ctx, text, retry)``. The dispatcher caller in
+    selenium_chrome_machine_translate passes only ``(text, retry)`` so
+    we bind ``ctx`` here via functools.partial.
+    """
+    import functools
 
-        # 2 Try to click "Accept all" if it exists
-        try:
-            wait = WebDriverWait(driver, 0.2)
-            accept_button = wait.until(
-                EC.presence_of_element_located((By.XPATH, "//div[normalize-space()='Accept all']/ancestor::button"))
-            )
-            wait.until(EC.element_to_be_clickable((By.XPATH, "//div[normalize-space()='Accept all']/ancestor::button")))
-            driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", accept_button)
-            
-            driver.find_element(By.TAG_NAME, "body").send_keys(Keys.PAGE_DOWN)
-            
-            consent_div = wait.until(
-                EC.presence_of_element_located((By.XPATH, "//div[h1[text()='Before you continue to Google']]"))
-            )
-            driver.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight;", consent_div)
-            
-            safe_click(driver, accept_button)
-            #print("✅ Clicked 'Accept all'")
-        except TimeoutException:
-            #print("ℹ️ 'Accept all' button not found, continuing...")
-            pass
+    if not ctx.flags.splitonly:
+        print("\ntranslation_engine=%s" % (ctx.engine.engine))
+        print("engine_method=%s"        % (ctx.engine.method))
+        if ctx.engine.method == "phrasesblock":
+            print("maximum number of characters per block: %d" % ctx.config.max_translation_block_size)
 
-        # 3️ Open Google search results for 'perplexity ai'
-        driver.get("https://www.google.com/search?q=perplexity+ai")
-
-        # 4️ Try to find and click a link to perplexity.ai
-        # Scroll into view first
-        # wait for the link to appear
-        try:
-            perplexity_link = WebDriverWait(driver, 5).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, "a[href='https://www.perplexity.ai/']"))
-            )
-            driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", perplexity_link)
-            # Optional small pause for smoothness
-            time.sleep(0.2)
-            # Click using JS for maximum reliability
-            driver.execute_script("arguments[0].click();", perplexity_link)
-        except:
-            pass
-        
-        current_url = driver.current_url
-        if not current_url.startswith("https://perplexity.ai"):
-            driver.get("https://www.perplexity.ai/")
-        
-        # Close "Try Comet brower" annoying layer
-        try:
-            # Locate the div by CSS selector
-            div_element = driver.find_element(By.CSS_SELECTOR, "div.relative.w-full.overflow-hidden.rounded-lg")
-            safe_click(driver, div_element)
-            #print("Div clicked successfully.")
-            # Send ESC to the <body>, not the div
-            body = driver.find_element(By.TAG_NAME, "body")
-            body.send_keys(Keys.ESCAPE)
-            #print("ESC key sent to the page.")
-        except NoSuchElementException:
-            # Ignore if the element is not found
-            pass
-        
-        # Locate the contenteditable div
-        try:
-            textarea = WebDriverWait(driver, 7).until(
-                EC.presence_of_element_located((By.XPATH, "//*[@id='ask-input']"))
-            )
-
-            # Send text to the element
-            safe_click(driver, textarea)
-        except:
-            textarea = WebDriverWait(driver, 7).until(
-                EC.presence_of_element_located((By.XPATH, "//*[@id='ask-input']"))
-            )
-
-            # Send text to the element
-            safe_click(driver, textarea)
-        
-        # Assuming you already have a WebDriver instance (driver)
-        #textarea = driver.find_element(By.ID, "ask-input")
-
-        js_script = f"""
-        const textarea = document.getElementById('ask-input');
-
-        // Create a clipboard event with the desired text
-        const clipboardData = new DataTransfer();
-        clipboardData.setData('text/plain', `{str_prompt}`);
-        const pasteEvent = new ClipboardEvent('paste', {{
-          bubbles: true,
-          cancelable: true,
-          clipboardData: clipboardData
-        }});
-
-        // Focus and dispatch paste
-        textarea.focus();
-        textarea.dispatchEvent(pasteEvent);
-        """
-
-        driver.execute_script(js_script)
-        
-        
-        #Click and close all annoyances messages
-        perplexity_close_messages()
-
-        #"""Click the floating card dismiss button if it exists."""
-        try:
-            # Wait until the button is present
-            timeout=1
-            button = WebDriverWait(driver, timeout).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, "button[data-testid='floating-card-upsell-dismiss']"))
-            )
-            
-            # Scroll into view before clicking
-            driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", button)
-
-            # Try JS click (avoids intercepted click errors)
-            driver.execute_script("arguments[0].click();", button)
-            print("✅ Dismiss button clicked.")
-        
-        except TimeoutException:
-            #print("❌ Dismiss button not found within timeout.")
-            pass
-        except WebDriverException as e:
-            #print(f"⚠️ Click failed: {e}")
-            pass
-        
-        perplexity_close_messages()
-        
-        submit_button = WebDriverWait(driver, 1).until(
-            EC.presence_of_element_located((By.XPATH, '//button[@aria-label="Submit"]'))
-        )
-        safe_click(driver, submit_button)
-
-        time.sleep(1)
-
-        timeout = 300  # seconds
-        poll_interval = 1  # seconds
-        start_time = time.time()
-
-       # print("⏳ Waiting for stop button to disappear", end='')
-        while True:
-            try:
-                stop_button = driver.find_element(By.CSS_SELECTOR,  '[data-testid="stop-generating-response-button"]')
-                if stop_button:
-                    try:
-                        if stop_button.is_displayed():
-                            #print("⏳ Waiting for stop button to disappear...")
-                            #print('.', end='')
-                                        
-                            # Sleep for 0.5 seconds before checking again
-                            time.sleep(0.25)
-                            # Locate the div by its class
-                            try:
-                                button = driver.find_element(By.CSS_SELECTOR, "button[data-testid='answer-mode-tabs-tab-search']")
-                                safe_click(driver, button)
-
-                                # Send PAGE_DOWN to the body (or active element)
-                                #driver.find_element(By.TAG_NAME, "body").send_keys(Keys.PAGE_DOWN)
-                                driver.execute_script("window.scrollBy(0, window.innerHeight);")
-                                #print("Button clicked and PAGE_DOWN sent")
-                            except:
-                                try:
-                                    #driver.find_element(By.TAG_NAME, "body").send_keys(Keys.PAGE_DOWN)
-                                    driver.execute_script("window.scrollBy(0, window.innerHeight);")
-                                    #print("Button clicked and PAGE_DOWN sent")
-                                except:
-                                    print("Cannot find html body...")
-                                    pass
-                                pass
-                            #driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-                            
-                            pass
-                        else:
-                            #print("\n✅ Stop button is no longer visible.")
-                            #print("\n")
-                            time.sleep(1)
-                            break
-                    except:
-                        break
-                
-            except NoSuchElementException:
-                #print("✅ Stop button has been removed from the DOM.")
-                #print("\n")
-                break
-
-            # Timeout check
-            if time.time() - start_time > timeout:
-                print("⚠️ Timed out waiting for stop button to disappear.")
-                break
-
-            time.sleep(poll_interval)
-            
-        time.sleep(1)
-
-        input_nb_lines = len(to_translate.replace("\r", "").split("\n"))
-
-        
-        # Get the div with class "prose"
-        try:
-            prose_div = WebDriverWait(driver, 2.5).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, "div.prose"))
-            )
-        except:
-            pass
-
-        try:
-            button = driver.find_element(By.CSS_SELECTOR, "button[data-testid='answer-mode-tabs-tab-search']")
-            safe_click(driver, button)
-
-            # Send PAGE_DOWN to the body (or active element)
-            #driver.find_element(By.TAG_NAME, "body").send_keys(Keys.PAGE_DOWN)
-            driver.execute_script("window.scrollBy(0, window.innerHeight);")
-            #print("Button clicked and PAGE_DOWN sent")
-        except:
-            try:
-                #body = driver.find_element(By.TAG_NAME, "body")
-                #body.send_keys(Keys.PAGE_DOWN)
-                driver.execute_script("window.scrollBy(0, window.innerHeight);")
-            except:
-                print("Cannot scroll down...")
-                pass
-                                
-        # Try to get the div again (big)
-        time.sleep(0.25)
-        try:
-            prose_div = WebDriverWait(driver, 5).until(
-                EC.visibility_of_element_located((By.CSS_SELECTOR, "div.prose"))
-            )
-        except:
-            pass
-        
-        # Extract all visible text content
-        try:
-            text = prose_div.text
-        except:
-            driver.execute_script("window.focus();")
-            text = ""
-
-        # Split into lines (don't remove empties yet)
-        result_lines = [line.strip() for line in text.splitlines() if line.strip()]
-
-        # Check for empty lines
-        if any(line == "" for line in result_lines):
-            print(f"Translation contains emtpy lines...")
-            res = ""
-        
-        translated_phrases_array = result_lines
-        if translated_phrases_array is None:
-            translated_phrases_array_len = 0
+    if ctx.engine.engine == 'deepl':
+        if ctx.engine.method == 'phrasesblock':
+            ctx.engine.dispatcher = selenium_chrome_translate_get_from_text_array
         else:
-            translated_phrases_array_len = len(translated_phrases_array)
-        
-        #print("result_lines:")
-        #print(result_lines)
-        
-        res = None
-                
-
-        # for pos_remove in range(0,translated_phrases_array_len - to_translate_phrases_array_len):
-        if translated_phrases_array_len >= to_translate_phrases_array_len:
-            #print(f"input_nb_lines={input_nb_lines}")
-            translated_phrases_array = translated_phrases_array[:input_nb_lines]
-            #print("input_nb_lines: %s" % (input_nb_lines))
-            #input("array: %s" % (translated_phrases_array))
-            res = "\n".join(translated_phrases_array)
-            if translated_phrases_array_len > to_translate_phrases_array_len + 1:
-                print("Found %s lines out of %s lines" % (translated_phrases_array_len, to_translate_phrases_array_len))
-                result_lines = []
-                res = ""
-            if any(line == "" for line in result_lines):
-                print(f"Translation contains emtpy lines...")
-                res = ""
-
-        if translated_phrases_array_len < to_translate_phrases_array_len:
-            res = ""
-            print(f"Error, not enough lines : {translated_phrases_array_len} out of {to_translate_phrases_array_len} lines")
-            print(f"Cleaning up perplexity cookies...")
-            driver.delete_all_cookies()
-            sleep(0.3)
-
-        #print(res)
-        
-        ##################################################
-        # Delete this chat from perplexity AI history
-        try:
-            wait = WebDriverWait(driver, 1)
-
-            # 1. Click the three-dot (⋯) menu icon
-            dots_button = wait.until(EC.element_to_be_clickable((
-                By.XPATH,
-                "//button[@data-testid='thread-dropdown-menu']"
-            )))
-            safe_click(driver, dots_button)
-
-            # 2. Click the Delete option (with trash icon and text "Delete")
-            delete_button = wait.until(EC.element_to_be_clickable((
-                By.XPATH,
-                '//div[contains(@class, "cursor-pointer")]//span[text()="Delete"]'
-            )))
-            safe_click(driver, delete_button)
-
-            # Wait for the Confirm button and click it
-            confirm_button = WebDriverWait(driver, 1).until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, 'button[data-testid="thread-delete-confirm"]'))
-            )
-            safe_click(driver, confirm_button)
-        except:
-            print("Unable to delete conversation")
-        
-        # Close "Try Comet brower" annoying layer, ignore if the layer is not present
-        try:
-            # Locate the div by CSS selector
-            div_element = driver.find_element(By.CSS_SELECTOR, "div.relative.w-full.overflow-hidden.rounded-lg")
-            safe_click(driver, div_element)
-            #print("Div clicked successfully.")
-            # Send ESC to the <body>, not the div
-            body = driver.find_element(By.TAG_NAME, "body")
-            body.send_keys(Keys.ESCAPE)
-            #print("ESC key sent to the page.")
-        except NoSuchElementException:
-            # Ignore if the element is not found
-            pass
-        
-        translation = res  
-    except Exception:
-        var = traceback.format_exc()
-        print(var)
-        sleep(1)
-        # sys.exit(0)
-    if translation != "":
-        return True, translation
-    else:
-        return False, translation
-
-total_cost = 0
-
-def perplexity_api_translate(to_translate, retry_count):
-    global src_lang_name, dest_lang_name, total_cost
-    
-    translation = ""
-    Translated = False
-    # Progress bar to show only when deepl also shows it on the browser
-    bar = None
-    global closed_cookies_accept_message_bool, close_install_extension_message_bool, deepl_nb_clear_cached_times
-    global engine_method, end_time, elapsed_time, json_configuration_array
-    
-    to_translate_phrases_array = to_translate.split("\n")
-    to_translate_phrases_array_len = len(to_translate_phrases_array)
-
-
-    str_prompt = f"""Translate the following text from {src_lang_name} to {dest_lang_name} for Supreme Master Television subtitles:
-Each input line must correspond to exactly one output line.
-Do not split, merge, or add any lines.
-Do not insert any line breaks within a line, even if the line is long.
-Only use a line break to move to the next input line.
-Do not add, remove, or split any lines.
-If a phrase is on multiple lines, it must remain on multiple lines, no merge.
-Do not echo text to be translated in the translation, and do not insert an introduction before the translation:
-Each output line must contain the full translation of the corresponding input line. The text has {to_translate_phrases_array_len} lines that must be translated in exactly {to_translate_phrases_array_len} lines.
-Your output MUST contain exactly {to_translate_phrases_array_len} lines, not one less, not one more.
-
-The text to be translated start after the first line containing only BEFORETEXTTOTRANSLATE and ends the line before the first occurence if the line containing only AFTERTEXTTOTRANSLATE:
-BEFORETEXTTOTRANSLATE
-{to_translate}
-AFTERTEXTTOTRANSLATE"""
-    
-    #print(str_prompt)
-
-    to_translate_phrases_array = to_translate.split("\n")
-    to_translate_phrases_array_len = len(to_translate_phrases_array)
-
-    try:
-        translation_page_openeing_loop_count = 4
-
-        input_nb_lines = len(to_translate.replace("\r", "").split("\n"))
-        
-        response = requests.post(
-            'https://api.perplexity.ai/chat/completions',
-            headers={
-                'Authorization': 'Bearer pplx-XvOkswrBo9ymsxvb78Yg2ZPUBOK4PxezBqiaZIgTJbStZZ',
-                'Content-Type': 'application/json'
-            },
-            json={
-                'model': 'sonar',
-                'messages': [
-                    {
-                        'role': 'user',
-                        'content': str_prompt
-                    }
-                ]
-            }
-        )
-
-        # Pretty-print the full JSON response
-        try:
-            print(json.dumps(response.json(), indent=2))
-        except json.JSONDecodeError:
-            print("Response is not JSON:", response.text)
-        
-        # Parse the JSON string
-        data = response.json()
-
-        # Get original content
-        original_content = data["choices"][0]["message"]["content"]
-
-        # Remove all whitespace before newlines
-        modified_content = re.sub(r'[ \t]+\n', '\n', original_content)
-
-        # Print the "content" value
-        print("Content:")
-        print(modified_content)
-
-        print("\nToken and cost values:")
-
-        # Print the specified usage and cost values line by line
-        print("prompt_tokens:", data["usage"]["prompt_tokens"])
-        print("completion_tokens:", data["usage"]["completion_tokens"])
-        print("total_tokens:", data["usage"]["total_tokens"])
-        print("input_tokens_cost:", data["usage"]["cost"]["input_tokens_cost"])
-        print("output_tokens_cost:", data["usage"]["cost"]["output_tokens_cost"])
-        print("total_cost:", data["usage"]["cost"]["total_cost"])
-        total_cost = total_cost + data["usage"]["cost"]["total_cost"]
-
-
-        # Split into lines and strip empty ones
-        result_lines = [line.strip() for line in modified_content.splitlines() if line.strip()]
-        
-        translated_phrases_array = result_lines
-        if translated_phrases_array is None:
-            translated_phrases_array_len = 0
-        else:
-            translated_phrases_array_len = len(translated_phrases_array)
-        
-        #print("result_lines:")
-        #print(result_lines)
-        
-        res = None
-
-        # for pos_remove in range(0,translated_phrases_array_len - to_translate_phrases_array_len):
-        if translated_phrases_array_len >= to_translate_phrases_array_len:
-            #print(f"input_nb_lines={input_nb_lines}")
-            translated_phrases_array = translated_phrases_array[:input_nb_lines]
-            #print("input_nb_lines: %s" % (input_nb_lines))
-            #print("array: %s" % (translated_phrases_array))
-            res = "\n".join(translated_phrases_array)
-            if translated_phrases_array_len > to_translate_phrases_array_len + 1:
-                print("Found %s lines out of %s lines" % (translated_phrases_array_len, to_translate_phrases_array_len))
-
-        if translated_phrases_array_len < to_translate_phrases_array_len:
-            res = ""
-            print(f"Error, not enough lines : {translated_phrases_array_len} out of {to_translate_phrases_array_len} lines")
-            print(f"Cleaning up perplexity cookies...")
-            driver.delete_all_cookies()
-            #input(str_prompt)
-            sleep(1)
-
-        #print("Translation:")
-        #print(res)
-
-            
-    except Exception:
-        var = traceback.format_exc()
-        print(var)
-        sleep(1)
-        # sys.exit(0)
-    return True, res
-
-
-
-def set_translation_function():
-    global selenium_chrome_machine_translate_once
-    if not splitonly:
-        print("\ntranslation_engine=%s" % (translation_engine))
-        print("engine_method=%s" % (engine_method))
-        if (engine_method == "phrasesblock"):
-            print("maximum number of characters per block: %d" % MAX_TRANSLATION_BLOCK_SIZE)
-
-    if translation_engine == 'yandex':
-        print("Using translation_engine=%s" % (translation_engine))
-        selenium_chrome_machine_translate_once = selenium_chrome_yandex_translate
-    elif translation_engine == 'deepl':
-        if engine_method == 'phrasesblock':
-            selenium_chrome_machine_translate_once = selenium_chrome_translate_get_from_text_array
-        else:
-            selenium_chrome_machine_translate_once = selenium_chrome_deepl_translate
-    elif translation_engine == 'deepl':
-        if engine_method == 'api':
-            selenium_chrome_machine_translate_once = perplexity_api_translate 
-        else:
-            selenium_chrome_machine_translate_once = selenium_chrome_deepl_translate
-    elif translation_engine == 'chatgpt':
+            ctx.engine.dispatcher = functools.partial(selenium_chrome_deepl_translate, ctx)
+    elif ctx.engine.engine == 'chatgpt':
         # Same for API and web scraping
-        selenium_chrome_machine_translate_once = selenium_chrome_translate_get_from_text_array
+        ctx.engine.dispatcher = selenium_chrome_translate_get_from_text_array
     else:
-        if engine_method == 'textfile':
-            selenium_chrome_machine_translate_once = selenium_chrome_translate_get_from_text_array
-        elif engine_method == 'singlephrase':
-            selenium_chrome_machine_translate_once = selenium_chrome_google_translate
+        if ctx.engine.method == 'textfile':
+            ctx.engine.dispatcher = selenium_chrome_translate_get_from_text_array
+        elif ctx.engine.method == 'singlephrase':
+            ctx.engine.dispatcher = functools.partial(selenium_chrome_google_translate, ctx)
         else:
-            selenium_chrome_machine_translate_once = selenium_chrome_translate_get_from_text_array
+            ctx.engine.dispatcher = selenium_chrome_translate_get_from_text_array
 
 
-def selenium_chrome_machine_translate(to_translate, index):
-    global selenium_chrome_machine_translate_once
+def selenium_chrome_machine_translate(ctx: RuntimeContext, to_translate, index):
+    """Per-call wrapper around ``ctx.engine.dispatcher`` with retry logic.
+
+    Threaded in Phase F1.4: reads the dispatcher pointer, the active
+    engine + method, the retry counter, and the inter-retry sleep
+    factor from ``ctx`` instead of module globals.
+    """
     translation = ""
     translation_try_count = 1
     max_try_count = 15
-    global translation_errors_count
-    global deepl_sleep_wait_translation_seconds
-    #print("--index-- : %d" % index)
-    #to_translate_str = str(to_translate)
     try:
         while translation_try_count < max_try_count and translation == "":
             if translation_try_count > 1:
                 print("Retrying to translate again (%d)..." % (translation_try_count))
-                translation_errors_count = translation_errors_count + 1
-                deepl_sleep_wait_translation_seconds  = deepl_sleep_wait_translation_seconds * 1.1
-                print("%d translation retry so far..." % (translation_errors_count))
-            if translation_engine == 'deepl':
-                if engine_method == 'phrasesblock':
-                    translation = selenium_chrome_machine_translate_once(to_translate, index)
+                ctx.docx.translation_errors_count += 1
+                ctx.browser.deepl_sleep_wait_translation_seconds *= 1.1
+                print("%d translation retry so far..." % (ctx.docx.translation_errors_count))
+            if ctx.engine.engine == 'deepl':
+                if ctx.engine.method == 'phrasesblock':
+                    translation = ctx.engine.dispatcher(to_translate, index)
                 else:
-                    translation = selenium_chrome_machine_translate_once(to_translate, translation_try_count - 1)
-            elif engine_method == 'textfile':
-                translation = selenium_chrome_machine_translate_once(to_translate, index)
-            elif engine_method == 'xlsxfile':
-                translation = selenium_chrome_machine_translate_once(to_translate, index)
-            elif engine_method == 'phrasesblock':
-                translation = selenium_chrome_machine_translate_once(to_translate, index)
-            elif engine_method == 'javascript':
-                translation = selenium_chrome_machine_translate_once(to_translate, index)
-            elif engine_method == 'webservice':
-                translation = selenium_chrome_machine_translate_once(to_translate, index)
-            elif engine_method == 'api':
-                translation = selenium_chrome_machine_translate_once(to_translate, index)
+                    translation = ctx.engine.dispatcher(to_translate, translation_try_count - 1)
+            elif ctx.engine.method in (
+                'textfile', 'xlsxfile', 'phrasesblock',
+                'javascript', 'webservice', 'api',
+            ):
+                translation = ctx.engine.dispatcher(to_translate, index)
             else:
-                translation = selenium_chrome_machine_translate_once(to_translate)
-            translation_try_count = translation_try_count + 1
-    except:
+                translation = ctx.engine.dispatcher(to_translate)
+            translation_try_count += 1
+    except Exception:
         print("Error in selenium_chrome_machine_translate function.")
     return translation
     
-def initialize_translation_memory_xlsx():
-    global xtm
+def initialize_translation_memory_xlsx(ctx: RuntimeContext):
     # If --xlsxreplacefile was provided in the command line
     if xlsxreplacefile is not None:
         print("xlsxreplacefile: %s" % (xlsxreplacefile))
@@ -4896,8 +1951,7 @@ def get_run_shading_color(xml_run_str):
     return attrib_fill
 
 # Return cell_non_greyed_text (string), cell_is_gray (integer for boolean)
-def get_cell_data(cell,row_n):
-    global from_text_nb_lines_in_cell
+def get_cell_data(ctx: RuntimeContext, cell,row_n):
     cell_is_gray = None
     cell_is_red = None
     cell_non_greyed_text = ''
@@ -4987,7 +2041,7 @@ def get_cell_data(cell,row_n):
         #    #input("press enter")
         
     
-    from_text_nb_lines_in_cell[row_n-1] = n_cell_lines
+    ctx.docx.from_text_nb_lines_in_cell[row_n-1] = n_cell_lines
     #if n_cell_lines > 1:
     #    print("%d lines" % (n_cell_lines))
     #    #input("here")
@@ -5247,10 +2301,16 @@ def generate_tmx_file():
         print(var)
 
 
-def prepare_and_clear_cell_for_writing(row_n, translation_cell_text):
-    global table_cells
+def prepare_and_clear_cell_for_writing(ctx: RuntimeContext, row_n, translation_cell_text):
+    """Clear and re-init a target-language cell.
+
+    Threaded in Phase F1.3: reads ``ctx.docx.table_cells`` in place of the
+    historical ``table_cells`` global. ``dest_lang`` and ``rtlstyle`` are
+    not yet on ctx; they remain as ambient module reads (closed over by
+    Python's name lookup) and will be threaded in a later sub-phase.
+    """
     paragraph_no = 0
-    current_cell = table_cells[row_n][2]
+    current_cell = ctx.docx.table_cells[row_n][2]
 
     current_cell._element.clear_content()
     
@@ -5363,36 +2423,17 @@ def cell_add_paragraph(row_n, paragraph_text):
         
     table_cells[row_n][2] = current_cell
 
-def read_and_parse_docx_document():
-    global from_text_table
-    global from_text_is_greyed_table
-    global from_text_is_red_color_table
-    global from_text_is_end_of_line_table
-    global from_text_is_beginning_of_line_table
-    global from_text_is_empty_line_table
-    global from_text_is_conditional_end_of_line_table
-    global from_text_by_phrase_separator_table
-    global from_text_by_phrase_table
-    global from_text_nb_lines_in_phrase
-    global from_text_nb_lines_in_cell
-    global to_text_by_phrase_separator_table
-    global to_text_by_phrase_separator_removed_table
-    global to_text_splited_table1
-    global to_text_by_phrase_table
-    global to_text_table
-    global to_raw_translated_table
-    global to_text_removed_line_separator
-    global translation_result_using_separator
-    global translation_result_phrase_array
-    global translation_result
-    global from_text_is_read
+def read_and_parse_docx_document(ctx: RuntimeContext):
+    """Parse the input DOCX into the parallel arrays on ``ctx.docx``.
 
-    global table_cells
-
-    global word_translation_table_length
-
-    global table, numrows, numcols
-    global E_mail_str
+    Threaded in Phase F1.3: every parallel array, table_cells, the
+    table reference, and the row/column geometry move from module
+    globals into ``ctx.docx``. The +1 indexing convention
+    (arrays sized ``numrows + 1``, accessed at ``[i + 1]``) is
+    preserved exactly. R16's structural test
+    (``test_docx_arrays_plus_one_indexing``) pins this contract.
+    """
+    docx = ctx.docx
 
 
     start = timeit.timeit()
@@ -5400,7 +2441,7 @@ def read_and_parse_docx_document():
     if use_html:
         print("Content-Type: text/html\n")
 
-    word_translation_table_length = len(docxdoc.tables[0].rows)
+    docx.word_translation_table_length = len(docxdoc.tables[0].rows)
 
     nb_tables = len(docxdoc.tables)
 
@@ -5413,21 +2454,21 @@ def read_and_parse_docx_document():
     # Number of tables</h2>nb_tables=", nb_tables
 
     numerrors = 0
-    # print("word_translation_table_length=%d" %(word_translation_table_length))
+    # print("docx.word_translation_table_length=%d" %(docx.word_translation_table_length))
     # print("docx_translation_table_length=%d" %(docx_translation_table_length))
 
     try:
-        table = docxdoc.tables[0]
+        docx.table = docxdoc.tables[0]
     except:
         print(f"Error: document {docxfile} does not have a table. Exiting.")
         exit(14)
-    table_cells = [['' for i in range(len(table.columns))] for j in range(len(table.rows))]
+    docx.table_cells = [['' for i in range(len(docx.table.columns))] for j in range(len(docx.table.rows))]
 
-    numrows = len(table.rows)
-    numcols = len(table.columns)
+    docx.numrows = len(docx.table.rows)
+    docx.numcols = len(docx.table.columns)
 
-    if numcols <= 2:
-        print("ERROR : The table has %s column but expected 3" % (numcols))
+    if docx.numcols <= 2:
+        print("ERROR : The table has %s column but expected 3" % (docx.numcols))
         print("Exiting\n")
 
         print("\nDeveloper: %s" %(E_mail_str))
@@ -5440,36 +2481,36 @@ def read_and_parse_docx_document():
 
     rownum = 0
 
-    from_text_table = [''] * (numrows + 1)
-    from_text_is_greyed_table = [0] * (numrows + 1)
-    from_text_is_red_color_table = [0] * (numrows + 1)
-    from_text_is_end_of_line_table = [0] * (numrows + 1)
-    from_text_is_beginning_of_line_table = [0] * (numrows + 1)
-    from_text_is_empty_line_table = [0] * (numrows + 1)
-    from_text_is_conditional_end_of_line_table = [0] * (numrows + 1)
-    from_text_by_phrase_separator_table = [''] * (numrows + 1)
-    from_text_by_phrase_table = [''] * (numrows + 1)
+    docx.from_text_table = [''] * (docx.numrows + 1)
+    docx.from_text_is_greyed_table = [0] * (docx.numrows + 1)
+    docx.from_text_is_red_color_table = [0] * (docx.numrows + 1)
+    docx.from_text_is_end_of_line_table = [0] * (docx.numrows + 1)
+    docx.from_text_is_beginning_of_line_table = [0] * (docx.numrows + 1)
+    docx.from_text_is_empty_line_table = [0] * (docx.numrows + 1)
+    docx.from_text_is_conditional_end_of_line_table = [0] * (docx.numrows + 1)
+    docx.from_text_by_phrase_separator_table = [''] * (docx.numrows + 1)
+    docx.from_text_by_phrase_table = [''] * (docx.numrows + 1)
     #number of lines in per phrase
-    from_text_nb_lines_in_phrase = [0] * (numrows + 1)
-    from_text_nb_lines_in_cell = [0] * (numrows + 1)
-   #input(numrows)
+    docx.from_text_nb_lines_in_phrase = [0] * (docx.numrows + 1)
+    docx.from_text_nb_lines_in_cell = [0] * (docx.numrows + 1)
+   #input(docx.numrows)
     #
-    to_text_by_phrase_separator_table = [''] * (numrows + 1)
-    to_text_by_phrase_separator_removed_table = [''] * (numrows + 1)
-    to_text_splited_table1 = [''] * (numrows + 1)
-    to_text_by_phrase_table = [''] * (numrows + 1)
-    to_text_table = [''] * (numrows + 1)
-    to_raw_translated_table = [''] * (numrows + 1)
-    to_text_removed_line_separator = [''] * (numrows + 1)
-    translation_result_using_separator = [''] * (numrows + 1)
-    translation_result_phrase_array = [[]] * (numrows + 1)
-    translation_result = [''] * (numrows + 1)
-    from_text_is_read = [0] * (numrows + 1)
+    docx.to_text_by_phrase_separator_table = [''] * (docx.numrows + 1)
+    docx.to_text_by_phrase_separator_removed_table = [''] * (docx.numrows + 1)
+    docx.to_text_splited_table1 = [''] * (docx.numrows + 1)
+    docx.to_text_by_phrase_table = [''] * (docx.numrows + 1)
+    docx.to_text_table = [''] * (docx.numrows + 1)
+    docx.to_raw_translated_table = [''] * (docx.numrows + 1)
+    docx.to_text_removed_line_separator = [''] * (docx.numrows + 1)
+    docx.translation_result_using_separator = [''] * (docx.numrows + 1)
+    docx.translation_result_phrase_array = [[]] * (docx.numrows + 1)
+    docx.translation_result = [''] * (docx.numrows + 1)
+    docx.from_text_is_read = [0] * (docx.numrows + 1)
 
     if use_html :
-        print("<br>%s rows.<br>%d colums.<br>" % (numrows, numcols))
+        print("<br>%s rows.<br>%d colums.<br>" % (docx.numrows, docx.numcols))
 
-    for i, row in enumerate(table.rows):
+    for i, row in enumerate(docx.table.rows):
         col_no = 1
         row_n = i + 1
         
@@ -5481,17 +2522,17 @@ def read_and_parse_docx_document():
             for j, cell in enumerate(row.cells):
                 #if cell.text:
                 #    df[i][j] = cell.text
-                table_cells[i][j] = cell
+                docx.table_cells[i][j] = cell
                 # XML is ._tc
                 #df[i][j] = cell._tc
                 if col_no == 2:
                 
-                    #from_text_is_greyed_table[row_n] = is_greyed_line(cell)
+                    #docx.from_text_is_greyed_table[row_n] = is_greyed_line(cell)
                     #cellvalue = cell.text.replace('’', "'").strip()
-                    #print(from_text_is_greyed_table)
-                    #print(from_text_is_red_color_table)
+                    #print(docx.from_text_is_greyed_table)
+                    #print(docx.from_text_is_red_color_table)
                     #print("row_n=%d" % (row_n))
-                    cellvalue, from_text_is_greyed_table[i], from_text_is_red_color_table[i] = get_cell_data(cell,row_n)
+                    cellvalue, docx.from_text_is_greyed_table[i], docx.from_text_is_red_color_table[i] = get_cell_data(ctx, cell,row_n)
                     p_remove_pause
                     cellvalue = p_remove_pause.sub(' ', cellvalue)
                     cellvalue = p_remove_double_spaces.sub(' ', cellvalue)
@@ -5506,256 +2547,151 @@ def read_and_parse_docx_document():
                         except Exception:
                             print("%d : (unable to print content to screen)" )
 
-                    from_text_is_end_of_line_table[i] = is_end_of_line(cellvalue) or from_text_is_red_color_table[i]
-                    from_text_is_empty_line_table[i] = is_empty_line(cellvalue)
-                    from_text_is_beginning_of_line_table[i] = is_beginning_of_line(cellvalue)
-                    from_text_is_conditional_end_of_line_table[i] = is_conditional_end_of_line(cellvalue)
+                    docx.from_text_is_end_of_line_table[i] = is_end_of_line(cellvalue) or docx.from_text_is_red_color_table[i]
+                    docx.from_text_is_empty_line_table[i] = is_empty_line(cellvalue)
+                    docx.from_text_is_beginning_of_line_table[i] = is_beginning_of_line(cellvalue)
+                    docx.from_text_is_conditional_end_of_line_table[i] = is_conditional_end_of_line(cellvalue)
 
-                    if from_text_is_greyed_table[i] == 1:
-                        from_text_is_beginning_of_line_table[i] = 0
-                        from_text_is_end_of_line_table[i] = 0
+                    if docx.from_text_is_greyed_table[i] == 1:
+                        docx.from_text_is_beginning_of_line_table[i] = 0
+                        docx.from_text_is_end_of_line_table[i] = 0
                         
                     if i == 2 and len(cellvalue) > 0:
-                        from_text_is_beginning_of_line_table[i] = 1
+                        docx.from_text_is_beginning_of_line_table[i] = 1
 
                     if i > 1:
                         #Test conditionel de fin de ligne
-                        if from_text_is_conditional_end_of_line_table[i - 1] == 1 \
-                            and from_text_is_beginning_of_line_table[i] == 1:
-                            from_text_is_end_of_line_table [i - 1] = 1
-                            from_text_is_beginning_of_line_table [i] = 1
+                        if docx.from_text_is_conditional_end_of_line_table[i - 1] == 1 \
+                            and docx.from_text_is_beginning_of_line_table[i] == 1:
+                            docx.from_text_is_end_of_line_table [i - 1] = 1
+                            docx.from_text_is_beginning_of_line_table [i] = 1
 
                         # Verifier debut de ligne special
                         # Si ligne precedente est vide ou grisee:
                         #    Si ligne courante est non vide et non grisee
                         #        ligne courante est debut de ligne
-                        if (from_text_is_empty_line_table[i - 1] == 1 \
-                            or from_text_is_greyed_table[i - 1] == 1):
-                            if (from_text_is_empty_line_table[i] == 1 \
-                                and from_text_is_greyed_table[i] == 1):
-                                from_text_is_beginning_of_line_table[i] = 1
+                        if (docx.from_text_is_empty_line_table[i - 1] == 1 \
+                            or docx.from_text_is_greyed_table[i - 1] == 1):
+                            if (docx.from_text_is_empty_line_table[i] == 1 \
+                                and docx.from_text_is_greyed_table[i] == 1):
+                                docx.from_text_is_beginning_of_line_table[i] = 1
 
                         # Verifier la ligne precedente est fin de ligne
                         # Si ligne precedente est non vide et non grisee
                         #    Si ligne courante est vide ou grisee
                         #        la ligne precedente est fin de ligne
-                        if (from_text_is_empty_line_table[i - 1] == 0 \
-                            and from_text_is_greyed_table[i - 1] == 0):
-                            if (from_text_is_empty_line_table[i] == 1 \
-                                or from_text_is_greyed_table[i] == 1):
-                                from_text_is_end_of_line_table[i - 1] = 1
+                        if (docx.from_text_is_empty_line_table[i - 1] == 0 \
+                            and docx.from_text_is_greyed_table[i - 1] == 0):
+                            if (docx.from_text_is_empty_line_table[i] == 1 \
+                                or docx.from_text_is_greyed_table[i] == 1):
+                                docx.from_text_is_end_of_line_table[i - 1] = 1
 
 
                         # Verifier que c'est vraiment un debut de ligne suivant une fin de ligne
                         # Si ligne precedente n'est pas fin de ligne
                         #    et ligne oourante est debut de ligne
                         #        la ligne courante n'est pas un debut de ligne
-                        if from_text_is_beginning_of_line_table[i] == 1 and \
-                            from_text_is_end_of_line_table[i - 1] == 0 \
-                            and from_text_is_greyed_table[i - 1] == 0 \
+                        if docx.from_text_is_beginning_of_line_table[i] == 1 and \
+                            docx.from_text_is_end_of_line_table[i - 1] == 0 \
+                            and docx.from_text_is_greyed_table[i - 1] == 0 \
                             and i > 2:
-                            from_text_is_beginning_of_line_table[i] = 0
+                            docx.from_text_is_beginning_of_line_table[i] = 0
 
 
                         # Verifier qu'on a pas loupe un debut de ligne
                         # Si ligne precedente est fin de ligne
                         #    et ligne oourante n'est pas grisee et pas debut de ligne
                         #        la ligne courante est un debut de ligne
-                        if from_text_is_end_of_line_table[i - 1] == 1 \
-                            and from_text_is_greyed_table[i] == 0 \
-                            and from_text_is_beginning_of_line_table[i] == 0:
-                            from_text_is_beginning_of_line_table[i] = 1
+                        if docx.from_text_is_end_of_line_table[i - 1] == 1 \
+                            and docx.from_text_is_greyed_table[i] == 0 \
+                            and docx.from_text_is_beginning_of_line_table[i] == 0:
+                            docx.from_text_is_beginning_of_line_table[i] = 1
 
-                        if (from_text_is_empty_line_table[i - 1] == 1 \
-                            or from_text_is_greyed_table[i - 1] == 1) \
-                            and (from_text_is_empty_line_table[i] == 0 \
-                            and from_text_is_greyed_table[i] == 0):
-                            from_text_is_beginning_of_line_table[i] = 1
+                        if (docx.from_text_is_empty_line_table[i - 1] == 1 \
+                            or docx.from_text_is_greyed_table[i - 1] == 1) \
+                            and (docx.from_text_is_empty_line_table[i] == 0 \
+                            and docx.from_text_is_greyed_table[i] == 0):
+                            docx.from_text_is_beginning_of_line_table[i] = 1
 
-                        if from_text_is_empty_line_table[i - 1] == 1:
-                            from_text_is_beginning_of_line_table[i - 1] = 0
+                        if docx.from_text_is_empty_line_table[i - 1] == 1:
+                            docx.from_text_is_beginning_of_line_table[i - 1] = 0
 
-                        if i == numrows:
-                            from_text_is_end_of_line_table[i - 1] = 1
+                        if i == docx.numrows:
+                            docx.from_text_is_end_of_line_table[i - 1] = 1
 
-                    from_text_table[i] = cellvalue
+                    docx.from_text_table[i] = cellvalue
                 col_no = col_no + 1
             
             if not splitonly and i > 1:
-                prepare_and_clear_cell_for_writing (i, '')
-            from_text_is_read[i] = 1
+                prepare_and_clear_cell_for_writing(ctx, i, '')
+            docx.from_text_is_read[i] = 1
         except Exception:
             var = traceback.format_exc()
             print(var)
             numerrors = numerrors + 1
 
-    if from_text_is_greyed_table[numrows] == 0 \
-        and from_text_is_empty_line_table[numrows] == 0:
-        from_text_is_end_of_line_table[numrows] = 1
+    if docx.from_text_is_greyed_table[docx.numrows] == 0 \
+        and docx.from_text_is_empty_line_table[docx.numrows] == 0:
+        docx.from_text_is_end_of_line_table[docx.numrows] = 1
 
     split_phrases()
 
     if use_html :
         print("<table border=1 width=800>")
 
-    for row_n in range(1, len(from_text_table)):
+    for row_n in range(1, len(docx.from_text_table)):
         try:
             if use_html :
                 print("<tr>")
                 print("<td width=50>", row_n)
                 print("<td width=250>")
 
-            if from_text_is_beginning_of_line_table[row_n] == 1:
+            if docx.from_text_is_beginning_of_line_table[row_n] == 1:
                 if use_html :
                     print("<hr style=\"height:5px;border:none;color:#ffff00;background-color:#ffff00;\" />")
             
-            if from_text_is_greyed_table[row_n] == 1:
+            if docx.from_text_is_greyed_table[row_n] == 1:
                 if use_html :
-                    print("'<span style=\"background-color: #DCDCDC\">%s</span>' (%s)" % (from_text_table[row_n], len(from_text_table[row_n])))
+                    print("'<span style=\"background-color: #DCDCDC\">%s</span>' (%s)" % (docx.from_text_table[row_n], len(docx.from_text_table[row_n])))
                     print("<hr style=\"height:5px;border-top: dotted 2px;color:##DCDCDC;background-color:#DCDCDC;\" />")
             else:
 
                 if use_html :
-                    print("'%s' (%s)" % (from_text_table[row_n], len(from_text_table[row_n])))
+                    print("'%s' (%s)" % (docx.from_text_table[row_n], len(docx.from_text_table[row_n])))
 
-            if from_text_is_end_of_line_table[row_n] == 1:
+            if docx.from_text_is_end_of_line_table[row_n] == 1:
                 
                 if use_html :
                     print("<hr style=\"height:5px;border:none;color:#333;background-color:#333;\" />")
             
-            if from_text_is_empty_line_table[row_n] == 1:
+            if docx.from_text_is_empty_line_table[row_n] == 1:
 
                 if use_html :
                     print("<hr style=\"height:5px;border-top: dotted 2px;color:##DCDCDC;background-color:#DCDCDC;\" />")
                     print("<td>is_greyed=%s<br>is_end_of_line=%s<br>is_empty_line=%s<br>is_beginning_of_line=%s<br>is_conditional_end_of_line=%s" %(
-                from_text_is_greyed_table[row_n], \
-                from_text_is_end_of_line_table[row_n], \
-                from_text_is_empty_line_table[row_n], \
-                from_text_is_beginning_of_line_table[row_n], \
-                from_text_is_conditional_end_of_line_table[row_n]))
+                docx.from_text_is_greyed_table[row_n], \
+                docx.from_text_is_end_of_line_table[row_n], \
+                docx.from_text_is_empty_line_table[row_n], \
+                docx.from_text_is_beginning_of_line_table[row_n], \
+                docx.from_text_is_conditional_end_of_line_table[row_n]))
 
             if use_html :
-                print("<td>'%s' (%d)<td>'%s' (%d)" % (from_text_by_phrase_table[row_n], len(from_text_by_phrase_table[row_n]), \
-                                                  from_text_by_phrase_separator_table[row_n], len(from_text_by_phrase_separator_table[row_n])))
+                print("<td>'%s' (%d)<td>'%s' (%d)" % (docx.from_text_by_phrase_table[row_n], len(docx.from_text_by_phrase_table[row_n]), \
+                                                  docx.from_text_by_phrase_separator_table[row_n], len(docx.from_text_by_phrase_separator_table[row_n])))
         except Exception:
             var = traceback.format_exc()
             print(var)
             numerrors = numerrors + 1
 
-def clean_up_previous_chrome_selenium_drivers(current_driver_full_path):
-    found_previous_chrome_driver = False
-    
-    try:
-        list_driver_path = []
-        
-        if platform.system().lower() == 'windows':
-            userprofile_path = os.environ.get('USERPROFILE')
-            selenium_cache_folder = f"{userprofile_path}\\.cache\\selenium"
-            list_driver_path = glob.glob(f"{selenium_cache_folder}\\**\\chromedriver.exe", recursive=True)
-        else:
-            home_path = os.environ.get('HOME')
-            selenium_cache_folder = f"{home_path}/.cache/selenium"
-            list_driver_path = glob.glob(f"{selenium_cache_folder}/*/**/chromedriver", recursive=True)
-            
-        for driver_path in list_driver_path:
-            if driver_path == current_driver_full_path:
-                pass # Latest version of the driver, keep the file
-            else:
-                if os.path.exists(driver_path):
-                    try:
-                        if found_previous_chrome_driver == False:
-                            print("\nCleaning up old chrome driver files")
-                            found_previous_chrome_driver = True
-                        print(f"Removing previous chrome driver at {driver_path}")
-                        os.remove(driver_path)
-                    except:
-                        print(f"Unable to cleanup chrome driver at {driver_path}")
-                        
-        if len(list_driver_path) >= 2:
-            print(f"Keeping current chrome driver at {current_driver_full_path}")
-                
-    except:
-        var = traceback.format_exc()
-        print(var)
-        
-
-def create_webdriver():
-    global driver, chromedriverpath, translation_engine, chrome_options, driver_path
-    if not splitonly:
-        print("\nStarting translation using engine : %s" % (translation_engine.title()))
-
-    driver_path = ""
-    
-    #if use_api == False and not splitonly:
-    if True:
-        print(f"Starting Chrome browser\n")
-        service = Service()
-        
-        if webdriver.__name__ == "undetected_chromedriver":
-            try:
-                from selenium import webdriver as selenium_webdriver
-                # Step 1: Get the ChromeDriver path using Selenium Manager
-                options_manager = selenium_webdriver.ChromeOptions()
-                # For headless mode, choose the new or old flag as per your Chrome version:
-                options_manager.add_argument('--headless')  # Recommended for latest Chrome/Chromium
-                # Alternatively, for compatibility with older versions, you can use:
-                # options.add_argument('--headless')
-
-                manager = selenium_webdriver.Chrome(options=options_manager)
-                driver_path = manager.service.path
-                manager.quit()
-                print(f"Using selenium chrome driver path : {driver_path}")
-            except:
-                pass
-            
-        try:
-            if driver_path != "":
-                #print("Please wait while patching chrome driver to help prevent robot detections...")
-                #chrome_options.add_argument(f"--proxy-server=http://37.120.133.137:3128")
-                driver = webdriver.Chrome(service=service, options=chrome_options, driver_executable_path=driver_path)
-                #driver.get("https://whatismyipaddress.com/")
-                #input("waiting for page to open")
-            else:
-                driver = webdriver.Chrome(service=service, options=chrome_options)
-        except:
-            var = traceback.format_exc()
-            print(var)
-            print("An error occured during launching chrome. This may happen during google chrome automatic updates or if Google Chrome is not installed.")
-            print("You may start google chrome and open the menu Help -> About Google Chrome to see if there is an update running and retry machine translation after the update.")
-            print("Exiting, please retry.")
-            
-            print("\nDeveloper: %s" % (E_mail_str))
-            print("Program version: %s\n" % (PROGRAM_VERSION))
-            if not exitonsuccess:
-                input("Enter to close program")
-            
-            sys.exit(12)
-        
-        print("\nChrome started using driver at %s\n" % (driver.service.path))
-
-        #input("driver loaded and running")
-        #driver.set_window_position(0, 350)
-        if translation_engine == 'yandex' or translation_engine == 'deepl':
-            driver.set_window_position(0, 100)
-            set_chrome_window_2_3_screen()
-        else:
-            set_chrome_window_2_3_screen()
-            #driver.set_window_size(400, 650)
-            
-    numerrors_deepl = 0
-    numerrors_googletranslate= 0
-
-# Reverse a string
 def reverse_string(s):
     return s[::-1]
 
 
-def generate_html_file_from_phrases_for_google_translate_javascript():
+def generate_html_file_from_phrases_for_google_translate_javascript(ctx: RuntimeContext):
     #input("Here")
-    global dest_lang_name, html_file_path, docxfile_table_number_of_phrases
     print("Generating html page.")
 
-    docxfile_table_number_of_phrases = 0
+    ctx.docx.docxfile_table_number_of_phrases = 0
     html_to_translate = '''<html lang=%s >
 <head>
   <meta charset="UTF-8">
@@ -5850,11 +2786,8 @@ window.onload = function(){
         print(var)
 
 
-def generate_text_file_from_phrases(text_file_path):
-    global dest_lang_name
-    global docxfile_table_number_of_phrases
-    global xtm
-    docxfile_table_number_of_phrases = 0
+def generate_text_file_from_phrases(ctx: RuntimeContext, text_file_path):
+    ctx.docx.docxfile_table_number_of_phrases = 0
     print("Generating text file for google translation...")
     #if xtm.wb is not None:
     if xtm is not None:
@@ -5863,7 +2796,7 @@ def generate_text_file_from_phrases(text_file_path):
     text_to_translate_array = []
     
     for i, line in enumerate(from_text_table):
-        item = from_text_by_phrase_separator_table[i]
+        item = ctx.docx.from_text_by_phrase_separator_table[i]
         item = item.strip()
         
         item_searched_and_replaced_before = item
@@ -5882,7 +2815,7 @@ def generate_text_file_from_phrases(text_file_path):
             #text_to_translate = text_to_translate + '''%s
 #''' % (item)
             text_to_translate_array.append(item_searched_and_replaced_before)
-            docxfile_table_number_of_phrases = docxfile_table_number_of_phrases + 1
+            ctx.docx.docxfile_table_number_of_phrases = ctx.docx.docxfile_table_number_of_phrases + 1
     #print (text_to_translate)
     #print (text_to_translate_array)
     
@@ -5907,11 +2840,8 @@ def generate_text_file_from_phrases(text_file_path):
         print(var)
         
 
-def generate_xlsx_file_from_phrases(xlsx_file_path):
-    global dest_lang_name
-    global docxfile_table_number_of_phrases
-    global xtm
-    docxfile_table_number_of_phrases = 0
+def generate_xlsx_file_from_phrases(ctx: RuntimeContext, xlsx_file_path):
+    ctx.docx.docxfile_table_number_of_phrases = 0
     print("Generating xlsx file for google translation...")
     #if xtm.wb is not None:
     if xtm is not None:
@@ -5920,7 +2850,7 @@ def generate_xlsx_file_from_phrases(xlsx_file_path):
     text_to_translate_array = []
     
     for i, line in enumerate(from_text_table):
-        item = from_text_by_phrase_separator_table[i]
+        item = ctx.docx.from_text_by_phrase_separator_table[i]
         item = item.strip()
         
         item_searched_and_replaced_before = item
@@ -5939,7 +2869,7 @@ def generate_xlsx_file_from_phrases(xlsx_file_path):
             #text_to_translate = text_to_translate + '''%s
             #''' % (item)
             text_to_translate_array.append(item_searched_and_replaced_before)
-            docxfile_table_number_of_phrases = docxfile_table_number_of_phrases + 1
+            ctx.docx.docxfile_table_number_of_phrases = ctx.docx.docxfile_table_number_of_phrases + 1
     #print (text_to_translate)
     #print (text_to_translate_array)
     
@@ -5990,31 +2920,27 @@ def deepl_double_linefeed_between_phrases(dest_lang):
                        'ro', 'ru', 'sk', 'sl', 'sv', 'tr', 'uk', 'vi', 'zh-hant', 'zh-hans')
     return dest_lang not in single_linefeed_phrase_separator_langs
 
-def generate_char_blocks_array_from_phrases(text_file_path):
-    global dest_lang_name, dest_lang, translation_engine
-    global docxfile_table_number_of_phrases
-    global xtm
-    global blocks_nchar_max_to_translate_array
-    docxfile_table_number_of_phrases = 0
-    print("Generating %d character blocks for translation..." % (MAX_TRANSLATION_BLOCK_SIZE))
+def generate_char_blocks_array_from_phrases(ctx: RuntimeContext, text_file_path):
+    ctx.docx.docxfile_table_number_of_phrases = 0
+    print("Generating %d character blocks for translation..." % (ctx.config.max_translation_block_size))
     #if xtm.wb is not None:
     if xtm is not None:
         print("Replacing text before using excel file...\n")
     text_to_translate = ''
     text_to_translate_array = []
-    blocks_nchar_max_to_translate_array = []
+    ctx.docx.blocks_nchar_max_to_translate_array = []
     
     double_linefeed_between_phrases = False
     phrase_separator = "\n"
     phrase_separator_len = 1
-    if translation_engine == 'deepl':
-        if deepl_double_linefeed_between_phrases(dest_lang):
+    if ctx.engine.engine == 'deepl':
+        if deepl_double_linefeed_between_phrases(ctx.language.dest_lang):
             double_linefeed_between_phrases = False
             phrase_separator = "\n\n"
             phrase_separator_len = 2
     
     for i, line in enumerate(from_text_table):
-        item = from_text_by_phrase_separator_table[i]
+        item = ctx.docx.from_text_by_phrase_separator_table[i]
         item = item.strip()
         
         item_searched_and_replaced_before = item
@@ -6033,7 +2959,7 @@ def generate_char_blocks_array_from_phrases(text_file_path):
             #text_to_translate = text_to_translate + '''%s
 #''' % (item)
             text_to_translate_array.append(item_searched_and_replaced_before)
-            docxfile_table_number_of_phrases = docxfile_table_number_of_phrases + 1
+            ctx.docx.docxfile_table_number_of_phrases = ctx.docx.docxfile_table_number_of_phrases + 1
                 
     #print (text_to_translate)
     #print (text_to_translate_array)
@@ -6054,7 +2980,7 @@ def generate_char_blocks_array_from_phrases(text_file_path):
         #print("%d : '%s'" % (index, text_to_translate_array[index]))
         current_phrase_str = text_to_translate_array[index]
         
-        if current_text_block_len + len(current_phrase_str) <= MAX_TRANSLATION_BLOCK_SIZE + phrase_separator_len:
+        if current_text_block_len + len(current_phrase_str) <= ctx.config.max_translation_block_size + phrase_separator_len:
             if len(current_text_block) == 0:
                 current_text_block = current_phrase_str
                 current_text_block_len = len(current_text_block)
@@ -6068,8 +2994,8 @@ def generate_char_blocks_array_from_phrases(text_file_path):
                 #print("current_text_block")
                 #print(current_text_block)
         else:
-            blocks_nchar_max_to_translate_array.append(current_text_block)
-            #print("Current block of %d characters:\n-------------------------------------------------" % (MAX_TRANSLATION_BLOCK_SIZE))
+            ctx.docx.blocks_nchar_max_to_translate_array.append(current_text_block)
+            #print("Current block of %d characters:\n-------------------------------------------------" % (ctx.config.max_translation_block_size))
             #print("current_text_block")
             #print(current_text_block)
             #print("end")
@@ -6083,14 +3009,14 @@ def generate_char_blocks_array_from_phrases(text_file_path):
             #input("------------------------------------------\nType enter to continue")
         
         if index == (len(text_to_translate_array) - 1):
-            blocks_nchar_max_to_translate_array.append(current_text_block)
-            #print("Current block of %d characters:\n-------------------------------------------------"  % (MAX_TRANSLATION_BLOCK_SIZE))
+            ctx.docx.blocks_nchar_max_to_translate_array.append(current_text_block)
+            #print("Current block of %d characters:\n-------------------------------------------------"  % (ctx.config.max_translation_block_size))
             #print(current_text_block.split("\n"))
             #print("------------------------------------------\nBlock size : %d" % (current_text_block_len))
             #input("------------------------------------------\nType enter to continue")
     
     #print("blocks_nchar_max_to_translate_array:")
-    #print("\n******************************************\n".join(blocks_nchar_max_to_translate_array))
+    #print("\n******************************************\n".join(ctx.docx.blocks_nchar_max_to_translate_array))
     #print ("len(text_to_translate_array) = %d " % (len(text_to_translate_array) - 1)) 
 
     #print("text_to_translate=\n%s" % (text_to_translate))
@@ -6105,33 +3031,30 @@ def generate_char_blocks_array_from_phrases(text_file_path):
         print(var)
 
 
-def google_translate_from_text_file():
-    global docx_file_name, translation_array
-    #word_file_to_translate
+def google_translate_from_text_file(ctx: RuntimeContext):
+    #ctx.flags.word_file_to_translate
     text_file_path = docx_file_name + '.txt'
     text_file_full_path = os.path.realpath(text_file_path)
     #print("text_file_full_path=%s" % text_file_full_path)
-    generate_text_file_from_phrases(text_file_full_path)
+    generate_text_file_from_phrases(ctx, text_file_full_path)
     #input("There")
     #input("Here, press enter:")
     print("Starting translation in google using text file...")
-    translation_array = selenium_chrome_google_translate_text_file(text_file_full_path)
+    ctx.docx.translation_array = selenium_chrome_google_translate_text_file(ctx, text_file_full_path)
     try:
         os.remove(text_file_path)
         pass
     except:
         pass
 
-def google_translate_from_html_javascript():
-    global translation_array
-    global html_file_path
+def google_translate_from_html_javascript(ctx: RuntimeContext):
     #input("There")
     #input("Here, press enter:")
     print("Starting translation in google using html file...")
     
-    generate_html_file_from_phrases_for_google_translate_javascript()
+    generate_html_file_from_phrases_for_google_translate_javascript(ctx)
     
-    translation_array = selenium_chrome_google_translate_html_javascript_file(html_file_path)
+    ctx.docx.translation_array = selenium_chrome_google_translate_html_javascript_file(ctx, html_file_path)
     
     try:
         #input("before remove html file")
@@ -6140,38 +3063,39 @@ def google_translate_from_html_javascript():
     except:
         pass
 
-    return translation_array
+    return ctx.docx.translation_array
 
-def google_translate_from_html_xlsxfile():
-    global word_file_to_translate, translation_array
-    xlsx_file_path = word_file_to_translate + '.xlsx'
+def google_translate_from_html_xlsxfile(ctx: RuntimeContext):
+    xlsx_file_path = ctx.flags.word_file_to_translate + '.xlsx'
     xlsx_file_full_path = os.path.realpath(xlsx_file_path)
     #print("text_file_full_path=%s" % text_file_full_path)
-    generate_xlsx_file_from_phrases(xlsx_file_full_path)
+    generate_xlsx_file_from_phrases(ctx, xlsx_file_full_path)
     #input("There")
     #input("Here, press enter:")
     print("Starting translation in google using text file...")
-    translation_array = selenium_chrome_google_translate_xlsx_file(xlsx_file_full_path)
+    ctx.docx.translation_array = selenium_chrome_google_translate_xlsx_file(ctx, xlsx_file_full_path)
     try:
         os.remove(xlsx_file_full_path)
         pass
     except:
         pass
 
-def translate_from_phrasesblock():
-    global docx_file_name, translation_array, translation_engine
+def translate_from_phrasesblock(ctx: RuntimeContext):
     text_file_path = docx_file_name + '.txt'
     text_file_full_path = os.path.realpath(text_file_path)
     #print("text_file_full_path=%s" % text_file_full_path)
-    #generate_text_file_from_phrases(text_file_full_path)
-    generate_char_blocks_array_from_phrases(text_file_full_path)
+    #generate_text_file_from_phrases(ctx, text_file_full_path)
+    generate_char_blocks_array_from_phrases(ctx, text_file_full_path)
 
     translation_succeded = True
 
     #input("phrasesblock")
-    print("Starting translation in %s using phrase blocks of %d characters..." % (translation_engine, MAX_TRANSLATION_BLOCK_SIZE))
+    print("Starting translation in %s using phrase blocks of %d characters..." % (ctx.engine.engine, ctx.config.max_translation_block_size))
 
-    translation_succeded, translation_array = selenium_chrome_translate_maxchar_blocks()
+    translation_succeded, ctx.docx.translation_array = _runner_translate_maxchar_blocks(
+        ctx,
+        selenium_webservice_perplexity_translate=selenium_webservice_perplexity_translate,
+    )
     try:
         os.remove(text_file_path)
         pass
@@ -6186,15 +3110,15 @@ def translate_docx():
     # Engine-method specific translators
     # ------------------------------------------------------------------
     if engine_method == "textfile":
-        google_translate_from_text_file()
+        google_translate_from_text_file(ctx)
         return translation_succeded
 
     if engine_method == "javascript":
-        google_translate_from_html_javascript()
+        google_translate_from_html_javascript(ctx)
         return translation_succeded
 
     if engine_method == "xlsxfile":
-        google_translate_from_html_xlsxfile()
+        google_translate_from_html_xlsxfile(ctx)
         return translation_succeded
 
     # ------------------------------------------------------------------
@@ -6210,20 +3134,19 @@ def translate_docx():
         use_phrasesblock = engine_method in ("phrasesblock", "webservice")
 
     if use_phrasesblock:
-        translation_succeded = translate_from_phrasesblock()
+        translation_succeded = translate_from_phrasesblock(ctx)
 
     return translation_succeded
 
 
 
-def get_translation_and_replace_after():
-    global driver, from_text_by_phrase_separator_table, to_text_by_phrase_separator_table, numerrors_deepl, use_api
+def get_translation_and_replace_after(ctx: RuntimeContext):
     phrase_no = 0
 
-    # ── DIAGNOSTIC: confirm we enter here with polished translation_array ─
-    if oai_polisher is not None:
-        print(f"[DIAG] get_translation_and_replace_after: translation_array has "
-              f"{len(translation_array)} lines — distributing into to_text_by_phrase_separator_table")
+    # ── DIAGNOSTIC: confirm we enter here with polished ctx.docx.translation_array ─
+    if ctx.openai.polisher is not None:
+        print(f"[DIAG] get_translation_and_replace_after: ctx.docx.translation_array has "
+              f"{len(ctx.docx.translation_array)} lines — distributing into ctx.docx.to_text_by_phrase_separator_table")
     # ─────────────────────────────────────────────────────────────────────
 
     p_remove_pause = re.compile('(?i)<pause>')
@@ -6231,9 +3154,9 @@ def get_translation_and_replace_after():
     p_remove_parenthesis_spaces = re.compile('\( +')
 
     for i, line in enumerate(from_text_table):
-        item = from_text_by_phrase_separator_table[i]
+        item = ctx.docx.from_text_by_phrase_separator_table[i]
         item = item.strip()
-        from_language = src_lang
+        from_language = ctx.language.src_lang
         phrase_separator_removed_str = ''
 
         p_remove_separator = re.compile(line_separator_regex_str)
@@ -6255,55 +3178,51 @@ def get_translation_and_replace_after():
                         item_searched_and_replaced_before, nb_searched_and_replaced_before = xtm.search_and_replace_text('before', item)
                         if item_searched_and_replaced_before.strip() == '' or item_searched_and_replaced_before is None:
                             continue
-                if splitonly:
+                if ctx.flags.splitonly:
                     web_translation_separators = get_translated_cells_content (i, item_searched_and_replaced_before)
-                elif use_api:
+                elif ctx.flags.use_api:
                     try:
                         web_translation_separators = ""
-                        #if use_api:
-                        #    translation = oai_translator.translate(item_searched_and_replaced_before, src=src_lang, dest=dest_lang)
+                        #if ctx.flags.use_api:
+                        #    translation = ctx.openai.translator.translate(item_searched_and_replaced_before, src=ctx.language.src_lang, dest=ctx.language.dest_lang)
                         #    web_translation_separators = translation.text
                         if not len(web_translation_separators) > 0:
-                            use_api = False
+                            ctx.flags.use_api = False
                             # Faster google Chrome translate failed, using Selenium as backup
 
-                            if translation_engine != 'yandex' and driver is None:
+                            if driver is None:
                                 print(f"[Line {inspect.currentframe().f_lineno}] Starting Chrome browser\n")
                                 
                                 service = Service()                                
-                                driver = webdriver.Chrome(service=service, options=chrome_options)
+                                driver = webdriver.Chrome(service=service, options=ctx.browser.chrome_options)
                                 
                                 driver.set_window_position(100, 100)
                                 driver.set_window_size(800, 700)
                                 #driver.set_window_size(400, 650)
 
                             print("phrase_no=%d" % phrase_no)
-                            web_translation_separators = selenium_chrome_machine_translate(item_searched_and_replaced_before, phrase_no)
+                            web_translation_separators = selenium_chrome_machine_translate(ctx, item_searched_and_replaced_before, phrase_no)
                     except Exception:
-                        use_api = False
+                        ctx.flags.use_api = False
                         # Faster google Chrome translate failed, using Selenium as backup
 
                         if driver is not None:
                             print(f"Starting Chrome browser\n")
                             
                             service = Service()                                
-                            driver = webdriver.Chrome(service=service, options=chrome_options)
+                            driver = webdriver.Chrome(service=service, options=ctx.browser.chrome_options)
 
-                        if translation_engine == 'google' and driver is not None:
-                            driver.set_window_position(100, 100)
-                            driver.set_window_size(800, 700)
-
-                        if translation_engine == 'yandex' and driver is not None:
+                        if ctx.engine.engine == 'google' and driver is not None:
                             driver.set_window_position(100, 100)
                             driver.set_window_size(800, 700)
 
                         print("phrase_no = %d" % phrase_no)
-                        web_translation_separators = selenium_chrome_machine_translate(item_searched_and_replaced_before, phrase_no)
+                        web_translation_separators = selenium_chrome_machine_translate(ctx, item_searched_and_replaced_before, phrase_no)
                 else:
-                    if engine_method == "singlephrase" and translation_engine == 'deepl':
-                        translation_succeded, web_translation_separators  = selenium_chrome_machine_translate(item_searched_and_replaced_before, phrase_no)
+                    if ctx.engine.method == "singlephrase" and ctx.engine.engine == 'deepl':
+                        translation_succeded, web_translation_separators  = selenium_chrome_machine_translate(ctx, item_searched_and_replaced_before, phrase_no)
                     else:
-                        web_translation_separators = selenium_chrome_machine_translate(item_searched_and_replaced_before, phrase_no)
+                        web_translation_separators = selenium_chrome_machine_translate(ctx, item_searched_and_replaced_before, phrase_no)
                         
                 #web_translation_separators = translation.text
                 phrase_separator_removed_str = p_remove_double_spaces.sub(' ', web_translation_separators)
@@ -6317,29 +3236,29 @@ def get_translation_and_replace_after():
                         #print("Replaced phrase :\n'%s'" % (web_translation_separators_searched_and_replaced))
                         phrase_separator_removed_str = web_translation_separators_searched_and_replaced
 
-                if dest_lang in right_to_left_languages_list.keys():
+                if ctx.language.dest_lang in right_to_left_languages_list.keys():
                     #phrase_separator_removed_aligned_str = reverse_string (phrase_separator_removed_str)
                     #phrase_separator_removed_aligned_str = "\u202B" + phrase_separator_removed_str + "\u202C"
                     phrase_separator_removed_aligned_str = get_display(phrase_separator_removed_str)
                 else:
                     phrase_separator_removed_aligned_str = phrase_separator_removed_str
                 try:
-                    if splitonly:
+                    if ctx.flags.splitonly:
                         print("Translated text :'%s'\n" % (phrase_separator_removed_aligned_str))
                     else:
-                        print("%s translation (%s):'%s'" % (translation_engine.title() ,dest_lang_name, phrase_separator_removed_aligned_str))
+                        print("%s translation (%s):'%s'" % (ctx.engine.engine.title() ,ctx.language.dest_lang_name, phrase_separator_removed_aligned_str))
                 except Exception:
                     print("")
                     print("Google translation='%s'" % (phrase_separator_removed_str.encode('utf8').decode('utf8')))
-                if web_translation_separators.strip() == '' and not splitonly:
+                if web_translation_separators.strip() == '' and not ctx.flags.splitonly:
                     print("Error translating='%s'" % (item))
-                to_text_by_phrase_separator_table[i] = phrase_separator_removed_str
+                ctx.docx.to_text_by_phrase_separator_table[i] = phrase_separator_removed_str
                 phrase_separator_removed_str = p_remove_separator.sub(' ', phrase_separator_removed_str)
                 phrase_separator_removed_str.strip()
                 to_text_by_phrase_separator_removed_table[i] = phrase_separator_removed_str
         except Exception:
             var = traceback.format_exc()
-            numerrors_deepl = numerrors_deepl + 1
+            ctx.browser.numerrors_deepl = ctx.browser.numerrors_deepl + 1
             web_translation_separators = var
             print("ERROR:%s" % (var))
 
@@ -6347,7 +3266,7 @@ def get_translation_and_replace_after():
         try:
             web_translation_no_separators = ''
             if item.strip() != '':
-                #google_translation_res = translator.translate(item, src=src_lang, dest='fr')
+                #google_translation_res = translator.translate(item, src=ctx.language.src_lang, dest='fr')
                 #time.sleep(5)
                 #web_translation_no_separators = pydeepl.translate(item, to_language)
                 phrase_separator_removed_str = p_remove_double_spaces.sub(' ', web_translation_no_separators)
@@ -6362,42 +3281,30 @@ def get_translation_and_replace_after():
             Identical_with_without_separators = 'SAME<BR>'
 
 
-def minimize_browser():
-    if not use_api and not splitonly:
-        # Minimize browser
-        #print("Minimizing browser...")
-        try:
-            driver.minimize_window()
-        except:
-            pass
-
-
-def document_split_phrases():
+def document_split_phrases(ctx: RuntimeContext):
     # Split phrases into multiple lines to match source language number of lines
-    global docxfile_table_number_of_phrases, docxfile_table_number_of_characters, phrase_number_of_words, docxfile_table_number_of_words, split_engine
-    global src_lang_name, dest_lang_name, oai_translator
 
     oai_sub_splitter = None
-    if split_engine == "openai":
-        if oai_translator is not None:
-            oai_sub_splitter = OpenAISubtitleSplitter(filename=word_file_to_translate, doc_id=oai_translator.get_doc_id())
+    if ctx.flags.split_engine == "openai":
+        if ctx.openai.translator is not None:
+            oai_sub_splitter = OpenAISubtitleSplitter(filename=ctx.flags.word_file_to_translate, doc_id=ctx.openai.translator.get_doc_id())
         else:
             oai_sub_splitter = OpenAISubtitleSplitter()
     
     for i, line in enumerate(from_text_table):
-        if to_text_by_phrase_separator_table[i] != '':
-            #docxfile_table_number_of_phrases = docxfile_table_number_of_phrases + 1
-            docxfile_table_number_of_characters = docxfile_table_number_of_characters + len(from_text_by_phrase_separator_table[i])
-            phrase_number_of_words = len(from_text_by_phrase_separator_table[i].strip().split(" "))
-            #print("Phrase to split: %s" % (from_text_by_phrase_separator_table[i]))
-            #print("number of words: %d" % (phrase_number_of_words))
-            docxfile_table_number_of_words = docxfile_table_number_of_words + phrase_number_of_words
+        if ctx.docx.to_text_by_phrase_separator_table[i] != '':
+            #ctx.docx.docxfile_table_number_of_phrases = ctx.docx.docxfile_table_number_of_phrases + 1
+            ctx.docx.docxfile_table_number_of_characters = ctx.docx.docxfile_table_number_of_characters + len(ctx.docx.from_text_by_phrase_separator_table[i])
+            ctx.docx.phrase_number_of_words = len(ctx.docx.from_text_by_phrase_separator_table[i].strip().split(" "))
+            #print("Phrase to split: %s" % (ctx.docx.from_text_by_phrase_separator_table[i]))
+            #print("number of words: %d" % (ctx.docx.phrase_number_of_words))
+            ctx.docx.docxfile_table_number_of_words = ctx.docx.docxfile_table_number_of_words + ctx.docx.phrase_number_of_words
             input_phrase_lines = ""
             #translation_result_using_separator[i] = []
             #translation_result_phrase_array[i] = []
             
             try:
-                current_line = to_text_by_phrase_separator_table[i]
+                current_line = ctx.docx.to_text_by_phrase_separator_table[i]
                 # Using () as separator for splitting phrases, not used anymore
                 #lines = current_line.split(line_separator_nospace_str)
                 str_translation_len = len(current_line)
@@ -6455,7 +3362,7 @@ def document_split_phrases():
                     # --- Try 2 times with default model ---
                     for attempt in range(2):
                         response, lines = oai_sub_splitter.split_phrase(
-                            src_lang_name, dest_lang_name, input_phrase_lines, current_line
+                            ctx.language.src_lang_name, ctx.language.dest_lang_name, input_phrase_lines, current_line
                         )
 
                         lines = normalize(lines)
@@ -6470,7 +3377,7 @@ def document_split_phrases():
                     oai_sub_splitter.set_model('gpt-5.5')
 
                     response, lines = oai_sub_splitter.split_phrase(
-                        src_lang_name, dest_lang_name, input_phrase_lines, current_line
+                        ctx.language.src_lang_name, ctx.language.dest_lang_name, input_phrase_lines, current_line
                     )
 
                     # --- Final handling ---
@@ -6499,13 +3406,13 @@ def document_split_phrases():
                     if local_avg > MAX_LINE_SIZE:
                         local_avg = math.ceil(local_avg)
 
-                    tokens = tokenize_text_to_array(current_line, dest_lang)
-                    lines = divide_array(tokens, dest_lang, local_avg + 4)
+                    tokens = tokenize_text_to_array(current_line, ctx.language.dest_lang)
+                    lines = divide_array(tokens, ctx.language.dest_lang, local_avg + 4)
 
                     divide_max_try = MAX_LINE_SIZE
                     while (len(lines) > str_nb_lines) and (divide_max_try > 0):
                         local_avg += 1
-                        lines = divide_array(tokens, dest_lang, local_avg + 4)
+                        lines = divide_array(tokens, ctx.language.dest_lang, local_avg + 4)
                         divide_max_try -= 1
 
                     divide_max_try = MAX_LINE_SIZE
@@ -6514,7 +3421,7 @@ def document_split_phrases():
 
                     while (len(lines) <= str_nb_lines) and (len(lines) >= 1) and (divide_max_try > 0):
                         local_avg -= 1
-                        attempt_lines = divide_array(tokens, dest_lang, local_avg + 4)
+                        attempt_lines = divide_array(tokens, ctx.language.dest_lang, local_avg + 4)
 
                         if len(attempt_lines) <= str_nb_lines:
                             lines = attempt_lines
@@ -6528,7 +3435,7 @@ def document_split_phrases():
                 if str_nb_lines == 1:
                     lines_divided = [current_line]
                 if str_nb_lines > 1:
-                    if split_engine == "openai":
+                    if ctx.flags.split_engine == "openai":
                         lines_divided = split_with_openai()
                         
                         number_lines = len(lines_divided)
@@ -6578,13 +3485,13 @@ def document_split_phrases():
                 try:
                     print(
                         "Splitting phrase : %s (%d) = %d lines"
-                        % (to_text_by_phrase_separator_table[i], i, str_nb_lines)
+                        % (ctx.docx.to_text_by_phrase_separator_table[i], i, str_nb_lines)
                     )
                 except Exception:
                     try:
                         print(
                             "%s (%d): %d "
-                            % (to_text_by_phrase_separator_table[i].encode("utf-8"), i, str_nb_lines)
+                            % (ctx.docx.to_text_by_phrase_separator_table[i].encode("utf-8"), i, str_nb_lines)
                         )
                     except Exception:
                         print("(unable to print content to screen) (%d): %d" % (i, str_nb_lines))
@@ -6731,7 +3638,7 @@ def print_console_docx_file_translated():
 
             if not split_translation:
                 translation_cell_text = to_text_by_phrase_separator_table[row_n]
-                prepare_and_clear_cell_for_writing(row_n, translation_cell_text)
+                prepare_and_clear_cell_for_writing(ctx, row_n, translation_cell_text)
                 if dest_lang in right_to_left_languages_list.keys():
                     #translation_cell_aligned_text = reverse_string (translation_cell_text)
                     #translation_cell_aligned_text = "\u202B" + translation_cell_text + "\u202C"
@@ -6769,7 +3676,7 @@ def print_console_docx_file_translated():
                         if cell_line_pos == 0:
                             #print("cell_line_pos=%d" % cell_line_pos)
                             if splitonly:
-                                prepare_and_clear_cell_for_writing(current_cell_row, translation_phrase_line_str)
+                                prepare_and_clear_cell_for_writing(ctx, current_cell_row, translation_phrase_line_str)
                             else:
                             #prepare_and_clear_cell_for_writing(current_cell_row, translation_phrase_line_str)
                                 cell_set_1st_paragraph(current_cell_row, translation_phrase_line_str)
@@ -6808,10 +3715,10 @@ def print_console_docx_file_translated():
 #word.Application.ActiveWindow.Close()
 #word.Application.Quit()
 
-def set_docx_properties_comment_for_history():
+def set_docx_properties_comment_for_history(ctx: RuntimeContext):
     now = datetime.datetime.now()
     dt_string = now.strftime("%d/%m/%Y %H:%M:%S")
-    docxdoc.core_properties.comments = "Document translated by SMTV Robot version %s using %s engine on %s." % (PROGRAM_VERSION, translation_engine, dt_string)
+    docxdoc.core_properties.comments = "Document translated by SMTV Robot version %s using %s engine on %s." % (PROGRAM_VERSION, ctx.engine.engine, dt_string)
 
 
 
@@ -6829,27 +3736,24 @@ def local_time_offset(t=None):
     return localtimezone
 
 
-def run_statistics():
-    global use_api
-    global splitonly, driver
-    global engine_method, end_time, elapsed_time, json_configuration_array, client_ip
+def run_statistics(ctx: RuntimeContext):
     
     statistics_html_statistics_form_url_key = ['statistics', 'html_statistics_form_url']
-    statistics_html_statistics_form_url = get_nested_value_from_json_array(json_configuration_array, statistics_html_statistics_form_url_key)
+    statistics_html_statistics_form_url = get_nested_value_from_json_array(ctx.config.json_configuration_array, statistics_html_statistics_form_url_key)
     
     bool_print_stats = False
     
     try:
-        if splitonly:
+        if ctx.flags.splitonly:
             action = "splitonly"
         else:
             action = "translate"
         
-        docxfile_size = os.path.getsize(word_file_to_translate)
-        if use_api == True:
-            engine_method = "api"
-        elif engine_method is None or engine_method == "":
-            engine_method = "web"
+        docxfile_size = os.path.getsize(ctx.flags.word_file_to_translate)
+        if ctx.flags.use_api == True:
+            ctx.engine.method = "api"
+        elif ctx.engine.method is None or ctx.engine.method == "":
+            ctx.engine.method = "web"
         
         if xlsxreplacefile is not None:
             xlsxreplacefile_splitted = os.path.splitext(os.path.basename(xlsxreplacefile))
@@ -6884,13 +3788,13 @@ def run_statistics():
         cpu_count = psutil.cpu_count()
         mem_total = psutil.virtual_memory().total
         
-        cost_google_translate = 20 * docxfile_table_number_of_characters / 1000000
+        cost_google_translate = 20 * ctx.docx.docxfile_table_number_of_characters / 1000000
         
         local_time_offset_str = local_time_offset()
         
         docxfile_page_count = None
         try:
-            document = zipfile.ZipFile(word_file_to_translate)
+            document = zipfile.ZipFile(ctx.flags.word_file_to_translate)
             dxml = document.read('docProps/app.xml')
             uglyXml = xml.dom.minidom.parseString(dxml)
             docxfile_page_count = uglyXml.getElementsByTagName('Pages')[0].childNodes[0].nodeValue
@@ -6916,26 +3820,26 @@ def run_statistics():
         if bool_print_stats:
             print("Statistics:")
             print("program_version: %s" % (PROGRAM_VERSION))
-            print("client_ip: %s" % (client_ip))
+            print("client_ip: %s" % (ctx.flags.client_ip))
             #https://stackoverflow.com/questions/1695183/how-to-percent-encode-url-parameters-in-python
             
-            print("docxfile: %s" % (word_file_to_translate))
+            print("docxfile: %s" % (ctx.flags.word_file_to_translate))
             print("action: %s" % (action))
-            print("destlang_code: %s" % (dest_lang))
-            print("destlang_name: %s" % (dest_lang_name))
+            print("destlang_code: %s" % (ctx.language.dest_lang))
+            print("destlang_name: %s" % (ctx.language.dest_lang_name))
             print("docxfile: %s" % (docx_file_name))
             print("docxfile_page_count: %s" % docxfile_page_count)
             print("docxfile_size: %s" % (docxfile_size))
             print("docxfile_table_number_of_lines: %s" % (numrows))
-            print("docxfile_table_number_of_phrases: %s" % (docxfile_table_number_of_phrases))
-            print("docxfile_table_number_of_words: %s" % (docxfile_table_number_of_words))
-            print("docxfile_table_number_of_characters: %s" % (docxfile_table_number_of_characters))
-            print("engine: %s" % (translation_engine))
+            print("docxfile_table_number_of_phrases: %s" % (ctx.docx.docxfile_table_number_of_phrases))
+            print("docxfile_table_number_of_words: %s" % (ctx.docx.docxfile_table_number_of_words))
+            print("docxfile_table_number_of_characters: %s" % (ctx.docx.docxfile_table_number_of_characters))
+            print("engine: %s" % (ctx.engine.engine))
             print("xlsxreplacefile: %s" % (xlsxreplacefile_name))
             print("destfont: %s" % (dest_font))
-            print("splitonly: %s" % (splitonly))
+            print("splitonly: %s" % (ctx.flags.splitonly))
             print("split_translation: %s" % (split_translation))
-            print("showbrowser: %s" % (showbrowser))
+            print("showbrowser: %s" % (ctx.flags.showbrowser))
             print("start_time: %s" % (start_time))
             print("end_time: %s" % (end_time))
             print("elapsed_time: %s" % ((elapsed_time)))
@@ -6963,41 +3867,41 @@ def run_statistics():
             print(f"cost_google_translate: {cost_google_translate:.2f}$")
             print("")
         
-        #if use_api == False and not splitonly:
-        chrome_options = Options()
-        chrome_options.add_argument("--disable-web-security")
-        chrome_options.add_argument("--disable-xss-auditor")
-        chrome_options.add_argument("--log-level=3")  # fatal
-        chrome_options.add_argument("--lang=en-GB")
-        chrome_options.add_argument("--password-store=basic")
+        #if ctx.flags.use_api == False and not ctx.flags.splitonly:
+        ctx.browser.chrome_options = Options()
+        ctx.browser.chrome_options.add_argument("--disable-web-security")
+        ctx.browser.chrome_options.add_argument("--disable-xss-auditor")
+        ctx.browser.chrome_options.add_argument("--log-level=3")  # fatal
+        ctx.browser.chrome_options.add_argument("--lang=en-GB")
+        ctx.browser.chrome_options.add_argument("--password-store=basic")
         
-        if not showbrowser:
-            chrome_options.add_argument("--headless")
+        if not ctx.flags.showbrowser:
+            ctx.browser.chrome_options.add_argument("--headless")
         
         docxfile_table_number_of_lines = numrows
-        if use_api or splitonly:
+        if ctx.flags.use_api or ctx.flags.splitonly:
             print("\nCreating a new browser for stats")
             
                                                                
-            driver = webdriver.Chrome(service=service, options=chrome_options)
+            driver = webdriver.Chrome(service=service, options=ctx.browser.chrome_options)
             service = Service()
         
         query_params = {
             "program_version" : PROGRAM_VERSION,
-            "engine" : translation_engine,
-            "engine_method" : engine_method,
+            "engine" : ctx.engine.engine,
+            "engine_method" : ctx.engine.method,
             "action" : action,
-            "destlang_code" : dest_lang,
-            "destlang_name" : dest_lang_name,
+            "destlang_code" : ctx.language.dest_lang,
+            "destlang_name" : ctx.language.dest_lang_name,
             "docxfile_size" : docxfile_size,
             "docxfile_table_number_of_lines" : docxfile_table_number_of_lines,
-            "docxfile_table_number_of_phrases" : docxfile_table_number_of_phrases,
-            "docxfile_table_number_of_words" : docxfile_table_number_of_words,
-            "docxfile_table_number_of_characters" : docxfile_table_number_of_characters,
+            "docxfile_table_number_of_phrases" : ctx.docx.docxfile_table_number_of_phrases,
+            "docxfile_table_number_of_words" : ctx.docx.docxfile_table_number_of_words,
+            "docxfile_table_number_of_characters" : ctx.docx.docxfile_table_number_of_characters,
             "xlsxreplacefile" : xlsxreplacefile_name,
             "destfont" : dest_font,
             "split_translation" : split_translation,
-            "showbrowser" : showbrowser,
+            "showbrowser" : ctx.flags.showbrowser,
             "start_time" : start_time,
             "end_time" : end_time,
             "elapsed_time" : elapsed_time,
@@ -7023,7 +3927,7 @@ def run_statistics():
             "docxfile_page_count" : docxfile_page_count,
             "platform_node" : platform_node,
             "docxfile" : docx_file_name,
-            "client_ip" : client_ip
+            "client_ip" : ctx.flags.client_ip
         }
         
         base_url = statistics_html_statistics_form_url
@@ -7060,27 +3964,15 @@ def run_statistics():
     #time.sleep(10)
 
 
-def browser_fill_form_field_value(field_css_id, field_value):
-    try:
-        input_field = WebDriverWait(driver, 1).until(EC.presence_of_element_located((By.CSS_SELECTOR, field_css_id)))
-        input_field.send_keys (field_value)
-    except:
-        var = traceback.format_exc()
-        print(var)
-
-
-def get_robot_usage_comment():
-    global use_api
-    global splitonly, driver
-    global engine_method, end_time, elapsed_time, json_configuration_array, str_needs_update
+def get_robot_usage_comment(ctx: RuntimeContext):
     
     javascript_json_version_checker_url_key = ['version_checker', 'javascript_json_version_checker_url']
-    javascript_json_version_checker_url = get_nested_value_from_json_array(json_configuration_array, javascript_json_version_checker_url_key)
+    javascript_json_version_checker_url = get_nested_value_from_json_array(ctx.config.json_configuration_array, javascript_json_version_checker_url_key)
         
-    if use_api == True:
-        engine_method = "api"
-    elif engine_method is None or engine_method == "":
-        engine_method = "web"
+    if ctx.flags.use_api == True:
+        ctx.engine.method = "api"
+    elif ctx.engine.method is None or ctx.engine.method == "":
+        ctx.engine.method = "web"
     
     if xlsxreplacefile is not None:
         xlsxreplacefile_splitted = os.path.splitext(os.path.basename(xlsxreplacefile))
@@ -7106,44 +3998,44 @@ def get_robot_usage_comment():
     
 
     try:
-        driver.get(javascript_json_version_checker_url)
+        ctx.browser.driver.get(javascript_json_version_checker_url)
         bool_print_stats = False
 
         json_obj = json5.loads("{}")
 
         json_obj["program_version"] = PROGRAM_VERSION
-        json_obj["docxfile"] = word_file_to_translate
+        json_obj["docxfile"] = ctx.flags.word_file_to_translate
 
-        if splitonly:
+        if ctx.flags.splitonly:
             json_obj['action'] = "splitonly"
         else:
             json_obj['action'] = "translate"
 
-        json_obj["destlang_code"] = dest_lang
-        json_obj["destlang_name"] = dest_lang_name
+        json_obj["destlang_code"] = ctx.language.dest_lang
+        json_obj["destlang_name"] = ctx.language.dest_lang_name
         json_obj["docxfile"] = "%s%s" % (docx_file_name,"'")
         json_obj["docxfile_table_number_of_lines"] = numrows
-        json_obj["docxfile_table_number_of_phrases"] = docxfile_table_number_of_phrases
-        json_obj["docxfile_table_number_of_words"] = docxfile_table_number_of_words
-        json_obj["docxfile_table_number_of_characters"] = docxfile_table_number_of_characters
-        json_obj["engine"] = translation_engine
-        json_obj["engine_method"] = engine_method
+        json_obj["docxfile_table_number_of_phrases"] = ctx.docx.docxfile_table_number_of_phrases
+        json_obj["docxfile_table_number_of_words"] = ctx.docx.docxfile_table_number_of_words
+        json_obj["docxfile_table_number_of_characters"] = ctx.docx.docxfile_table_number_of_characters
+        json_obj["engine"] = ctx.engine.engine
+        json_obj["engine_method"] = ctx.engine.method
         json_obj["xlsxreplacefile"] = xlsxreplacefile_name
         if dest_font is not None:
             json_obj["destfont"] = "%s" % dest_font
-        json_obj["splitonly"] = splitonly
+        json_obj["splitonly"] = ctx.flags.splitonly
         json_obj["split_translation"] = split_translation
-        json_obj["showbrowser"] = showbrowser
+        json_obj["showbrowser"] = ctx.flags.showbrowser
         json_obj["start_time"] = "%s" % start_time
         json_obj["end_time"] = "%s" % end_time
         json_obj["elapsed_time"] = "%s" % elapsed_time
 
         try:
-            docxfile_size = os.path.getsize(word_file_to_translate)
+            docxfile_size = os.path.getsize(ctx.flags.word_file_to_translate)
             json_obj["docxfile_size"] = docxfile_size
-            if use_api == True:
+            if ctx.flags.use_api == True:
                 json_obj['engine_method'] = "api"
-            elif engine_method is None or engine_method == "":
+            elif ctx.engine.method is None or ctx.engine.method == "":
                 json_obj['engine_method'] = "web"
 
             if xlsxreplacefile is not None:
@@ -7182,13 +4074,13 @@ def get_robot_usage_comment():
             json_obj['cpu_count'] = psutil.cpu_count()
             json_obj['mem_total'] = psutil.virtual_memory().total
 
-            cost_google_translate = 20 * docxfile_table_number_of_characters / 1000000
+            cost_google_translate = 20 * ctx.docx.docxfile_table_number_of_characters / 1000000
 
             local_time_offset_str = local_time_offset()
 
             docxfile_page_count = None
             try:
-                document = zipfile.ZipFile(word_file_to_translate)
+                document = zipfile.ZipFile(ctx.flags.word_file_to_translate)
                 dxml = document.read('docProps/app.xml')
                 uglyXml = xml.dom.minidom.parseString(dxml)
                 docxfile_page_count = uglyXml.getElementsByTagName('Pages')[0].childNodes[0].nodeValue
@@ -7218,16 +4110,16 @@ def get_robot_usage_comment():
             print("Checking for program updates...")
             print("-------------------------------\n")
 
-            element_json_robot = WebDriverWait(driver, 1).until(
+            element_json_robot = WebDriverWait(ctx.browser.driver, 1).until(
                     EC.presence_of_element_located((By.ID, "json_robot")))
-            driver.execute_script("arguments[0].innerText = arguments[1]", element_json_robot, json.dumps(json_obj))
+            ctx.browser.driver.execute_script("arguments[0].innerText = arguments[1]", element_json_robot, json.dumps(json_obj))
 
-            element_submit = WebDriverWait(driver, 1).until(
+            element_submit = WebDriverWait(ctx.browser.driver, 1).until(
                     EC.presence_of_element_located((By.ID, "submit")))
-            safe_click(driver, element_submit)
-            driver.execute_script("arguments[0].click();", element_submit)
+            safe_click(ctx.browser.driver, element_submit)
+            ctx.browser.driver.execute_script("arguments[0].click();", element_submit)
 
-            html_translation = driver.page_source
+            html_translation = ctx.browser.driver.page_source
             # soup = BeautifulSoup(html_translation)
             soup = BeautifulSoup(html_translation, features="lxml")
             soup_div_text = soup.find('div', id='message_text')
@@ -7245,33 +4137,33 @@ def get_robot_usage_comment():
 
             return 0;
             try:
-                print(driver.capabilities['browserVersion'])
+                print(ctx.browser.driver.capabilities['browserVersion'])
             except:
                 pass
-            print(driver.name)
+            print(ctx.browser.driver.name)
 
             if bool_print_stats:
                 print("Statistics:")
                 print("program_version: %s" % (PROGRAM_VERSION))
                 # https://stackoverflow.com/questions/1695183/how-to-percent-encode-url-parameters-in-python
 
-                print("docxfile: %s" % (word_file_to_translate))
+                print("docxfile: %s" % (ctx.flags.word_file_to_translate))
                 print("action: %s" % (action))
-                print("destlang_code: %s" % (dest_lang))
-                print("destlang_name: %s" % (dest_lang_name))
+                print("destlang_code: %s" % (ctx.language.dest_lang))
+                print("destlang_name: %s" % (ctx.language.dest_lang_name))
                 print("docxfile: %s" % (docx_file_name))
                 print("docxfile_page_count: %s" % docxfile_page_count)
                 print("docxfile_size: %s" % (docxfile_size))
                 print("docxfile_table_number_of_lines: %s" % (numrows))
-                print("docxfile_table_number_of_phrases: %s" % (docxfile_table_number_of_phrases))
-                print("docxfile_table_number_of_words: %s" % (docxfile_table_number_of_words))
-                print("docxfile_table_number_of_characters: %s" % (docxfile_table_number_of_characters))
-                print("engine: %s" % (translation_engine))
+                print("docxfile_table_number_of_phrases: %s" % (ctx.docx.docxfile_table_number_of_phrases))
+                print("docxfile_table_number_of_words: %s" % (ctx.docx.docxfile_table_number_of_words))
+                print("docxfile_table_number_of_characters: %s" % (ctx.docx.docxfile_table_number_of_characters))
+                print("engine: %s" % (ctx.engine.engine))
                 print("xlsxreplacefile: %s" % (xlsxreplacefile_name))
                 print("destfont: %s" % (dest_font))
-                print("splitonly: %s" % (splitonly))
+                print("splitonly: %s" % (ctx.flags.splitonly))
                 print("split_translation: %s" % (split_translation))
-                print("showbrowser: %s" % (showbrowser))
+                print("showbrowser: %s" % (ctx.flags.showbrowser))
                 print("start_time: %s" % (start_time))
                 print("end_time: %s" % (end_time))
                 print("elapsed_time: %s" % ((elapsed_time)))
@@ -7298,7 +4190,7 @@ def get_robot_usage_comment():
                 print(f"cost_google_translate: {cost_google_translate:.2f}$")
                 print("")
 
-            # if use_api == False and not splitonly:
+            # if ctx.flags.use_api == False and not ctx.flags.splitonly:
             chrome_options = Options()
             chrome_options.add_argument("--disable-web-security")
             chrome_options.add_argument("--disable-xss-auditor")
@@ -7306,76 +4198,76 @@ def get_robot_usage_comment():
             chrome_options.add_argument("--lang=en-GB")
             chrome_options.add_argument("--password-store=basic")
 
-            driver.get("https://forms.gle/YeYYUYY5SNo6MKkB8")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(1) .whsOnd", "REMOTE_ADDR")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(2) .whsOnd", "country_name")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(3) .whsOnd", "remote_location_text")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(4) .whsOnd", "HTTP_USER_AGENT")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(5) .whsOnd", "program_version")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(6) .whsOnd", "docxfile")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(7) .whsOnd", "docxfile_page_count")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(8) .whsOnd", "docxfile_size")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(9) .whsOnd", "docxfile_table_number_of_lines")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(10) .whsOnd", "docxfile_table_number_of_words")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(11) .whsOnd", "docxfile_table_number_of_characters")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(12) .whsOnd", "action")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(13) .whsOnd", "destlang_code")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(14) .whsOnd", "destlang_name")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(15) .whsOnd", "engine")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(16) .whsOnd", "engine_method")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(17) .whsOnd", "xlsxreplacefile")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(18) .whsOnd", "destfont")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(19) .whsOnd", "split_translation")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(20) .whsOnd", "splitonly")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(21) .whsOnd", "showbrowser")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(22) .whsOnd", "server_time")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(23) .whsOnd", "start_time")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(24) .whsOnd", "end_time")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(25) .whsOnd", "elapsed_time")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(26) .whsOnd", "replacebeforelistsize")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(27) .whsOnd", "replacebeforelistreplaced")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(28) .whsOnd", "replaceafterlistsize")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(29) .whsOnd", "replaceafterlistreplaced")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(30) .whsOnd", "donotsplitlistsize")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(31) .whsOnd", "donotsplitfound")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(32) .whsOnd", "platform_uname")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(33) .whsOnd", "platform_system")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(34) .whsOnd", "platform_node")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(35) .whsOnd", "platform_release")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(36) .whsOnd", "platform_version")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(37) .whsOnd", "platform_machine")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(38) .whsOnd", "platform_processor")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(39) .whsOnd", "cpu_count")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(40) .whsOnd", "mem_total")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(41) .whsOnd", "local_time_offset")
-            browser_fill_form_field_value(".Qr7Oae:nth-child(42) .whsOnd", "docxfile_table_number_of_phrases")
+            ctx.browser.driver.get("https://forms.gle/YeYYUYY5SNo6MKkB8")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(1) .whsOnd", "REMOTE_ADDR")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(2) .whsOnd", "country_name")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(3) .whsOnd", "remote_location_text")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(4) .whsOnd", "HTTP_USER_AGENT")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(5) .whsOnd", "program_version")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(6) .whsOnd", "docxfile")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(7) .whsOnd", "docxfile_page_count")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(8) .whsOnd", "docxfile_size")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(9) .whsOnd", "docxfile_table_number_of_lines")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(10) .whsOnd", "docxfile_table_number_of_words")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(11) .whsOnd", "docxfile_table_number_of_characters")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(12) .whsOnd", "action")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(13) .whsOnd", "destlang_code")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(14) .whsOnd", "destlang_name")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(15) .whsOnd", "engine")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(16) .whsOnd", "engine_method")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(17) .whsOnd", "xlsxreplacefile")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(18) .whsOnd", "destfont")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(19) .whsOnd", "split_translation")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(20) .whsOnd", "splitonly")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(21) .whsOnd", "showbrowser")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(22) .whsOnd", "server_time")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(23) .whsOnd", "start_time")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(24) .whsOnd", "end_time")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(25) .whsOnd", "elapsed_time")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(26) .whsOnd", "replacebeforelistsize")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(27) .whsOnd", "replacebeforelistreplaced")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(28) .whsOnd", "replaceafterlistsize")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(29) .whsOnd", "replaceafterlistreplaced")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(30) .whsOnd", "donotsplitlistsize")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(31) .whsOnd", "donotsplitfound")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(32) .whsOnd", "platform_uname")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(33) .whsOnd", "platform_system")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(34) .whsOnd", "platform_node")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(35) .whsOnd", "platform_release")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(36) .whsOnd", "platform_version")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(37) .whsOnd", "platform_machine")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(38) .whsOnd", "platform_processor")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(39) .whsOnd", "cpu_count")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(40) .whsOnd", "mem_total")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(41) .whsOnd", "local_time_offset")
+            browser_fill_form_field_value(ctx, ".Qr7Oae:nth-child(42) .whsOnd", "docxfile_table_number_of_phrases")
 
-            if not showbrowser:
+            if not ctx.flags.showbrowser:
                 chrome_options.add_argument("--headless")
 
             docxfile_table_number_of_lines = numrows
-            if use_api or splitonly:
+            if ctx.flags.use_api or ctx.flags.splitonly:
                 print("\nCreating a new browser for stats")
                 
                 service = Service()
-                driver = webdriver.Chrome(service=service, options=chrome_options)
+                ctx.browser.driver = webdriver.Chrome(service=service, options=chrome_options)
 
             query_params = {
                 "program_version": PROGRAM_VERSION,
-                "engine": translation_engine,
-                "engine_method": engine_method,
+                "engine": ctx.engine.engine,
+                "engine_method": ctx.engine.method,
                 "action": action,
-                "destlang_code": dest_lang,
-                "destlang_name": dest_lang_name,
+                "destlang_code": ctx.language.dest_lang,
+                "destlang_name": ctx.language.dest_lang_name,
                 "docxfile_size": docxfile_size,
                 "docxfile_table_number_of_lines": docxfile_table_number_of_lines,
-                "docxfile_table_number_of_phrases": docxfile_table_number_of_phrases,
-                "docxfile_table_number_of_words": docxfile_table_number_of_words,
-                "docxfile_table_number_of_characters": docxfile_table_number_of_characters,
+                "docxfile_table_number_of_phrases": ctx.docx.docxfile_table_number_of_phrases,
+                "docxfile_table_number_of_words": ctx.docx.docxfile_table_number_of_words,
+                "docxfile_table_number_of_characters": ctx.docx.docxfile_table_number_of_characters,
                 "xlsxreplacefile": xlsxreplacefile_name,
                 "destfont": dest_font,
                 "split_translation": split_translation,
-                "showbrowser": showbrowser,
+                "showbrowser": ctx.flags.showbrowser,
                 "start_time": start_time,
                 "end_time": end_time,
                 "elapsed_time": elapsed_time,
@@ -7407,17 +4299,17 @@ def get_robot_usage_comment():
             encoded_params = urlencode(query_params, quote_via=quote_plus)
             url = f"{base_url}?{encoded_params}"
 
-            driver.get(url)
+            ctx.browser.driver.get(url)
             # time.sleep(20)
 
             submit_stats_element = "//input[@value='Submit']"
             try:
-                submit_stats_button = WebDriverWait(driver, 1).until(
+                submit_stats_button = WebDriverWait(ctx.browser.driver, 1).until(
                     EC.presence_of_element_located((By.XPATH, submit_stats_element)))
                 submit_stats_button.submit()
                 # time.sleep(1)
                 submited_div_element = "//div[@id='form_post_submitted']"
-                submited_div = WebDriverWait(driver, 5).until(
+                submited_div = WebDriverWait(ctx.browser.driver, 5).until(
                     EC.presence_of_element_located((By.XPATH, submited_div_element)))
                 print("statistics updated")
             except:
@@ -7440,27 +4332,29 @@ def get_robot_usage_comment():
 
 
 # Open the default app for the docx file
-def open_app_docx_file():
-    global word_file_to_translate_save_as_path
-    
+def open_app_docx_file(ctx: RuntimeContext):
+    """Open the saved DOCX in the OS default handler.
+
+    Threaded in Phase F1.6: reads ``ctx.flags.word_file_to_translate_save_as_path``
+    in place of the historical module global.
+    """
+    out_path = ctx.flags.word_file_to_translate_save_as_path
     try:
         if platform.system() == 'Windows':
-            subprocess.Popen(["start", "", word_file_to_translate_save_as_path], shell=True)
+            subprocess.Popen(["start", "", out_path], shell=True)
         elif platform.system() == "Darwin":  # macOS
-            subprocess.Popen(["open", word_file_to_translate_save_as_path])
+            subprocess.Popen(["open", out_path])
         elif platform.system() == "Linux":  # Linux
-            subprocess.Popen(["xdg-open", word_file_to_translate_save_as_path])
+            subprocess.Popen(["xdg-open", out_path])
         else:
             print("Unsupported operating system.")
-            
     except Exception as e:
         print("Error:", e)
-        print("Warning, unable to open file %s." % (word_file_to_translate_save_as_path))
-def save_docx_file():
-    global docxdoc, word_file_to_translate, word_file_to_translate_save_as_path
+        print("Warning, unable to open file %s." % (out_path))
+def save_docx_file(ctx: RuntimeContext):
     
     lang_name = ""
-    lang_code = dest_lang
+    lang_code = ctx.language.dest_lang
     
     # Find valid two letter code (Norwegian is invalid nb, but should be no)
     try:
@@ -7487,33 +4381,33 @@ def save_docx_file():
     except:
         lang_alpha3b_code = None
 
-    word_file_to_translate_save_as_path = word_file_to_translate
+    ctx.flags.word_file_to_translate_save_as_path = ctx.flags.word_file_to_translate
     if lang_alpha3b_code is not None:
         find_alpha3_code_suffix = f"(?i)_{lang_alpha3b_code}.docx$"
-        if not re.search(find_alpha3_code_suffix, word_file_to_translate):
-            word_file_to_translate_save_as_path = re.sub("(?i)_{lang_alpha3b_code}.docx$", f".docx", word_file_to_translate)
+        if not re.search(find_alpha3_code_suffix, ctx.flags.word_file_to_translate):
+            ctx.flags.word_file_to_translate_save_as_path = re.sub("(?i)_{lang_alpha3b_code}.docx$", f".docx", ctx.flags.word_file_to_translate)
             lang_alpha3b_code = lang_alpha3b_code.upper()
-            polish_tag = "_TranslatePolish" if with_polish else ""
-            word_file_to_translate_save_as_path = re.sub("(?i).docx$", f"_{lang_alpha3b_code}{polish_tag}.docx", word_file_to_translate)
+            polish_tag = "_TranslatePolish" if ctx.flags.with_polish else ""
+            ctx.flags.word_file_to_translate_save_as_path = re.sub("(?i).docx$", f"_{lang_alpha3b_code}{polish_tag}.docx", ctx.flags.word_file_to_translate)
             print(f"\nAdding file name suffix _{lang_alpha3b_code}{polish_tag}.")
 
-    if os.path.exists(word_file_to_translate_save_as_path):
-        stem = re.sub(r'(?i)\.docx$', '', word_file_to_translate_save_as_path)
+    if os.path.exists(ctx.flags.word_file_to_translate_save_as_path):
+        stem = re.sub(r'(?i)\.docx$', '', ctx.flags.word_file_to_translate_save_as_path)
         idx = 1
         while os.path.exists(f"{stem}_{idx}.docx"):
             idx += 1
-        word_file_to_translate_save_as_path = f"{stem}_{idx}.docx"
-        print(f"[INFO] Output file already exists — saving as: {word_file_to_translate_save_as_path}")
+        ctx.flags.word_file_to_translate_save_as_path = f"{stem}_{idx}.docx"
+        print(f"[INFO] Output file already exists — saving as: {ctx.flags.word_file_to_translate_save_as_path}")
 
     local_time_offset()
 
     file_saved = 0
     while file_saved == 0:
         try:
-            docxdoc.save(word_file_to_translate_save_as_path)
+            docxdoc.save(ctx.flags.word_file_to_translate_save_as_path)
             file_saved = 1
-            if with_polish and translation_log.get("blocks"):
-                log_path = re.sub(r"(?i)\.docx$", "_log.json", word_file_to_translate_save_as_path)
+            if ctx.flags.with_polish and ctx.openai.translation_log.get("blocks"):
+                log_path = re.sub(r"(?i)\.docx$", "_log.json", ctx.flags.word_file_to_translate_save_as_path)
                 write_translation_log(log_path)
 
             # ── helpers for the three split passes ───────────────────────────────
@@ -7588,9 +4482,9 @@ def save_docx_file():
             # Classic  (_PER_Classic.docx)  = simple word-wrap split, no AI
             # Double   (_PER_Double.docx)   = FA-specific mechanical aligner (llm_threshold=0)
             # Guard: only for Persian + chatgpt-polish pipeline
-            if with_polish and dest_lang.startswith('fa'):
+            if ctx.flags.with_polish and ctx.language.dest_lang.startswith('fa'):
                 _ai_model_align  = 'gpt-5.4-mini'  # aligner always uses mini — never change
-                _stem_path       = re.sub(r'(?i)\.docx$', '', word_file_to_translate)
+                _stem_path       = re.sub(r'(?i)\.docx$', '', ctx.flags.word_file_to_translate)
                 _classic_path    = f"{_stem_path}_PER_Classic.docx"
                 _double_path     = f"{_stem_path}_PER_Double.docx"
 
@@ -7600,7 +4494,7 @@ def save_docx_file():
                 try:
                     print(f"\n[INFO] Running Classic split -> {_classic_path}")
                     _t0 = time.time()
-                    _cs = _simple_split_docx(word_file_to_translate_save_as_path, _classic_path)
+                    _cs = _simple_split_docx(ctx.flags.word_file_to_translate_save_as_path, _classic_path)
                     print(
                         f"[TIMER] Classic: {time.time()-_t0:.1f}s"
                         f" | processed: {_cs.get('rows_processed','?')}"
@@ -7623,7 +4517,7 @@ def save_docx_file():
                         llm_threshold=0,   # never call LLM
                         token_budget=0,
                     )
-                    _ds = _double_aligner.align(word_file_to_translate_save_as_path, _double_path)
+                    _ds = _double_aligner.align(ctx.flags.word_file_to_translate_save_as_path, _double_path)
                     print(
                         f"[TIMER] Double:  {time.time()-_t0:.1f}s"
                         f" | groups: {_ds.get('groups','?')}"
@@ -7646,215 +4540,118 @@ def save_docx_file():
 
 import os
 import re
-import shutil
-import time
-import platform
-
-import os
-import re
 import time
 import shutil
 import psutil
 import platform
 import sys
-
-import os
-import re
-import time
-import shutil
-import psutil
-import platform
-import sys
-
-def cleanup_selenium_chrome_temp_folders():
-    """
-    Cleans up Selenium/Chrome temporary folders:
-      - Windows: Program Files + TEMP/TMP
-      - Linux/macOS: /tmp
-    Deletes only folders that were last modified more than 2 hours ago.
-    """
-    
-    system = platform.system().lower()
-    cutoff_time = time.time() - 1 * 60 * 60  # 1 hours
-    print("\n🧹 Cleaning Selenium/Chrome temp folders (older than 1 hour)")
-    
-    tmp_8char_pattern = re.compile(r'^tmp[a-zA-Z0-9_]{8}$')  # tmpXXXXXXXX
-    
-    if system == 'windows':
-        delete_patterns = [
-            r"scoped_dir\d{3,}_\d{6,}",
-            r"chrome_BITS_\d{3,}_\d{6,}",
-            r"chrome_PuffinComponentUnpacker_BeginUnzipping\d{3,}_\d{7,}",
-            r"chrome_url_fetcher_\d{3,}_\d{7,}",
-            tmp_8char_pattern.pattern
-        ]
-        
-        paths_to_check = [r"C:\Program Files"]
-        for env_var in ["TEMP", "TMP"]:
-            tmp_dir = os.environ.get(env_var)
-            if tmp_dir and os.path.isdir(tmp_dir):
-                paths_to_check.append(tmp_dir)
-        
-        for root_path in paths_to_check:
-            try:
-                folders = [f for f in os.listdir(root_path) if os.path.isdir(os.path.join(root_path, f))]
-            except PermissionError:
-                continue
-            
-            for folder in folders:
-                folder_path = os.path.join(root_path, folder)
-                if any(re.fullmatch(p, folder) for p in delete_patterns):
-                    try:
-                        last_mod = os.path.getmtime(folder_path)
-                        if last_mod < cutoff_time:
-                            print(f"⚠️  DELETING: {folder_path}")
-                            shutil.rmtree(folder_path, ignore_errors=True)
-                        else:
-                            # Skip folders modified within last 2 hours
-                            continue
-                    except Exception:
-                        continue
-    
-    elif system in ('linux', 'darwin'):
-        tmp_path = "/tmp"
-        try:
-            folders = [f for f in os.listdir(tmp_path) if os.path.isdir(os.path.join(tmp_path, f))]
-        except PermissionError:
-            folders = []
-        
-        for folder in folders:
-            if folder.startswith((".org.chromium.Chromium.", ".com.google.Chrome.")) or tmp_8char_pattern.fullmatch(folder):
-                folder_path = os.path.join(tmp_path, folder)
-                try:
-                    last_mod = os.path.getmtime(folder_path)
-                    if last_mod < cutoff_time:
-                        print(f"⚠️  DELETING: {folder_path}")
-                        shutil.rmtree(folder_path, ignore_errors=True)
-                    else:
-                        continue
-                except Exception:
-                    continue
-    
-    else:
-        print(f"Unsupported OS: {system}")
-
-
-
 
 def main() -> int:
-    global driver, E_mail_str, end_time, elapsed_time, translation_engine, engine_method, tried_login_in_deepl, viewdocx, word_file_to_translate_save_as_path
-    global logged_into_deepl, deepl_nb_clear_cached_times, version_checker_sleep_seconds_on_update
+    """Entry point. Builds the RuntimeContext from module-level state on
+    first ``_get_ctx()`` call and threads it through every pipeline step.
+
+    F1.6 wire-up: zero ``global`` statements remain in this function.
+    Pipeline state lives on ``ctx``; module globals are only referenced
+    where they remain authoritative (start_time, str_needs_update,
+    version_checker_sleep_seconds_on_update, xtm, exitonsuccess, silent,
+    PROGRAM_VERSION — these are not threaded because they are owned by
+    module-level setup outside ``main()``).
+    """
+    ctx = _get_ctx()
     translation_succeded = False
 
-    set_translation_function()
-    initialize_translation_memory_xlsx()
+    set_translation_function(ctx)
+    initialize_translation_memory_xlsx(ctx)
 
-    read_and_parse_docx_document()
+    read_and_parse_docx_document(ctx)
 
-    create_webdriver()
-    
-    if translation_engine == 'deepl':
-        logged_into_deepl = selenium_chrome_deepl_log_in()
-        
-    if translation_engine == 'perplexity':
+    create_webdriver(ctx)
+
+    if ctx.engine.engine == 'deepl':
+        ctx.browser.logged_into_deepl = selenium_chrome_deepl_log_in(ctx)
+
+    if ctx.engine.engine == 'perplexity':
         pass
         #logged_into_perplexity = selenium_chrome_perplexity_wait_log_in
         #if not logged_into_perplexity:
         #    print("Failed to login into perplexity")
 
     translation_succeded = translate_docx()
-    
-    if logged_into_deepl:
-        selenium_chrome_deepl_log_off()
 
-    if translation_succeded == False and translation_engine == 'deepl' and engine_method == 'phrasesblock':
-        engine_method = 'singlephrase'
-        set_translation_function()
+    if ctx.browser.logged_into_deepl:
+        selenium_chrome_deepl_log_off(ctx)
+
+    # R15: DeepL phrasesblock → singlephrase fallback. F1.4 + F1.6:
+    # the dispatcher refresh sees the flipped method through ctx, the
+    # rebuilt driver is reassigned to ctx.browser.driver, and no module
+    # global is read or written. The structural tests
+    # `test_engine_method_flip_via_ctx`,
+    # `test_driver_rebuild_via_ctx`, and
+    # `test_dispatcher_refresh_drops_stale_driver_reference` cover this.
+    if (translation_succeded is False
+            and ctx.engine.engine == 'deepl'
+            and ctx.engine.method == 'phrasesblock'):
+        ctx.engine.method = 'singlephrase'
+        set_translation_function(ctx)
         try:
-            driver.close()
-            driver.quit()
-        except:
+            ctx.browser.driver.close()
+            ctx.browser.driver.quit()
+        except Exception:
             pass
-        create_webdriver()
+        create_webdriver(ctx)
 
-    
-    get_translation_and_replace_after()
+    get_translation_and_replace_after(ctx)
 
-    minimize_browser()
+    minimize_browser(ctx)
 
-    #input("before create_translation_split_prompts")
-    #create_translation_split_prompts()
-    #input("after create_translation_split_prompts")
-    document_split_phrases()
+    document_split_phrases(ctx)
 
     write_destination_language_in_docx_cell()
 
     print_console_docx_file_translated()
-    set_docx_properties_comment_for_history()
+    set_docx_properties_comment_for_history(ctx)
 
-    end_time = datetime.datetime.now()
+    _end_time = datetime.datetime.now()
+    _elapsed_time = _end_time - start_time
 
-    elapsed_time = end_time - start_time
+    run_statistics(ctx)
+    save_docx_file(ctx)
 
-    run_statistics()
-    save_docx_file()
-    
     if viewdocx:
-        print(f"Opening document : {word_file_to_translate_save_as_path}")
-        open_app_docx_file()
-    end_time = datetime.datetime.now()
+        print(f"Opening document : {ctx.flags.word_file_to_translate_save_as_path}")
+        open_app_docx_file(ctx)
+    _end_time = datetime.datetime.now()
+    _elapsed_time = _end_time - start_time
 
-    elapsed_time = end_time - start_time
-
-    if xlsxreplacefile is not None:
+    if ctx.flags.xlsxreplacefile is not None:
         xtm.print_replaced_items_number_of_replacements('before')
         xtm.print_replaced_items_number_of_replacements('after')
         xtm.print_do_not_split_number_of_matches('keep_on_same_line')
 
-    if driver is not None:
-        clean_up_previous_chrome_selenium_drivers(driver.service.path)
-        
-    print("\nTranslation ended, file saved. Elasped time: %s (h:mm:ss.mmm)" % (elapsed_time))
-    print("\nSaved file name: %s" % (word_file_to_translate_save_as_path))
-    
-    
-    get_robot_usage_comment()
+    if ctx.browser.driver is not None:
+        clean_up_previous_chrome_selenium_drivers(ctx.browser.driver.service.path)
 
-    if translation_engine == 'perplexity':
-        if engine_method == 'api':
-            print(f"Total cost: {total_cost}")
+    print("\nTranslation ended, file saved. Elasped time: %s (h:mm:ss.mmm)" % (_elapsed_time))
+    print("\nSaved file name: %s" % (ctx.flags.word_file_to_translate_save_as_path))
+
+    get_robot_usage_comment(ctx)
 
     try:
-        #driver.maximize_window()
         print("\nClosing chrome browser...")
-        
-        driver_before_close_time = datetime.datetime.now()
-        driver.close()
-        driver_after_close_time = datetime.datetime.now()
-        driver.quit()
-        
-        driver_after_quit_time = datetime.datetime.now()
-
-        driver_close_time = driver_after_close_time - driver_before_close_time
-        driver_quit_time = driver_after_quit_time - driver_after_close_time
-        driver_close_quit_time = driver_after_quit_time - driver_before_close_time
-        
-        #print("\nDriver close time: %s (h:mm:ss.mmm)" % (driver_close_time))
-        #print("\nDriver quit time: %s (h:mm:ss.mmm)" % (driver_quit_time))
-        #print("\nDriver close and quit time: %s (h:mm:ss.mmm)" % (driver_close_quit_time))
-    except:
+        ctx.browser.driver.close()
+        ctx.browser.driver.quit()
+    except Exception:
         var = traceback.format_exc()
         print(var)
-        pass
 
-    if dest_lang_name is None or dest_lang_name == "":
-        if not splitonly:
+    if ctx.language.dest_lang_name is None or ctx.language.dest_lang_name == "":
+        if not ctx.flags.splitonly:
             print("\n*********************************************************************************")
-            print("WARNING: Target language name for %s not found. Translation may have have failed." % (dest_lang))
+            print("WARNING: Target language name for %s not found. Translation may have have failed." % (ctx.language.dest_lang))
             print("*********************************************************************************\n")
 
     cleanup_selenium_chrome_temp_folders()
-    
+
     print("\nDeveloper: %s" % (E_mail_str))
     print("Program version: %s\n" % (PROGRAM_VERSION))
     if not exitonsuccess and not silent:
