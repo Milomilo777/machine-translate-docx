@@ -4,7 +4,7 @@ The entry script ``machine-translate-docx.py`` historically carries ~80
 module-level globals that are mutated across ~100 ``global`` statements in
 ~70 functions. ``analysis-raw.md`` § 3 catalogues the full set.
 
-This module groups those globals into six dataclasses, all bundled into a
+This module groups those globals into seven dataclasses, all bundled into a
 single ``RuntimeContext``:
 
     RuntimeContext
@@ -12,9 +12,10 @@ single ``RuntimeContext``:
         ├── language  : LanguageCtx    — src + dest lang, names, font, RTL
         ├── engine    : EngineCtx      — current engine + dispatcher pointer
         ├── openai    : OpenAICtx      — translator, polisher, translation_log
-        ├── docx      : DocxCtx        — the 12 parallel arrays + counters
-        └── browser   : BrowserCtx     — Selenium driver + Chrome options +
-                                          per-engine session flags
+        ├── docx      : DocxCtx        — 22+ parallel arrays + counters
+        ├── browser   : BrowserCtx     — Selenium driver + Chrome options +
+        │                                 per-engine session flags
+        └── config    : ConfigCtx      — JSON configuration + block-size cap
 
 The intent is that future phases thread ``ctx`` as the first argument into
 every function and replace ``global x`` declarations with attribute access
@@ -24,7 +25,7 @@ field comments below.
 
 Two fragile behaviors documented for the future migrator:
 
-  1. **DOCX parallel arrays.** All 12 are sized ``numrows + 1`` and indexed
+  1. **DOCX parallel arrays.** All 22+ are sized ``numrows + 1`` and indexed
      ``[i + 1]`` throughout the read/write paths. Field types use
      ``list[str]`` / ``list[int]`` for clarity, not tuples.
 
@@ -143,7 +144,7 @@ class OpenAICtx:
 
 @dataclass
 class DocxCtx:
-    """The 12+ parallel arrays produced by ``read_and_parse_docx_document``.
+    """The 22+ parallel arrays produced by ``read_and_parse_docx_document``.
 
     All arrays are sized ``numrows + 1`` and indexed ``[i + 1]`` throughout.
     Do not change the +1 convention without rewriting every reader/writer.
