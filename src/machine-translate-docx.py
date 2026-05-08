@@ -2310,6 +2310,11 @@ def prepare_and_clear_cell_for_writing(ctx: RuntimeContext, row_n, translation_c
     Python's name lookup) and will be threaded in a later sub-phase.
     """
     paragraph_no = 0
+    # Skip rows that don't have a third cell (footer / single-column notes
+    # at the end of subtitle DOCX files). Without this guard the legacy
+    # code would IndexError on every short row and spam the log.
+    if row_n >= len(ctx.docx.table_cells) or len(ctx.docx.table_cells[row_n]) < 3:
+        return
     current_cell = ctx.docx.table_cells[row_n][2]
 
     current_cell._element.clear_content()
@@ -2353,12 +2358,12 @@ def prepare_and_clear_cell_for_writing(ctx: RuntimeContext, row_n, translation_c
     if dest_font != "":
         change_cell_font(current_cell)
 
-    table_cells[row_n][2] = current_cell
-    
-        
-def cell_set_1st_paragraph(row_n, paragraph_text):
+    ctx.docx.table_cells[row_n][2] = current_cell
+
+
+def cell_set_1st_paragraph(ctx: RuntimeContext, row_n, paragraph_text):
     paragraph_no = 0
-    current_cell = table_cells[row_n][2]
+    current_cell = ctx.docx.table_cells[row_n][2]
     
     #print("cell_add_paragraph")
     #print("paragraph[%d]: %s" % (row_n,paragraph_text))
@@ -2386,13 +2391,13 @@ def cell_set_1st_paragraph(row_n, paragraph_text):
 
     if dest_font != "":
         change_cell_font (current_cell)
-        
-    table_cells[row_n][2] = current_cell
-        
 
-def cell_add_paragraph(row_n, paragraph_text):
+    ctx.docx.table_cells[row_n][2] = current_cell
+
+
+def cell_add_paragraph(ctx: RuntimeContext, row_n, paragraph_text):
     paragraph_no = 0
-    current_cell = table_cells[row_n][2]
+    current_cell = ctx.docx.table_cells[row_n][2]
     
     #print("cell_add_paragraph")
     #print("paragraph[%d]: %s" % (row_n,paragraph_text))
@@ -2420,8 +2425,9 @@ def cell_add_paragraph(row_n, paragraph_text):
 
     if dest_font != "":
         change_cell_font (current_cell)
-        
-    table_cells[row_n][2] = current_cell
+
+    ctx.docx.table_cells[row_n][2] = current_cell
+
 
 def read_and_parse_docx_document(ctx: RuntimeContext):
     """Parse the input DOCX into the parallel arrays on ``ctx.docx``.
@@ -3103,7 +3109,7 @@ def translate_from_phrasesblock(ctx: RuntimeContext):
         pass
     return translation_succeded
 
-def translate_docx():
+def translate_docx(ctx: RuntimeContext):
     translation_succeded = True
 
     # ------------------------------------------------------------------
@@ -3621,23 +3627,23 @@ def write_destination_language_in_docx_cell():
                 pass
 
 
-def print_console_docx_file_translated():
+def print_console_docx_file_translated(ctx: RuntimeContext):
     print("\nTranslated text:\n")
     numrows = len(table.rows)
     numcols = len(table.columns)
     current_cell_row = 2
     for row_n in range(2, (numrows)):
 
-        str_translation_len = len(translation_result_using_separator[row_n])
-        translation_phrase_lines_len = len(translation_result_phrase_array[row_n])
+        str_translation_len = len(ctx.docx.translation_result_using_separator[row_n])
+        translation_phrase_lines_len = len(ctx.docx.translation_result_phrase_array[row_n])
         if translation_phrase_lines_len == 0 and current_cell_row < row_n:
             print("%d :" % row_n)
         #print("row_n = %d" %  row_n)
         if translation_phrase_lines_len >= 1 :
-            #print("%d : %s" % (row_n,' '.join(translation_result_phrase_array[row_n])))
+            #print("%d : %s" % (row_n,' '.join(ctx.docx.translation_result_phrase_array[row_n])))
 
             if not split_translation:
-                translation_cell_text = to_text_by_phrase_separator_table[row_n]
+                translation_cell_text = ctx.docx.to_text_by_phrase_separator_table[row_n]
                 prepare_and_clear_cell_for_writing(ctx, row_n, translation_cell_text)
                 if dest_lang in right_to_left_languages_list.keys():
                     #translation_cell_aligned_text = reverse_string (translation_cell_text)
@@ -3647,22 +3653,22 @@ def print_console_docx_file_translated():
                     translation_cell_aligned_text = translation_cell_text
                 print("%d : %s" % (row_n, translation_cell_aligned_text))
             else:
-                #translation_cell_text = translation_result_using_separator[row_n]
+                #translation_cell_text = ctx.docx.translation_result_using_separator[row_n]
                 #print("len array: %d" % (translation_phrase_lines_len))
-                #print("translation_result_phrase_array[%d] : %s" % (row_n,'\n'.join(translation_result_phrase_array[row_n])))
+                #print("translation_result_phrase_array[%d] : %s" % (row_n,'\n'.join(ctx.docx.translation_result_phrase_array[row_n])))
 
                 translation_phrase_line_pos = 0
                 translation_phrase_cell_pos = 0
 
                 while translation_phrase_line_pos < translation_phrase_lines_len:
                     current_cell_row = row_n + translation_phrase_cell_pos
-                    cell_lines_len = from_text_nb_lines_in_cell[row_n + translation_phrase_cell_pos]
+                    cell_lines_len = ctx.docx.from_text_nb_lines_in_cell[row_n + translation_phrase_cell_pos]
                     cell_line_pos = 0
-                    current_cell = table_cells[current_cell_row][2]
+                    current_cell = ctx.docx.table_cells[current_cell_row][2]
                     while cell_line_pos < cell_lines_len \
                         and translation_phrase_line_pos < translation_phrase_lines_len:
 
-                        translation_phrase_line_str = translation_result_phrase_array[row_n][translation_phrase_line_pos]
+                        translation_phrase_line_str = ctx.docx.translation_result_phrase_array[row_n][translation_phrase_line_pos]
                         if dest_lang in right_to_left_languages_list.keys():
                             #translation_cell_aligned_text = reverse_string (translation_phrase_line_str)
                             #translation_cell_aligned_text = "\u202B" + translation_phrase_line_str + "\u202C"
@@ -3679,14 +3685,14 @@ def print_console_docx_file_translated():
                                 prepare_and_clear_cell_for_writing(ctx, current_cell_row, translation_phrase_line_str)
                             else:
                             #prepare_and_clear_cell_for_writing(current_cell_row, translation_phrase_line_str)
-                                cell_set_1st_paragraph(current_cell_row, translation_phrase_line_str)
+                                cell_set_1st_paragraph(ctx, current_cell_row, translation_phrase_line_str)
                             # Not needed
                             #current_cell.paragraphs[0].text = translation_phrase_line_str
                         else:
                             # Add empty paragraph between translation lines
-                            cell_add_paragraph(current_cell_row, "")
+                            cell_add_paragraph(ctx, current_cell_row, "")
                             # Add the translation line
-                            cell_add_paragraph(current_cell_row, translation_phrase_line_str)
+                            cell_add_paragraph(ctx, current_cell_row, translation_phrase_line_str)
                         cell_line_pos = cell_line_pos + 1
                         translation_phrase_line_pos = translation_phrase_line_pos + 1
                         #input("press enter")
@@ -4576,7 +4582,7 @@ def main() -> int:
         #if not logged_into_perplexity:
         #    print("Failed to login into perplexity")
 
-    translation_succeded = translate_docx()
+    translation_succeded = translate_docx(ctx)
 
     if ctx.browser.logged_into_deepl:
         selenium_chrome_deepl_log_off(ctx)
@@ -4608,7 +4614,7 @@ def main() -> int:
 
     write_destination_language_in_docx_cell()
 
-    print_console_docx_file_translated()
+    print_console_docx_file_translated(ctx)
     set_docx_properties_comment_for_history(ctx)
 
     _end_time = datetime.datetime.now()
