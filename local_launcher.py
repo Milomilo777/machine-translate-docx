@@ -651,7 +651,7 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
                 self.send_response(HTTPStatus.OK)
                 self.send_header("Content-Type", ctype or "application/octet-stream")
                 self.send_header("Content-Length", str(asset.stat().st_size))
-                self.send_header("Cache-Control", "public, max-age=300")
+                self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
                 self.end_headers()
                 self.wfile.write(asset.read_bytes())
                 return
