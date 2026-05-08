@@ -118,7 +118,7 @@ def run_openai_single_call(
     translation_log.setdefault("blocks", []).append({
         "block_index":  0,
         "source_text":  full_source,
-        "translation":  oai_translator.last_call_data.copy() if oai_translator else {},
+        "translation":  oai_translator.last_call_data.copy(),
         "polish":       oai_polisher.last_call_data.copy(),
     })
 
