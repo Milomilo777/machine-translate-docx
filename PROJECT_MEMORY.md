@@ -3,7 +3,7 @@
 Committed team memory. Keep it concise — no raw logs, no long discussion.
 Summary + link to `docs/` for depth.
 
-Last updated: 2026-05-08
+Last updated: 2026-05-09
 
 ---
 
@@ -17,6 +17,8 @@ Last updated: 2026-05-08
 | C4 | Every OpenAI API call must set `extra_body={"prompt_cache_retention": "24h"}` | Cost reduction |
 | C5 | Output filenames never get a timestamp prefix | Stripped by `_strip_timestamp()` in `local_launcher.py` |
 | C6 | File collisions get `_1`, `_2` suffix — never silent overwrite | Data safety |
+| C7 | BOTH frontends (legacy `/` and v2 `/v2/`) must remain functional | User keeps both as choices |
+| C8 | `local_launcher.py` is on the read-only refactor list — only encoding fix (F-013) and additive v2 routes are allowed | Prevent regression of long-stable launcher behavior |
 
 ---
 
@@ -79,6 +81,11 @@ See [`docs/error-catalog.md`](docs/error-catalog.md) for full list.
 | E13 | Multi-file download blocked by Chrome — required user click "Allow" | **Fixed** 2026-05-08 (Phase 2) — single `/download-zip/:jobId` endpoint bundles all outputs |
 | E14 | Job store grew unbounded across long sessions | **Fixed** 2026-05-08 (Phase 2) — `start_cleanup_thread` prunes finished jobs >1 h old every 10 min |
 | E15 | Transient OpenAI errors (rate-limit, network) caused full pipeline fail | **Fixed** 2026-05-08 (Phase 2) — shared `call_with_retry` helper with 3 attempts and exponential backoff |
+| F-001 | `engines/_base.py` Engine Protocol declared pre-F1 `(self, source_text, src_lang_name, dest_lang_name)` shape; mismatch with `(ctx, text)` callers | **Fixed** 2026-05-08 — Protocol rewritten to post-F1 shape |
+| F-007 | `engines/google.py` called non-existent `str.unescape` method (would `AttributeError`) | **Fixed** 2026-05-08 — `html.unescape` instead |
+| F-010 | `engines/deepl.py` `regex_still_translating_str = '$Translation'` — `$` is end-of-string, never matches | **Deferred** — flipping changes wait-loop semantics; needs dedicated session |
+| F-012 | ~44 entry-script functions in `src/machine-translate-docx.py` still read module-level globals; F1.6 only threaded `main()` + leaves | **Deferred (Phase H)** — out of audit's trivial-fix budget |
+| F-013 | `local_launcher.py` `_process_job` printed `▶ ✓ ✗ —` → `UnicodeEncodeError` on Windows `cp1252` console | **Fixed** 2026-05-09 — `sys.stdout.reconfigure(encoding="utf-8")` at startup |
 
 ---
 
@@ -86,6 +93,16 @@ See [`docs/error-catalog.md`](docs/error-catalog.md) for full list.
 
 | Date | Change |
 |------|--------|
+| 2026-05-09 | **Master consolidation:** merged `audit/post-refactor` (Phases A-G4 + 12 audit fixes) and `feature/v2-frontend` (Claude-inspired UI v2 + cache + i18n) into master. F-013 fix applied (UTF-8 stdout reconfigure). 51 unit tests passing. Both UIs live: legacy at `/`, v2 at `/v2/`. |
+| 2026-05-08 | **Audit (`audit/post-refactor`):** 15 findings — F-001 Engine Protocol resync, F-005-F-011 dead-code/unused-import sweeps in google.py + deepl.py, F-007 `html.unescape` fix; F-010 `$Translation` regex deferred; F-012 entry-script middle-layer threading deferred (Phase H). Smoke test: 36 passed |
+| 2026-05-08 | **Phase G (`refactor/architecture`):** extract `selenium_utils/` (G1), `engines/google.py` (G2), `engines/deepl.py` (G3), `runner.py` (G4) |
+| 2026-05-08 | **Phase F1.1-F1.6:** thread `RuntimeContext` (`ctx`) through configuration, DOCX I/O, engine dispatch, active engine bodies, `main()` |
+| 2026-05-08 | **Phase E:** extract `engines/chatgpt_api.py` + `engines/__init__.py` registry scaffolding |
+| 2026-05-08 | **Phase D:** isolate inactive Selenium engines under `engines/inactive/` |
+| 2026-05-08 | **Phase C:** introduce `RuntimeContext` dataclass (foundation for F1) |
+| 2026-05-08 | **Phase B:** extract `src/config.py` — module-level constants and parallel arrays |
+| 2026-05-08 | **Phase A:** remove Yandex + Perplexity-API + dead code |
+| 2026-05-09 | **v2 frontend (`feature/v2-frontend`):** Claude-inspired SPA at `web/v2/`. Tailwind 3.4 (compiled, not CDN), Alpine.js, drag-and-drop, 36-h cache, newsletter, i18n EN/FA, Playwright e2e. Legacy `/` preserved. |
 | 2026-05-08 | **Phase 5 (review-rewrite-opus-4.7):** `prompt_hash` (sha256[:8]) recorded in translator/polisher last_call_data and aligner last_stats; progress bar + virastar skipped (out of scope / no PyPI package) |
 | 2026-05-08 | **Phase 4 (review-rewrite-opus-4.7):** 10 unit tests + pytest setup (`tests/`); DB connection guarded by `MARIADB_HOST` env; concurrent job semaphore (default 2, override via `MTD_MAX_CONCURRENT_JOBS`) |
 | 2026-05-08 | **Phase 3 (review-rewrite-opus-4.7):** `_display_len` (ZWNJ-aware) for all MAX_CHARS validation; sentinel-separated cross-group triple guard; per-content-type break ratio in `_split_distinct` |

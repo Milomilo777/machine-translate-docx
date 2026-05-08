@@ -43,6 +43,186 @@ CHANGES.md                    ← همین فایل — منبع اصلی برا
 
 ---
 
+### سشن ۲۰۲۶-۰۵-۰۹ — تجمیع برنچ‌ها در master + فیکس F-013
+
+#### M1. merge برنچ زیر در master:
+
+```
+audit/post-refactor
+```
+
+شامل ۲۶ کامیت — کل refactor فاز A تا G4 + ۸ کامیت audit:
+- فاز A تا G4 (refactor) — استخراج ماژول‌های زیر:
+
+```
+src/runtime.py
+src/config.py
+src/runner.py
+src/engines/
+src/selenium_utils/
+```
+
+- کامیت‌های audit — ۱۲ یافته‌ی fix شده. مهم‌ترین‌ها:
+  - F-001 (CRITICAL) — Engine Protocol resync با شکل post-F1 یعنی:
+
+  ```
+  translate(ctx, text)
+  ```
+
+  - F-007 (HIGH) — جایگزینی متد ناموجود `str.unescape` با:
+
+  ```
+  html.unescape
+  ```
+
+- استراتژی merge: `--no-ff` تا تاریخچه‌ی فازها حفظ شود.
+- یافته‌های deferred: F-010 (regex `$Translation`)، F-012 (Phase H — threading ~44 تابع باقی‌مانده).
+
+تست:
+
+```
+36 passed
+```
+
+---
+
+#### M2. merge برنچ زیر در master:
+
+```
+feature/v2-frontend
+```
+
+شامل ۷ کامیت — UI v2 (Claude-inspired SPA):
+- اضافه شد:
+
+```
+web/v2/index.html
+web/v2/app.js
+web/v2/styles.css
+web/v2/tailwind.css   (compiled, committed)
+web/v2/i18n.json
+web/v2/package.json
+```
+
+- بک‌اند‌های افزوده در `local_launcher.py` (additive، non-breaking):
+  - cache layer ۳۶ ساعته با کلید:
+
+  ```
+  sha256(payload + lang + engine + ai_model)
+  ```
+
+  - مسیر serve فایل‌های v2:
+
+  ```
+  /v2/    /v2/<asset>
+  ```
+
+  - endpoint جدید newsletter:
+
+  ```
+  POST /subscribe   →  subscribers.txt
+  ```
+
+- لانچر ویندوز برای v2:
+
+```
+run_local_launcher_v2.bat
+```
+
+- تست‌های جدید:
+
+```
+tests/test_launcher_endpoints.py   (۱۵ تست cache + subscribe)
+tests/test_v2_e2e.py               (Playwright، live-marked)
+```
+
+- کانفلیکت modify/delete روی فایل زیر حل شد به نفع نسخه‌ی audit (که برای aligner v2.0 بازسازی شده):
+
+```
+tests/test_aligner_split.py
+```
+
+- استراتژی merge: `--no-ff`.
+- لانچر legacy و v2 هر دو زنده — هیچ یک حذف نشد.
+- تست بعد از merge:
+
+```
+51 passed   (به‌جز test_v2_e2e که نیازمند سرور زنده است)
+```
+
+---
+
+#### M3. فیکس F-013 — encoding ویندوز در لانچر
+
+**فایل:**
+
+```
+local_launcher.py
+```
+
+**مشکل (یافته‌ی audit):** اولین `print()` در تابع زیر کاراکترهای زیر را چاپ می‌کرد:
+
+```
+_process_job
+```
+
+```
+▶ ✓ ✗ —
+```
+
+روی کنسول ویندوز با codec پیش‌فرض `cp1252`، آن‌ها `UnicodeEncodeError` می‌دادند و thread پردازش شغل قبل از تکمیل آپلود می‌مرد.
+
+**فیکس:** در ابتدای import لانچر:
+
+```python
+try:
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+except (AttributeError, OSError):
+    pass
+```
+
+`try/except` چون در محیط‌های نادر که stdout یک non-text stream است این متد موجود نیست.
+
+---
+
+#### M4. به‌روزرسانی مستندات
+
+- فایل زیر: ساختار جدید معماری + هر دو UI:
+
+```
+CLAUDE.md
+```
+
+- فایل زیر: قید C7 و C8، یافته‌های F-001 تا F-013، تاریخ ۲۰۲۶-۰۵-۰۹:
+
+```
+PROJECT_MEMORY.md
+```
+
+- فایل زیر: همین بخش M1-M4 (سشن ۲۰۲۶-۰۵-۰۹):
+
+```
+CHANGES.md
+```
+
+---
+
+#### M5. وضعیت برنچ‌ها بعد از merge
+
+```
+audit/post-refactor       ← merge شد، نگه‌داشته
+refactor/architecture     ← زیرمجموعه audit، نگه‌داشته
+feature/v2-frontend       ← merge شد، نگه‌داشته
+review-rewrite-opus-4.7   ← خالی، نگه‌داشته
+claude/romantic-bhabha-*  ← خالی، نگه‌داشته
+claude/bold-shaw-*        ← worktree فعال، در همان commit master
+```
+
+طبق توافق با کاربر، همه‌ی برنچ‌ها فعلاً نگه داشته می‌شوند تا تست واقعی فایل تأیید شود؛ سپس همگی حذف می‌شوند.
+
+---
+
 ### سشن ۲۰۲۶-۰۵-۰۸ (بخش دوم) — refactor + bugfix
 
 #### S1. دو فایل خروجی به‌جای چهار فایل
@@ -920,12 +1100,32 @@ if (splitSection) {
 | Split section مخفی برای فارسی+polish | ✅ |
 | تست مستقل الاینر (`test_aligner_only.py`) | ✅ |
 | تست end-to-end با فایل واقعی | ⚠️ در حال تست |
+| refactor فاز A-G4 (runtime/config/engines/selenium_utils/runner) | ✅ |
+| audit بعد از refactor + ۱۲ فیکس | ✅ |
+| فیکس F-013 (encoding ویندوز) | ✅ |
+| UI v2 (Claude-inspired) در `/v2/` کنار legacy در `/` | ✅ |
+| cache ۳۶ ساعته v2 + endpoint /subscribe | ✅ |
+| i18n EN/FA برای v2 | ✅ |
+| تست‌ها: ۵۱ pass | ✅ |
 
 ---
 
 ## کارهای باقی‌مانده
 
 - تأیید کیفیت خروجی الاینر با فایل‌های واقعی زیرنویس
+- تست end-to-end دستی هر دو UI با فایل واقعی
+- بعد از تست موفق: حذف برنچ‌های merge شده
+- Phase H (آینده): threading حدود ۴۴ تابع باقی‌مانده در فایل زیر — یافته‌ی F-012:
+
+```
+src/machine-translate-docx.py
+```
+
+- فیکس F-010 (یافته‌ی audit، deferred): regex `$Translation` در فایل زیر:
+
+```
+src/engines/deepl.py
+```
 
 ---
 
