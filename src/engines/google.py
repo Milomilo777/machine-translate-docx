@@ -22,7 +22,6 @@ from __future__ import annotations
 import re
 import time
 import traceback
-from urllib.parse import urlencode, quote_plus
 
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
@@ -70,7 +69,7 @@ def selenium_chrome_google_click_cookies_consent_button(ctx: RuntimeContext) -> 
         ctx.browser.google_translate_first_page_loaded = True
     except Exception:
         # Surface for diagnostics; the upper layer treats this as best-effort.
-        traceback.format_exc()
+        print(traceback.format_exc())
 
 
 # ── active textarea translate ────────────────────────────────────────────────
