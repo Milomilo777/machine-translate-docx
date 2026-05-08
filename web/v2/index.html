@@ -17,42 +17,16 @@
     rel="stylesheet"
   />
 
-  <!-- Tailwind via CDN. We override the palette in tailwind.config below.
-       dns-prefetch warms the CDN host before the script tag fetches. -->
-  <link rel="dns-prefetch" href="https://cdn.tailwindcss.com" />
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          fontFamily: {
-            sans: ['Inter', 'Vazirmatn', 'system-ui', 'sans-serif'],
-            fa: ['Vazirmatn', 'Inter', 'system-ui', 'sans-serif'],
-          },
-          colors: {
-            // Claude-inspired warm palette.
-            // brand-800 is the AA-compliant darkest variant used for inline body
-            // text and links — earlier 500/600/700 only meet WCAG AA against
-            // cream-100 for large/decorative text.
-            cream: { 50: '#FCFBF7', 100: '#FAF9F5', 200: '#F4F2EC', 300: '#EBE9E2' },
-            ink:   { 900: '#1F1E1B', 700: '#3F3E3A', 500: '#73716D', 400: '#9A9893' },
-            brand: { 500: '#D97757', 600: '#C8704D', 700: '#B5613E', 800: '#9F4D2D' },
-          },
-          borderRadius: { lg: '12px', xl: '16px', '2xl': '20px' },
-          boxShadow: {
-            soft:  '0 1px 2px rgba(31,30,27,0.04), 0 4px 12px rgba(31,30,27,0.04)',
-            card:  '0 1px 3px rgba(31,30,27,0.06), 0 8px 24px rgba(31,30,27,0.06)',
-            ring:  '0 0 0 4px rgba(217,119,87,0.18)',
-          },
-        },
-      },
-    };
-  </script>
+  <!-- Compiled Tailwind (palette + utilities). Source of truth for the
+       config is web/v2/tailwind.config.js. Rebuild with `npm run build:css`
+       inside web/v2/. The compiled file is committed so the v2 page works
+       without a Node toolchain at runtime. -->
+  <link rel="stylesheet" href="/v2/tailwind.css" />
 
   <!-- Alpine.js — UI state without a build step. -->
   <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.10/dist/cdn.min.js" defer></script>
 
-  <!-- Project styles + behavior -->
+  <!-- Project styles + behavior (theme tokens + dark mode + sr-only utility) -->
   <link rel="stylesheet" href="/v2/styles.css" />
   <script src="/v2/app.js" defer></script>
 </head>

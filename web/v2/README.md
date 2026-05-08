@@ -4,7 +4,11 @@ A Claude-inspired single-page UI that talks to the existing
 `local_launcher.py` (or the production `server.js`) without changing any
 backend behaviour. The legacy `index.ejs` continues to live at `/`.
 
-> Stack: HTML + Tailwind CDN + Alpine.js. **No build step required.**
+> Stack: HTML + compiled Tailwind 3.4 + Alpine.js (CDN).
+> Tailwind needs a one-time `npm run build:css` to regenerate
+> `tailwind.css` after editing utility classes in `index.html` / `app.js`
+> or palette tokens in `tailwind.config.js`. The compiled CSS is committed
+> so the page works without Node at runtime.
 
 ---
 
@@ -87,11 +91,33 @@ For a single-server deployment (Option 1), no CORS work is needed.
 
 | File | Role |
 |------|------|
-| `web/v2/index.html` | Main page. Tailwind CDN + Alpine.js + Vazirmatn/Inter from Google Fonts. |
+| `web/v2/index.html` | Main page. Compiled Tailwind + Alpine.js CDN + Vazirmatn/Inter Google Fonts. |
 | `web/v2/app.js`     | Alpine factory `docTranslator()` — upload, polling, cache-hit display, theme, newsletter. |
-| `web/v2/styles.css` | CSS variables for the Claude-inspired warm palette + dark-theme override + Vazirmatn polish. |
+| `web/v2/styles.css` | Theme tokens + dark-mode override + Vazirmatn polish + `.sr-only`. |
+| `web/v2/tailwind.css` | Compiled output — minified utilities + base + components. **Committed.** |
+| `web/v2/src/tailwind.css` | Tailwind source (3 directives: `@tailwind base/components/utilities`). |
+| `web/v2/tailwind.config.js` | Palette + fonts + radii + shadows. Source of truth. |
+| `web/v2/package.json` | npm scripts: `build:css` (one-shot), `watch:css` (rebuild on edit). |
 | `subscribers.txt`   | (created on demand) one email per line, UTF-8. |
 | `run_local_launcher_v2.bat` | Windows launcher that opens v2 in your browser. |
+
+---
+
+## Building the Tailwind CSS
+
+```bash
+cd web/v2
+npm install        # only needed once, or after upgrading deps
+npm run build:css  # regenerate tailwind.css (minified, ~14 KB)
+
+# during active development:
+npm run watch:css  # rebuild on every save to index.html / app.js
+```
+
+Whenever you add a new Tailwind utility class to `index.html` or `app.js`,
+run `build:css` (or keep `watch:css` running) and commit the regenerated
+`web/v2/tailwind.css`. The file is part of the repo so the v2 page works
+without Node at runtime.
 
 ---
 
@@ -118,5 +144,6 @@ v2-specific changes on the legacy UI side.
   deleted by the launcher's cleanup thread.
 - The newsletter list is plain text in `subscribers.txt`. Keep it out of
   any public repo branch — `.gitignore` already excludes it.
-- No telemetry. No analytics. No third-party JS beyond the Tailwind +
-  Alpine.js + Google Fonts CDN requests.
+- No telemetry. No analytics. The only third-party network requests are
+  Alpine.js (jsdelivr CDN) and Google Fonts. Tailwind is now compiled
+  locally — no longer fetched from `cdn.tailwindcss.com`.

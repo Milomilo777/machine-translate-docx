@@ -32,3 +32,7 @@ Thumbs.db
 
 # Newsletter subscribers — never committed
 subscribers.txt
+
+# v2 frontend Tailwind toolchain — compiled tailwind.css IS committed,
+# but the dependency tree is not. Rebuild via `npm install` in web/v2/.
+web/v2/node_modules/
