@@ -19,6 +19,7 @@ Public API
 """
 from __future__ import annotations
 
+import html
 import re
 import time
 import traceback
@@ -189,7 +190,7 @@ def selenium_chrome_google_translate(ctx: RuntimeContext, to_translate: str) -> 
                         EC.presence_of_element_located((By.XPATH, res_element_xpath))
                     )
                     translation = result_element.get_attribute('innerHTML')
-                    translation = translation.unescape(translation)
+                    translation = html.unescape(translation)
                 except Exception:
                     print(traceback.format_exc())
 
