@@ -320,22 +320,27 @@ class OpenAIPolisher:
 
     def _estimate_cost(self, response_json: dict) -> float:
         PRICES = {
-            "gpt-5.5":      {"input": 3.00,  "output": 15.00},  # estimate — update when pricing confirmed
-            "gpt-5.4":      {"input": 2.50,  "output": 15.00},
-            "gpt-5.4-mini": {"input": 0.75,  "output": 4.50},
-            "gpt-5.4-nano": {"input": 0.20,  "output": 1.25},
-            "gpt-4o":       {"input": 2.50,  "output": 10.00},
-            "gpt-4o-mini":  {"input": 0.15,  "output": 0.60},
+            # Official API pricing — April 2026
+            "gpt-5.5":      {"input": 5.00,  "cached": 0.50,  "output": 30.00},
+            "gpt-5.4":      {"input": 2.50,  "cached": 0.25,  "output": 15.00},
+            "gpt-5.4-mini": {"input": 0.75,  "cached": 0.075, "output": 4.50},
+            "gpt-5.4-nano": {"input": 0.20,  "cached": 0.02,  "output": 1.25},
+            "gpt-4o":       {"input": 2.50,  "cached": 0.25,  "output": 10.00},
+            "gpt-4o-mini":  {"input": 0.15,  "cached": 0.015, "output": 0.60},
         }
         model = response_json.get("model", self.model)
         usage = response_json.get("usage") or {}
         price = next((v for k, v in PRICES.items() if k in model), None)
         if not price:
             return 0.0
-        p_tok = usage.get("prompt_tokens", 0)
-        c_tok = usage.get("completion_tokens", 0)
+        p_tok      = usage.get("prompt_tokens", 0)
+        c_tok      = usage.get("completion_tokens", 0)
+        cached_tok = (usage.get("prompt_tokens_details") or {}).get("cached_tokens", 0)
+        non_cached = max(0, p_tok - cached_tok)
+        cached_price = price.get("cached", price["input"] * 0.1)
         return round(
-            (p_tok / 1_000_000) * price["input"] +
-            (c_tok / 1_000_000) * price["output"],
+            (non_cached  / 1_000_000) * price["input"]  +
+            (cached_tok  / 1_000_000) * cached_price    +
+            (c_tok       / 1_000_000) * price["output"],
             6
         )

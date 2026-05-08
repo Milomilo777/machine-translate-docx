@@ -162,18 +162,23 @@ class OpenAITranslator:
         completion_tokens = usage.get("completion_tokens", 0)
 
         PRICES = {
-            "gpt-5.5":      {"input": 3.00,  "output": 15.00},  # estimate — update when pricing confirmed
-            "gpt-5.4":      {"input": 2.50,  "output": 15.00},
-            "gpt-5.4-mini": {"input": 0.75,  "output": 4.50},
-            "gpt-5.4-nano": {"input": 0.20,  "output": 1.25},
-            "gpt-5.2":      {"input": 1.75,  "output": 14.00},
-            "gpt-5.1":      {"input": 1.25,  "output": 10.00},
-            "gpt-5":        {"input": 1.25,  "output": 10.00},
-            "gpt-5-mini":   {"input": 0.25,  "output": 2.00},
-            "gpt-5-nano":   {"input": 0.05,  "output": 0.40},
-            "gpt-4o":       {"input": 2.50,  "output": 10.00},
-            "gpt-4o-mini":  {"input": 0.15,  "output": 0.60},
+            # Official API pricing — April 2026
+            # Format: {"input": $/1M, "cached": $/1M cached input, "output": $/1M}
+            "gpt-5.5":      {"input": 5.00,  "cached": 0.50,  "output": 30.00},
+            "gpt-5.4":      {"input": 2.50,  "cached": 0.25,  "output": 15.00},
+            "gpt-5.4-mini": {"input": 0.75,  "cached": 0.075, "output": 4.50},
+            "gpt-5.4-nano": {"input": 0.20,  "cached": 0.02,  "output": 1.25},
+            "gpt-5.2":      {"input": 1.75,  "cached": 0.175, "output": 14.00},
+            "gpt-5.1":      {"input": 1.25,  "cached": 0.125, "output": 10.00},
+            "gpt-5":        {"input": 1.25,  "cached": 0.125, "output": 10.00},
+            "gpt-5-mini":   {"input": 0.25,  "cached": 0.025, "output": 2.00},
+            "gpt-5-nano":   {"input": 0.05,  "cached": 0.005, "output": 0.40},
+            "gpt-4o":       {"input": 2.50,  "cached": 0.25,  "output": 10.00},
+            "gpt-4o-mini":  {"input": 0.15,  "cached": 0.015, "output": 0.60},
         }
+
+        cached_tokens = (usage.get("prompt_tokens_details") or {}).get("cached_tokens", 0)
+        non_cached_tokens = max(0, prompt_tokens - cached_tokens)
 
         price = next((v for k, v in PRICES.items() if k in model), None)
 
@@ -189,7 +194,9 @@ class OpenAITranslator:
                 "total_cost_usd": 0.0,
             }
 
-        input_cost  = (prompt_tokens      / 1_000_000) * price["input"]
+        cached_price = price.get("cached", price["input"] * 0.1)
+        input_cost  = (non_cached_tokens  / 1_000_000) * price["input"] \
+                    + (cached_tokens      / 1_000_000) * cached_price
         output_cost = (completion_tokens  / 1_000_000) * price["output"]
         total_cost  = input_cost + output_cost
 

@@ -24,22 +24,205 @@ local_launcher.py             ← سرور محلی Python (بدون Node.js) ب
 CHANGES.md                    ← همین فایل — منبع اصلی برای سشن بعدی
 ```
 
-### نام‌گذاری فایل خروجی
+### نام‌گذاری فایل خروجی (وضعیت فعلی)
 
 ```
 ورودی:   filename.docx
-خروجی ترجمه+پولیش:      filename_PER_TranslatePolish.docx
-خروجی تقسیم ساده:       filename_PER_Classic.docx    ← بدون AI
-خروجی الاینر مکانیکی:   filename_PER_Double.docx     ← FA-specific
-خروجی الاینر+LLM:       filename_PER_AIAlign.docx    ← FA-specific + LLM review
+خروجی ترجمه+پولیش:      filename_PER_TranslatePolish.docx   → filename  (job)
+خروجی تقسیم کلاسیک:     filename_PER_Classic.docx           → filename3 (job)
+خروجی الاینر دوبل:      filename_PER_Double.docx            → filename2 (job)
 لاگ JSON:                filename_PER_TranslatePolish_log.json
 ```
 
-**توجه:** هر ۴ فایل در یک ZIP دانلود می‌شوند (فقط فارسی + chatgpt-polish).
+**دانلود:** Classic بلافاصله، Double بعد از ۱۸۰۰ms — بدون ZIP، بدون multi-download prompt.
+**AIAlign حذف شد** — سه فایل به دو فایل کاهش یافت.
 
 ---
 
 ## تغییرات — از ابتدا تا آخر
+
+---
+
+### سشن ۲۰۲۶-۰۵-۰۸ (بخش دوم) — refactor + bugfix
+
+#### S1. دو فایل خروجی به‌جای چهار فایل
+
+AIAlign حذف شد. دانلود از ZIP به sequential 1800ms تغییر کرد تا Chrome
+multi-download prompt ظاهر نشود. ZIP endpoint با توضیح انگلیسی غیرفعال شد
+(کد باقی ماند برای مرجع). تغییرات:
+
+- `local_launcher.py` — `filename4` و `_find_ai_align_file()` حذف شدند
+- `index.ejs` — ZIP endpoint کامنت شد؛ دانلود: Classic بلافاصله، Double بعد از 1800ms
+- `src/machine-translate-docx.py` — Pass 3 (AIAlign) حذف شد
+
+---
+
+#### S2. فیکس B1 — `split=True` اشتباه برای fa+chatgpt-polish
+
+**مشکل:** `engineChecker()` بعد از restore از localStorage صدا نمی‌شد → checkbox
+`splitTranslate` چک می‌ماند → backend با `split_translate=True` اجرا می‌شد با
+اینکه aligner توزیع را انجام می‌دهد.
+
+**فیکس دو لایه:**
+
+```python
+# local_launcher.py — B1-guard
+if translation_engine == "chatgpt-polish" and target_language.lower().startswith("fa"):
+    split_translate = False
+```
+
+```javascript
+// index.ejs — loadLanguagePrefs()
+engineChecker();  // ← بعد از restore engine
+```
+
+---
+
+#### S3. نوار پیشرفت برای Google/DeepL
+
+`machine-translate-docx.py` — در block loop، بعد از هر بلوک:
+
+```python
+_blk_pct = int(((i + 1) / _n_blks) * 100)
+for _m in (25, 50, 75):
+    if _blk_pct >= _m and _m not in _progress_blk_emitted:
+        print(f"PROGRESS:{_m}", flush=True)
+        _progress_blk_emitted.add(_m)
+```
+
+label‌های `_progressLabel()` engine-agnostic شدند.
+
+---
+
+#### S4. بازنویسی کامل `aligner_per.py` — Mechanical v2.0
+
+فایل از ۱۵۶۵ خط به ~۳۸۰ خط کاهش یافت. پایه: `fa_aligner.py` از اسکیل v7.5.
+
+**چه چیزی ماند:** `_display_len`، RTL markers، protected bigrams، shaded cell، cross-group sentinel
+
+**چه چیزی حذف شد:** B4 weight tables، discourse-marker alignment، LLM integration stubs، quality scoring
+
+**ساختار جدید — توابع module-level:**
+- `_find_break(text, target, bad_bigrams)` — 3 priority: ،/؛ → space+safe → space
+- `_split_for_n_rows(text, n_rows)` — کمترین chunk اول → doubles را maximize می‌کند
+- `_distribute_to_rows(chunks, n_rows)` — proportional، cap 2 per chunk
+- `_enforce_no_triple(rows)` — logical[] parallel برای suppress slots
+
+**فیکس مهم در `_parse_groups`:** ردیف‌های FA خالی بعد از جمله را به همان گروه اضافه می‌کند.
+این برای خروجی single-call که FA فقط در سطر اول است ضروری بود.
+
+---
+
+#### S5. بازنویسی `_simple_split_docx` — Classic بدون insert/double
+
+**مشکل قدیمی:** با `deepcopy(_row._tr)` ردیف جدید INSERT می‌کرد → EN و شماره
+ردیف هم دوبل می‌شدند (خط قرمز).
+
+**پیاده‌سازی جدید:**
+- از `_parse_groups()` الاینر برای گروه‌بندی استفاده می‌کند
+- `_split_for_n_rows(text, n_rows)` → حداکثر n_rows تکه
+- هر ردیف یک تکه، ردیف‌های باقیمانده `''` — **هرگز تکرار نمی‌شود**
+- فقط `_set_fa_cell()` صدا می‌شود → فقط cells[2] تغییر می‌کند
+
+---
+
+#### S6. فیکس prompt caching — Responses API برای gpt-5.x
+
+**مشکل:** `gpt-5.5` در شرط `if "pro" in self.model` match نمی‌کرد → از
+`chat.completions.create` استفاده می‌کرد که caching برای گروه GPT-5 broken است
+(باگ شناخته‌شده OpenAI).
+
+**فیکس:**
+```python
+_use_responses_api = (
+    "pro" in self.model.lower()
+    or self.model.lower().startswith("gpt-5")
+)
+```
+
+**نرمال‌سازی response JSON:** Responses API از `input_tokens`/`input_tokens_details`
+استفاده می‌کند؛ بعد از `model_dump()` به `prompt_tokens`/`prompt_tokens_details`
+نرمال می‌شود تا کد cost calc دست‌نخورده بماند.
+
+**استخراج متن:**
+```python
+if _use_responses_api and hasattr(response, "output_text"):
+    text = response.output_text.strip()
+else:
+    text = response.choices[0].message.content.strip()
+```
+
+تغییرات در `translator.py` و `polisher.py`.
+
+---
+
+#### S7. localStorage — فقط زبان ذخیره شود
+
+**قبل:** زبان + موتور + مدل AI ذخیره می‌شدند → بار بعدی موتور سطح‌پایین
+برای همیشه می‌ماند.
+
+**بعد:** فقط زبان ذخیره می‌شود. موتور همیشه default زبان را می‌گیرد.
+
+```javascript
+const saveLanguagePrefs = () => {
+    _lsSet('savedSourceLang', sourceSelector.value);
+    _lsSet('savedTargetLang',  targetSelector.value);
+    _lsDel('savedEngine');   // کلیدهای قدیمی پاک می‌شوند
+    _lsDel('savedAiModel');
+};
+```
+
+Helper‌های `_lsSet/_lsGet/_lsDel` با try/catch — silent no-op در private mode.
+
+---
+
+#### S8. فیکس engine lock — guard همه `.selected` پشت `setDefault`
+
+**مشکل:** `deeplOption.selected = true` و `googleOption.selected = true`
+در `engineChecker()` بدون guard بودند → هر بار کاربر موتور عوض می‌کرد،
+`engineChecker(false)` اجرا و موتور را برمی‌گرداند.
+
+**فیکس:** همه default selection ها در یک block `if (setDefault)` جمع شدند:
+```javascript
+if (setDefault && engineSel) {
+  if (targetLanguage === 'fa' && ...) engineSel.value = 'chatgpt-polish';
+  else if (deeplOption && !deeplOption.disabled) engineSel.value = 'deepl';
+  else engineSel.value = 'google';
+}
+```
+
+---
+
+#### S9. قیمت‌گذاری رسمی gpt-5.5 (آوریل ۲۰۲۶)
+
+```
+Input:        $5.00 / 1M tokens
+Cached Input: $0.50 / 1M tokens
+Output:       $30.00 / 1M tokens
+```
+
+محاسبه هزینه در هر دو `translator.py` و `polisher.py` اصلاح شد تا توکن‌های کش‌شده
+با نرخ cached price محاسبه شوند:
+
+```python
+input_cost = (non_cached_tokens / 1M) * price["input"]
+           + (cached_tokens     / 1M) * price["cached"]
+```
+
+---
+
+#### S10. ابزار تست مستقل الاینر
+
+**فایل جدید:** `tests/test_aligner_only.py`
+
+```bash
+python tests/test_aligner_only.py FILE_PER_TranslatePolish.docx [--verbose]
+```
+
+خروجی: `FILE_PER_TranslatePolish_Double_TEST.docx`
+Exit 0: بدون triple یا over-48. Exit 1: مشکل یافت شد (فایل باز هم ذخیره می‌شود).
+
+---
 
 ### ۰-ح. server.js و package.json [2026-05-09]
 
@@ -721,30 +904,28 @@ if (splitSection) {
 |-----|--------|
 | ترجمه OpenAI (single-call) | ✅ |
 | پولیش OpenAI (single-call) | ✅ |
-| FA Subtitle Aligner — Classic (مکانیکی خالص) | ✅ |
-| FA Subtitle Aligner — Double (مکانیکی خالص) | ✅ |
+| Classic split (بدون insert، بدون double، فقط FA column) | ✅ |
+| Double aligner (FA-based grouping، maximize doubles) | ✅ |
 | فرمت خروجی `⟨⟨N⟩⟩` | ✅ |
 | Polling architecture | ✅ |
-| localStorage (زبان + موتور + مدل) | ✅ |
-| کش prompt (24h) | ✅ |
+| localStorage (فقط زبان) | ✅ |
+| کش prompt — Responses API برای gpt-5.x | ✅ |
 | مدل gpt-5.5 | ✅ پیش‌فرض |
 | UI model selector | ✅ |
-| local_launcher.py | ✅ سه‌فایل download |
+| دانلود ۲ فایل با ۱۸۰۰ms فاصله | ✅ |
+| engineChecker بدون lock | ✅ |
+| قیمت‌گذاری gpt-5.5 رسمی + cached cost | ✅ |
 | نام‌گذاری `_PER` / `_PER_Double` / `_PER_Classic` | ✅ |
 | پرامپت‌ها با پسوند `_PER` | ✅ |
 | Split section مخفی برای فارسی+polish | ✅ |
-| تست end-to-end واقعی | ⚠️ کیفیت مکانیکی تأیید نشده |
-| Java/Kotlin migration | ❌ توصیه نشد — Python engine نگه داشته شود |
+| تست مستقل الاینر (`test_aligner_only.py`) | ✅ |
+| تست end-to-end با فایل واقعی | ⚠️ در حال تست |
 
 ---
 
-## باگ‌های شناخته‌شده / کارهای باقی‌مانده
+## کارهای باقی‌مانده
 
-- `server.js.txt` نام عجیبی دارد — بررسی شود آیا باید `.js` باشد
-- قیمت `gpt-5.5` در PRICES تخمینی است — آپدیت کن وقتی pricing رسمی شد
-- متن انگلیسی در بعضی ردیف‌ها پس از ترجمه باقی می‌ماند (باگ ترجمه‌گر، نه الاینر)
-- بعضی ردیف‌ها متن معکوس/آینه‌ای دارند (ممکن است RTL display artifact یا encoding باگ)
-- کیفیت خروجی مکانیکی (بدون LLM) هنوز تأیید کامل نشده
+- تأیید کیفیت خروجی الاینر با فایل‌های واقعی زیرنویس
 
 ---
 
