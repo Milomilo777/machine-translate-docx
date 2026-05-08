@@ -51,6 +51,7 @@ __all__ = [
     "OpenAICtx",
     "DocxCtx",
     "BrowserCtx",
+    "ConfigCtx",
     "RuntimeContext",
 ]
 
@@ -213,6 +214,24 @@ class BrowserCtx:
     close_install_extension_message_bool:    bool = False
 
 
+# ── runtime configuration ─────────────────────────────────────────────────────
+
+@dataclass
+class ConfigCtx:
+    """Runtime configuration loaded from JSON sources (online + local +
+    ``DefaultJsonConfiguration``). Populated at module-load time, then
+    handed into ``RuntimeContext`` for downstream readers.
+
+    ``max_translation_block_size`` is the only mutable field. It starts
+    at the engine-derived default and may be bumped by DeepL login when
+    the account exposes a higher account-tier limit (see
+    ``selenium_chrome_deepl_log_in``).
+    """
+
+    json_configuration_array:    list = field(default_factory=list)
+    max_translation_block_size:  int  = 1500
+
+
 # ── top-level container ───────────────────────────────────────────────────────
 
 @dataclass
@@ -226,6 +245,7 @@ class RuntimeContext:
     openai:   OpenAICtx   = field(default_factory=OpenAICtx)
     docx:     DocxCtx     = field(default_factory=DocxCtx)
     browser:  BrowserCtx  = field(default_factory=BrowserCtx)
+    config:   ConfigCtx   = field(default_factory=ConfigCtx)
 
     @classmethod
     def empty(cls) -> RuntimeContext:

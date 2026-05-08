@@ -20,6 +20,7 @@ if str(_SRC) not in sys.path:
 
 from runtime import (
     BrowserCtx,
+    ConfigCtx,
     DocxCtx,
     EngineCtx,
     Flags,
@@ -32,8 +33,8 @@ from runtime import (
 # ── Sub-context construction ─────────────────────────────────────────────────
 
 def test_runtime_context_empty_constructs():
-    """RuntimeContext.empty() returns a default-populated instance with all
-    six sub-contexts present and of the expected types."""
+    """RuntimeContext.empty() returns a default-populated instance with
+    every sub-context present and of the expected type."""
     ctx = RuntimeContext.empty()
     assert isinstance(ctx.flags,    Flags)
     assert isinstance(ctx.language, LanguageCtx)
@@ -41,6 +42,16 @@ def test_runtime_context_empty_constructs():
     assert isinstance(ctx.openai,   OpenAICtx)
     assert isinstance(ctx.docx,     DocxCtx)
     assert isinstance(ctx.browser,  BrowserCtx)
+    assert isinstance(ctx.config,   ConfigCtx)
+
+
+def test_config_ctx_max_block_size_mutable():
+    """ConfigCtx.max_translation_block_size is mutable so DeepL login
+    can bump it when the account exposes a higher account-tier limit."""
+    ctx = RuntimeContext.empty()
+    assert ctx.config.max_translation_block_size == 1500   # default
+    ctx.config.max_translation_block_size = 5000
+    assert ctx.config.max_translation_block_size == 5000
 
 
 # ── R15 — DeepL fallback dance through ctx ───────────────────────────────────

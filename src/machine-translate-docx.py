@@ -217,6 +217,15 @@ def _get_ctx() -> RuntimeContext:
             _ctx.language.dest_lang_name = dest_lang_name
         except NameError:
             pass
+        # F1.2 — configuration snapshot
+        try:
+            _ctx.config.json_configuration_array = json_configuration_array
+        except NameError:
+            pass
+        try:
+            _ctx.config.max_translation_block_size = MAX_TRANSLATION_BLOCK_SIZE
+        except NameError:
+            pass
     return _ctx
 
 
@@ -2081,17 +2090,21 @@ def remove_span_tag(text):
 
 
 
-def selenium_chrome_deepl_log_in():
-    global json_configuration_array, MAX_TRANSLATION_BLOCK_SIZE
-    
+def selenium_chrome_deepl_log_in(ctx: RuntimeContext):
+    """Log into DeepL with the credentials stored in the JSON configuration.
+
+    Threaded in Phase F1.2: reads the JSON config and the maximum block
+    size through ``ctx.config`` instead of the historical
+    ``json_configuration_array`` / ``MAX_TRANSLATION_BLOCK_SIZE`` globals.
+    """
     deepl_account_email_key = ['deepl', 'account', 'email']
-    deepl_account_email = get_nested_value_from_json_array(json_configuration_array, deepl_account_email_key)
-    
+    deepl_account_email = get_nested_value_from_json_array(ctx.config.json_configuration_array, deepl_account_email_key)
+
     deepl_account_password_key = ['deepl', 'account', 'password']
-    deepl_account_password = get_nested_value_from_json_array(json_configuration_array, deepl_account_password_key)
-        
+    deepl_account_password = get_nested_value_from_json_array(ctx.config.json_configuration_array, deepl_account_password_key)
+
     deepl_account_enabled_key = ['deepl', 'account', 'enabled']
-    deepl_account_enabled = get_nested_value_from_json_array(json_configuration_array, deepl_account_enabled_key)
+    deepl_account_enabled = get_nested_value_from_json_array(ctx.config.json_configuration_array, deepl_account_enabled_key)
     
     #driver.maximize_window()
 
@@ -2227,13 +2240,13 @@ def selenium_chrome_deepl_log_in():
             
             # Success change block size if value exists
             deepl_max_char_bloc_size_key = ['deepl', 'account','maximum_character_block']
-            deepl_maximum_character_block = get_nested_value_from_json_array(json_configuration_array, deepl_max_char_bloc_size_key)
-            
+            deepl_maximum_character_block = get_nested_value_from_json_array(ctx.config.json_configuration_array, deepl_max_char_bloc_size_key)
+
             if isinstance(deepl_maximum_character_block, int):
-                if deepl_maximum_character_block > MAX_TRANSLATION_BLOCK_SIZE:
-                    MAX_TRANSLATION_BLOCK_SIZE = deepl_maximum_character_block
+                if deepl_maximum_character_block > ctx.config.max_translation_block_size:
+                    ctx.config.max_translation_block_size = deepl_maximum_character_block
                     print("\nRobot is now logged in Deepl using %s account." % (deepl_account_email))
-                    print("Changing the value of maximum number of characters per block: %s\n" % (MAX_TRANSLATION_BLOCK_SIZE))
+                    print("Changing the value of maximum number of characters per block: %s\n" % (ctx.config.max_translation_block_size))
                 
             return True
             
@@ -2253,8 +2266,10 @@ def selenium_chrome_deepl_log_in():
 
 
 def selenium_chrome_perplexity_wait_log_in():
-    global json_configuration_array, MAX_TRANSLATION_BLOCK_SIZE
-    
+    """Phase F1.2: drops vestigial global declarations — neither
+    json_configuration_array nor MAX_TRANSLATION_BLOCK_SIZE is read or
+    written in this function body. (The only caller is currently
+    commented-out in main().)"""
     driver.set_window_size(600, 600)
     #driver.maximize_window()
 
@@ -2280,9 +2295,14 @@ def selenium_chrome_perplexity_wait_log_in():
 
 
 
-def selenium_chrome_deepl_log_off():
-    global json_configuration_array, MAX_TRANSLATION_BLOCK_SIZE
+def selenium_chrome_deepl_log_off(ctx: RuntimeContext):
+    """Log out of DeepL.
 
+    Threaded in Phase F1.2: takes ctx so main() can invoke it through a
+    threaded chain in Phase F1.6. The vestigial
+    ``global json_configuration_array, MAX_TRANSLATION_BLOCK_SIZE``
+    declarations were dropped — neither was actually used here.
+    """
     try:
         driver.get("https://www.deepl.com/")
         
@@ -2781,7 +2801,7 @@ def selenium_chrome_deepl_translate(to_translate, retry_count):
                 driver.get("https://www.deepl.com")
                 closed_cookies_accept_message_bool = False
                 deepl_nb_clear_cached_times = deepl_nb_clear_cached_times + 1
-                logged_into_deepl = selenium_chrome_deepl_log_in()
+                logged_into_deepl = selenium_chrome_deepl_log_in(_get_ctx())
                 return selenium_chrome_deepl_translate(to_translate, retry_count)
               
 
@@ -6067,7 +6087,7 @@ def main() -> int:
     translation_succeded = translate_docx()
     
     if logged_into_deepl:
-        selenium_chrome_deepl_log_off()
+        selenium_chrome_deepl_log_off(_get_ctx())
 
     if translation_succeded == False and translation_engine == 'deepl' and engine_method == 'phrasesblock':
         engine_method = 'singlephrase'
