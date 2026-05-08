@@ -10,6 +10,12 @@ backend behaviour. The legacy `index.ejs` continues to live at `/`.
 > or palette tokens in `tailwind.config.js`. The compiled CSS is committed
 > so the page works without Node at runtime.
 
+> 2026-05-09 rewrite: i18n.json is no longer loaded at runtime — all UI
+> copy is inline English in `index.html` for resilience (the previous
+> async fetch could leave the page blank if it raced with Alpine init).
+> The `i18n.json` file is preserved for future re-introduction, but
+> nothing imports it today.
+
 ---
 
 ## Features

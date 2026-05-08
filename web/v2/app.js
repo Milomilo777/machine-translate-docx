@@ -1,5 +1,5 @@
 /* ──────────────────────────────────────────────────────────────────────────
-   Document Translator — v2 client logic
+   Document Translator — v2 client logic (i18n-free rewrite, 2026-05-09)
    Backend endpoints (shared with the legacy /index.ejs UI):
       POST /upload      → multipart/form-data: file + sourceLanguage +
                           targetLanguage + translationEngine + aiModel
@@ -9,8 +9,7 @@
       GET  /download/<name> → docx bytes
       POST /subscribe   → JSON { email } → { ok, message }
 
-   Polling-based (no SSE). Two files queue sequentially.
-   i18n: see web/v2/i18n.json. Loaded once during init() before render.
+   Polling-based (no SSE). Up to two files queued sequentially.
    ────────────────────────────────────────────────────────────────────────── */
 
 (function () {
@@ -21,8 +20,9 @@
   const MAX_FILES        = 2;
   const MAX_FILE_BYTES   = 50 * 1024 * 1024; // 50 MB
 
-  // Match what's exposed in legacy index.ejs's languageDb so a user
-  // moving between UIs sees identical options.
+  // Mirrors the legacy languageDb so a user moving between UIs sees the
+  // same options. `deepl=false` removes the language from the engine list
+  // when it's the target.
   const LANGUAGES = [
     { name: 'English',                value: 'en',    deepl: false },
     { name: 'Arabic',                 value: 'ar',    deepl: true  },
@@ -58,42 +58,25 @@
     source: 'v2.savedSourceLang',
     target: 'v2.savedTargetLang',
     theme:  'v2.theme',
-    locale: 'v2.locale',
   };
 
   function lsGet(k, def) { try { return localStorage.getItem(k) ?? def; } catch (_) { return def; } }
   function lsSet(k, v)   { try { localStorage.setItem(k, v); } catch (_) {} }
 
-  // Best-effort initial locale: persisted choice → navigator language
-  // prefix → 'en'. Persian Speakers landing on this page get a Persian
-  // UI without any clicks. The user can flip via the header toggle.
-  function detectLocale() {
-    const saved = lsGet(LS_KEYS.locale, null);
-    if (saved === 'en' || saved === 'fa') return saved;
-    const nav = (navigator.language || 'en').toLowerCase();
-    if (nav.startsWith('fa')) return 'fa';
-    return 'en';
+  // 9-bucket progress label table. The launcher emits PROGRESS:N markers and
+  // the entry script picks 5 anchor values; we map them back to a label.
+  function bucketLabel(pct) {
+    if (pct >= 100) return 'Finalising…';
+    if (pct >=  90) return 'Saving output…';
+    if (pct >=  75) return 'Aligning subtitles…';
+    if (pct >=  65) return 'Polishing translation…';
+    if (pct >=  30) return 'Translating…';
+    if (pct >=  15) return 'Sending to backend…';
+    if (pct >=  10) return 'Backend started…';
+    if (pct >=   5) return 'Queued…';
+    return 'Starting…';
   }
 
-  // The progressLabel mapping has 9 buckets; each maps to an i18n key
-  // resolved at render time so the spinner text reads in the active locale.
-  // Order matters — first match wins.
-  const PROGRESS_BUCKETS = [
-    [100, 'progress_finalizing'],
-    [ 90, 'progress_saving'],
-    [ 75, 'progress_aligning'],
-    [ 65, 'progress_polishing'],
-    [ 30, 'progress_translating'],
-    [ 15, 'progress_sending'],
-    [ 10, 'progress_backend'],
-    [  5, 'progress_queued'],
-    [  0, 'progress_starting'],
-  ];
-
-  // The factory body — single source of truth. Used both by the Alpine.data()
-  // registration below AND by the inline x-data="docTranslator()" attribute
-  // in index.html via window.docTranslator. The dual exposure protects against
-  // a startup race where Alpine evaluates x-data before app.js has loaded.
   function buildDocTranslator() {
     return {
       // ── State ────────────────────────────────────────────────────────────
@@ -102,6 +85,7 @@
       targetLanguage: lsGet(LS_KEYS.target, 'fa'),
       engine: 'chatgpt-polish',
       aiModel: 'gpt-5.5',
+      splitTranslate: true,
       files: [],
       dragActive: false,
 
@@ -109,7 +93,7 @@
       currentJobIndex: 0,
       currentFileName: '',
       progress: 0,
-      progressKey: 'progress_ready',     // i18n key — `progressLabel` getter resolves it
+      progressLabel: 'Starting…',
 
       results: [],
       error: '',
@@ -120,60 +104,16 @@
       newsletterOk: false,
 
       theme: lsGet(LS_KEYS.theme, 'light'),
-      locale: detectLocale(),
-      i18n: { en: {}, fa: {} },
 
       // ── Init ─────────────────────────────────────────────────────────────
-      async init() {
+      init() {
         document.documentElement.setAttribute('data-theme', this.theme);
-        // Load i18n strings BEFORE Alpine paints the body — bound t() lookups
-        // would otherwise show raw keys for one frame.
-        await this.loadI18n();
         // Pick a sensible default engine for the saved target language.
         this.onLanguageChange();
-        this.syncHtmlLang();
-      },
-
-      async loadI18n() {
-        try {
-          const res = await fetch('/v2/i18n.json', { cache: 'no-cache' });
-          if (res.ok) this.i18n = await res.json();
-        } catch (_) {
-          // Network failure — keep the empty default; t() falls back to keys.
-        }
-      },
-
-      // Translate a key. Falls back: active locale → English → key itself.
-      // {placeholders} can be filled by passing an object as second arg.
-      t(key, vars) {
-        const here = (this.i18n && this.i18n[this.locale]) || {};
-        const en   = (this.i18n && this.i18n.en)           || {};
-        let out = (here[key] ?? en[key] ?? key);
-        if (vars && typeof out === 'string') {
-          for (const k of Object.keys(vars)) {
-            out = out.replaceAll(`{${k}}`, String(vars[k]));
-          }
-        }
-        return out;
-      },
-
-      // <html dir + lang> tracks the UI locale. Body chrome reads RTL when
-      // the locale is Persian/Arabic regardless of the document target.
-      syncHtmlLang() {
-        const rtl = { fa: 'fa', ar: 'ar', he: 'he' };
-        document.documentElement.setAttribute('lang', rtl[this.locale] || 'en');
-        document.documentElement.setAttribute('dir',  this.locale === 'fa' ? 'rtl' : 'ltr');
-      },
-
-      toggleLocale() {
-        this.locale = this.locale === 'fa' ? 'en' : 'fa';
-        lsSet(LS_KEYS.locale, this.locale);
-        this.syncHtmlLang();
       },
 
       // ── Computed helpers ────────────────────────────────────────────────
       get targetLanguages() {
-        // Cannot translate to the same language as the source.
         return this.languages.filter(l => l.value !== this.sourceLanguage);
       },
 
@@ -194,35 +134,35 @@
         return this.engine === 'chatgpt' || this.engine === 'chatgpt-polish';
       },
 
+      get showSplit() {
+        // Mirrors the legacy: split section visible only for selenium engines,
+        // hidden for OpenAI engines (the aligner replaces splitting for fa+polish,
+        // and the API engine does single-call translation).
+        return this.engine === 'google' || this.engine === 'deepl';
+      },
+
       get canTranslate() {
         return this.files.length > 0 && !!this.targetLanguage && !!this.engine;
       },
 
-      // Progress label getter — resolves the bucket key to a localised string
-      // every time it's read, so toggling locale mid-job updates the spinner.
-      get progressLabel() {
-        return this.t(this.progressKey);
-      },
-
-      // ── Persistence on selection change ─────────────────────────────────
+      // ── Persistence + cascading defaults ────────────────────────────────
       onLanguageChange() {
         lsSet(LS_KEYS.source, this.sourceLanguage);
         lsSet(LS_KEYS.target, this.targetLanguage);
 
-        // If the user just picked Persian and chatgpt-polish is available,
-        // it's the right default. Otherwise prefer DeepL when available,
-        // else Google.
+        // If the current engine is no longer offered for this target, pick a
+        // sensible default: chatgpt-polish for Persian, DeepL otherwise, else
+        // Google.
         if (!this.availableEngines.find(o => o.value === this.engine)) {
           if (this.targetLanguage === 'fa') this.engine = 'chatgpt-polish';
           else if (this.availableEngines.find(o => o.value === 'deepl')) this.engine = 'deepl';
           else this.engine = 'google';
         }
-        this.onEngineChange();
       },
 
       onEngineChange() {
-        // Nothing else to do today; kept as a hook so the AI-model row
-        // appears/disappears naturally with `showAiModel`.
+        // Hook kept for future per-engine adjustments. The reactive getters
+        // (showAiModel, showSplit) handle UI visibility automatically.
       },
 
       // ── File handling ───────────────────────────────────────────────────
@@ -243,11 +183,11 @@
         for (const f of list) {
           if (this.files.length >= MAX_FILES) break;
           if (!f.name.toLowerCase().endsWith('.docx')) {
-            this.error = this.t('err_skipped_not_docx', { name: f.name });
+            this.error = `Skipped "${f.name}" — only .docx files are accepted.`;
             continue;
           }
           if (f.size > MAX_FILE_BYTES) {
-            this.error = this.t('err_skipped_too_big', { name: f.name });
+            this.error = `Skipped "${f.name}" — file is larger than 50 MB.`;
             continue;
           }
           this.files.push(f);
@@ -277,11 +217,11 @@
             this.currentJobIndex = i;
             this.currentFileName = this.files[i].name;
             this.progress = 0;
-            this.progressKey = 'progress_uploading';
+            this.progressLabel = 'Uploading…';
             await this.translateOne(this.files[i]);
           }
         } catch (e) {
-          this.error = e?.message || this.t('err_unknown');
+          this.error = (e && e.message) ? e.message : 'Unknown error';
         } finally {
           this.running = false;
         }
@@ -294,20 +234,17 @@
         fd.append('targetLanguage',    this.targetLanguage);
         fd.append('translationEngine', this.engine);
         if (this.showAiModel) fd.append('aiModel', this.aiModel);
-        if (this.engine === 'deepl' || this.engine === 'google') {
-          // legacy backend expects splitTranslate flag; keep parity.
-          fd.append('splitTranslate', 'true');
-        }
+        if (this.showSplit && this.splitTranslate) fd.append('splitTranslate', 'true');
 
         const upRes = await fetch('/upload', { method: 'POST', body: fd });
-        if (!upRes.ok) throw new Error(this.t('err_upload_failed', { status: upRes.status }));
+        if (!upRes.ok) throw new Error(`Upload failed (HTTP ${upRes.status})`);
         const upData = await upRes.json();
-        if (!upData.ok) throw new Error(upData.comment || this.t('err_upload_rejected'));
+        if (!upData.ok) throw new Error(upData.comment || 'Upload rejected');
 
         const wasCached = !!upData.cacheHit;
         if (wasCached) {
           this.progress = 100;
-          this.progressKey = 'progress_cached';
+          this.progressLabel = 'Cached — instant download';
         }
 
         const status = await this.pollStatus(upData.jobId);
@@ -326,27 +263,27 @@
           const data = await res.json();
           if (typeof data.progress === 'number') {
             this.progress = data.progress;
-            this.progressKey = bucketKey(data.progress);
+            this.progressLabel = bucketLabel(data.progress);
           }
           if (data.status === 'done')  return data;
-          if (data.status === 'error') throw new Error(data.error || this.t('err_translation_failed'));
+          if (data.status === 'error') throw new Error(data.error || 'Translation failed');
         }
-        throw new Error(this.t('err_timeout'));
+        throw new Error('Timed out waiting for the backend');
       },
 
       collectResults(status, sourceName, wasCached) {
-        const push = (filename, suffixKey) => {
+        const push = (filename, suffix) => {
           if (!filename) return;
           this.results.push({
-            label:    `${stripPrefix(filename)} — ${this.t(suffixKey)}`,
+            label:    `${stripPrefix(filename)} — ${suffix}`,
             filename: stripPrefix(filename),
             href:     '/download/' + encodeURIComponent(filename),
             fromCache: wasCached,
           });
         };
-        push(status.filename,  'results_translated');
-        push(status.filename2, 'results_double');
-        push(status.filename3, 'results_classic');
+        push(status.filename,  'translated');
+        push(status.filename2, 'aligner double');
+        push(status.filename3, 'classic split');
       },
 
       // ── Theme toggle ────────────────────────────────────────────────────
@@ -371,14 +308,12 @@
           const data = await res.json().catch(() => ({}));
           this.newsletterOk = !!data.ok;
           this.newsletterMessage = this.newsletterOk
-            ? (data.message === 'already subscribed'
-                ? this.t('newsletter_already')
-                : this.t('newsletter_welcome'))
-            : (data.message || this.t('newsletter_failed'));
+            ? (data.message === 'already subscribed' ? 'You are already on the list.' : 'Welcome! You will hear from us only on major releases.')
+            : (data.message || 'Subscription failed. Please try again.');
           if (this.newsletterOk) this.newsletterEmail = '';
-        } catch (e) {
+        } catch (_) {
           this.newsletterOk = false;
-          this.newsletterMessage = this.t('newsletter_network');
+          this.newsletterMessage = 'Network error. Please try again.';
         } finally {
           this.newsletterPending = false;
         }
@@ -387,32 +322,20 @@
   }
 
   // Global form — used by the inline x-data="docTranslator()" attribute.
-  // Alpine evaluates x-data as a JS expression in the global scope, so this
-  // assignment must happen at module top-level, not inside any handler.
   window.docTranslator = buildDocTranslator;
 
-  // Alpine-registry form — used when Alpine has already started by the time
-  // app.js runs. `alpine:init` fires once during Alpine bootstrap before the
-  // DOM walk, so registering here makes `Alpine.data('docTranslator', ...)`
-  // available for any future code paths that switch to the registry syntax.
+  // Alpine-registry form — for any future code path that uses Alpine.data().
   document.addEventListener('alpine:init', () => {
     if (window.Alpine && typeof window.Alpine.data === 'function') {
       window.Alpine.data('docTranslator', buildDocTranslator);
     }
   });
 
-  // ── Helpers shared by the factory ─────────────────────────────────────────
+  // ── Helpers ───────────────────────────────────────────────────────────────
 
   function stripPrefix(name) {
     // The launcher prefixes saved files with `<ms>-` for collision safety;
     // strip that for the user-facing label.
     return name.replace(/^\d{10,}-/, '');
-  }
-
-  function bucketKey(pct) {
-    for (const [floor, key] of PROGRESS_BUCKETS) {
-      if (pct >= floor) return key;
-    }
-    return 'progress_starting';
   }
 })();
