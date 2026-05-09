@@ -43,6 +43,164 @@ CHANGES.md                    ← همین فایل — منبع اصلی برا
 
 ---
 
+### سشن ۲۰۲۶-۰۵-۰۹ (بخش سوم) — Phase H bridge + UX progress + source-column lock
+
+#### N1. Phase H bridge
+
+تابع جدید در فایل زیر:
+
+```
+src/machine-translate-docx.py
+```
+
+```
+_sync_globals_from_ctx(ctx)
+```
+
+attribute های `ctx.docx.*` و `ctx.browser.driver`، `ctx.openai.translator`، `ctx.openai.polisher`، `ctx.language.dest_lang`، `ctx.language.src_lang` را به module namespace mirror می‌کند تا helperهای legacy که هنوز با bare-name می‌خوانند، نسخه‌ی populated را ببینند.
+
+در `main()` در چهار نقطه فراخوانی می‌شود:
+
+```
+بعد از read_and_parse_docx_document(ctx)
+بعد از create_webdriver(ctx)
+بعد از translate_docx(ctx)
+بعد از document_split_phrases(ctx)
+```
+
+---
+
+#### N2. تابع‌های threaded
+
+تابع‌های زیر signature گرفتند (`ctx`):
+
+```
+translate_docx
+print_console_docx_file_translated
+cell_set_1st_paragraph
+cell_add_paragraph
+```
+
+سه نقطه write به global `table_cells` به `ctx.docx.table_cells` تغییر کردند.
+
+تابع زیر هم guard اضافی گرفت برای ردیف‌های کوتاه‌تر از ۳ سلول (footer subtitle):
+
+```
+prepare_and_clear_cell_for_writing
+```
+
+---
+
+#### N3. xtm module-level binding
+
+فایل زیر در ابتدا یک تعریف اضافه کرد:
+
+```
+src/machine-translate-docx.py
+```
+
+```python
+xtm = None
+```
+
+و در تابع زیر `global xtm` declare شد:
+
+```
+initialize_translation_memory_xlsx
+```
+
+---
+
+#### N4. driver seed در selenium helper ها
+
+پنج تابع که `driver` را reassign می‌کنند، الان در شروع آن را seed می‌کنند:
+
+```python
+driver = ctx.browser.driver
+```
+
+تابع‌ها:
+
+```
+selenium_chrome_google_translate_text_file
+selenium_chrome_google_translate_html_javascript_file
+selenium_chrome_google_translate_xlsx_file
+get_translation_and_replace_after
+run_statistics
+```
+
+---
+
+#### N5. non-split write path
+
+تابع زیر بازنویسی شد تا نوشتن سلول مشروط به phrase_array نباشد:
+
+```
+print_console_docx_file_translated
+```
+
+اگر متن ترجمه (`to_text_by_phrase_separator_table[row_n]`) موجود است، سلول نوشته می‌شود، حتی اگر `document_split_phrases` آن ردیف را skip کرده باشد.
+
+---
+
+#### N6. UX پیشرفت
+
+سه فیکس مرتبط:
+
+- **شش-الف.** در `index.ejs` در catch block: `loadingElement.classList.remove('visible')` به **قبل** از `await showAlert(...)` منتقل شد.
+- **شش-ب.** در `local_launcher.py`: `subprocess.Popen(..., bufsize=1, ...)` (line-buffered) تا PROGRESS markers زندانی نشوند.
+- **شش-ج.** در `selenium_chrome_google_translate_html_javascript_file`: مارکرهای PROGRESS:15/30/50/75/90 در loop paragraphs اضافه شدند. در `save_docx_file` در ابتدا: PROGRESS:90 برای پر کردن گپ DeepL/Perplexity.
+
+---
+
+#### N7. قفل defensive ستون مبدأ
+
+**بزرگ‌ترین تغییر این سشن.** در فایل زیر field جدید:
+
+```
+src/runtime.py
+```
+
+```python
+source_columns_snapshot: Any = field(default_factory=dict)
+```
+
+در `read_and_parse_docx_document`، برای هر سلول در ستون 0 یا 1، یک deepcopy از XML element در snapshot ذخیره می‌شود.
+
+در `save_docx_file` قبل از `docxdoc.save(...)`، loop می‌زند و اگر XML سلول از snapshot drift کرده، آن را با deepcopy snapshot replace می‌کند.
+
+اگر restore فعال شود:
+
+```
+[LOCK] Restored N source-column cell(s) before save (drift detected — translation memory leak suspected)
+```
+
+این درمان قطعی برای bug کاربر است که گزارش داد xtm `before` به ستون انگلیسی نشت کرده.
+
+---
+
+#### N8. ۹ commit امروز روی master
+
+```
+a205a41  fix(docx): defensive lock on source-language column
+81fdd8f  audit: pre-real-test sweep
+f957f89  fix(progress): hide overlay + Google-js markers + bufsize=1
+8955042  fix(translate): seed driver in remaining selenium helpers
+9770ffd  fix(translate): seed local driver from ctx
+38ebce4  fix(translate): non-split write path
+496183f  fix(translate): Phase H bridge — _sync_globals_from_ctx
+1a8c127  fix(translate): xtm — module-level None + global declaration
+02d62da  fix(translate): Phase H — thread ctx through translate_docx
+```
+
+تست‌ها در همه:
+
+```
+51 passed
+```
+
+---
+
 ### سشن ۲۰۲۶-۰۵-۰۹ — تجمیع برنچ‌ها در master + فیکس F-013
 
 #### M1. merge برنچ زیر در master:
