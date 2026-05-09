@@ -1354,9 +1354,17 @@ def selenium_chrome_google_translate_text_file(ctx: RuntimeContext, text_file_pa
     
     
 def selenium_chrome_google_translate_html_javascript_file(ctx: RuntimeContext, html_file_path):
+    # Phase H: bind the active browser driver into a local name. The
+    # function reassigns `driver` later (line ~1485, recovery branch),
+    # which makes Python treat `driver` as local for the entire body —
+    # without this seed read, every earlier `driver.get(...)` raised
+    # UnboundLocalError. After a successful reassign we mirror the new
+    # handle back to ctx.browser.driver so downstream calls see it.
+    driver = ctx.browser.driver
+
     html_file_path_escaped = html_file_path.replace('#','%23')
     file_url = 'file://' + html_file_path_escaped
-    
+
     nb_retry = 3
     
     while nb_retry > 0:
@@ -1481,12 +1489,14 @@ def selenium_chrome_google_translate_html_javascript_file(ctx: RuntimeContext, h
             if ctx.flags.use_api or ctx.flags.splitonly:
                 print("\nCreating a new browser for stats")
                                                       
-                service = Service()                                
+                service = Service()
                 driver = webdriver.Chrome(service=service, options=ctx.browser.chrome_options)
-                                    
-                          
+                ctx.browser.driver = driver  # mirror new handle back into ctx
 
-                              
+
+
+
+
     
 def getDownLoadedFileNameFirefox(waitTime):
     driver.execute_script("window.open()")
@@ -3193,6 +3203,10 @@ def translate_docx(ctx: RuntimeContext):
 
 
 def get_translation_and_replace_after(ctx: RuntimeContext):
+    # Phase H: seed local `driver` from ctx so the later reassignment
+    # branches don't trigger UnboundLocalError on prior reads.
+    driver = ctx.browser.driver
+
     phrase_no = 0
 
     # ── DIAGNOSTIC: confirm we enter here with polished ctx.docx.translation_array ─
@@ -3800,6 +3814,11 @@ def local_time_offset(t=None):
 
 
 def run_statistics(ctx: RuntimeContext):
+    # Phase H: seed local `driver` so subsequent `driver.get(...)` reads
+    # don't UnboundLocalError when the reassign branch is skipped.
+    driver = ctx.browser.driver
+
+    _orig_run_statistics_body_marker = None  # placeholder kept for the editor diff
     
     statistics_html_statistics_form_url_key = ['statistics', 'html_statistics_form_url']
     statistics_html_statistics_form_url = get_nested_value_from_json_array(ctx.config.json_configuration_array, statistics_html_statistics_form_url_key)
@@ -3947,6 +3966,7 @@ def run_statistics(ctx: RuntimeContext):
             
                                                                
             driver = webdriver.Chrome(service=service, options=ctx.browser.chrome_options)
+            ctx.browser.driver = driver  # mirror new handle back into ctx
             service = Service()
         
         query_params = {
@@ -4672,13 +4692,22 @@ def main() -> int:
     # array shape. Helps diagnose 'output empty' regressions like the
     # phrase_array gating bug seen on 2026-05-09.
     _populated_to_text = sum(
-        1 for _v in ctx.docx.to_text_by_phrase_separator_table if _v
+        1 for _v in (ctx.docx.to_text_by_phrase_separator_table or []) if _v
     )
+    _ta = ctx.docx.translation_array
+    _ta_len = len(_ta) if _ta is not None else 0
     print(
         f"[DIAG] After get_translation_and_replace_after: "
         f"to_text rows populated = {_populated_to_text}, "
-        f"translation_array lines = {len(ctx.docx.translation_array)}"
+        f"translation_array lines = {_ta_len}"
+        + ("" if _ta is not None else "  (None — engine returned no result)")
     )
+    # Defensive: if a Selenium engine errored and returned None, replace
+    # it with an empty list so downstream `for line in translation_array`
+    # loops don't TypeError.
+    if ctx.docx.translation_array is None:
+        ctx.docx.translation_array = []
+        _sync_globals_from_ctx(ctx)
 
     minimize_browser(ctx)
 
