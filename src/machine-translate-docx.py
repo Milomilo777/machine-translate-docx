@@ -2644,9 +2644,13 @@ def read_and_parse_docx_document(ctx: RuntimeContext):
                 # restore them before writing the docx to disk. Guarantees
                 # the source language column is never altered by any engine
                 # or helper, even via a future leak we haven't audited.
+                # Store both the visible text and the deepcopy'd XML so the
+                # save-time check can prefer text comparison (immune to
+                # python-docx's XML re-serialisation noise) and only fall
+                # back to XML restore on actual content drift.
                 if j in (0, 1):
                     from copy import deepcopy as _dc
-                    docx.source_columns_snapshot[(i, j)] = _dc(cell._tc)
+                    docx.source_columns_snapshot[(i, j)] = (cell.text, _dc(cell._tc))
                 if col_no == 2:
                 
                     #docx.from_text_is_greyed_table[row_n] = is_greyed_line(cell)
@@ -4562,28 +4566,37 @@ def save_docx_file(ctx: RuntimeContext):
         from copy import deepcopy as _dc
         _restored = 0
         _snap = ctx.docx.source_columns_snapshot or {}
-        for (_ri, _cj), _orig_tc in _snap.items():
+        for (_ri, _cj), _entry in _snap.items():
             try:
+                # Backwards compat: older snapshots stored just the XML.
+                if isinstance(_entry, tuple):
+                    _orig_text, _orig_tc = _entry
+                else:
+                    _orig_text, _orig_tc = None, _entry
+
                 _row = ctx.docx.table.rows[_ri]
                 if _cj >= len(_row.cells):
                     continue
                 _cell = _row.cells[_cj]
+                # Primary check: visible text. python-docx may re-serialise
+                # the XML with reordered namespace attributes / whitespace
+                # even when the cell content is identical, so byte-level
+                # XML comparison generates false positives. Restore only
+                # when the visible text genuinely drifted.
+                if _orig_text is not None and _cell.text == _orig_text:
+                    continue
                 _cur_tc = _cell._tc
                 _parent = _cur_tc.getparent()
                 if _parent is None:
                     continue
-                # Only restore when content actually drifted — avoids
-                # rewriting every cell on every save.
-                from lxml import etree as _et
-                if _et.tostring(_cur_tc) != _et.tostring(_orig_tc):
-                    _parent.replace(_cur_tc, _dc(_orig_tc))
-                    _restored += 1
+                _parent.replace(_cur_tc, _dc(_orig_tc))
+                _restored += 1
             except Exception:
                 # Per-row failures are non-fatal; we continue restoring
                 # the remaining cells.
                 continue
         if _restored:
-            print(f"[LOCK] Restored {_restored} source-column cell(s) before save (drift detected — translation memory leak suspected)")
+            print(f"[LOCK] Restored {_restored} source-column cell(s) before save (text drift detected — translation memory leak suspected)")
     except Exception as _lock_exc:
         print(f"[LOCK] Source-column lock skipped: {_lock_exc}")
 
