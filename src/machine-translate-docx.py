@@ -2809,7 +2809,7 @@ def generate_html_file_from_phrases_for_google_translate_javascript(ctx: Runtime
         item_html_escaped = html.escape(item_searched_and_replaced_before.strip())  
         
         if item_searched_and_replaced_before != '':
-            docxfile_table_number_of_phrases = docxfile_table_number_of_phrases + 1
+            ctx.docx.docxfile_table_number_of_phrases += 1
             html_to_translate = html_to_translate + '''
 <tr>
     <td>%s</td>
@@ -4459,7 +4459,13 @@ def open_app_docx_file(ctx: RuntimeContext):
         print("Error:", e)
         print("Warning, unable to open file %s." % (out_path))
 def save_docx_file(ctx: RuntimeContext):
-    
+    # PROGRESS:90 — about to write the docx to disk. The aligner branch
+    # in print_console_docx_file_translated also emits 90 (and 100), so
+    # this is a no-op there; for non-aligner engines (DeepL, Google web,
+    # Perplexity) it fills the gap between block-loop's last 75 and the
+    # final 100.
+    print("PROGRESS:90", flush=True)
+
     lang_name = ""
     lang_code = ctx.language.dest_lang
     

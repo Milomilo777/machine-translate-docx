@@ -3,7 +3,7 @@
 Committed team memory. Keep it concise — no raw logs, no long discussion.
 Summary + link to `docs/` for depth.
 
-Last updated: 2026-05-09
+Last updated: 2026-05-09 (Phase H bridge, progress UX, driver seeding)
 
 ---
 
@@ -18,7 +18,11 @@ Last updated: 2026-05-09
 | C5 | Output filenames never get a timestamp prefix | Stripped by `_strip_timestamp()` in `local_launcher.py` |
 | C6 | File collisions get `_1`, `_2` suffix — never silent overwrite | Data safety |
 | C7 | BOTH frontends (legacy `/` and v2 `/v2/`) must remain functional | User keeps both as choices |
-| C8 | `local_launcher.py` is on the read-only refactor list — only encoding fix (F-013) and additive v2 routes are allowed | Prevent regression of long-stable launcher behavior |
+| C8 | `local_launcher.py` read-only list relaxed — F-013 (UTF-8 stdout), v2 routes, line-buffered subprocess all landed | Originally read-only; necessary fixes have been documented |
+| C9 | `subprocess.Popen` for the backend MUST use `bufsize=1` | Without line-buffering, PROGRESS:N markers stall in the pipe and the UI bar jumps from 10 % to 100 % |
+| C10 | After `read_and_parse_docx_document(ctx)` and after `translate_docx(ctx)` and after `document_split_phrases(ctx)` and after `create_webdriver(ctx)`, call `_sync_globals_from_ctx(ctx)` | Phase H bridge — legacy helpers still read module-level globals; the sync mirrors `ctx.docx.*` (and `ctx.browser.driver`, `ctx.openai.*`) into the module namespace |
+| C11 | New Selenium helpers must seed `driver = ctx.browser.driver` at the top if they later reassign `driver` | Otherwise Python treats `driver` as local for the entire body and every prior read raises UnboundLocalError |
+| C12 | Legacy frontend error path: hide `loadingElement` BEFORE `await showAlert(...)` | Otherwise the progress overlay keeps animating behind the dialog while the user reads the error message |
 
 ---
 
@@ -93,6 +97,12 @@ See [`docs/error-catalog.md`](docs/error-catalog.md) for full list.
 
 | Date | Change |
 |------|--------|
+| 2026-05-09 | **Phase H bridge — `_sync_globals_from_ctx`:** mirrors `ctx.docx.*` (and `ctx.browser.driver`, `ctx.openai.translator/polisher`, `dest_lang`, `src_lang`) onto the module so the ~40 helpers that still read by bare name see populated state. Wired into main() at four pipeline boundaries (after read, after create_webdriver, after translate_docx, after document_split_phrases). Adds `xtm = None` module-level + `global xtm` declaration in `initialize_translation_memory_xlsx`. |
+| 2026-05-09 | **Phase H — selenium driver seeds:** five Selenium-touching helpers now seed `driver = ctx.browser.driver` at the top so reassign branches don't trigger UnboundLocalError on prior reads (`selenium_chrome_google_translate_text_file/html_javascript_file/xlsx_file`, `get_translation_and_replace_after`, `run_statistics`). Reassign sites mirror the new handle back to `ctx.browser.driver`. |
+| 2026-05-09 | **Phase H — non-split write path decoupled:** `print_console_docx_file_translated` now writes the translated cell whenever `ctx.docx.to_text_by_phrase_separator_table[row_n]` is non-empty, regardless of `translation_result_phrase_array` shape. Closed the silent failure mode where an empty `phrase_array` (because document_split_phrases skipped the row) left the cell unwritten. |
+| 2026-05-09 | **Phase H — translate_docx + cell helpers threaded:** `translate_docx`, `cell_set_1st_paragraph`, `cell_add_paragraph`, `print_console_docx_file_translated` now take `ctx`. Three writes that hit the empty global `table_cells` are redirected to `ctx.docx.table_cells`. |
+| 2026-05-09 | **Phase H — `docxfile_table_number_of_phrases` increment threaded:** `generate_html_file_from_phrases_for_google_translate_javascript` now uses `ctx.docx.docxfile_table_number_of_phrases += 1` instead of the bare-name read-then-write that would `UnboundLocalError`. |
+| 2026-05-09 | **Progress UX fixes:** loading overlay hidden BEFORE `showAlert(...)` so error dialogs no longer have the bar animating behind them. PROGRESS:15/30/50/75/90 markers added to the Google-javascript paragraph loop (previously 10→100 jump). PROGRESS:90 emitted at the start of `save_docx_file` to fill the gap for DeepL/Perplexity engines that finish at runner's PROGRESS:75 and otherwise jump straight to 100. `subprocess.Popen` for the backend now uses `bufsize=1` (line-buffered) so PROGRESS markers reach the launcher in real time. |
 | 2026-05-09 | **Master consolidation:** merged `audit/post-refactor` (Phases A-G4 + 12 audit fixes) and `feature/v2-frontend` (Claude-inspired UI v2 + cache + i18n) into master. F-013 fix applied (UTF-8 stdout reconfigure). 51 unit tests passing. Both UIs live: legacy at `/`, v2 at `/v2/`. |
 | 2026-05-08 | **Audit (`audit/post-refactor`):** 15 findings — F-001 Engine Protocol resync, F-005-F-011 dead-code/unused-import sweeps in google.py + deepl.py, F-007 `html.unescape` fix; F-010 `$Translation` regex deferred; F-012 entry-script middle-layer threading deferred (Phase H). Smoke test: 36 passed |
 | 2026-05-08 | **Phase G (`refactor/architecture`):** extract `selenium_utils/` (G1), `engines/google.py` (G2), `engines/deepl.py` (G3), `runner.py` (G4) |
