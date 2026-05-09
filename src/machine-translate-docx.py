@@ -397,6 +397,16 @@ def _sync_globals_from_ctx(ctx: RuntimeContext) -> None:
         setattr(_mod, "dest_lang", ctx.language.dest_lang)
     if getattr(ctx.language, "src_lang", None) is not None:
         setattr(_mod, "src_lang", ctx.language.src_lang)
+    # Browser handle: many helpers (download utilities, Perplexity login,
+    # the recovery branches inside the Selenium engines) read `driver` as
+    # a bare name. Mirror the active handle so they reach the live session.
+    if getattr(ctx.browser, "driver", None) is not None:
+        setattr(_mod, "driver", ctx.browser.driver)
+    # OpenAI handles — read by bare name in legacy translate / polish helpers.
+    if getattr(ctx.openai, "translator", None) is not None:
+        setattr(_mod, "oai_translator", ctx.openai.translator)
+    if getattr(ctx.openai, "polisher", None) is not None:
+        setattr(_mod, "oai_polisher", ctx.openai.polisher)
 
 
 # Track the child processes
@@ -1273,11 +1283,12 @@ def selenium_chrome_translate_get_from_text_array(to_translate, index):
     return ""
     
 def selenium_chrome_google_translate_text_file(ctx: RuntimeContext, text_file_path):
+    driver = ctx.browser.driver  # Phase H: bind active browser handle
     try:
-        
+
         if not ctx.browser.google_translate_first_page_loaded:
             selenium_chrome_google_click_cookies_consent_button(ctx)
-        
+
         driver.get("https://translate.google.com/?sl=%s&tl=%s&op=docs" % (ctx.language.src_lang,ctx.language.dest_lang))
         driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
         
@@ -1590,12 +1601,12 @@ def get_last_downloaded_file_path():
     return
 
 def selenium_chrome_google_translate_xlsx_file(ctx: RuntimeContext, xlsx_file_path):
-    
+    driver = ctx.browser.driver  # Phase H: bind active browser handle
     try:
-        
+
         if not ctx.browser.google_translate_first_page_loaded:
             selenium_chrome_google_click_cookies_consent_button(ctx)
-        
+
         driver.get("https://translate.google.com/?sl=%s&tl=%s&op=docs" % (ctx.language.src_lang,ctx.language.dest_lang))
         driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
         
@@ -4650,6 +4661,7 @@ def main() -> int:
     _sync_globals_from_ctx(ctx)  # Phase H bridge — see helper docstring
 
     create_webdriver(ctx)
+    _sync_globals_from_ctx(ctx)  # mirror ctx.browser.driver to module-level so legacy helpers see it
 
     if ctx.engine.engine == 'deepl':
         ctx.browser.logged_into_deepl = selenium_chrome_deepl_log_in(ctx)
