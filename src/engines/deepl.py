@@ -103,7 +103,7 @@ def selenium_chrome_deepl_log_in(ctx: RuntimeContext):
                 ctx.browser.driver.execute_script("arguments[0].scrollIntoView();", deepl_accept_cookies_button)    
                 safe_click(ctx.browser.driver, deepl_accept_cookies_button)
                 
-            except:
+            except Exception:
                 pass
 
             # Close the cookies message box if it is there
@@ -115,7 +115,7 @@ def selenium_chrome_deepl_log_in(ctx: RuntimeContext):
                         EC.presence_of_element_located((By.XPATH, deepl_accept_cookies_element)))
                     safe_click(ctx.browser.driver, deepl_accept_cookies_button)
                     closed_cookies_accept_message_bool = True
-            except:
+            except Exception:
                 pass
                 
             try:
@@ -125,7 +125,7 @@ def selenium_chrome_deepl_log_in(ctx: RuntimeContext):
                 deepl_close_deepl_extension_button = WebDriverWait(ctx.browser.driver, 0.05).until(
                     EC.presence_of_element_located((By.CSS_SELECTOR, deepl_close_deepl_extension_element)))
                 safe_click(ctx.browser.driver, deepl_close_deepl_extension_button)
-            except:
+            except Exception:
                 pass
         
             # End function if no email or password are provided
@@ -146,7 +146,7 @@ def selenium_chrome_deepl_log_in(ctx: RuntimeContext):
                 ctx.browser.driver.execute_script("arguments[0].scrollIntoView();", deepl_accept_cookies_button)    
                 safe_click(ctx.browser.driver, deepl_accept_cookies_button)
                 
-            except:
+            except Exception:
                 pass       
             
             # Fill username 
@@ -171,7 +171,7 @@ def selenium_chrome_deepl_log_in(ctx: RuntimeContext):
                         EC.presence_of_element_located((By.XPATH, deepl_accept_cookies_element)))
                     safe_click(ctx.browser.driver, deepl_accept_cookies_button)
                     closed_cookies_accept_message_bool = True
-            except:
+            except Exception:
                 pass
                 
             try:
@@ -182,7 +182,7 @@ def selenium_chrome_deepl_log_in(ctx: RuntimeContext):
                 ctx.browser.driver.execute_script("arguments[0].scrollIntoView();", deepl_accept_cookies_button)    
                 safe_click(ctx.browser.driver, deepl_accept_cookies_button)
                 
-            except:
+            except Exception:
                 pass       
             
             # Submit login
@@ -195,7 +195,7 @@ def selenium_chrome_deepl_log_in(ctx: RuntimeContext):
             sleep(1.5)
             try:
                 safe_click(ctx.browser.driver, deepl_login_submit_button)
-            except:
+            except Exception:
                 pass
             
             try:
@@ -207,7 +207,7 @@ def selenium_chrome_deepl_log_in(ctx: RuntimeContext):
                 # Close the opener dialog, not required but cleaner
                 sleep(0.1)
                 safe_click(ctx.browser.driver, deepl_login_menu_button)
-            except:
+            except Exception:
                 pass
             
             try:
@@ -216,8 +216,7 @@ def selenium_chrome_deepl_log_in(ctx: RuntimeContext):
                 deepl_plugin_dialog_button = WebDriverWait(ctx.browser.driver, 0.05).until(
                     EC.presence_of_element_located((By.CSS_SELECTOR, deepl_plugin_dialog_element)))
                 safe_click(ctx.browser.driver, deepl_plugin_dialog_button)
-            except:
-                # Just ignore if this plugin dialog does not appear
+            except Exception:  # Just ignore if this plugin dialog does not appear
                 pass
             
             # Success change block size if value exists
@@ -232,14 +231,14 @@ def selenium_chrome_deepl_log_in(ctx: RuntimeContext):
                 
             return True
             
-        except:
+        except Exception:
             var = traceback.format_exc()
             print(var)
             print("Failed to login into Deepl, continuing without being logged on.")
             ctx.browser.driver.set_window_size(800, 700)
             return False
 
-    except:
+    except Exception:
         var = traceback.format_exc()
         print(var)
         print("Failed to login into Deepl, continuing without being logged on.")
@@ -275,20 +274,19 @@ def selenium_chrome_deepl_log_off(ctx: RuntimeContext):
                 safe_click(ctx.browser.driver, deepl_logout_menu_button)
                 print("\nRobot is now logged off Deepl account.")
                 
-            except:
-                # Just ignore if this plugin dialog does not appear
+            except Exception:  # Just ignore if this plugin dialog does not appear
                 print("Unable to log off from Deepl, this can be ignored.")
                 pass
                 
             return True
             
-        except:
+        except Exception:
             var = traceback.format_exc()
             print(var)
             print("Failed of Deepl, this can be ignored")
             return False
 
-    except:
+    except Exception:
         var = traceback.format_exc()
         print(var)
         print("Failed of Deepl, this can be ignored")
@@ -370,7 +368,7 @@ def selenium_chrome_deepl_translate(ctx: RuntimeContext, to_translate, retry_cou
     try:
         tmp_var = ctx.browser.closed_cookies_accept_message_bool
         tmp_var = ctx.browser.close_install_extension_message_bool
-    except:
+    except Exception:
         ctx.browser.closed_cookies_accept_message_bool = False
         ctx.browser.close_install_extension_message_bool = False
 
@@ -516,14 +514,14 @@ def selenium_chrome_deepl_translate(ctx: RuntimeContext, to_translate, retry_cou
                 try:
                     (ctx.browser.driver.page_source).encode('utf-8')
                     WebDriverWait(ctx.browser.driver, 15).until(lambda d: d.execute_script('return document.readyState') == 'complete')
-                except:
+                except Exception:
                     pass
                 
                 # Make sure the target language matches with the target language code or at least the target language name
                 try:
                     ensure_target_language(ctx.browser.driver, dest_lang=dest_lang, dest_lang_name=dest_lang_name)
                     WebDriverWait(ctx.browser.driver, 15).until(lambda d: d.execute_script('return document.readyState') == 'complete')
-                except:
+                except Exception:
                     pass
                     
                 translation_page_opened = True
@@ -551,7 +549,7 @@ def selenium_chrome_deepl_translate(ctx: RuntimeContext, to_translate, retry_cou
                 except Exception:
                     pass  
                 
-            except:
+            except Exception:
                 print("Waiting for https://www.deepl.com/ ...")
                 sleep(1)
             translation_page_openeing_loop_count = translation_page_openeing_loop_count - 1
@@ -570,11 +568,10 @@ def selenium_chrome_deepl_translate(ctx: RuntimeContext, to_translate, retry_cou
                 ctx.browser.driver.execute_script("arguments[0].scrollIntoView();", deepl_accept_cookies_button)    
                 safe_click(ctx.browser.driver, deepl_accept_cookies_button)
                 
-            except:
+            except Exception:
                 pass
             #print("Page loaded completed")
-        except:
-            # print("Waiting for the input_element...")
+        except Exception:  # print("Waiting for the input_element...")
             var = traceback.format_exc()
             print(var)
         
@@ -606,7 +603,7 @@ def selenium_chrome_deepl_translate(ctx: RuntimeContext, to_translate, retry_cou
                         "arguments[0].scrollIntoView({block: 'end'});",
                         copy_translation_button
                     )
-            except:
+            except Exception:
                 pass
             
             try:
@@ -621,8 +618,7 @@ def selenium_chrome_deepl_translate(ctx: RuntimeContext, to_translate, retry_cou
                 #print(f"Found xpath button: {copy_translation_element}")
                 time.sleep(0.2)
                 
-            except:
-                #print(f"Except loop {loop_counter_search_button}, not found xpath button: {copy_translation_element}")
+            except Exception:  #print(f"Except loop {loop_counter_search_button}, not found xpath button: {copy_translation_element}")
                 try:
                     copy_translation_element = "#dl_translator"
                     #print(f"Looking for {copy_translation_element}")
@@ -633,7 +629,7 @@ def selenium_chrome_deepl_translate(ctx: RuntimeContext, to_translate, retry_cou
                     found_copy_button = True
                     #print(f"Found xpath button: {copy_translation_element}")
                     
-                except:
+                except Exception:
                     try:
                         # Version 2022-03-09
                         copy_translation_element = ".lmt__target_toolbar_right > span path:nth-child(2)"
@@ -642,16 +638,14 @@ def selenium_chrome_deepl_translate(ctx: RuntimeContext, to_translate, retry_cou
                         copy_translation_button = WebDriverWait(ctx.browser.driver, 0.2).until(
                             EC.presence_of_element_located((By.XPATH, copy_translation_element)))
                         found_copy_button = True
-                    except:
-                        # Version 2022-03-30
+                    except Exception:  # Version 2022-03-30
                         try:
                            copy_translation_element = ".lmt__target_toolbar_right > div > span svg"
                            #print(f"Looking for {copy_translation_element}")       
                            copy_translation_button = WebDriverWait(ctx.browser.driver, 0.2).until(
                                EC.presence_of_element_located((By.CSS_SELECTOR, copy_translation_element)))
                            found_copy_button = True
-                        except:
-                           #print("Copy button not found !!")
+                        except Exception:  #print("Copy button not found !!")
                            pass
             #print("Incrementing loop_counter_search_button")
             loop_counter_search_button = loop_counter_search_button - 1
@@ -685,10 +679,9 @@ def selenium_chrome_deepl_translate(ctx: RuntimeContext, to_translate, retry_cou
                         EC.presence_of_element_located((By.XPATH, deepl_usage_limit_reached_element)))
                     safe_click(ctx.browser.driver, deepl_usage_limit_reached_button)
                     return False, ""
-                except:
+                except Exception:
                     pass
-        except:
-            #var = traceback.format_exc()
+        except Exception:  #var = traceback.format_exc()
             #print(var)
             limit_reached = False
 
@@ -700,8 +693,7 @@ def selenium_chrome_deepl_translate(ctx: RuntimeContext, to_translate, retry_cou
                 
                 limit_reached = True
                 #safe_click(ctx.browser.driver, deepl_usage_limit_reached_button)
-            except:
-                
+            except Exception:
                 pass
             # Sometimes the busy element does not show up, just ignore it and continue
             
@@ -711,7 +703,7 @@ def selenium_chrome_deepl_translate(ctx: RuntimeContext, to_translate, retry_cou
                 try:
                     if ctx.browser.deepl_nb_clear_cached_times is None:
                         ctx.browser.deepl_nb_clear_cached_times = 0
-                except:
+                except Exception:
                     ctx.browser.deepl_nb_clear_cached_times = 0
                     
                 if ctx.browser.deepl_nb_clear_cached_times > deepl_maximum_clear_cache_retry:
@@ -736,7 +728,7 @@ def selenium_chrome_deepl_translate(ctx: RuntimeContext, to_translate, retry_cou
                 "arguments[0].scrollIntoView({block: 'end'});",
                 copy_translation_button
             )
-        except:
+        except Exception:
             pass
 
         copy_button_clicked = False
@@ -785,7 +777,7 @@ def selenium_chrome_deepl_translate(ctx: RuntimeContext, to_translate, retry_cou
                             if block_previous_translation_percent_done != block_translation_percent_done:
                                 # print ("found percent: %s" %block_translation_percent_done)
                                 bar.update(int(block_translation_percent_done))
-                        except:
+                        except Exception:
                             pass
 
                     # input("of characters translated")
@@ -815,8 +807,7 @@ def selenium_chrome_deepl_translate(ctx: RuntimeContext, to_translate, retry_cou
                         EC.presence_of_element_located((By.XPATH, inner_html_plain_text_element)))
                     translation_from_plain_text = InnerHTMLPlainTextElement.get_attribute('innerHTML')
                     res = translation_from_plain_text
-                except:
-                    # if we cannot find translation button with translation the use the copy button
+                except Exception:  # if we cannot find translation button with translation the use the copy button
                     # previous_clipbboard = clipboard.paste()
                     # previous_clipbboard = pyperclip.paste()
                     page_source_str = ctx.browser.driver.page_source
@@ -834,7 +825,7 @@ def selenium_chrome_deepl_translate(ctx: RuntimeContext, to_translate, retry_cou
                             )
 
                             res = translation_box.get_attribute("innerText")
-                        except:
+                        except Exception:
                             var = traceback.format_exc()
                             print(var)
                             res = ""
@@ -874,7 +865,7 @@ def selenium_chrome_deepl_translate(ctx: RuntimeContext, to_translate, retry_cou
                                 print("Error : failed to get translation from Deepl.")
                                 return False, ""
                             
-                    except:
+                    except Exception:
                         var = traceback.format_exc()
                         print(var)
                         #print("res : %s" %(res))
@@ -916,8 +907,7 @@ def selenium_chrome_deepl_translate(ctx: RuntimeContext, to_translate, retry_cou
                 if translated_phrases_array_len < to_translate_phrases_array_len or translated_phrases_array_len > to_translate_phrases_array_len:
                     res = ""
 
-            except:
-                #print(f"Found exception on loop {copy_button_clicked_loop_count}")
+            except Exception:  #print(f"Found exception on loop {copy_button_clicked_loop_count}")
                 if copy_button_clicked_loop_count < 20:
                     print("Waiting for the copy button...")
                     #var = traceback.format_exc()

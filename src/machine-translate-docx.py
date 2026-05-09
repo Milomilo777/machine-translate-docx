@@ -483,7 +483,7 @@ def test_internet(host="8.8.8.8", port=53, timeout=3):
 
 try:
     json_online_configuration = requests.get(json_configuration_url).content
-except:
+except Exception:
     print("Warning, unable to get configuration from internet at {json_configuration_url}")
     if not test_internet():
         print("Warning, internet connection seems to be down, google name servers don't respond")
@@ -511,7 +511,7 @@ try:
     else:
         #print(f"Optional local json configuration file not found at {configuration_file_full_path}, ignoring")
         local_json_contents = None
-except:
+except Exception:
     local_json_contents = None
           
 json_configuration_array = [local_json_contents,json_online_configuration,DefaultJsonConfiguration]
@@ -623,8 +623,7 @@ parser.add_argument('--with-polish', required = False, help="Run a Persian polis
 
 try:
     args = parser.parse_args()
-except:
-    #print("Waiting for the input_element...")
+except Exception:  #print("Waiting for the input_element...")
     var = traceback.format_exc()
     print(var)
     #input ("Type enter to continue")
@@ -806,7 +805,7 @@ else:
 dest_lang_tag = ""
 try:
     dest_lang_tag = office_language_tags[dest_lang]
-except:
+except Exception:
     pass
 
 translation_engine = args.engine
@@ -915,7 +914,7 @@ def lineno():
 def linux_distribution():
     try:
         return platform.linux_distribution()
-    except:
+    except Exception:
         return "N/A"
 
 oai_translator = None
@@ -1007,7 +1006,7 @@ if splitted_filename_size > 1:
 if word_file_to_translate_extension == ".docx":
     try:
         docxdoc = docx.Document(word_file_to_translate)
-    except:
+    except Exception:
         print(f"Error, file {word_file_to_translate} does not appear to be a valid Microsoft Word docx file.")
         print("Please check that the file is a valid document and rerun on a valid Microsoft docx document.\n")
         
@@ -1225,7 +1224,7 @@ if translation_engine.lower() == "chatgpt" and False:
 
         print(f"Using Chrome user data directory: {user_data_dir}")
     #word_file_to_translate = r'X:\travail\smtv-hindi\NWN 584 sf2 - table fix1.doc'
-    except:
+    except Exception:
         var = traceback.format_exc()
         print(var)
         print("Failed to add chrome options")
@@ -1390,7 +1389,7 @@ def selenium_chrome_google_translate_html_javascript_file(ctx: RuntimeContext, h
                 innerHeight = driver.execute_script("return window.innerHeight")
                 bar = progressbar.ProgressBar(max_value=scrollHeight)
                 bar.update(0)
-            except:
+            except Exception:
                 var = traceback.format_exc()
                 print(var)
 
@@ -1467,10 +1466,9 @@ def selenium_chrome_google_translate_html_javascript_file(ctx: RuntimeContext, h
                     
                     try:
                         bar.update(scroll_position + scroll_offset_paragraph)    
-                    except:
-                        # Ignore progressbar errors at the end
+                    except Exception:  # Ignore progressbar errors at the end
                         pass
-            except:
+            except Exception:
                 var = traceback.format_exc()
                 print(var)
             
@@ -1492,7 +1490,7 @@ def selenium_chrome_google_translate_html_javascript_file(ctx: RuntimeContext, h
 
             return (ctx.docx.translation_array)
   
-        except:
+        except Exception:
             var = traceback.format_exc()
             print(var)
                         
@@ -1534,7 +1532,7 @@ def getDownLoadedFileNameFirefox(waitTime):
             fileName = driver.execute_script("return document.querySelector('#contentAreaDownloadsView .downloadMainArea .downloadContainer description:nth-of-type(1)').value")
             if fileName:
                 return fileName
-        except:
+        except Exception:
             pass
         time.sleep(2)
         if time.time() > endTime:
@@ -1559,7 +1557,7 @@ def getDownLoadedFileNameChrome(waitTime):
             if downloadPercentage == 100:
                 # return the file name once the download is completed
                 return driver.execute_script("return document.querySelector('downloads-manager').shadowRoot.querySelector('#downloadsList downloads-item').shadowRoot.querySelector('div#content  #file-link').text")
-        except:
+        except Exception:
             pass
         time.sleep(1)
         if time.time() > endTime:
@@ -1664,7 +1662,13 @@ def selenium_chrome_google_translate_xlsx_file(ctx: RuntimeContext, xlsx_file_pa
                 
             if ("https://www.google.com/sorry" in driver.current_url):
                 print("We found a CAPTCHA window")
-                input("Press enter after solving CAPTCHA")
+                if not silent:
+                    input("Press enter after solving CAPTCHA")
+                else:
+                    # In silent mode (e.g. spawned by local_launcher.py)
+                    # there's no user to solve the CAPTCHA — fail fast
+                    # instead of hanging the launcher subprocess pipe.
+                    raise RuntimeError("Google CAPTCHA encountered in silent mode — cannot proceed without user interaction")
                 
             download_button_xpath = '//button[normalize-space()="Download translation"]'
             download_button_xpath = '//div[2]/div/button/span'
@@ -1682,7 +1686,7 @@ def selenium_chrome_google_translate_xlsx_file(ctx: RuntimeContext, xlsx_file_pa
                     print("downloaded_xlsx_translation_path=%s" %(downloaded_xlsx_translation_path))
                     res_downloaded_xlsx_translation = True
                 
-            except:
+            except Exception:
                 pass
         
         if res_downloaded_xlsx_translation:
@@ -1796,7 +1800,7 @@ def selenium_chrome_perplexity_wait_log_in():
             print("✅ User is logged in perplexity.")
             return True
 
-        except:
+        except Exception:
             var = traceback.format_exc()
             print(var)
             
@@ -1990,8 +1994,7 @@ def get_paragraph_shading_color(xml_paragraph_str):
     namespaces = {'w':'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
     try:
         namespaces = {paragraph_xml.prefix : paragraph_xml.nsmap[paragraph_xml.prefix]}
-    except:
-        #print("Could not determine namespace")
+    except Exception:  #print("Could not determine namespace")
         pass
     attrib_fill = None
     
@@ -2004,7 +2007,7 @@ def get_paragraph_shading_color(xml_paragraph_str):
             #print(f"attrib_color : {attrib_color}")
             #print(f"attrib_fill : {attrib_fill}")
             #print(f"attrib_val : {attrib_val}")
-        except:
+        except Exception:
             pass
     return attrib_fill
 
@@ -2015,8 +2018,7 @@ def get_run_shading_color(xml_run_str):
     namespaces = {'w':'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
     try:
         namespaces = {run_xml.prefix : run_xml.nsmap[run_xml.prefix]}
-    except:
-        #print("Could not determine namespace")
+    except Exception:  #print("Could not determine namespace")
         pass
     attrib_fill = None
     
@@ -2026,7 +2028,7 @@ def get_run_shading_color(xml_run_str):
             attrib_val = e.attrib.get('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val')
             attrib_color = e.attrib.get('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}color')
             attrib_fill = e.attrib.get('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}fill')
-        except:
+        except Exception:
             pass
     return attrib_fill
 
@@ -2545,7 +2547,7 @@ def read_and_parse_docx_document(ctx: RuntimeContext):
 
     try:
         docx.table = docxdoc.tables[0]
-    except:
+    except Exception:
         print(f"Error: document {docxfile} does not have a table. Exiting.")
         exit(14)
     docx.table_cells = [['' for i in range(len(docx.table.columns))] for j in range(len(docx.table.rows))]
@@ -2863,7 +2865,7 @@ window.onload = function(){
                 tmpdir = os.environ['TMPDIR']
                 if(tmpdir is None or tmpdir == ""):
                     tmpdir = '/tmp/'
-            except:
+            except Exception:
                 tmpdir = '/tmp/'
             html_file_path = tmpdir + docx_file_name + '.' + str(os.getpid()) + '.' + dest_lang + '.html'
         else:
@@ -3004,7 +3006,13 @@ def generate_xlsx_file_from_phrases(ctx: RuntimeContext, xlsx_file_path):
             file_saved=1
         except Exception:
             var = traceback.format_exc()
-            txt_readline = input("\n\nERROR: File saving failed. Please close microsoft excel or other program and press enter to save the xlsx document.\n")
+            print(var)
+            if not silent:
+                txt_readline = input("\n\nERROR: File saving failed. Please close microsoft excel or other program and press enter to save the xlsx document.\n")
+            else:
+                # No user to dismiss the prompt; back off briefly and
+                # retry the loop instead of hanging the launcher pipe.
+                time.sleep(2)
         
 
 def deepl_double_linefeed_between_phrases(dest_lang):
@@ -3138,7 +3146,7 @@ def google_translate_from_text_file(ctx: RuntimeContext):
     try:
         os.remove(text_file_path)
         pass
-    except:
+    except Exception:
         pass
 
 def google_translate_from_html_javascript(ctx: RuntimeContext):
@@ -3154,7 +3162,7 @@ def google_translate_from_html_javascript(ctx: RuntimeContext):
         #input("before remove html file")
         os.remove(html_file_path)
         pass
-    except:
+    except Exception:
         pass
 
     return ctx.docx.translation_array
@@ -3171,7 +3179,7 @@ def google_translate_from_html_xlsxfile(ctx: RuntimeContext):
     try:
         os.remove(xlsx_file_full_path)
         pass
-    except:
+    except Exception:
         pass
 
 def translate_from_phrasesblock(ctx: RuntimeContext):
@@ -3193,7 +3201,7 @@ def translate_from_phrasesblock(ctx: RuntimeContext):
     try:
         os.remove(text_file_path)
         pass
-    except:
+    except Exception:
         pass
     return translation_succeded
 
@@ -3712,10 +3720,10 @@ def write_destination_language_in_docx_cell():
     if not splitonly:
         try:
             docxdoc.tables[0].cell(1, 2).text = dest_lang_name
-        except:
+        except Exception:
             try:
                 docxdoc.tables[0].cell(1, 2).text = dest_lang
-            except:
+            except Exception:
                 pass
 
 
@@ -3912,7 +3920,7 @@ def run_statistics(ctx: RuntimeContext):
             dxml = document.read('docProps/app.xml')
             uglyXml = xml.dom.minidom.parseString(dxml)
             docxfile_page_count = uglyXml.getElementsByTagName('Pages')[0].childNodes[0].nodeValue
-        except:
+        except Exception:
             if bool_print_stats:
                 print("Unable to get number of pages from document. You can ignore this.")
         
@@ -3927,7 +3935,7 @@ def run_statistics(ctx: RuntimeContext):
             matches = re.findall(regex, app_xml, re.MULTILINE)
             match = matches[0] if matches[0:] else [0, 0]
             page_count = match[1]
-        except:
+        except Exception:
             if bool_print_stats:
                 print("Unable to get number of pages from document. You can ignore this.")
         
@@ -4063,16 +4071,14 @@ def run_statistics(ctx: RuntimeContext):
                 submited_div = WebDriverWait(driver, 4).until(EC.presence_of_element_located((By.XPATH, submited_div_element)))
                 
                 #print("statistics updated")
-            except:
+            except Exception:
                 print("Warning failed to update stats, you can ignore this.")
                 #pass
         except TimeoutException:
             print(f"Timeout: Page did not load within 10 seconds: {url}")
         except WebDriverException as e:
             print(f"WebDriver error: {e}")
-    except:
-        
-        #var = traceback.format_exc()
+    except Exception:  #var = traceback.format_exc()
         #print(var)
         print("Warning failed to update stats, you can ignore this...")
     
@@ -4200,7 +4206,7 @@ def get_robot_usage_comment(ctx: RuntimeContext):
                 uglyXml = xml.dom.minidom.parseString(dxml)
                 docxfile_page_count = uglyXml.getElementsByTagName('Pages')[0].childNodes[0].nodeValue
                 json_obj['docxfile_page_count'] = docxfile_page_count
-            except:
+            except Exception:
                 if bool_print_stats:
                     json_obj['docxfile_page_count'] = ""
 
@@ -4216,7 +4222,7 @@ def get_robot_usage_comment(ctx: RuntimeContext):
                 match = matches[0] if matches[0:] else [0, 0]
                 page_count = match[1]
                 json_obj['docxfile_page_count'] = page_count
-            except:
+            except Exception:
                 if bool_print_stats:
                     print("Unable to get number of pages from document. You can ignore this.")
 
@@ -4243,7 +4249,7 @@ def get_robot_usage_comment(ctx: RuntimeContext):
             try:
                 soup_div_needs_update = soup.find('div', id='needs_update')
                 str_needs_update = ''.join(map(str, soup_div_needs_update.text))
-            except:
+            except Exception:
                 pass
                 
             if available_updates_message != "":
@@ -4253,7 +4259,7 @@ def get_robot_usage_comment(ctx: RuntimeContext):
             return 0;
             try:
                 print(ctx.browser.driver.capabilities['browserVersion'])
-            except:
+            except Exception:
                 pass
             print(ctx.browser.driver.name)
 
@@ -4427,20 +4433,18 @@ def get_robot_usage_comment(ctx: RuntimeContext):
                 submited_div = WebDriverWait(ctx.browser.driver, 5).until(
                     EC.presence_of_element_located((By.XPATH, submited_div_element)))
                 print("statistics updated")
-            except:
-                #var = traceback.format_exc()
+            except Exception:  #var = traceback.format_exc()
                 #print(var)
                 print("Warning failed to get available updates status, you can ignore this.")
                 # pass
 
-        except:
-            #var = traceback.format_exc()
+        except Exception:  #var = traceback.format_exc()
             #print(var)
             print("Warning failed to get available updates status, you can ignore this.")
 
         # time.sleep(10)
 
-    except:
+    except Exception:
         var = traceback.format_exc()
         #print(var)
         print("Warning failed to get available updates status, you can ignore this.")
@@ -4480,16 +4484,16 @@ def save_docx_file(ctx: RuntimeContext):
     # Find valid two letter code (Norwegian is invalid nb, but should be no)
     try:
         lang_name = google_translate_lang_codes[lang_code]
-    except:
+    except Exception:
         try:
             lang_name = deepl_translate_lang_codes[lang_code]
             for google_lang_code in google_translate_lang_codes.keys():
                 try:
                     if deepl_translate_lang_codes[lang_code].lower() == google_translate_lang_codes[google_lang_code].lower() and lang_code != google_lang_code:
                         lang_code = google_lang_code
-                except:
+                except Exception:
                     pass
-        except:
+        except Exception:
             pass
     
     language_alpha_extension = None
@@ -4499,7 +4503,7 @@ def save_docx_file(ctx: RuntimeContext):
         lang_alpha3_code = Language.get(lang_code).to_alpha3()
         lang_alpha3b_code = Language.get(lang_code).to_alpha3(variant='B')
         pass
-    except:
+    except Exception:
         lang_alpha3b_code = None
 
     ctx.flags.word_file_to_translate_save_as_path = ctx.flags.word_file_to_translate
@@ -4691,8 +4695,14 @@ def save_docx_file(ctx: RuntimeContext):
                 print("PROGRESS:100", flush=True)
         except Exception:
             var = traceback.format_exc()
-            txt_readline = input(
-                "\n\nERROR: File saving failed. Please close microsoft word or other program and press enter to save the translated document.\n")
+            print(var)
+            if not silent:
+                txt_readline = input(
+                    "\n\nERROR: File saving failed. Please close microsoft word or other program and press enter to save the translated document.\n")
+            else:
+                # No user to dismiss the prompt; back off briefly and
+                # retry the save instead of hanging the launcher pipe.
+                time.sleep(2)
 
 import os
 import re

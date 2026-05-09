@@ -1,0 +1,25 @@
+# EditorConfig — https://editorconfig.org
+# Keeps indent / line-ending / charset uniform across IDEs and CI.
+root = true
+
+[*]
+end_of_line = lf
+insert_final_newline = true
+indent_style = space
+charset = utf-8
+trim_trailing_whitespace = true
+
+[*.py]
+indent_size = 4
+
+[*.{md,html,css,js,ejs,json,yml,yaml}]
+indent_size = 2
+
+[*.bat]
+end_of_line = crlf
+
+[*.docx]
+charset = unset
+end_of_line = unset
+insert_final_newline = unset
+trim_trailing_whitespace = false

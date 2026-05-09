@@ -16,54 +16,57 @@ Total tests passing:             21 (default) + 4 (live, on-demand)
 Branch:                          feature/v2-frontend (HEAD = 38c9c8a)
 ```
 
-## کامیت‌های فاز
+## Phase commits
 
-- `bbf4e16` chore: حذف تست stale (پاکسازی pre-flight)
-- `92f7716` Phase A — رگرسیون cache + subscribe
+- `bbf4e16` chore: remove a stale test (pre-flight cleanup)
+- `92f7716` Phase A — cache + subscribe regression suite
 - `d24cb93` Phase B — a11y + perf static audit
 - `4b44c59` Phase C — Tailwind CDN → compiled
 - `1d3f69a` Phase D — i18n en + fa
 - `38c9c8a` Phase E — Playwright e2e (live)
 
-## تصمیمات معماری
+## Architectural decisions
 
-- `brand-800: #9F4D2D` به‌عنوان رنگ AA-compliant برای متن inline اضافه شد
-  (500/600/700 با cream-100 contrast لازم را ندارند)
-- Tailwind compiled به جای CDN — `web/v2/tailwind.css` در repo کامیت می‌شود؛
-  `node_modules/` در .gitignore
-- i18n از طریق `i18n.json` async loaded می‌شود + `x-cloak` روی body برای
-  جلوگیری از FOUC؛ توابع متنی fallback به key دارند
-- مدل‌ها/موتورها به‌عنوان شناسه فنی untranslated می‌مانند
-- تست‌های live از پیش‌فرض pytest با marker `not live` در `addopts` مستثنی
-  می‌شوند
-- `alpine:init` handler به app.js اضافه شد به‌عنوان دفاع در برابر race بین
-  Alpine و app.js
+- `brand-800: #9F4D2D` added as the AA-compliant accent for inline text
+  (the lighter 500/600/700 shades fail WCAG 4.5:1 against cream-100).
+- Tailwind is compiled rather than CDN-served — `web/v2/tailwind.css`
+  is committed to the repo; `node_modules/` is gitignored.
+- i18n loads `i18n.json` async, with `x-cloak` on `<body>` to prevent
+  the flash of un-translated content; the `t()` helper falls back to
+  the key when a string is missing.
+- Model and engine identifiers stay as technical strings — they are
+  not translated.
+- Live (Playwright) tests are excluded from the default pytest run via
+  the `not live` marker in `addopts`.
+- An `alpine:init` handler is registered in `app.js` as a guard against
+  the race between Alpine bootstrapping and `app.js` loading.
 
-## رعایت قوانین (R rules)
+## Rule compliance (the R-set)
 
-- **R1** (legacy /): دست‌نخورده — `local_launcher.py` تغییر نکرد در فاز feature.
-  در سشن ۲۰۲۶-۰۵-۰۹ فقط فیکس F-013 (UTF-8 stdout reconfigure) برای
-  ویندوز اضافه شد — additive و non-breaking.
-- **R2** (API contract): تغییر نکرد
-- **R3** (PROGRESS markers): دست‌نخورده
-- **R4** (subscribers.txt): همچنان gitignored
-- **R5** (cache key): تغییر نکرد
-- **R6** (py_compile + pytest): همه ۶ کامیت سبز
-- **R7** (third-party deps): فقط tailwindcss/postcss/autoprefixer (Phase C)
-  و playwright (Phase E، dev-only)
+- **R1** (legacy `/`): untouched during the feature sprint —
+  `local_launcher.py` was not modified. The 2026-05-09 session added
+  the F-013 UTF-8 stdout reconfigure as an additive, non-breaking fix.
+- **R2** (API contract): unchanged.
+- **R3** (`PROGRESS:N` markers): unchanged.
+- **R4** (`subscribers.txt`): still gitignored.
+- **R5** (cache key composition): unchanged.
+- **R6** (`py_compile` + `pytest`): all six commits green.
+- **R7** (third-party deps): only `tailwindcss` / `postcss` /
+  `autoprefixer` (Phase C) and `playwright` (Phase E, dev-only).
 
 ## Deferred
 
-هیچ‌کدام. هر ۵ فاز کامل شدند.
+None. All five phases shipped.
 
-## نکته مهم
+## Note on the merge
 
-در حین فاز E، شاخه‌ی محلی چندین بار به‌صورت خارجی به `audit/post-refactor`
-تغییر کرد و فایل‌های uncommitted از دست رفتند؛ هر بار stash + بازگشت +
-بازنویسی ادیت‌ها انجام شد و کامیت `38c9c8a` با موفقیت push شد.
+During Phase E the local checkout was repeatedly switched to
+`audit/post-refactor` by an external process, dropping uncommitted
+files. Each occurrence was recovered by stashing, switching back, and
+reapplying the edits. Commit `38c9c8a` was the final, clean push.
 
-قبل از تست واقعی فایل، توصیه می‌شود live tests یک‌بار دستی روی محیطی پایدار
-اجرا شوند:
+Before the next real-file test, it is worth running the live tests
+once on a stable environment:
 
 ```bash
 pytest -m live -v

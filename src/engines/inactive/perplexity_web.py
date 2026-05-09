@@ -81,7 +81,7 @@ def perplexity_close_messages():
                 closed_cookies_accept_message_bool = True
             if "w-6" in selector:
                 close_install_extension_message_bool = True
-        except:
+        except Exception:
             continue
 
     # Close elements by CSS selector
@@ -91,7 +91,7 @@ def perplexity_close_messages():
             driver.execute_script("arguments[0].scrollIntoView();", el)
             safe_click(driver, el)
             close_install_extension_message_bool = True
-        except:
+        except Exception:
             continue
     
     if close_install_extension_message_bool:
@@ -123,7 +123,7 @@ def selenium_chrome_perplexity_translate(to_translate, retry_count, max_try_coun
     try:
         tmp_var = closed_cookies_accept_message_bool
         tmp_var = close_install_extension_message_bool
-    except:
+    except Exception:
         closed_cookies_accept_message_bool = False
         close_install_extension_message_bool = False
 
@@ -177,7 +177,7 @@ def selenium_chrome_perplexity_translate(to_translate, retry_count, max_try_coun
             time.sleep(0.2)
             # Click using JS for maximum reliability
             driver.execute_script("arguments[0].click();", perplexity_link)
-        except:
+        except Exception:
             pass
         
         current_url = driver.current_url
@@ -206,7 +206,7 @@ def selenium_chrome_perplexity_translate(to_translate, retry_count, max_try_coun
 
             # Send text to the element
             safe_click(driver, textarea)
-        except:
+        except Exception:
             textarea = WebDriverWait(driver, 7).until(
                 EC.presence_of_element_located((By.XPATH, "//*[@id='ask-input']"))
             )
@@ -296,12 +296,12 @@ def selenium_chrome_perplexity_translate(to_translate, retry_count, max_try_coun
                                 #driver.find_element(By.TAG_NAME, "body").send_keys(Keys.PAGE_DOWN)
                                 driver.execute_script("window.scrollBy(0, window.innerHeight);")
                                 #print("Button clicked and PAGE_DOWN sent")
-                            except:
+                            except Exception:
                                 try:
                                     #driver.find_element(By.TAG_NAME, "body").send_keys(Keys.PAGE_DOWN)
                                     driver.execute_script("window.scrollBy(0, window.innerHeight);")
                                     #print("Button clicked and PAGE_DOWN sent")
-                                except:
+                                except Exception:
                                     print("Cannot find html body...")
                                     pass
                                 pass
@@ -313,7 +313,7 @@ def selenium_chrome_perplexity_translate(to_translate, retry_count, max_try_coun
                             #print("\n")
                             time.sleep(1)
                             break
-                    except:
+                    except Exception:
                         break
                 
             except NoSuchElementException:
@@ -338,7 +338,7 @@ def selenium_chrome_perplexity_translate(to_translate, retry_count, max_try_coun
             prose_div = WebDriverWait(driver, 2.5).until(
                 EC.presence_of_element_located((By.CSS_SELECTOR, "div.prose"))
             )
-        except:
+        except Exception:
             pass
 
         try:
@@ -349,12 +349,12 @@ def selenium_chrome_perplexity_translate(to_translate, retry_count, max_try_coun
             #driver.find_element(By.TAG_NAME, "body").send_keys(Keys.PAGE_DOWN)
             driver.execute_script("window.scrollBy(0, window.innerHeight);")
             #print("Button clicked and PAGE_DOWN sent")
-        except:
+        except Exception:
             try:
                 #body = driver.find_element(By.TAG_NAME, "body")
                 #body.send_keys(Keys.PAGE_DOWN)
                 driver.execute_script("window.scrollBy(0, window.innerHeight);")
-            except:
+            except Exception:
                 print("Cannot scroll down...")
                 pass
                                 
@@ -364,13 +364,13 @@ def selenium_chrome_perplexity_translate(to_translate, retry_count, max_try_coun
             prose_div = WebDriverWait(driver, 5).until(
                 EC.visibility_of_element_located((By.CSS_SELECTOR, "div.prose"))
             )
-        except:
+        except Exception:
             pass
         
         # Extract all visible text content
         try:
             text = prose_div.text
-        except:
+        except Exception:
             driver.execute_script("window.focus();")
             text = ""
 
@@ -442,7 +442,7 @@ def selenium_chrome_perplexity_translate(to_translate, retry_count, max_try_coun
                 EC.element_to_be_clickable((By.CSS_SELECTOR, 'button[data-testid="thread-delete-confirm"]'))
             )
             safe_click(driver, confirm_button)
-        except:
+        except Exception:
             print("Unable to delete conversation")
         
         # Close "Try Comet brower" annoying layer, ignore if the layer is not present

@@ -119,7 +119,7 @@ class xlsx_translation_memory():
                         try:
                             RegularExpressionCompiled = re.compile(Search)
                             SearchRegularExpression = Search
-                        except:
+                        except Exception:
                             RegularExpression = False
                             RegularExpressionCompiled = None
                             SearchRegularExpression = re.escape(Search)
@@ -148,7 +148,7 @@ class xlsx_translation_memory():
                             SearchRegularExpression = "%s[ \\t]+[^ \\t]+" % SearchRegularExpression
                         else:
                             FollowedByAnotherWord = False
-                    except:
+                    except Exception:
                         FollowedByAnotherWord = False
 
                     number_replacement = 0
@@ -164,7 +164,7 @@ class xlsx_translation_memory():
                     if Search is not None and rowno > 1:
                         try:
                             RegularExpressionCompiled = re.compile(SearchRegularExpression)
-                        except:
+                        except Exception:
                             RegularExpression = False
                             RegularExpressionCompiled = None
                             var = traceback.format_exc()
@@ -238,7 +238,7 @@ class xlsx_translation_memory():
         len_text = 0
         try:
             len_text = len(text)
-        except:
+        except Exception:
             print("Error getting text length.")
         do_not_split_array = [0] * (len_text)
 
@@ -341,7 +341,7 @@ class xlsx_translation_memory():
         pprint (self.worksheets_search_and_replace_dictionary['after'])
         try:
             pprint (self.worksheets_search_and_replace_dictionary['keep_on_same_line'])
-        except:
+        except Exception:
             pass
 
     def get_sheet_number_of_keep_on_same_line_matches(self, sheet_name):

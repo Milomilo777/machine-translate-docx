@@ -67,7 +67,7 @@ def selenium_chrome_chatgpt_translate(to_translate, retry_count):
     try:
         tmp_var = closed_cookies_accept_message_bool
         tmp_var = close_install_extension_message_bool
-    except:
+    except Exception:
         closed_cookies_accept_message_bool = False
         close_install_extension_message_bool = False
 
@@ -89,7 +89,7 @@ def selenium_chrome_chatgpt_translate(to_translate, retry_count):
                 #sleep(1)
 
                 translation_page_opened = True
-            except:
+            except Exception:
                 print("Waiting for https://chatgpt.com/ ...")
                 sleep(1)
             translation_page_openeing_loop_count = translation_page_openeing_loop_count - 1
@@ -113,7 +113,7 @@ def selenium_chrome_chatgpt_translate(to_translate, retry_count):
             
             # Click the link
             safe_click(driver, stay_logged_out_link)
-        except:
+        except Exception:
             pass
 
         try:
@@ -124,7 +124,7 @@ def selenium_chrome_chatgpt_translate(to_translate, retry_count):
 
             # Click the link
             safe_click(driver, stay_logged_out_link)
-        except:
+        except Exception:
             pass
 
         try:
@@ -200,7 +200,7 @@ def selenium_chrome_chatgpt_translate(to_translate, retry_count):
         try:
             button = driver.find_element(By.CSS_SELECTOR, 'button[data-testid="close-button"]')
             safe_click(driver, button)
-        except:
+        except Exception:
             pass
 
         # Locate the button element using its attributes
@@ -246,12 +246,11 @@ def selenium_chrome_chatgpt_translate(to_translate, retry_count):
                     # Send PAGE_DOWN to the body (or active element)
                     driver.find_element(By.TAG_NAME, "body").send_keys(Keys.PAGE_DOWN)
                     #print("Button clicked and PAGE_DOWN sent")
-                except:
+                except Exception:
                     try:
                         body = driver.find_element(By.TAG_NAME, "body")
                         body.send_keys(Keys.PAGE_DOWN)
-                    except:
-                        #print("Cannot find html body...")
+                    except Exception:  #print("Cannot find html body...")
                         pass
                 
                 try:
@@ -262,7 +261,7 @@ def selenium_chrome_chatgpt_translate(to_translate, retry_count):
 
                     # Click the link
                     safe_click(driver, stay_logged_out_link)
-                except:
+                except Exception:
                     pass
 
                 try:
@@ -426,7 +425,7 @@ def selenium_chrome_chatgpt_translate(to_translate, retry_count):
                 EC.element_to_be_clickable((By.CSS_SELECTOR, 'button[data-testid="delete-conversation-confirm-button"]'))
             )
             safe_click(driver, confirm_delete_button)
-        except:
+        except Exception:
             pass
         
             
@@ -438,7 +437,7 @@ def selenium_chrome_chatgpt_translate(to_translate, retry_count):
                 print("Chatgpt returned an error : This content may violate our usage policies.")
             else:
                 print(var)
-        except:
+        except Exception:
             pass
         #input("Wait")
     if res is not None and res != "":
@@ -455,7 +454,7 @@ def click_verify_human_checkbox_if_present(driver, timeout=50):
     try:
         WebDriverWait(driver, 20).until(EC.frame_to_be_available_and_switch_to_it((By.CSS_SELECTOR,"iframe[title='Widget containing a Cloudflare security challenge']")))
         WebDriverWait(driver, 20).until(EC.element_to_be_clickable((By.CSS_SELECTOR, "input[type='checkbox']"))).click()
-    except:
+    except Exception:
         input("Did not find checkbox")
         
     return
