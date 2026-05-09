@@ -2611,6 +2611,14 @@ def read_and_parse_docx_document(ctx: RuntimeContext):
                 docx.table_cells[i][j] = cell
                 # XML is ._tc
                 #df[i][j] = cell._tc
+                # Defensive lock: snapshot every source-side cell (columns 0
+                # and 1 — line-number and EN text) so save_docx_file can
+                # restore them before writing the docx to disk. Guarantees
+                # the source language column is never altered by any engine
+                # or helper, even via a future leak we haven't audited.
+                if j in (0, 1):
+                    from copy import deepcopy as _dc
+                    docx.source_columns_snapshot[(i, j)] = _dc(cell._tc)
                 if col_no == 2:
                 
                     #docx.from_text_is_greyed_table[row_n] = is_greyed_line(cell)
@@ -4513,6 +4521,41 @@ def save_docx_file(ctx: RuntimeContext):
         print(f"[INFO] Output file already exists — saving as: {ctx.flags.word_file_to_translate_save_as_path}")
 
     local_time_offset()
+
+    # Defensive lock: restore the snapshotted source-side cells (columns
+    # 0 and 1) just before writing the docx. If anything in the pipeline
+    # mutated them — translation memory leak, an engine touching the
+    # wrong column, a helper rewriting cell text — this brings them back
+    # to their parse-time state. The user's contract: source column is
+    # frozen, no engine and no process may change it.
+    try:
+        from copy import deepcopy as _dc
+        _restored = 0
+        _snap = ctx.docx.source_columns_snapshot or {}
+        for (_ri, _cj), _orig_tc in _snap.items():
+            try:
+                _row = ctx.docx.table.rows[_ri]
+                if _cj >= len(_row.cells):
+                    continue
+                _cell = _row.cells[_cj]
+                _cur_tc = _cell._tc
+                _parent = _cur_tc.getparent()
+                if _parent is None:
+                    continue
+                # Only restore when content actually drifted — avoids
+                # rewriting every cell on every save.
+                from lxml import etree as _et
+                if _et.tostring(_cur_tc) != _et.tostring(_orig_tc):
+                    _parent.replace(_cur_tc, _dc(_orig_tc))
+                    _restored += 1
+            except Exception:
+                # Per-row failures are non-fatal; we continue restoring
+                # the remaining cells.
+                continue
+        if _restored:
+            print(f"[LOCK] Restored {_restored} source-column cell(s) before save (drift detected — translation memory leak suspected)")
+    except Exception as _lock_exc:
+        print(f"[LOCK] Source-column lock skipped: {_lock_exc}")
 
     file_saved = 0
     while file_saved == 0:

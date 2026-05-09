@@ -23,6 +23,7 @@ Last updated: 2026-05-09 (Phase H bridge, progress UX, driver seeding)
 | C10 | After `read_and_parse_docx_document(ctx)` and after `translate_docx(ctx)` and after `document_split_phrases(ctx)` and after `create_webdriver(ctx)`, call `_sync_globals_from_ctx(ctx)` | Phase H bridge — legacy helpers still read module-level globals; the sync mirrors `ctx.docx.*` (and `ctx.browser.driver`, `ctx.openai.*`) into the module namespace |
 | C11 | New Selenium helpers must seed `driver = ctx.browser.driver` at the top if they later reassign `driver` | Otherwise Python treats `driver` as local for the entire body and every prior read raises UnboundLocalError |
 | C12 | Legacy frontend error path: hide `loadingElement` BEFORE `await showAlert(...)` | Otherwise the progress overlay keeps animating behind the dialog while the user reads the error message |
+| C13 | **Source language column is frozen.** Columns 0 + 1 of the input docx are deepcopy-snapshotted at parse time; `save_docx_file` restores any drift before the docx is written. No engine, helper, or future code path may modify the source side — the lock catches leaks regardless of cause | Translation-memory `before` replacements, alignment helpers, or any future bug must never bleed into the source-language column |
 
 ---
 

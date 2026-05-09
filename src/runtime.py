@@ -188,6 +188,14 @@ class DocxCtx:
     docxfile_table_number_of_words:      int = 0
     phrase_number_of_words:              int = 0
 
+    # Defensive lock: deepcopy of every <w:tc> XML element in columns 0 + 1
+    # captured at parse time. ``save_docx_file`` restores these before
+    # writing the docx to disk, guaranteeing the source-language column
+    # is never modified by any engine, helper, or future code path —
+    # even if a leak slips into a translation-memory replacement loop.
+    # Keyed by (row_index, col_index); value is a deepcopy'd lxml element.
+    source_columns_snapshot:             Any = field(default_factory=dict)
+
     translation_errors_count:            int = 0
     translation_array:                   list = field(default_factory=list)
     blocks_nchar_max_to_translate_array: list = field(default_factory=list)
