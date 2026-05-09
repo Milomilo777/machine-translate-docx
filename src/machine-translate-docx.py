@@ -2096,7 +2096,14 @@ def get_cell_data(ctx: RuntimeContext, cell,row_n):
         root = etree.fromstring(paragraph._p.xml)
         p_shading_color = get_paragraph_shading_color(paragraph._p.xml)
 
-        p_text = paragraph.text
+        # Materialise the run list once so both p_text (used for
+        # <pause> / <enter> counting) and the run-by-run loop below
+        # see the same source of truth — including hyperlinked text.
+        # Relying on paragraph.text would tie us to a python-docx
+        # implementation detail that has flipped behaviour across
+        # versions on whether <w:hyperlink> contents are included.
+        paragraph_runs = list(_iter_paragraph_runs(paragraph))
+        p_text = ''.join(r.text for r in paragraph_runs)
         nb_pause = len(re.findall('(?i)(<pause>)', p_text))
         nb_enter = len(re.findall('(?i)(<enter>)', p_text))
 
@@ -2114,7 +2121,7 @@ def get_cell_data(ctx: RuntimeContext, cell,row_n):
         # Walk every <w:r> below the paragraph, including those nested
         # inside <w:hyperlink>. Using paragraph.runs alone drops the
         # text of every clickable link in the document.
-        for run in _iter_paragraph_runs(paragraph):
+        for run in paragraph_runs:
             current_run_text = run.text
             
             #print("cell row %d has %d runs," % (row_n, len(paragraph.runs) ))
