@@ -57,6 +57,41 @@ after 1800 ms to avoid the Chrome multi-download permission prompt.
 
 ## Sessions
 
+### 2026-05-09 (part seven) — long-standing hyperlink bug fixed
+
+**S1. Hyperlinked text was silently dropped from cell output.**
+A team-mate flagged a long-standing bug: cells that contain a
+clickable hyperlink had the link's visible text removed from the
+translation pipeline — so the translator received "Here is a
+with alt text." instead of "Here is a hyperlink with alt text."
+
+Root cause: `get_cell_data()` walked `paragraph.runs`, which only
+returns `<w:r>` elements that are *direct* children of `<w:p>`.
+Hyperlinked text lives inside `<w:hyperlink>`, so its runs are
+silently skipped. The same bug also dropped runs nested in
+`<w:smartTag>`, `<w:fldSimple>`, and any other inline container.
+
+Fix (forward-looking): added `_iter_paragraph_runs(paragraph)`
+that uses `paragraph._p.iter(qn('w:r'))` to walk every `<w:r>`
+descendant in document order. Each match is wrapped in a
+`docx.text.run.Run` so all the existing font / highlight / shading
+/ strike checks still apply unchanged. The change is a single
+line replacement at the for-loop site (`paragraph.runs` →
+`_iter_paragraph_runs(paragraph)`).
+
+Verified on `sample_hyperlink.docx`:
+```
+BEFORE  table 0 row 8:  'Here is a  with alt text.'
+AFTER   table 0 row 8:  'Here is a hyperlink with alt text.'
+
+BEFORE  table 0 row 30: 'an email to '
+AFTER   table 0 row 30: 'an email to smtv.bot@gmail.com'
+```
+
+Tests: 51/51.
+
+---
+
 ### 2026-05-09 (part six) — first successful real translation; Google-js diagnosis
 
 **R1. ChatGPT translate confirmed end-to-end.** First green real-file

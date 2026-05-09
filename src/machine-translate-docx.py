@@ -167,8 +167,9 @@ from bs4 import BeautifulSoup
 
 import json
 
-from docx.oxml.ns import nsdecls
+from docx.oxml.ns import nsdecls, qn
 from docx.oxml import parse_xml
+from docx.text.run import Run as _DocxRun
 
 import glob
 from langcodes import *
@@ -2056,43 +2057,64 @@ def get_run_shading_color(xml_run_str):
     return attrib_fill
 
 # Return cell_non_greyed_text (string), cell_is_gray (integer for boolean)
+def _iter_paragraph_runs(paragraph):
+    """Yield every ``<w:r>`` element below ``paragraph`` wrapped in a
+    ``Run`` object — including those nested inside ``<w:hyperlink>``,
+    ``<w:smartTag>``, ``<w:fldSimple>``, or any other container.
+
+    ``paragraph.runs`` only returns the runs that are direct children
+    of ``<w:p>``. Hyperlinked text lives inside ``<w:hyperlink>`` and
+    is therefore silently dropped, leading to translated cells that
+    are missing exactly the words readers most often want translated
+    (URLs aside, the visible link label is meaningful prose).
+
+    Using ``etree.iter`` walks the subtree in document order, which
+    is the only order that preserves the original sentence flow.
+    """
+    for r_elem in paragraph._p.iter(qn('w:r')):
+        yield _DocxRun(r_elem, paragraph)
+
+
 def get_cell_data(ctx: RuntimeContext, cell,row_n):
     cell_is_gray = None
     cell_is_red = None
     cell_non_greyed_text = ''
-    
+
     re_enter = re.compile('enter')
     re_newline = re.compile('\n')
-    
+
     n_paragraph = 0
     n_cell_lines = 1
-    
-    
+
+
     for paragraph in cell.paragraphs:
         paragraphs_text = ""
         n_paragraph = n_paragraph + 1
-        
+
         #print("paragraph:", paragraph._p.xml)
-            
+
         root = etree.fromstring(paragraph._p.xml)
         p_shading_color = get_paragraph_shading_color(paragraph._p.xml)
-        
+
         p_text = paragraph.text
         nb_pause = len(re.findall('(?i)(<pause>)', p_text))
         nb_enter = len(re.findall('(?i)(<enter>)', p_text))
-            
+
         n_cell_lines = n_cell_lines + nb_pause + nb_enter
-        
+
         if p_shading_color is not None:
             #print(paragraph.text)
             #input("Found a shaded paragraph")
             if p_shading_color in shading_color_ignore_text:
                 continue
-        
+
         #if n_paragraph > 1:
         #    print("paragraph %d" % (n_paragraph))
         previous_run_text = ""
-        for run in paragraph.runs:
+        # Walk every <w:r> below the paragraph, including those nested
+        # inside <w:hyperlink>. Using paragraph.runs alone drops the
+        # text of every clickable link in the document.
+        for run in _iter_paragraph_runs(paragraph):
             current_run_text = run.text
             
             #print("cell row %d has %d runs," % (row_n, len(paragraph.runs) ))
