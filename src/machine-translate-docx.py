@@ -1262,11 +1262,15 @@ found_google_cookies_consent_button = False
 google_translate_first_page_loaded = False
 
 def selenium_chrome_translate_get_from_text_array(to_translate, index):
-    #print("to_translate   :%s" % to_translate)
-    #print("translation %3d:%s" % (index, translation_array[index - 1]))
-    #input("selenium_chrome_translate_get_from_text_array")
-    #input("In selenium_chrome_translate_get_from_text_array")
-    return translation_array[index - 1]
+    # Guard: pre-refactor code raised IndexError here whenever the block
+    # loop produced fewer translated lines than the document has phrases
+    # (off-by-one or alignment mismatch). Returning '' instead lets the
+    # caller log "Error translating='…'" and continue, rather than
+    # killing the whole job.
+    if 0 < index <= len(translation_array):
+        return translation_array[index - 1]
+    print(f"[WARN] translation_array index out of range: index={index}, len={len(translation_array)}")
+    return ""
     
 def selenium_chrome_google_translate_text_file(ctx: RuntimeContext, text_file_path):
     try:
@@ -3681,19 +3685,30 @@ def print_console_docx_file_translated(ctx: RuntimeContext):
         if translation_phrase_lines_len == 0 and current_cell_row < row_n:
             print("%d :" % row_n)
         #print("row_n = %d" %  row_n)
-        if translation_phrase_lines_len >= 1 :
-            #print("%d : %s" % (row_n,' '.join(ctx.docx.translation_result_phrase_array[row_n])))
 
-            if not split_translation:
-                translation_cell_text = ctx.docx.to_text_by_phrase_separator_table[row_n]
+        # Non-split path: write the translation regardless of whether
+        # document_split_phrases populated translation_result_phrase_array.
+        # The original guard `if translation_phrase_lines_len >= 1` was a
+        # silent failure mode \u2014 if the split helper ever skipped a row
+        # (e.g. its own to_text guard), the translation would never reach
+        # the cell. By keying on to_text_by_phrase_separator_table directly
+        # we write whatever the translation engine returned.
+        if not split_translation:
+            translation_cell_text = ctx.docx.to_text_by_phrase_separator_table[row_n]
+            if translation_cell_text:
                 prepare_and_clear_cell_for_writing(ctx, row_n, translation_cell_text)
                 if dest_lang in right_to_left_languages_list.keys():
-                    #translation_cell_aligned_text = reverse_string (translation_cell_text)
-                    #translation_cell_aligned_text = "\u202B" + translation_cell_text + "\u202C"
                     translation_cell_aligned_text = get_display(translation_cell_text)
                 else:
                     translation_cell_aligned_text = translation_cell_text
                 print("%d : %s" % (row_n, translation_cell_aligned_text))
+            continue
+
+        if translation_phrase_lines_len >= 1 :
+            #print("%d : %s" % (row_n,' '.join(ctx.docx.translation_result_phrase_array[row_n])))
+
+            if False:  # legacy non-split branch above already handled by `if not split_translation`
+                pass
             else:
                 #translation_cell_text = ctx.docx.translation_result_using_separator[row_n]
                 #print("len array: %d" % (translation_phrase_lines_len))
@@ -4651,10 +4666,24 @@ def main() -> int:
         create_webdriver(ctx)
 
     get_translation_and_replace_after(ctx)
+    _sync_globals_from_ctx(ctx)  # to_text_by_phrase_separator_table fields just populated
+
+    # Diagnostic snapshot — counts of populated phrases and translation
+    # array shape. Helps diagnose 'output empty' regressions like the
+    # phrase_array gating bug seen on 2026-05-09.
+    _populated_to_text = sum(
+        1 for _v in ctx.docx.to_text_by_phrase_separator_table if _v
+    )
+    print(
+        f"[DIAG] After get_translation_and_replace_after: "
+        f"to_text rows populated = {_populated_to_text}, "
+        f"translation_array lines = {len(ctx.docx.translation_array)}"
+    )
 
     minimize_browser(ctx)
 
     document_split_phrases(ctx)
+    _sync_globals_from_ctx(ctx)  # translation_result_phrase_array populated by split helper
 
     write_destination_language_in_docx_cell()
 
