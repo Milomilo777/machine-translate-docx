@@ -57,6 +57,41 @@ after 1800 ms to avoid the Chrome multi-download permission prompt.
 
 ## Sessions
 
+### 2026-05-09 (part five) — three audit-driven fixes (F-010 + mutable-default + atexit)
+
+Targeting the audit's lowest-scoring dimensions (D2 Smell `B`,
+D6 Maintainability `B`).
+
+**Q1. F-010 — Google `still translating` regex.** The historical
+value `'$Translation'` is regex `$` (end-of-string) followed by
+literal `Translation`, so it never matched. Both the `if` and the
+`while` predicates were silent no-ops in production. Replaced with
+`None` plus a small `_still_translating(text)` helper that short-
+circuits when the pattern is `None`. Behaviour is identical (still
+no-op), but the no-op is now explicit and the wait loop is one line
+away from working when someone identifies the real loading marker
+in Google's DOM. Closes `F-010` from the post-refactor audit.
+
+**Q2. Mutable-default trap in `translation_result_phrase_array`.**
+The init `[[]] * (numrows + 1)` had every slot pointing at the same
+shared `[]`. Current code only does `array[i] = lines_divided` (slot
+replace), which sidesteps the trap, but any future `array[i].append`
+would silently mutate every slot at once. Replaced with
+`[[] for _ in range(numrows + 1)]` so each slot is a distinct list.
+
+**Q3. `atexit` cleanup for the Chrome driver.** The happy-path
+`driver.quit()` lives at the bottom of `main()`; on any earlier
+crash, the child Chrome process was orphaned and the launcher's
+job pool accumulated zombie browsers. Registered
+`_atexit_cleanup_driver` at module load — closes
+`_ctx.browser.driver` on any normal termination, including crashes.
+Nested `try/except` so the handler can't itself raise during
+interpreter teardown.
+
+Tests: 51/51.
+
+---
+
 ### 2026-05-09 (part four) — repo housekeeping: docs in English, branches archived, lint sweep
 
 Two commits, one tag-and-delete operation, and a new memory rule.
