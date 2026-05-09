@@ -160,12 +160,25 @@ def selenium_chrome_google_translate(ctx: RuntimeContext, to_translate: str) -> 
             print(traceback.format_exc())
 
         res_element_xpath = "//textarea[@lang='%s']" % (ctx.language.dest_lang)
-        regex_still_translating_str = '$Translation'
+        # F-010 (audit): the historical regex was '$Translation', which in
+        # regex syntax is "end-of-string then the literal 'Translation'" —
+        # so it never matched. The wait-loop and the if-branch below are
+        # therefore both no-ops in current production. Until we can verify
+        # what marker Google actually emits while a translation is in
+        # flight, we keep the no-match semantics explicit by short-circuiting
+        # the search calls. When that pattern is identified, replace this
+        # `None` with the new regex string and the loop will start working.
+        regex_still_translating_str = None
+
+        def _still_translating(text: str) -> bool:
+            if not regex_still_translating_str or text is None:
+                return False
+            return re.search(regex_still_translating_str, text) is not None
 
         ctx.browser.driver.execute_script("window.focus();")
         selenium_chrome_google_click_cookies_consent_button(ctx)
 
-        if re.search(regex_still_translating_str, to_translate):
+        if _still_translating(to_translate):
             time.sleep(4)
             try:
                 result_element = WebDriverWait(ctx.browser.driver, 10).until(
@@ -182,7 +195,7 @@ def selenium_chrome_google_translate(ctx: RuntimeContext, to_translate: str) -> 
                 translation = result_element.get_attribute('innerHTML')
             except Exception:
                 print(traceback.format_exc())
-            while re.search(regex_still_translating_str, translation):
+            while _still_translating(translation):
                 print("\nStill waiting for translation........\n")
                 time.sleep(1)
                 try:

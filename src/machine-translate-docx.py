@@ -367,6 +367,29 @@ def _get_ctx() -> RuntimeContext:
     return _ctx
 
 
+def _atexit_cleanup_driver() -> None:
+    """Best-effort browser shutdown on interpreter exit.
+
+    The happy-path quit lives at the bottom of ``main()``; if anything
+    above it raises, the child Chrome process gets orphaned. Registering
+    this with ``atexit`` makes sure the driver is closed on any normal
+    termination — including crashes — so the launcher's job pool doesn't
+    accumulate zombie Chrome processes between failed jobs.
+    """
+    try:
+        if _ctx is not None and _ctx.browser.driver is not None:
+            try:
+                _ctx.browser.driver.quit()
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
+import atexit as _atexit
+_atexit.register(_atexit_cleanup_driver)
+
+
 def _sync_globals_from_ctx(ctx: RuntimeContext) -> None:
     """Mirror every populated attribute of ``ctx.docx`` (and selected
     ``ctx.flags`` / ``ctx.language`` fields) onto this module's namespace
@@ -2591,7 +2614,10 @@ def read_and_parse_docx_document(ctx: RuntimeContext):
     docx.to_raw_translated_table = [''] * (docx.numrows + 1)
     docx.to_text_removed_line_separator = [''] * (docx.numrows + 1)
     docx.translation_result_using_separator = [''] * (docx.numrows + 1)
-    docx.translation_result_phrase_array = [[]] * (docx.numrows + 1)
+    # `[[]] * n` would have every slot pointing at the same shared list,
+    # so any future `array[i].append(...)` would silently mutate every
+    # other slot. List-comprehension gives each slot a distinct list.
+    docx.translation_result_phrase_array = [[] for _ in range(docx.numrows + 1)]
     docx.translation_result = [''] * (docx.numrows + 1)
     docx.from_text_is_read = [0] * (docx.numrows + 1)
 
