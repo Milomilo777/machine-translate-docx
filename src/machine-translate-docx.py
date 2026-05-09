@@ -2287,51 +2287,56 @@ def divide_array(words_array, dest_lang, width):
     return lines
 
 
-def split_phrases():
+def split_phrases(ctx: RuntimeContext):
+    """Group consecutive cells into a single phrase keyed by the
+    first cell of the phrase.
+
+    Phase H bridge: the historical version wrote to module-level
+    globals (`from_text_by_phrase_separator_table`,
+    `from_text_by_phrase_table`, `from_text_nb_lines_in_phrase`)
+    that were sized `[''] * 1`. Every row beyond index 0 raised
+    IndexError, which the enclosing `try/except` in
+    `read_and_parse_docx_document` swallowed silently — leaving the
+    arrays empty so every translation block downstream became
+    empty too. All reads + writes now go through ``ctx.docx`` which
+    is properly sized at parse time.
+    """
+    docx = ctx.docx
     n_last_row_phrase = 3
-    last_table_row = word_translation_table_length
+    last_table_row = docx.word_translation_table_length
     cur_row_n = 2
     while cur_row_n < (last_table_row):
-        if from_text_nb_lines_in_cell[cur_row_n] > 1:
-            #print("from_text_nb_lines_in_cell[%d]=%d" % (cur_row_n, from_text_nb_lines_in_cell[cur_row_n]))
-            #input("nb lines here")
+        if docx.from_text_nb_lines_in_cell[cur_row_n] > 1:
             pass
-        if from_text_is_beginning_of_line_table[cur_row_n] == 1:
+        if docx.from_text_is_beginning_of_line_table[cur_row_n] == 1:
             n_last_row_phrase = cur_row_n
             nb_lines_in_phrase = 1
-            from_text_nb_lines_in_phrase[cur_row_n] = from_text_nb_lines_in_cell[cur_row_n]
-            #print "cur_row_n=%s<br>" % (cur_row_n)
-            while from_text_is_end_of_line_table[n_last_row_phrase] != 1 \
+            docx.from_text_nb_lines_in_phrase[cur_row_n] = docx.from_text_nb_lines_in_cell[cur_row_n]
+            while docx.from_text_is_end_of_line_table[n_last_row_phrase] != 1 \
                 and n_last_row_phrase < (last_table_row - 1):
-                if from_text_by_phrase_separator_table[cur_row_n] == "":
-                    from_text_by_phrase_separator_table[cur_row_n] = from_text_table[n_last_row_phrase]
-                    from_text_by_phrase_table[cur_row_n] = from_text_table[n_last_row_phrase]
+                if docx.from_text_by_phrase_separator_table[cur_row_n] == "":
+                    docx.from_text_by_phrase_separator_table[cur_row_n] = docx.from_text_table[n_last_row_phrase]
+                    docx.from_text_by_phrase_table[cur_row_n] = docx.from_text_table[n_last_row_phrase]
                 else:
-                    from_text_by_phrase_separator_table[cur_row_n] = from_text_by_phrase_separator_table[cur_row_n] + line_separator_str + from_text_table[n_last_row_phrase]
-                    from_text_by_phrase_table[cur_row_n] = from_text_by_phrase_table[cur_row_n] + ' ' + from_text_table[n_last_row_phrase]
+                    docx.from_text_by_phrase_separator_table[cur_row_n] = docx.from_text_by_phrase_separator_table[cur_row_n] + line_separator_str + docx.from_text_table[n_last_row_phrase]
+                    docx.from_text_by_phrase_table[cur_row_n] = docx.from_text_by_phrase_table[cur_row_n] + ' ' + docx.from_text_table[n_last_row_phrase]
                     nb_lines_in_phrase += 1
-                    #from_text_nb_lines_in_phrase[cur_row_n] += 1
-                    if from_text_nb_lines_in_cell[cur_row_n] > 1:
+                    if docx.from_text_nb_lines_in_cell[cur_row_n] > 1:
                         pass
-                        #print("from_text_nb_lines_in_cell[%d]=%d" % (cur_row_n, from_text_nb_lines_in_cell[cur_row_n]))
-                        #input("nb lines here")
-                    from_text_nb_lines_in_phrase[cur_row_n] += from_text_nb_lines_in_cell[n_last_row_phrase]
+                    docx.from_text_nb_lines_in_phrase[cur_row_n] += docx.from_text_nb_lines_in_cell[n_last_row_phrase]
                 n_last_row_phrase += 1
-            if from_text_by_phrase_separator_table[cur_row_n] == "":
-                from_text_by_phrase_separator_table[cur_row_n] = from_text_table[n_last_row_phrase]
-                from_text_by_phrase_table[cur_row_n] = from_text_table[n_last_row_phrase]
+            if docx.from_text_by_phrase_separator_table[cur_row_n] == "":
+                docx.from_text_by_phrase_separator_table[cur_row_n] = docx.from_text_table[n_last_row_phrase]
+                docx.from_text_by_phrase_table[cur_row_n] = docx.from_text_table[n_last_row_phrase]
             else:
-                from_text_by_phrase_separator_table[cur_row_n] = from_text_by_phrase_separator_table[cur_row_n] + line_separator_str+ from_text_table[n_last_row_phrase]
+                docx.from_text_by_phrase_separator_table[cur_row_n] = docx.from_text_by_phrase_separator_table[cur_row_n] + line_separator_str + docx.from_text_table[n_last_row_phrase]
                 nb_lines_in_phrase += 1
-                #from_text_nb_lines_in_phrase[cur_row_n] += 1
-                from_text_nb_lines_in_phrase[cur_row_n] += from_text_nb_lines_in_cell[n_last_row_phrase]
-                from_text_by_phrase_table[cur_row_n] = from_text_by_phrase_table[cur_row_n] + ' ' + from_text_table[n_last_row_phrase]
+                docx.from_text_nb_lines_in_phrase[cur_row_n] += docx.from_text_nb_lines_in_cell[n_last_row_phrase]
+                docx.from_text_by_phrase_table[cur_row_n] = docx.from_text_by_phrase_table[cur_row_n] + ' ' + docx.from_text_table[n_last_row_phrase]
             if use_html:
-                print("(%d)from_text_by_phrase_table[%d]=%s<br>" % (n_last_row_phrase, cur_row_n, from_text_by_phrase_table[cur_row_n]))
+                print("(%d)from_text_by_phrase_table[%d]=%s<br>" % (n_last_row_phrase, cur_row_n, docx.from_text_by_phrase_table[cur_row_n]))
             nb_lines_in_phrase_str = "[%s]" % (nb_lines_in_phrase)
-            #from_text_by_phrase_separator_table[cur_row_n] = from_text_by_phrase_separator_table[cur_row_n]
 
-            #nb_character_total = nb_character_total + 1#len(from_text_by_phrase_table[cur_row_n])
             cur_row_n = n_last_row_phrase + 1
         else:
             cur_row_n += 1
@@ -2760,7 +2765,7 @@ def read_and_parse_docx_document(ctx: RuntimeContext):
         and docx.from_text_is_empty_line_table[docx.numrows] == 0:
         docx.from_text_is_end_of_line_table[docx.numrows] = 1
 
-    split_phrases()
+    split_phrases(ctx)
 
     if use_html :
         print("<table border=1 width=800>")
