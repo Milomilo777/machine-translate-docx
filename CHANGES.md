@@ -57,6 +57,97 @@ after 1800 ms to avoid the Chrome multi-download permission prompt.
 
 ## Sessions
 
+### 2026-05-09 (part four) — repo housekeeping: docs in English, branches archived, lint sweep
+
+Two commits, one tag-and-delete operation, and a new memory rule.
+
+**O1. CHANGES.md and `docs/v2-frontend-hardening.md` translated to
+English.** The legacy Persian content was either prose (translated) or
+linguistic sample data (left in place — those characters are *data*,
+not text). Other docs already had only sample-data Persian, so no
+changes there. Result: 1316-line CHANGES.md compressed to ~480
+English lines, newest-first.
+
+**O2. Bare `except:` cleanup — 107 sites in five files.**
+`src/machine-translate-docx.py` (42), `src/engines/deepl.py` (35),
+`src/engines/inactive/perplexity_web.py` (14),
+`src/engines/inactive/chatgpt_web.py` (11),
+`src/xlsx_translation_memory/xlsx_translation_memory.py` (5). Each
+became `except Exception:`. Matches `.claude/rules/code-style.md`'s
+mandate and stops swallowing `KeyboardInterrupt` / `SystemExit`.
+
+**O3. Silent-mode guards on three blocking `input()` calls.** All
+remaining unguarded `input()` calls in the entry script now respect
+the `silent` flag:
+
+- Google CAPTCHA prompt — raises in silent mode (the launcher
+  subprocess can't proceed without a human).
+- xlsx and docx save-retry prompts — sleep 2 s in silent mode and
+  retry, instead of hanging the launcher pipe forever.
+
+Closes the failure mode where the launcher could deadlock on certain
+error paths.
+
+**O4. `.editorconfig` added.** LF line endings, UTF-8, 4-space Python
+indent, 2-space markup indent, CRLF for `*.bat`, trim trailing
+whitespace. Prevents whitespace churn across IDEs.
+
+**O5. Memory rule: docs are English-only in the repo.** Added
+`feedback_docs_english_only.md` to `~/.claude/.../memory/` so the
+rule survives session breaks. Conversation responses stay in Persian
+per the existing line-separation rule.
+
+**O6. Memory rule: auto-commit + auto-doc.** Added
+`feedback_auto_commit_and_doc.md`. Every change made by the
+assistant on this repo: (1) commit immediately to current branch,
+(2) update CHANGES.md in the same flow, (3) update PROJECT_MEMORY.md
+when an invariant changes, (4) push to origin. Default branch is
+`master`.
+
+**O7. Two empty branches deleted (local + remote).**
+
+```
+review-rewrite-opus-4.7         deleted (was 244f55f)
+claude/romantic-bhabha-a3ad61   deleted (was cbe6f31)
+```
+
+The latter also had a stale worktree at
+`.claude/worktrees/romantic-bhabha-a3ad61/`; pruned via
+`git worktree prune`.
+
+**O8. Three merged backup branches archived as tags + deleted.** The
+"album-of-memories" pattern: tag the final state, then delete the
+branch. Archived state stays accessible via the tag forever; the
+branch list is clean.
+
+```
+audit/post-refactor       →  tag archive/audit-post-refactor       (4e6c354)
+refactor/architecture     →  tag archive/refactor-architecture     (f798322)
+feature/v2-frontend       →  tag archive/feature-v2-frontend       (38c9c8a)
+```
+
+After the tag-and-delete, the only branch on origin is `master`.
+
+**O9. Today's commits on master**:
+
+```
+85e0811  chore(maintainability): English docs, bare-except cleanup, silent-mode input guards
+6207a59  docs: log today's 9 commits in CHANGES.md
+a205a41  fix(docx): defensive lock on source-language column
+81fdd8f  audit: pre-real-test sweep
+f957f89  fix(progress): hide overlay + Google-js markers + bufsize=1
+8955042  fix(translate): seed driver in remaining selenium helpers
+9770ffd  fix(translate): seed local driver from ctx
+38ebce4  fix(translate): non-split write path
+496183f  fix(translate): Phase H bridge — _sync_globals_from_ctx
+1a8c127  fix(translate): xtm — module-level None + global declaration
+02d62da  fix(translate): Phase H — thread ctx through translate_docx
+```
+
+Tests: 51/51 passing.
+
+---
+
 ### 2026-05-09 (part three) — Phase H bridge, progress UX, source-column lock
 
 Nine commits, all on `master`, 51/51 tests passing throughout.

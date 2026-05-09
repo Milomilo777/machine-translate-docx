@@ -3,7 +3,7 @@
 Committed team memory. Keep it concise — no raw logs, no long discussion.
 Summary + link to `docs/` for depth.
 
-Last updated: 2026-05-09 (Phase H bridge, progress UX, driver seeding)
+Last updated: 2026-05-09 (Phase H bridge, progress UX, driver seeding, English docs, branch archive, lint sweep)
 
 ---
 
@@ -24,6 +24,10 @@ Last updated: 2026-05-09 (Phase H bridge, progress UX, driver seeding)
 | C11 | New Selenium helpers must seed `driver = ctx.browser.driver` at the top if they later reassign `driver` | Otherwise Python treats `driver` as local for the entire body and every prior read raises UnboundLocalError |
 | C12 | Legacy frontend error path: hide `loadingElement` BEFORE `await showAlert(...)` | Otherwise the progress overlay keeps animating behind the dialog while the user reads the error message |
 | C13 | **Source language column is frozen.** Columns 0 + 1 of the input docx are deepcopy-snapshotted at parse time; `save_docx_file` restores any drift before the docx is written. No engine, helper, or future code path may modify the source side — the lock catches leaks regardless of cause | Translation-memory `before` replacements, alignment helpers, or any future bug must never bleed into the source-language column |
+| C14 | **All committed `.md` files are English.** The repo is English-only; Persian belongs to the conversation, never to a commit. Linguistic sample data (FA characters demonstrating split rules) is fine inside code fences | Multi-tool / multi-author readability |
+| C15 | **No `bare except:` in this codebase.** Always `except Exception:` (or a more specific class). Bare except hides `KeyboardInterrupt` and `SystemExit` and is a long-standing project rule from `.claude/rules/code-style.md` | Cleaned up 2026-05-09: 107 sites in 5 files |
+| C16 | **`input()` must respect the `silent` flag.** Any blocking prompt in the entry script needs an `if not silent:` guard, with a non-interactive fallback (sleep+retry, or raise) for the silent branch. The launcher subprocess passes `--silent` and cannot answer a prompt | Cleaned up 2026-05-09: three remaining unguarded prompts now sleep+retry or raise |
+| C17 | **Three merged backup branches were archived as `archive/*` tags and deleted on 2026-05-09.** Branch list on origin is now `master` only. Use `git show archive/<name>` to inspect any historical branch state | Branch list hygiene + permanent backup via tag |
 
 ---
 
@@ -98,6 +102,10 @@ See [`docs/error-catalog.md`](docs/error-catalog.md) for full list.
 
 | Date | Change |
 |------|--------|
+| 2026-05-09 | **Repo housekeeping** — three merged backup branches archived as `archive/*` tags then deleted (`audit/post-refactor`, `refactor/architecture`, `feature/v2-frontend`); two empty branches (`review-rewrite-opus-4.7`, `claude/romantic-bhabha-a3ad61`) deleted local + remote. Origin now has master only. |
+| 2026-05-09 | **English-only docs** — `CHANGES.md` rewritten in English (1316 → ~480 lines, newest-first); `docs/v2-frontend-hardening.md` translated. Memory rule `feedback_docs_english_only.md` added. |
+| 2026-05-09 | **Maintainability sweep** — 107 bare `except:` → `except Exception:` across 5 files; three unguarded `input()` calls now respect `silent` flag (CAPTCHA prompt raises in silent, save retries sleep+retry); `.editorconfig` added (LF, UTF-8, indents per filetype). |
+| 2026-05-09 | **Auto-commit + auto-doc rule** — memory rule `feedback_auto_commit_and_doc.md`: every change → commit current branch + CHANGES.md update + push, in the same flow. Default branch is master. |
 | 2026-05-09 | **Phase H bridge — `_sync_globals_from_ctx`:** mirrors `ctx.docx.*` (and `ctx.browser.driver`, `ctx.openai.translator/polisher`, `dest_lang`, `src_lang`) onto the module so the ~40 helpers that still read by bare name see populated state. Wired into main() at four pipeline boundaries (after read, after create_webdriver, after translate_docx, after document_split_phrases). Adds `xtm = None` module-level + `global xtm` declaration in `initialize_translation_memory_xlsx`. |
 | 2026-05-09 | **Phase H — selenium driver seeds:** five Selenium-touching helpers now seed `driver = ctx.browser.driver` at the top so reassign branches don't trigger UnboundLocalError on prior reads (`selenium_chrome_google_translate_text_file/html_javascript_file/xlsx_file`, `get_translation_and_replace_after`, `run_statistics`). Reassign sites mirror the new handle back to `ctx.browser.driver`. |
 | 2026-05-09 | **Phase H — non-split write path decoupled:** `print_console_docx_file_translated` now writes the translated cell whenever `ctx.docx.to_text_by_phrase_separator_table[row_n]` is non-empty, regardless of `translation_result_phrase_array` shape. Closed the silent failure mode where an empty `phrase_array` (because document_split_phrases skipped the row) left the cell unwritten. |
