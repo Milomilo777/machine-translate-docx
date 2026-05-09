@@ -3252,6 +3252,18 @@ def translate_docx(ctx: RuntimeContext):
 
     if engine_method == "javascript":
         google_translate_from_html_javascript(ctx)
+        # Fail loudly when Google's web widget refuses to translate the
+        # local file (a known modern-Chrome limitation, since ~2022).
+        # Silent failure here used to cascade into ~14 retries per
+        # phrase × N phrases of `translation_array index out of range`
+        # warnings before producing an empty docx — completely
+        # unreadable failure mode for the user.
+        if not ctx.docx.translation_array:
+            print("[ERROR] Google web translate returned 0 lines.")
+            print("[ERROR] Modern Chrome blocks the Google translate widget on")
+            print("[ERROR] file:// URLs (CORS / sandboxing). This engine path")
+            print("[ERROR] cannot complete in current Chrome versions.")
+            print("[INFO] Use the OpenAI API engine (chatgpt) or DeepL instead.")
         return translation_succeded
 
     if engine_method == "xlsxfile":

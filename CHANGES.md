@@ -57,6 +57,51 @@ after 1800 ms to avoid the Chrome multi-download permission prompt.
 
 ## Sessions
 
+### 2026-05-09 (part six) — first successful real translation; Google-js diagnosis
+
+**R1. ChatGPT translate confirmed end-to-end.** First green real-file
+test of the day:
+```
+OpenAI single-call mode: 16 lines, 948 chars
+[DIAG] After get_translation_and_replace_after: to_text rows populated = 16, translation_array lines = 16
+```
+The entire 16-phrase sample doc was translated to Mongolian and
+written to `sample_MON.docx`. No `[LOCK] Restored …` line — the
+text-based lock comparison (commit 5744e96) eliminated the previous
+false positive. Source column intact.
+
+**R2. split_phrases() bug confirmed fixed (commit 3cac1b6).** Before
+the fix the run produced `to_text rows populated = 0` and an empty
+docx; after, all 16 phrases were grouped, sent to OpenAI, returned,
+and written to `cells[2]` of the right rows.
+
+**R3. Google web JavaScript engine — known broken in modern Chrome.**
+The same job with `engine=google` (engine_method=javascript) ran
+the per-paragraph loop in 0 seconds, producing
+`translation_array lines = 0`, then ~210 retries of
+`[WARN] translation_array index out of range`. Root cause is
+inherent to the engine, not the refactor: since ~2022 Chrome blocks
+Google's translate widget from running on `file://` URLs (CORS /
+sandboxing). The HTML page loads but Google's widget refuses to
+operate.
+
+Added a single-line fail-fast message after the engine returns
+empty so users get a meaningful error instead of pages of
+`index out of range` retries:
+```
+[ERROR] Google web translate returned 0 lines.
+[ERROR] Modern Chrome blocks the Google translate widget on
+[ERROR] file:// URLs (CORS / sandboxing). This engine path
+[ERROR] cannot complete in current Chrome versions.
+[INFO] Use the OpenAI API engine (chatgpt) or DeepL instead.
+```
+
+The Google-javascript path stays in the codebase for the case where
+someone runs against an older Chrome; the message tells everyone
+else where to go.
+
+---
+
 ### 2026-05-09 (part five) — three audit-driven fixes (F-010 + mutable-default + atexit)
 
 Targeting the audit's lowest-scoring dimensions (D2 Smell `B`,
