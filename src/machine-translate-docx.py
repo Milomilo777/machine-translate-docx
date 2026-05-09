@@ -1396,15 +1396,28 @@ def selenium_chrome_google_translate_html_javascript_file(ctx: RuntimeContext, h
 
             paragraphs = driver.find_elements(by=By.XPATH, value='//p[@class="translation"]')
 
+            # PROGRESS milestones for the Google-javascript path. The block
+            # loop in runner.py emits 25 / 50 / 75 by block, but this code
+            # path never goes through the runner — without these emits the
+            # UI would jump from "10" (backend started) straight to "100".
+            _gj_total = max(1, len(paragraphs))
+            _gj_progress_emitted: set = set()
+
             try:
-                
+
                 # How to detect a paragraph is translated is that it has the string below
                 #translated_substring_old = '<font style="vertical-align: inherit;">'
                 #translated_substring_new = '<font dir="auto" style="vertical-align: inherit;"><font dir="auto" style="vertical-align: inherit;">'
                 re_translated_substring = re.compile('^[ \t\r\n]{0,}<font ')
                 scroll_offset_paragraph = 60
-                
+
                 for index, paragraph in enumerate(paragraphs, start=1):
+                    # Emit PROGRESS markers proportional to paragraph progress.
+                    _pct = int((index / _gj_total) * 100)
+                    for _m in (15, 30, 50, 75, 90):
+                        if _pct >= _m and _m not in _gj_progress_emitted:
+                            print(f"PROGRESS:{_m}", flush=True)
+                            _gj_progress_emitted.add(_m)
                 
                     #input("Time out here next line ")
                     viewport_top = driver.execute_script("return window.pageYOffset;")

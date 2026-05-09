@@ -738,9 +738,14 @@
           await showAlert(alertMsg);
 
         } catch (err) {
+          // Hide the loading overlay BEFORE the alert so the progress bar
+          // doesn't keep "running" behind the dialog while the user reads
+          // the error message.
+          loadingElement.classList.remove('visible');
           console.error('Translation error:', err);
           await showAlert('Error: ' + (err.message || 'Please contact admin: smtv.bot (at) gmail (dot) com'));
         } finally {
+          // Defensive: make sure the overlay is hidden even on the success path.
           loadingElement.classList.remove('visible');
         }
       }

@@ -966,11 +966,16 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
         print(f"[job {job_id}] running real backend via: {self.state.python_exe}")
         print(f"[job {job_id}] command: {' '.join(cmd)}")
 
+        # bufsize=1 → line-buffered. Without this, Python pipes default to
+        # full-buffering (~8 KB), so PROGRESS:N markers emitted by the
+        # backend can be held back for many seconds before the launcher
+        # sees them — making the UI bar jump from 10 % straight to 100 %.
         proc = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
+            bufsize=1,
             encoding="utf-8",
             errors="replace",
             cwd=str(ROOT),
