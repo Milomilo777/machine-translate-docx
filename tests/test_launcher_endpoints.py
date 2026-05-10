@@ -213,8 +213,11 @@ def test_engine_suffix_for_known_engines():
     assert _engine_suffix_for("deepl")           == "_Deepl"
     assert _engine_suffix_for("chatgpt")         == "_chatGPT"
     assert _engine_suffix_for("chatgpt-polish")  == "_Polish"
-    assert _engine_suffix_for("chatgpt-web")     == "_web_chatGPT"
-    assert _engine_suffix_for("perplexity-web")  == "_web_Perplexity"
+    # chatgpt-web / perplexity-web were removed in the 2026-05-10
+    # cleanup pass; they now resolve to "" (the unknown-engine
+    # fallback) just like any other deleted engine.
+    assert _engine_suffix_for("chatgpt-web")     == ""
+    assert _engine_suffix_for("perplexity-web")  == ""
 
 
 def test_engine_suffix_for_unknown_or_missing():

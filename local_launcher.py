@@ -81,13 +81,13 @@ def _engine_suffix_for(translation_engine: str | None) -> str:
     has to guess the output filename because the subprocess never
     printed `Saved file name:`.
     """
+    # chatgpt-web / perplexity-web were removed in the 2026-05-10
+    # cleanup pass — Cloudflare gating made them never-reach-prod.
     return {
         'google':         '_Google',
         'deepl':          '_Deepl',
         'chatgpt':        '_chatGPT',
         'chatgpt-polish': '_Polish',
-        'chatgpt-web':    '_web_chatGPT',
-        'perplexity-web': '_web_Perplexity',
     }.get((translation_engine or '').lower().strip(), '')
 
 
@@ -973,15 +973,11 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
         engine = translation_engine.lower().strip()
         extra: list[str] = []
 
+        # chatgpt-web / perplexity-web cases removed in the 2026-05-10
+        # cleanup pass — Cloudflare gating made them never-reach-prod.
         if engine == "chatgpt-polish":
             engine = "chatgpt"
             extra.extend(["--enginemethod", "api", "--with-polish"])
-        elif engine == "chatgpt-web":
-            engine = "chatgpt"
-            extra.extend(["--enginemethod", "web"])
-        elif engine == "perplexity-web":
-            engine = "perplexity"
-            extra.extend(["--enginemethod", "web"])
         elif engine == "perplexity":
             extra.extend(["--enginemethod", "webservice"])
         elif engine == "chatgpt":
