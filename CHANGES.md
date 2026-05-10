@@ -57,6 +57,52 @@ after 1800 ms to avoid the Chrome multi-download permission prompt.
 
 ## Sessions
 
+### 2026-05-10 — docx_io extraction (branch `next/extract-docx-parse`)
+
+Follow-up to the architecture-cleanup checkpoints. Tackled the
+"docx parse" extraction that was deferred. Created the new
+`src/docx_io/` package and moved three coherent groups of helpers
+out of the entry script.
+
+**docx_io/runs.py** — `_iter_paragraph_runs`. Walks every `<w:r>`
+below a paragraph regardless of parent (the python-docx native
+iterator silently drops hyperlink contents — the bug we fixed on
+2026-05-09).
+
+**docx_io/cells.py** — `change_cell_font`, `set_first_paragraph`,
+`add_paragraph`. The two paragraph-write functions were
+copy-pasted in the entry script; deduplicated through a private
+`_write_into_paragraph` helper. All three take their dependencies
+(`dest_lang`, `dest_font`, `rtlstyle`) as explicit kwargs so the
+per-cell write path is unit-testable in isolation.
+
+**docx_io/save.py** — `save_docx_file`, `engine_suffix`. The save
+function body is now broken into three named helpers
+(`_resolve_output_path`, `_restore_source_column`, save loop) so
+each step is independently readable. Takes `docxdoc`, `silent`,
+and `write_translation_log_fn` as explicit parameters. The shim
+in the entry script emits the `PROGRESS:90` marker and delegates.
+
+Engine suffix table cleaned up while we were there: the dead
+`chatgpt-web` / `perplexity-web` branches (deleted in the previous
+cleanup) are gone.
+
+**Deferred (third time, with reasoning):**
+`read_and_parse_docx_document` is ~800 lines and reads ~20 module
+globals (`docxdoc`, `use_html`, `docxfile`, `silent`, `dest_lang_tag`,
+many more). Doing it properly requires threading those globals
+through `ctx` first — that's its own focused pass.
+`get_cell_data` is similar (entangled with module globals).
+
+**Verification.**
+  - 63/63 unit tests pass
+  - Real-file smoke (`tasks.bat smoke` = DeepL en→fr on the
+    `sample_hyperlink` fixture): 28 s, 0/42 source-column
+    mismatches, hyperlink row populated correctly
+
+Net result: entry script ~70 lines smaller, three new modules with
+clear single-purpose APIs, zero behaviour change.
+
 ### 2026-05-10 — Checkpoint 3 + 4: prompt cleanup + Makefile (branch `next/architecture-cleanup-after-audit`)
 
 **C3 (limited scope).** Initial plan was to move ~80 helpers out of
