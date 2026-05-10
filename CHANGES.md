@@ -57,6 +57,22 @@ after 1800 ms to avoid the Chrome multi-download permission prompt.
 
 ## Sessions
 
+### 2026-05-10 — Persian Double Lines as a splitter (agent run, branch `next/persian-double-lines-as-splitter`)
+
+**Phase 1 — aligner detached from chatgpt-polish.**
+The post-translation block in `src/machine-translate-docx.py` that produced
+`_PER_Classic.docx` and `_PER_Double.docx` for every FA + chatgpt-polish run
+is removed. The engine still does translate + polish; it no longer drives the
+aligner. Module-level `from openai_tools.aligner_per import FASubtitleAligner`
+import retired (the aligner is reached on demand from the new Split Method
+flow planned in phases 2-9). One file out per job for FA + chatgpt-polish:
+`{stem}_PER_TranslatePolish.docx` (suffix rename to `_Polish` lands in
+phase 5). `local_launcher.py` `_find_double_file` / `_find_classic_file` still
+exist; they now return `None` for new jobs (cleanup in phase 7). Tests:
+51 passing, no regressions.
+
+---
+
 ### 2026-05-09 (part seven) — long-standing hyperlink bug fixed
 
 **S1. Hyperlinked text was silently dropped from cell output.**

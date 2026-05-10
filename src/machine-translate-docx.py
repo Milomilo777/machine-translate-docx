@@ -906,7 +906,9 @@ if engine_method == 'webservice':
 
 if translation_engine == 'chatgpt' and engine_method == 'api':
     from openai_tools import OpenAITranslator, OpenAIPolisher
-    from openai_tools.aligner_per import FASubtitleAligner
+    # FASubtitleAligner is no longer imported here (Phase 1): the aligner is
+    # decoupled from chatgpt-polish and reached only via the Persian Double
+    # Lines Split Method, which performs its own local import on demand.
     chatgpt_max_char_bloc_size_key = ['chatgpt', 'api','maximum_character_block']
 else:
     chatgpt_max_char_bloc_size_key = ['chatgpt', 'no_account','maximum_character_block']
@@ -4723,61 +4725,10 @@ def save_docx_file(ctx: RuntimeContext):
                 _doc.save(output_path)
                 return _stats
 
-            # ── Subtitle aligner: two output files ───────────────────────────────
-            # Classic  (_PER_Classic.docx)  = simple word-wrap split, no AI
-            # Double   (_PER_Double.docx)   = FA-specific mechanical aligner (llm_threshold=0)
-            # Guard: only for Persian + chatgpt-polish pipeline
-            if ctx.flags.with_polish and ctx.language.dest_lang.startswith('fa'):
-                _ai_model_align  = 'gpt-5.4-mini'  # aligner always uses mini — never change
-                _stem_path       = re.sub(r'(?i)\.docx$', '', ctx.flags.word_file_to_translate)
-                _classic_path    = f"{_stem_path}_PER_Classic.docx"
-                _double_path     = f"{_stem_path}_PER_Double.docx"
-
-                # ── Pass 1: Classic — simple algorithmic word-wrap ────────────
-                # PROGRESS marker — translate+polish+save complete; splitting about to start.
-                print("PROGRESS:75", flush=True)
-                try:
-                    print(f"\n[INFO] Running Classic split -> {_classic_path}")
-                    _t0 = time.time()
-                    _cs = _simple_split_docx(ctx.flags.word_file_to_translate_save_as_path, _classic_path)
-                    print(
-                        f"[TIMER] Classic: {time.time()-_t0:.1f}s"
-                        f" | processed: {_cs.get('rows_processed','?')}"
-                        f" | split: {_cs.get('rows_split','?')}"
-                    )
-                    print(f"[INFO] Classic saved: {_classic_path}")
-                except Exception as _ae:
-                    import traceback as _tb
-                    print(f"[WARN] Classic split failed: {_ae}")
-                    print(_tb.format_exc())
-
-                print("PROGRESS:90", flush=True)
-
-                # ── Pass 2: Double — FA mechanical aligner (no LLM) ──────────
-                try:
-                    print(f"\n[INFO] Running Double aligner -> {_double_path}")
-                    _t0 = time.time()
-                    _double_aligner = FASubtitleAligner(
-                        model=_ai_model_align,
-                        llm_threshold=0,   # never call LLM
-                        token_budget=0,
-                    )
-                    _ds = _double_aligner.align(ctx.flags.word_file_to_translate_save_as_path, _double_path)
-                    print(
-                        f"[TIMER] Double:  {time.time()-_t0:.1f}s"
-                        f" | groups: {_ds.get('groups','?')}"
-                        f" | doubles: {_ds.get('doubles','?')}"
-                        f" | triples: {_ds.get('triples',0)}"
-                        f" | over-48: {_ds.get('over_limit',0)}"
-                    )
-                    print(f"[INFO] Double saved: {_double_path}")
-                except Exception as _ae:
-                    import traceback as _tb
-                    print(f"[WARN] Double aligner failed: {_ae}")
-                    print(_tb.format_exc())
-
-                # PROGRESS marker — both passes complete.
-                print("PROGRESS:100", flush=True)
+            # Phase 1 — aligner detached from chatgpt-polish post-translation
+            # block. The aligner is reachable only through the new Persian
+            # Double Lines Split Method (phases 2-9). Translate + polish save
+            # completes here; launcher.py records progress=100 on success.
         except Exception:
             var = traceback.format_exc()
             print(var)
