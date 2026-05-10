@@ -368,6 +368,16 @@ def _get_ctx() -> RuntimeContext:
             _ctx.flags.with_polish = args.with_polish
         except (NameError, AttributeError):
             pass
+        # 2026-05-10 G1 — docxdoc + use_html snapshot for the upcoming
+        # docx_io.parse / docx_io.cells extraction.
+        try:
+            _ctx.docx.docxdoc = docxdoc
+        except NameError:
+            pass
+        try:
+            _ctx.docx.use_html = use_html
+        except NameError:
+            pass
     return _ctx
 
 
@@ -1051,7 +1061,7 @@ if word_file_to_translate_extension == ".docx":
     except Exception:
         print(f"Error, file {word_file_to_translate} does not appear to be a valid Microsoft Word docx file.")
         print("Please check that the file is a valid document and rerun on a valid Microsoft docx document.\n")
-        
+
         print("\nDeveloper: %s" % (E_mail_str))
         print("Program version: %s\n" % (PROGRAM_VERSION))
         if not silent:
@@ -1059,6 +1069,11 @@ if word_file_to_translate_extension == ".docx":
         else:
             print("Program ended with errors")
         sys.exit(2)
+    # G1: thread the freshly opened Document and the use_html flag onto
+    # the shared RuntimeContext so the upcoming docx_io.parse extraction
+    # can read them from ctx instead of module globals.
+    _get_ctx().docx.docxdoc  = docxdoc
+    _get_ctx().docx.use_html = use_html
     styles = docxdoc.styles
     
     if dest_lang_tag != '':

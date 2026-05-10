@@ -183,6 +183,13 @@ class DocxCtx:
     numcols:                     int = 0
     word_translation_table_length: int = 0
 
+    # ── document handle + output mode ───────────────────────────────────────
+    # Threaded in G1 (2026-05-10) so read_and_parse_docx_document and
+    # get_cell_data can be extracted into src/docx_io/ without re-reading
+    # module globals.
+    docxdoc:                     Any  = None      # python-docx Document
+    use_html:                    bool = False     # CGI-style HTML output flag
+
     docxfile_table_number_of_phrases:    int = 0
     docxfile_table_number_of_characters: int = 0
     docxfile_table_number_of_words:      int = 0

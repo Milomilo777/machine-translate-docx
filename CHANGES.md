@@ -57,6 +57,26 @@ after 1800 ms to avoid the Chrome multi-download permission prompt.
 
 ## Sessions
 
+### 2026-05-10 — thread docx globals to ctx (branch `next/thread-docx-globals-to-ctx`)
+
+Prerequisite phase for the upcoming `read_and_parse_docx_document` and
+`get_cell_data` extractions. Both functions read the same module-level
+globals (`docxdoc`, `use_html`, `silent`, `E_mail_str`,
+`PROGRAM_VERSION`); without threading them through `ctx` first the
+extracted modules would need a global-passthrough shim ~5x heavier than
+the cells.py / save.py shims.
+
+  - **G1 — `docxdoc` + `use_html` on `DocxCtx`.** Two new fields added
+    to `runtime.py:DocxCtx`. Entry script line 1050 now mirrors
+    `docxdoc` and `use_html` onto `_get_ctx().docx.*` immediately after
+    the `docx.Document(...)` call, and `_get_ctx()` itself snapshots
+    them on first call so threaded callees that arrive before line 1050
+    still see the right state. `_sync_globals_from_ctx` already mirrors
+    every public `ctx.docx.*` attribute back to module scope, so legacy
+    bare-name reads keep working.
+
+Master tip going in: `0f07c14`. Tests: 63 / 63 pass after G1.
+
 ### 2026-05-10 — session-close: branch cleanup + next-session handoff
 
 End-of-session bookkeeping after the docx_io extraction was merged.
