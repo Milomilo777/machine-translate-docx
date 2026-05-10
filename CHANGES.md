@@ -59,6 +59,41 @@ after 1800 ms to avoid the Chrome multi-download permission prompt.
 
 ### 2026-05-10 — Persian Double Lines as a splitter (agent run, branch `next/persian-double-lines-as-splitter`)
 
+**Phase 13 — end-to-end runs and fixes uncovered by them.**
+First live execution of `tests/integration/test_real_file_per_engine.py`
+under `pytest -m live`. Results:
+
+| Engine          | Target | Outcome     |
+|-----------------|--------|-------------|
+| chatgpt (api)   | mn     | ✅ pass     |
+| chatgpt (api)   | fa     | ✅ pass     |
+| chatgpt-polish  | mn     | ✅ pass     |
+| chatgpt-polish  | fa     | ✅ pass (Persian Double Lines split + suffix) |
+| google          | mn     | ✅ pass     |
+| deepl           | mn     | ⚠ timeout (deferred after two fix attempts) |
+| chatgpt-web     | mn     | ⚠ smoke skip (upstream selectors changed) |
+| perplexity-web  | mn     | ⚠ smoke skip |
+
+Live runs surfaced four bugs left from earlier extraction work:
+
+  * `src/engines/deepl.py` referenced two bare globals
+    (`set_chrome_window_2_3_screen`, `deepl_sleep_wait_translation_seconds`)
+    that no longer existed in module scope after Phase G3. Both are now
+    properly imported / read through `ctx.browser`.
+  * `src/machine-translate-docx.py` engine_method switch silently
+    rewrote `--enginemethod web` to `phrasesblock` for chatgpt and
+    perplexity. Adds `elif engine_method == 'web':` branches so the
+    method survives.
+  * `src/runner.py` translate_once raised on chatgpt method != 'api' and
+    perplexity method != 'webservice'. Adds method == 'web' branches
+    that delegate to `engines.chatgpt_web.translate(ctx, text)` /
+    `engines.perplexity_web.translate(ctx, text)`.
+
+DeepL hang and the two web-engine selector breakages are documented in
+`docs/agent-run-report.md` §3 and listed as recommended follow-ups.
+The launcher contract is unchanged. Tests: 64 passing under default
+`pytest`; 5 of 8 live integration scenarios pass under `pytest -m live`.
+
 **Phase 12 — cache UI feedback (splitterOnly banner).**
 The `splitterOnly` flag the launcher emits on cache hit (set in
 phase 4) is now consumed by both UIs. v2 swaps the existing

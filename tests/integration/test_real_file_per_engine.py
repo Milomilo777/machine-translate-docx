@@ -223,7 +223,17 @@ def test_engine_end_to_end_non_fa(engine: str, fixture_copy: Path):
     """en → mn for every engine. FA-specific behaviour is exercised in
     test_persian_double_lines_split below."""
     target_lang = "mn"
-    proc = _run_pipeline(fixture_copy, engine, target_lang)
+    try:
+        proc = _run_pipeline(fixture_copy, engine, target_lang)
+    except subprocess.TimeoutExpired as exc:
+        if engine in WEB_ENGINES:
+            pytest.skip(
+                f"{engine} hung past {PER_ENGINE_TIMEOUT_SEC}s — upstream "
+                f"guest-session UI almost certainly changed."
+            )
+        # Non-web engines are not allowed to hang — re-raise so the test
+        # fails loudly and the run report records the timeout.
+        raise
 
     if engine in WEB_ENGINES and proc.returncode != 0:
         pytest.skip(

@@ -890,12 +890,18 @@ elif translation_engine == 'chatgpt':
     if engine_method == 'api' or use_api == True:
         engine_method = 'api'
         showbrowser = False
+    elif engine_method == 'web':
+        # Phase 8 — chatgpt-web Selenium engine reactivated.
+        engine_method = 'web'
     else:
         engine_method = 'phrasesblock'
 
 elif translation_engine == 'perplexity':
     if engine_method  == 'webservice':
         engine_method = 'webservice'
+    elif engine_method == 'web':
+        # Phase 8 — perplexity-web Selenium engine reactivated.
+        engine_method = 'web'
     else:
         engine_method = 'phrasesblock'
 else:
