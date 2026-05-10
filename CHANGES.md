@@ -74,8 +74,26 @@ the cells.py / save.py shims.
     still see the right state. `_sync_globals_from_ctx` already mirrors
     every public `ctx.docx.*` attribute back to module scope, so legacy
     bare-name reads keep working.
+  - **G2 — `get_cell_data` extracted to `docx_io/cells.py`.** The
+    per-cell reader (~120 lines in the entry script, plus the two
+    shading-detection helpers `get_paragraph_shading_color` /
+    `get_run_shading_color`) now lives in `src/docx_io/cells.py`. The
+    function reads the colour-ignore list from
+    `ctx.config.shading_color_ignore_text` (new field on `ConfigCtx`,
+    populated in the entry script after the JSON configuration merge).
+    The two shading helpers are private (`_paragraph_shading_color`,
+    `_run_shading_color`) and share a `_shading_fill_color` core that
+    drops the dead `attrib_val` / `attrib_color` reads from the
+    original. The fall-through `for run in paragraph_runs:` body is
+    untouched — same flag semantics, same skip rules, same return
+    shape. Added `tests/test_docx_io_cells.py` with seven unit tests:
+    four for the shading helpers (raw XML strings) and three for
+    `get_cell_data` against an in-memory python-docx document
+    (plain text / `<pause>` + `<enter>` markers / whitespace
+    collapse). All 70 unit tests pass after the move.
 
-Master tip going in: `0f07c14`. Tests: 63 / 63 pass after G1.
+Master tip going in: `0f07c14`. Tests: 70 / 70 pass after G2 (63 prior
++ 7 new for `docx_io/cells.py`).
 
 ### 2026-05-10 — session-close: branch cleanup + next-session handoff
 

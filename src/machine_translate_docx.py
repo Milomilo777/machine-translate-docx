@@ -378,6 +378,12 @@ def _get_ctx() -> RuntimeContext:
             _ctx.docx.use_html = use_html
         except NameError:
             pass
+        # 2026-05-10 G2 — shading colour list snapshot for the
+        # docx_io.cells.get_cell_data extraction.
+        try:
+            _ctx.config.shading_color_ignore_text = shading_color_ignore_text
+        except NameError:
+            pass
     return _ctx
 
 
@@ -566,6 +572,9 @@ str_needs_update = "0"
 shading_color_ignore_text_update_key = ["document", "shading_color_ignore_text"]
 shading_color_ignore_text = get_nested_value_from_json_array(json_configuration_array,
     shading_color_ignore_text_update_key)
+# G2 (2026-05-10): mirror onto ctx so docx_io.cells.get_cell_data reads
+# the colour list from the RuntimeContext rather than this module global.
+_get_ctx().config.shading_color_ignore_text = shading_color_ignore_text
 
 process_platform = platform.system()
 if platform.system() == 'Windows':
@@ -1961,184 +1970,25 @@ def is_empty_line(line):
         return 1
     return 0
 
-def get_paragraph_shading_color(xml_paragraph_str):
-    paragraph_xml = etree.fromstring(xml_paragraph_str)
-    attrib_fill = None
-    
-    namespaces = {'w':'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
-    try:
-        namespaces = {paragraph_xml.prefix : paragraph_xml.nsmap[paragraph_xml.prefix]}
-    except Exception:  #print("Could not determine namespace")
-        pass
-    attrib_fill = None
-    
-    for e in paragraph_xml.findall('.//w:pPr/w:shd', namespaces):
-        #print("e:", etree.tostring(e, pretty_print=True))
-        try:
-            attrib_val = e.attrib.get('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val')
-            attrib_color = e.attrib.get('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}color')
-            attrib_fill = e.attrib.get('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}fill')
-            #print(f"attrib_color : {attrib_color}")
-            #print(f"attrib_fill : {attrib_fill}")
-            #print(f"attrib_val : {attrib_val}")
-        except Exception:
-            pass
-    return attrib_fill
-
-
-def get_run_shading_color(xml_run_str):
-    run_xml = etree.fromstring(xml_run_str)
-    
-    namespaces = {'w':'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
-    try:
-        namespaces = {run_xml.prefix : run_xml.nsmap[run_xml.prefix]}
-    except Exception:  #print("Could not determine namespace")
-        pass
-    attrib_fill = None
-    
-    for e in run_xml.findall('.//w:rPr/w:shd', namespaces):
-        #print("e:", etree.tostring(e, pretty_print=True))
-        try:
-            attrib_val = e.attrib.get('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val')
-            attrib_color = e.attrib.get('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}color')
-            attrib_fill = e.attrib.get('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}fill')
-        except Exception:
-            pass
-    return attrib_fill
-
-# Return cell_non_greyed_text (string), cell_is_gray (integer for boolean)
-# Docx_io extracted helpers (2026-05-10). The shim wrappers below
-# (change_cell_font, cell_set_1st_paragraph, cell_add_paragraph) read
-# the entry-script globals and delegate to these implementations.
+# Per-cell read + write helpers were extracted to ``src/docx_io/cells.py``
+# in the 2026-05-10 docx_io extraction pass.
+#
+# - The two shading-detection helpers (formerly
+#   ``get_paragraph_shading_color`` and ``get_run_shading_color``) are now
+#   private to ``docx_io.cells`` (``_paragraph_shading_color`` /
+#   ``_run_shading_color``).
+# - ``get_cell_data(ctx, cell, row_n)`` lives in ``docx_io.cells`` and
+#   reads the colour-ignore list from ``ctx.config.shading_color_ignore_text``.
+# - The write shims (``change_cell_font``, ``cell_set_1st_paragraph``,
+#   ``cell_add_paragraph``) below thread the entry-script globals into
+#   the new explicit-kwarg implementations.
 from docx_io import (
     _iter_paragraph_runs,
     _cell_add_paragraph_impl,
     _change_cell_font_impl,
     _cell_set_first_paragraph_impl,
+    get_cell_data,
 )
-
-
-def get_cell_data(ctx: RuntimeContext, cell,row_n):
-    cell_is_gray = None
-    cell_is_red = None
-    cell_non_greyed_text = ''
-
-    re_enter = re.compile('enter')
-    re_newline = re.compile('\n')
-
-    n_paragraph = 0
-    n_cell_lines = 1
-
-
-    for paragraph in cell.paragraphs:
-        paragraphs_text = ""
-        n_paragraph = n_paragraph + 1
-
-        #print("paragraph:", paragraph._p.xml)
-
-        root = etree.fromstring(paragraph._p.xml)
-        p_shading_color = get_paragraph_shading_color(paragraph._p.xml)
-
-        # Materialise the run list once so both p_text (used for
-        # <pause> / <enter> counting) and the run-by-run loop below
-        # see the same source of truth — including hyperlinked text.
-        # Relying on paragraph.text would tie us to a python-docx
-        # implementation detail that has flipped behaviour across
-        # versions on whether <w:hyperlink> contents are included.
-        paragraph_runs = list(_iter_paragraph_runs(paragraph))
-        p_text = ''.join(r.text for r in paragraph_runs)
-        nb_pause = len(re.findall('(?i)(<pause>)', p_text))
-        nb_enter = len(re.findall('(?i)(<enter>)', p_text))
-
-        n_cell_lines = n_cell_lines + nb_pause + nb_enter
-
-        if p_shading_color is not None:
-            #print(paragraph.text)
-            #input("Found a shaded paragraph")
-            if p_shading_color in shading_color_ignore_text:
-                continue
-
-        #if n_paragraph > 1:
-        #    print("paragraph %d" % (n_paragraph))
-        previous_run_text = ""
-        # Walk every <w:r> below the paragraph, including those nested
-        # inside <w:hyperlink>. Using paragraph.runs alone drops the
-        # text of every clickable link in the document.
-        for run in paragraph_runs:
-            current_run_text = run.text
-            
-            #print("cell row %d has %d runs," % (row_n, len(paragraph.runs) ))
-            #print(f"current_run_text : '{current_run_text
-            
-            root = etree.fromstring(run.element.xml)
-            run_shading_color = get_run_shading_color(run.element.xml)
-            
-            if run_shading_color is not None:
-                #print(f"run.element.xml : {run.element.xml}")
-                #print(f"current_run_text : {current_run_text}")
-                #input(f"Found a shaded run {run_shading_color}")
-                if run_shading_color in shading_color_ignore_text:
-                    #print(f"Color {run_shading_color} in the list of colors to ignore text")
-                    pass
-            
-            # if re_enter.match(current_run_text):
-                # print("found enter")
-
-            if str(run.font.color.rgb) == "FF0000":
-                if cell_is_red == None:
-                    cell_is_red = 1
-            else:
-                if current_run_text != "":
-                    if cell_is_red == None:
-                        cell_is_red = 0
-                    else:
-                        cell_is_red = cell_is_red * 0
-                
-            if run.font.highlight_color == WD_COLOR_INDEX.RED :
-                pass
-
-            if run.font.highlight_color == WD_COLOR_INDEX.GRAY_25 or run.font.highlight_color == WD_COLOR_INDEX.GRAY_50 or run.font.strike or run.font.double_strike or run.font.highlight_color == WD_COLOR_INDEX.PINK or run.font.highlight_color == WD_COLOR_INDEX.RED or run_shading_color in shading_color_ignore_text:
-                #print("Found GRAY_25")
-                cell_non_greyed_text = cell_non_greyed_text + ' '
-                if cell_is_gray == None:
-                    cell_is_gray = 1
-                
-            else:
-                #print("Not gray")
-                if current_run_text != "":
-                    cell_non_greyed_text = cell_non_greyed_text + current_run_text
-                    if cell_is_gray == None:
-                        cell_is_gray = 0
-                    else:
-                        cell_is_gray = cell_is_gray * 0
-                    #return cell_is_gray
-            previous_run_text = current_run_text
-        #if (paragraphs_text.upper() == '<ENTER>' or paragraphs_text.upper() == '<PAUSE>'):
-        #    print("Found <ENTER> or <PAUSE>")
-        #    #input("press enter")
-        
-    
-    ctx.docx.from_text_nb_lines_in_cell[row_n-1] = n_cell_lines
-    #if n_cell_lines > 1:
-    #    print("%d lines" % (n_cell_lines))
-    #    #input("here")
-
-    cell_non_greyed_text = cell_non_greyed_text.replace('’', "'")
-    cell_non_greyed_text = cell_non_greyed_text.replace("\n", " ")
-    cell_non_greyed_text = cell_non_greyed_text.replace("\r", " ")
-    cell_non_greyed_text = re.sub(r'[\r\n\u2028\u2029]+', ' ', cell_non_greyed_text)
-    
-    cell_non_greyed_text = re.sub("(?i)<pause>", "", cell_non_greyed_text) #'remove <pause> case insensitive
-    cell_non_greyed_text = re.sub("(?i)<enter>", "", cell_non_greyed_text) #'remove <pause> case insensitive
-    
-    cell_non_greyed_text = re.sub(' +', ' ', cell_non_greyed_text)
-    cell_non_greyed_text = cell_non_greyed_text.strip()
-    
-
-    #if cell_is_gray == 1:
-    #    print("FOUND A GRAY CELL")
-    #time.sleep(4)
-    return cell_non_greyed_text, cell_is_gray, cell_is_red
 
 
 

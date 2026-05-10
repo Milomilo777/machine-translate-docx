@@ -28,6 +28,7 @@ from docx_io.cells import (
     add_paragraph as _cell_add_paragraph_impl,
     change_cell_font as _change_cell_font_impl,
     set_first_paragraph as _cell_set_first_paragraph_impl,
+    get_cell_data,
 )
 
 __all__ = [
@@ -35,4 +36,5 @@ __all__ = [
     "_cell_add_paragraph_impl",
     "_change_cell_font_impl",
     "_cell_set_first_paragraph_impl",
+    "get_cell_data",
 ]

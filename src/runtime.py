@@ -263,6 +263,10 @@ class ConfigCtx:
 
     json_configuration_array:    list = field(default_factory=list)
     max_translation_block_size:  int  = 1500
+    # 2026-05-10 G2 — colour list looked up by `get_cell_data` to decide
+    # whether a shaded paragraph / run should be ignored. Populated from
+    # the merged JSON configuration in the entry script after parsing.
+    shading_color_ignore_text:   list[str] = field(default_factory=list)
 
 
 # ── top-level container ───────────────────────────────────────────────────────
