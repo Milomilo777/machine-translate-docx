@@ -60,6 +60,19 @@ def _lang_suffix(target_language: str) -> str:
     return _LANG_ALPHA3B.get(target_language.lower(), target_language.replace('-', '').upper())
 
 
+def _double_lines_output_path(base_path: Path) -> Path:
+    """Return the Persian Double Lines variant of a translated docx path.
+
+    Phase 6 contract: the suffix is `_Double_Lines` and is appended after
+    the engine suffix, just before `.docx`. Examples:
+
+        sample_PER_Polish.docx  → sample_PER_Polish_Double_Lines.docx
+        sample_PER_chatGPT.docx → sample_PER_chatGPT_Double_Lines.docx
+    """
+    stem = _re.sub(r"(?i)\.docx$", "", base_path.name)
+    return base_path.with_name(f"{stem}_Double_Lines.docx")
+
+
 def _engine_suffix_for(translation_engine: str | None) -> str:
     """Filename suffix appended after the lang code, per engine.
 
@@ -1127,8 +1140,7 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
         if not (target_language or "").lower().startswith("fa"):
             return base_path
         try:
-            stem = _re.sub(r"(?i)\.docx$", "", base_path.name)
-            out_path = base_path.with_name(f"{stem}_Double_Lines.docx")
+            out_path = _double_lines_output_path(base_path)
             if out_path.exists():
                 return out_path
             src_dir = str(ROOT / "src")

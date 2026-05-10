@@ -21,6 +21,8 @@ from local_launcher import (
     LocalState,
     _append_subscriber,
     _cache_key,
+    _double_lines_output_path,
+    _engine_suffix_for,
 )
 
 
@@ -202,6 +204,37 @@ def test_cleanup_stale_cache_evicts_old_entries(tmp_path):
     assert "fresh-key" in state.cache
     assert "stale-key" not in state.cache
     assert not (state.cache_dir / "stale-key").exists()
+
+
+# ── filename helpers (phase 5 / phase 6) ─────────────────────────────────────
+
+def test_engine_suffix_for_known_engines():
+    assert _engine_suffix_for("google")          == "_Google"
+    assert _engine_suffix_for("deepl")           == "_Deepl"
+    assert _engine_suffix_for("chatgpt")         == "_chatGPT"
+    assert _engine_suffix_for("chatgpt-polish")  == "_Polish"
+    assert _engine_suffix_for("chatgpt-web")     == "_web_chatGPT"
+    assert _engine_suffix_for("perplexity-web")  == "_web_Perplexity"
+
+
+def test_engine_suffix_for_unknown_or_missing():
+    assert _engine_suffix_for("yandex") == ""
+    assert _engine_suffix_for(None)     == ""
+    assert _engine_suffix_for("")       == ""
+    assert _engine_suffix_for("  GOOGLE  ") == "_Google"  # trim + case
+
+
+def test_double_lines_output_path_appends_before_extension():
+    p = Path("/tmp/sample_PER_Polish.docx")
+    assert _double_lines_output_path(p).name == "sample_PER_Polish_Double_Lines.docx"
+    assert _double_lines_output_path(p).parent == p.parent
+
+    p2 = Path("foo.DOCX")  # case-insensitive .docx removal
+    assert _double_lines_output_path(p2).name == "foo_Double_Lines.docx"
+
+    # Stems with no engine suffix still get _Double_Lines.
+    p3 = Path("plain.docx")
+    assert _double_lines_output_path(p3).name == "plain_Double_Lines.docx"
 
 
 # ── _append_subscriber ───────────────────────────────────────────────────────

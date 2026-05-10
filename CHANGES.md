@@ -59,6 +59,17 @@ after 1800 ms to avoid the Chrome multi-download permission prompt.
 
 ### 2026-05-10 — Persian Double Lines as a splitter (agent run, branch `next/persian-double-lines-as-splitter`)
 
+**Phase 6 — `_Double_Lines` filename suffix locked in.**
+The Persian-Double-Lines output appends `_Double_Lines` before `.docx`,
+after the engine suffix. Examples: `sample_PER_Polish_Double_Lines.docx`,
+`sample_PER_chatGPT_Double_Lines.docx`. The actual splitter logic was
+already in `_apply_splitter` from phase 4; this phase extracts the
+naming bit into a pure module-level helper `_double_lines_output_path`
+so it is unit-testable without spinning up an HTTP request handler. New
+tests cover the suffix table, including unknown / blank engine names
+falling back to no tag, plus the `_Double_Lines` naming. Tests: 56
+passing (3 new for filename helpers).
+
 **Phase 5 — engine-aware output filename suffixes.**
 The bare `_TranslatePolish` polish tag is replaced by a per-engine tag
 appended after the lang code. New mapping:
