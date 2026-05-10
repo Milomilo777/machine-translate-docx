@@ -57,6 +57,93 @@ after 1800 ms to avoid the Chrome multi-download permission prompt.
 
 ## Sessions
 
+### 2026-05-11 — comprehensive audit pass (branch `audit/comprehensive-2026-05-11`)
+
+A skeptical-eye, single-night audit pass over the whole project: backend
+reliability, OpenAI cost surface, frontend UX, hygiene + docs + tooling.
+Discovery via four parallel `Explore` agents; findings + self-critique +
+conflict scan + final action list authored to
+`docs/audit-2026-05-11.md`. 14 KEEP items applied; the rest are parked
+in the same doc.
+
+**Backend hardenings**
+
+  - **R-3** — `_archive_failed_job` now falls back to a system-temp
+    directory if `runtime_dir/failures/` is unwritable, so a permission
+    error never produces a silently-missing failure folder. Both
+    branches log full traceback to stderr.
+  - **R-4** — `_append_subscriber` no longer echoes the raw exception
+    text into the JSON response (was leaking internal paths). Returns
+    `"server error"` and logs traceback to stderr.
+  - **R-5** — `_sanitize_filename` caps the basename at 200 chars,
+    preserving a trailing `.ext` of up to 10 chars, so a 1000-char
+    upload name doesn't trip Windows' 255-byte filename ceiling.
+
+**OpenAI cost surface**
+
+  - **C-2** — `openai_tools/splitting.py:calculate_openai_cost` now
+    extracts `cached_tokens` from the response and prices them at the
+    cached-tier rate (~10% of full). Previously cached tokens were
+    billed at full rate, overstating splitter cost by ~10× on cache
+    hits. Added `gpt-5.5` row so the project default has a real
+    number, not the `[WARN] No known pricing` zero.
+  - **U-2** — new `GET /pricing` endpoint exposes the per-1M-token
+    table for every model in `config.VALID_AI_MODELS`. The v2
+    frontend pulls this and shows a pre-flight cost estimate next to
+    the Translate button.
+
+**v2 frontend wave**
+
+  - **F-2** — backend `[FAIL] reason=<token> message=<text>` lines
+    were already parsed into `jobs[id].error` as `<token>: <text>`;
+    v2 now splits them in `pollStatus`, renders the token as a small
+    error-reason badge, and shows the message body alongside.
+  - **F-3** — RTL select-arrow gradient was hardcoded 45°/135°;
+    the chevron now re-declares with swapped angles under
+    `[dir="rtl"]` so Persian users see a correctly-pointing arrow.
+  - **F-4** — RTL progress-fill gradient flipped from `90deg` to
+    `270deg` so the darker accent stays at the leading edge in
+    Persian mode.
+  - **U-1** — Cancel button shows during a run; POSTs to
+    `/cancel/<jobId>`; the poll loop now distinguishes `"cancelled"`
+    from `"error"` and surfaces it as a non-error message.
+  - **U-3** — `_log.json` sidecar download link in the results list,
+    auto-rendered next to the docx download whenever a chatgpt-polish
+    run produces one.
+  - **U-4** — Session-cost watermark in the footer; reads the
+    sidecar's `summary.total_cost_usd` after every run, accumulates in
+    `localStorage('v2.sessionCostUsd')`, persists across reloads.
+  - **U-5** — Top-of-page offline banner toggled by `window.online`
+    / `window.offline` events.
+
+**Hygiene**
+
+  - **H-1** — `.gitignore` gains explicit `.claude/launch.json` and
+    `.claude/settings.local*.json` exclusions so the worktree-personal
+    files can never sneak into a commit.
+  - **H-3** — `todo.txt` (last edit 2022, references retired features)
+    removed.
+
+**Tests**
+
+  - **T-1** — `tests/test_fa_postprocess.py`: 14 unit tests pinning
+    the four hardlocks of `openai_tools.fa_postprocess.normalize_fa`
+    (Arabic→Persian letter mapping; Arabic-Indic→Persian digit
+    mapping; idempotence; ASCII / ZWNJ / harakat untouched).
+
+**Verification at end of pass**
+
+  - `pytest`: 102 / 102 pass (88 prior + 14 new).
+  - `tasks.bat smoke`: DeepL en→fr exit 0, source 42/42 preserved.
+  - `GET /pricing` returns the two whitelisted models with their
+    full input / cached / output rates.
+  - v2 cost-estimate badge: `Estimated cost: ~$0.875 (cache hits ≈
+    $0.158)` for a 50 KB chatgpt-polish job — verified live.
+
+Master tip going in: `8c8c2d6`. Tests at end: 102 / 102. Smoke
+unchanged. 14 items closed; ~15 deferred items queued in the audit
+doc for the next maintenance pass.
+
 ### 2026-05-11 — v2 frontend rebuild (branch `next/v2-frontend-rebuild`)
 
 The legacy `index.ejs` UI at `/` is **untouched** — every byte still

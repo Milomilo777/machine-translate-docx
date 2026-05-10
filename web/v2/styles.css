@@ -704,3 +704,63 @@ code {
   gap: 8px;
 }
 .footer-text-muted { color: var(--color-ink-400); }
+
+/* ── Offline banner (U-5 2026-05-11) ──────────────────────────────────── */
+.offline-banner {
+  background: var(--color-brand-50);
+  color: var(--color-brand-800);
+  border-bottom: 1px solid var(--color-brand-100);
+  padding: 8px 16px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* ── Cancel button (U-1 2026-05-11) ───────────────────────────────────── */
+.cancel-btn {
+  border-color: var(--color-brand-300);
+  color: var(--color-brand-800);
+}
+.cancel-btn:hover:not(:disabled) {
+  background: var(--color-brand-50);
+  border-color: var(--color-brand-500);
+  color: var(--color-brand-700);
+}
+
+/* ── Error-reason badge (F-2 2026-05-11) ──────────────────────────────── */
+.error-reason {
+  display: inline-block;
+  margin: 0 8px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--color-brand-700);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  text-transform: lowercase;
+  vertical-align: middle;
+}
+
+/* ── RTL fixes (F-3 + F-4 2026-05-11) ─────────────────────────────────── */
+/* The select-arrow chevron above is built from two CSS gradients angled
+   45° / 135°. In RTL we already shift its background-position to the
+   left edge, but the *direction* of the arrowheads doesn't flip — they
+   still point down-and-right, which looks broken next to a right-edge
+   chevron in Persian. Mirror them with `transform: scaleX(-1)` on the
+   gradient via background-blend (cheaper: re-declare with swapped
+   angles). */
+[dir="rtl"] .form-select {
+  background-image:
+    linear-gradient(135deg, transparent 50%, var(--color-ink-500) 50%),
+    linear-gradient(45deg, var(--color-ink-500) 50%, transparent 50%);
+}
+
+/* The progress fill uses a horizontal gradient. In RTL the bar grows
+   from the right edge (because logical `width` works), but the gradient
+   was hardcoded to 90deg (left-to-right colour ramp). Flip the angle so
+   the darker accent side stays at the leading edge in both directions. */
+[dir="rtl"] .progress-fill {
+  background: linear-gradient(270deg, var(--color-brand-500), var(--color-brand-700));
+}
