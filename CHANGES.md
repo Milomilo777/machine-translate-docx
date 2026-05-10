@@ -57,6 +57,139 @@ after 1800 ms to avoid the Chrome multi-download permission prompt.
 
 ## Sessions
 
+### 2026-05-10 — Checkpoint 3 + 4: prompt cleanup + Makefile (branch `next/architecture-cleanup-after-audit`)
+
+**C3 (limited scope).** Initial plan was to move ~80 helpers out of
+the entry script. Decision after a survey: most of the candidates
+(file-mode helpers, statistics, docx parse) are too entangled with
+module globals — extracting them now risks regression for limited
+maintenance benefit. Did the high-value low-risk subset:
+
+  - `selenium_webservice_perplexity_translate` extracted to
+    `src/engines/perplexity_webservice.py`. The entry script imports
+    it back; future C3.x cycles can drop the back-import once all
+    runner-injection sites are updated.
+  - `build_translation_prompt` and the `engines._prompts` shim
+    deleted entirely — they were only consumed by the chatgpt-web /
+    perplexity-web engines that were removed in C1.
+
+Entry script line count down by ~80 lines net.
+
+**C4. Local task runner.** Two new files:
+
+  - `Makefile` — GNU make for unix / macOS / git-bash.
+  - `tasks.bat` — Windows command-prompt shim with the same target
+    names.
+
+Targets:
+
+  - `test`        — pytest unit tests (63/63 pass)
+  - `smoke`       — DeepL en→fr quick run on the fixture
+  - `live-deepl`  — DeepL en→fr + en→fa real-file runs
+  - `live-google` — Google en→fr + en→fa real-file runs
+  - `live-all`    — both engines, all targets
+  - `clean`       — wipe `_real_test/` and stale `__pycache__/`
+
+Override the Python interpreter with the `PYTHON` env var:
+
+```
+PYTHON=E:/Python311/python.exe make test
+```
+
+CI hosted on GitHub Actions was discussed and explicitly skipped —
+zero ongoing cost, no external dependencies, no GitHub minutes.
+
+**Smoke verified.** `tasks.bat smoke` produced
+`smoke_FRE_Deepl.docx` in 25 s. `tasks.bat test` runs 63/63 unit
+tests in ~2 s.
+
+Net result of the four checkpoints: web engines deleted, entry
+script renamed + importable, dispatch logic in one place, local
+task runner. Architecture is materially cleaner; nothing regressed.
+
+### 2026-05-10 — Checkpoint 2: entry rename + dispatch extracted (branch `next/architecture-cleanup-after-audit`)
+
+**C2.1.** Renamed `src/machine-translate-docx.py` →
+`src/machine_translate_docx.py`. The hyphen made the entry script
+un-importable as a Python module — every helper that needed sharing
+had to be extracted to a sibling file and re-imported back into the
+entry script via a shim. Now the module is importable directly from
+anywhere in the codebase. Updated references in `local_launcher.py`,
+`run.bat`, `compile.bat`, `compile/windows/compile.bat`, `package.json`,
+`server.js`, and the integration test.
+
+**C2.2-3.** New file `src/dispatch.py`. Two pure functions plus an
+injection point:
+
+  * `use_phrasesblock(engine, method) -> bool` — the per-engine
+    "should we use the block-loop runner?" predicate. Was previously
+    inline in `translate_docx`.
+  * `set_translation_function(ctx)` — resolves
+    `ctx.engine.dispatcher` for the per-call wrapper. Was previously
+    a 45-line function in the entry script.
+  * `set_array_dispatcher(fn)` — registers the array-lookup helper
+    that still lives in the entry script. Used to avoid a circular
+    import; goes away when C3 extracts the helper too.
+
+The two functions share the same engine ↔ method matrix and cannot
+drift apart — they're literally next to each other now. The entry
+script's `translate_docx` body shrank from ~25 lines of `if/elif`
+chains to one call: `if _dispatch_use_phrasesblock(...)`.
+
+63/63 unit tests still pass.
+
+Next: Checkpoint 3 — extract the remaining ~80 functions still in
+the entry script to engine-specific modules.
+
+### 2026-05-10 — Checkpoint 1: web engines deleted (branch `next/architecture-cleanup-after-audit`)
+
+First of four checkpoints in the post-audit architecture cleanup. The
+two web-LLM engines (chatgpt-web, perplexity-web) were re-activated in
+phase 8 of the persian-double-lines roadmap but never reached a
+working live state — chatgpt.com Cloudflare-gates guest sessions, and
+perplexity.ai's selectors kept drifting. Their continued presence in
+the codebase was pure tax: every shared-helper refactor had to look
+at them, every UI list had to mention them, every dispatch table
+needed an entry. Deleted in five small commits on a fresh branch.
+
+Recovery if a future revival ever becomes worthwhile:
+
+  - git tag `archive/persian-double-lines-as-splitter-2026-05-10`
+    holds the working code at branch tip.
+  - Remote `upstream-old` (the legacy translation-robot/main) holds
+    the pre-refactor original.
+  - The legacy timing snapshot is preserved in `engines/_timing.py`'s
+    module docstring as a historical reference.
+
+**C1.1.** Deleted `src/engines/chatgpt_web.py`, `perplexity_web.py`,
+`_prompts.py` (only consumed by the two web engines).
+
+**C1.2.** Removed dispatch entries: `runner.py:translate_once` chatgpt-web
+and perplexity-web branches, the `is_web_llm` gate around the Google
+fallback (no longer needed), entry-script `set_translation_function`
+elif branches, perplexity's "web" entry in `use_phrasesblock`, CLI
+engine_method routing, `engines/__init__.py` `EngineName.CHATGPT_WEB`
++ `PERPLEXITY_WEB` members and DISPATCH_TABLE entries.
+
+**C1.3.** Dropped `CHATGPT_WEB_*` and `PERPLEXITY_WEB_*` constants from
+`engines/_timing.py` (25 constants gone). Module docstring's legacy
+snapshot kept as historical reference.
+
+**C1.4.** Removed UI options: `<option value="chatgpt-web">` and
+`perplexity-web` from `index.ejs` and `web/v2/index.html`; cleared
+the corresponding querySelectors and comments. `local_launcher.py`
+`_engine_suffix_for` table + `_map_engine` cases dropped.
+
+**C1.5.** `tests/test_engines_registry.py` web-engine assertions
+replaced with `test_web_engines_removed` — explicitly asserts the
+modules and `EngineName` members are GONE so a future accidental
+re-introduction fails the test. `tests/test_launcher_endpoints.py`
+suffix table assertion updated to expect "" for the deleted engines.
+
+63/63 unit tests pass.
+
+Next: Checkpoint 2 — rename entry script + extract dispatch.
+
 ### 2026-05-10 — perplexity-web block-mode + chatgpt-web inter-block revert (branch `next/persian-double-lines-as-splitter`)
 
 User-observed runtime asymmetry: chatgpt-web was sending block-by-block

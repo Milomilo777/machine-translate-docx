@@ -149,145 +149,16 @@ DEEPL_COPY_BUTTON_WAIT: Final[float] = 0.2
 Multiple fallback selectors share this timeout."""
 
 
-# ── ChatGPT-web (chatgpt.com guest session) ────────────────────────────────
-# Active path: ``selenium_chrome_chatgpt_translate`` in ``engines/chatgpt_web.py``.
-
-CHATGPT_WEB_PRE_SLEEP: Final[float] = 0.0
-"""OURS: was ``0.9`` in phase 8, now ``0.0`` to match LEGACY. The
-legacy code has no pre-sleep — each call's ``delete_all_cookies()`` +
-``driver.get("https://chatgpt.com/")`` is the de-facto throttle. The
-0.9 s was a defensive guard added before we tested with real traffic;
-on guest sessions the host's page-load time alone is enough to keep
-us under any rate-limit threshold."""
-
-CHATGPT_WEB_ACCEPT_BUTTON_WAIT: Final[float] = 0.2
-"""LEGACY: ``WebDriverWait(0.2)`` for the Accept-all button after
-page load. User-reverted 2026-05-10 from 0.6 — the page-setup
-overhead between blocks was too long; only post-submit waits stay
-elevated."""
-
-CHATGPT_WEB_LOGGED_OUT_LINK_WAIT: Final[float] = 2.5
-"""OURS: ``WebDriverWait(2.5)`` (legacy was 1.2). chatgpt.com guest
-sessions in 2026 take longer to render the modal than they did in
-phase 8; 1.2 s often missed it and the modal blocked the textarea
-click that follows. User-reverted 2026-05-10 from 7.5 — the
-between-blocks overhead was too high; only post-submit timings
-stay elevated."""
-
-CHATGPT_WEB_STAY_LOGGED_OUT_WAIT: Final[float] = 0.5
-"""OURS: ``WebDriverWait(0.5)`` (legacy 0.3). User-reverted
-2026-05-10 from 1.5 — page-setup is fast, only post-submit needs
-the long waits."""
-
-CHATGPT_WEB_AFTER_INJECT_SLEEP: Final[float] = 2.0
-"""OURS: ``sleep(2)`` after the JS textarea injection, before
-clicking submit (legacy was 1.0). User-reverted 2026-05-10 from
-6 — 2 s is enough for the composer to register the pasted text;
-the real bottleneck was the missing post-submit wait, not this
-pre-submit one."""
-
-CHATGPT_WEB_AFTER_SUBMIT_SLEEP: Final[float] = 5.0
-"""NEW (2026-05-10): ``sleep(5)`` AFTER the submit click and
-BEFORE we start polling for the Stop-streaming button. The legacy
-body went straight from ``safe_click(submit)`` into
-``WebDriverWait(1).until(stop_streaming)`` — if ChatGPT takes more
-than 1 s to begin streaming (which is normal in 2026), the
-WebDriverWait raised TimeoutException, the loop ``break``-ed, and
-the body tried to read a response that wasn't there yet. Five
-seconds is a generous floor before polling starts."""
-
-CHATGPT_WEB_STOP_BUTTON_FIND_WAIT: Final[float] = 3.0
-"""NEW (2026-05-10): per-iteration ``WebDriverWait`` timeout used
-inside the Stop-streaming poll loop (legacy hardcoded ``timeout =
-1`` inside the function body). Three seconds gives the server
-time to render the streaming UI without hanging too long if the
-button is genuinely gone (i.e. streaming finished). The polling
-naturally exits as soon as the button disappears, so a longer
-floor doesn't slow the happy path."""
-
-CHATGPT_WEB_STREAMING_POLL: Final[float] = 0.75
-"""OURS: ``time.sleep(0.75)`` per iteration of the Stop-streaming
-poll loop (legacy 0.25; tripled). The fast cadence wasn't useful —
-ChatGPT streams for seconds at minimum, so 0.75 s halves the CPU
-spin without delaying the exit."""
-
-CHATGPT_WEB_MAX_STREAMING_WAIT: Final[float] = 180.0
-"""OURS: ``max_wait_time = 180`` (legacy 40; intermediate 60;
-tripled per user direction). Longer subtitle blocks plus slower
-guest-session streaming need more headroom; the loop still exits
-early as soon as the Stop button disappears, so a higher cap
-doesn't slow the happy path."""
-
-
-# ── Perplexity-web (perplexity.ai via google.com search) ────────────────────
-# Active path: ``selenium_chrome_perplexity_translate`` in ``engines/perplexity_web.py``.
-
-PERPLEXITY_WEB_PRE_SLEEP: Final[float] = 0.0
-"""OURS: was ``0.9`` in phase 8, now ``0.0`` to match LEGACY. Same
-reasoning as ``CHATGPT_WEB_PRE_SLEEP``."""
-
-PERPLEXITY_WEB_GOOGLE_ACCEPT_WAIT: Final[float] = 0.2
-"""LEGACY: ``WebDriverWait(0.2)`` for Accept-all on google.com (the
-anti-bot dance starts there)."""
-
-PERPLEXITY_WEB_LINK_SCROLL_WAIT: Final[float] = 0.2
-"""LEGACY: ``time.sleep(0.2)`` after scrolling the perplexity link
-into view, before the JS click."""
-
-PERPLEXITY_WEB_GOOGLE_LINK_WAIT: Final[float] = 5.0
-"""LEGACY: ``WebDriverWait(5)`` for the perplexity link on google
-search results."""
-
-PERPLEXITY_WEB_TEXTAREA_WAIT: Final[float] = 10.0
-"""OURS: ``WebDriverWait(10)`` (legacy was 7). perplexity.ai got
-heavier in 2026 — guest sessions can take ~5 s just to render the
-ask-input box."""
-
-PERPLEXITY_WEB_SUBMIT_BUTTON_WAIT: Final[float] = 5.0
-"""OURS: ``WebDriverWait(5)`` (legacy was 1). The Submit button only
-becomes enabled after the textarea registers the pasted text;
-1 s often raced and missed it, causing the engine to bail before
-ever submitting. User-reported: "perplexity opens the site, doesn't
-give it time to translate, closes and reopens" — this is the wait
-that was too short."""
-
-PERPLEXITY_WEB_AFTER_SUBMIT_SLEEP: Final[float] = 2.0
-"""OURS: ``time.sleep(2)`` after the submit click (legacy was 1).
-Lets the Stop-generating button render before we start polling for
-its disappearance — otherwise the first poll sees no button and the
-loop exits as if generation already finished."""
-
-PERPLEXITY_WEB_STOP_BUTTON_POLL: Final[float] = 0.5
-"""OURS: ``time.sleep(0.5)`` per Stop-generating poll (legacy was
-0.25). The fast cadence wasn't necessary — perplexity's streaming
-runs for seconds at minimum, so 0.5 s halves the CPU spin without
-delaying the exit."""
-
-PERPLEXITY_WEB_STOP_BUTTON_TIMEOUT: Final[float] = 300.0
-"""LEGACY: ``timeout = 300``. Max seconds to wait for the
-Stop-generating button to disappear. Long because perplexity's
-"Pro Search" mode can stream for a couple of minutes."""
-
-PERPLEXITY_WEB_STOP_BUTTON_POLL_INTERVAL: Final[float] = 1.0
-"""LEGACY: ``poll_interval = 1``. The fast-path uses
-``PERPLEXITY_WEB_STOP_BUTTON_POLL``; this is the slow-path interval
-when the Stop button is briefly missing from the DOM."""
-
-PERPLEXITY_WEB_PROSE_FIRST_WAIT: Final[float] = 8.0
-"""OURS: ``WebDriverWait(8)`` (legacy was 2.5). The prose div
-sometimes appears late on slower guest sessions; 2.5 s missed it
-and triggered the retry path immediately."""
-
-PERPLEXITY_WEB_PROSE_RETRY_SLEEP: Final[float] = 0.5
-"""OURS: ``time.sleep(0.5)`` before the prose div retry (legacy was
-0.25). Gives the page a tick to actually finish painting after
-streaming ends."""
-
-PERPLEXITY_WEB_PROSE_VISIBLE_WAIT: Final[float] = 15.0
-"""OURS: ``WebDriverWait(15)`` (legacy was 5). The retry waits up
-to 15 s for the prose div to be visible — the whole pipeline before
-this point can take 30+ s on slow sessions, so a longer tail wait
-here is the cheap fix that turns "looped" into "succeeded once"."""
+# ── Removed: chatgpt-web + perplexity-web ──────────────────────────────────
+# The two web-LLM engines were deleted in the 2026-05-10 cleanup pass —
+# chatgpt.com Cloudflare-gates guest sessions, perplexity.ai's selectors
+# kept drifting, and neither ever reached a working live state.
+#
+# The legacy snapshot in this module's docstring is preserved as a
+# historical reference. If a future revival becomes worthwhile, the
+# git tag ``archive/persian-double-lines-as-splitter-2026-05-10`` and
+# the ``upstream-old`` remote both contain the working code and the
+# matching constants (``CHATGPT_WEB_*``, ``PERPLEXITY_WEB_*``).
 
 
 __all__ = [
@@ -304,26 +175,4 @@ __all__ = [
     "DEEPL_BUSY_POLL_LATER_WAIT",
     "DEEPL_BUSY_POLL_MAX_ITERATIONS",
     "DEEPL_COPY_BUTTON_WAIT",
-    "CHATGPT_WEB_PRE_SLEEP",
-    "CHATGPT_WEB_ACCEPT_BUTTON_WAIT",
-    "CHATGPT_WEB_LOGGED_OUT_LINK_WAIT",
-    "CHATGPT_WEB_STAY_LOGGED_OUT_WAIT",
-    "CHATGPT_WEB_AFTER_INJECT_SLEEP",
-    "CHATGPT_WEB_AFTER_SUBMIT_SLEEP",
-    "CHATGPT_WEB_STOP_BUTTON_FIND_WAIT",
-    "CHATGPT_WEB_STREAMING_POLL",
-    "CHATGPT_WEB_MAX_STREAMING_WAIT",
-    "PERPLEXITY_WEB_PRE_SLEEP",
-    "PERPLEXITY_WEB_GOOGLE_ACCEPT_WAIT",
-    "PERPLEXITY_WEB_LINK_SCROLL_WAIT",
-    "PERPLEXITY_WEB_GOOGLE_LINK_WAIT",
-    "PERPLEXITY_WEB_TEXTAREA_WAIT",
-    "PERPLEXITY_WEB_SUBMIT_BUTTON_WAIT",
-    "PERPLEXITY_WEB_AFTER_SUBMIT_SLEEP",
-    "PERPLEXITY_WEB_STOP_BUTTON_POLL",
-    "PERPLEXITY_WEB_STOP_BUTTON_TIMEOUT",
-    "PERPLEXITY_WEB_STOP_BUTTON_POLL_INTERVAL",
-    "PERPLEXITY_WEB_PROSE_FIRST_WAIT",
-    "PERPLEXITY_WEB_PROSE_RETRY_SLEEP",
-    "PERPLEXITY_WEB_PROSE_VISIBLE_WAIT",
 ]

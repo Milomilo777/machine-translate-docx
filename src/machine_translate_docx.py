@@ -215,13 +215,9 @@ from engines.deepl import (
     deepl_close_messages,
     selenium_chrome_deepl_translate,
 )
-# build_translation_prompt now also lives in engines/_prompts.py so the
-# web-Selenium engines (chatgpt_web, perplexity_web) can import it
-# directly. A local `def build_translation_prompt(...)` later in this
-# file shadows the imported name with an identical body; both resolve
-# to the same prompt text. Kept as a safety import so the symbol is
-# always reachable even if the local def is later moved or deleted.
-import engines._prompts as _engine_prompts  # noqa: F401
+# Stale ``engines._prompts`` shim was removed in C3 of the 2026-05-10
+# cleanup. The only callers of ``build_translation_prompt`` were the
+# now-deleted chatgpt-web / perplexity-web engines.
 from runner import selenium_chrome_translate_maxchar_blocks as _runner_translate_maxchar_blocks
 
 # Module-level RuntimeContext singleton — Phase F1 transition shim.
@@ -902,23 +898,22 @@ elif translation_engine == 'deepl':
     else:
         engine_method = 'phrasesblock'
 elif translation_engine == 'chatgpt':
+    # chatgpt-web was removed in the 2026-05-10 cleanup; only the API
+    # path remains for chatgpt.
     if engine_method == 'api' or use_api == True:
         engine_method = 'api'
         showbrowser = False
-    elif engine_method == 'web':
-        # Phase 8 — chatgpt-web Selenium engine reactivated.
-        engine_method = 'web'
     else:
-        engine_method = 'phrasesblock'
+        engine_method = 'api'
+        showbrowser = False
 
 elif translation_engine == 'perplexity':
-    if engine_method  == 'webservice':
+    # perplexity-web was removed in the 2026-05-10 cleanup; only the
+    # webservice path remains.
+    if engine_method == 'webservice':
         engine_method = 'webservice'
-    elif engine_method == 'web':
-        # Phase 8 — perplexity-web Selenium engine reactivated.
-        engine_method = 'web'
     else:
-        engine_method = 'phrasesblock'
+        engine_method = 'webservice'
 else:
     engine_method = "web"
 
@@ -1855,128 +1850,26 @@ def selenium_chrome_perplexity_wait_log_in():
 
 
 
-def build_translation_prompt(source_lang, dest_lang, text):
-    lines = text.split("\n")
-    numbered_lines = [f"Line {i+1}: {line}" for i, line in enumerate(lines)]
-    numbered_text = "\n".join(numbered_lines)
-    
-    prompt = (
-        f"You are a professional subtitling translator.\n"
-        f"Your task is to translate {source_lang} into {dest_lang}.\n\n"
-        f"Overall context and style:\n"
-        f"- Read all lines first so you understand the full context.\n"
-        f"- Treat the entire input as one coherent text when choosing tone and terminology.\n"
-        f"- Ensure consistent translations for recurring terms, names, and concepts across all lines.\n"
-        f"- If part of the text to translate is already in {dest_lang}, treat it as a translation memory and keep it literal.\n"
-        f"Line-by-line constraints:\n"
-        f"- Translate line by line: produce exactly one output line for each input line.\n"
-        f"- Do NOT merge, split, add, remove, or repeat lines.\n"
-        f"- Use formal, standard and natural {dest_lang} (non-colloquial);preserve all information.\n"
-        f"- But the wording inside each line is allowed to become a bit shorter or longer in order to produce natural {dest_lang}.\n"
-        f"- Preserve the input line order.\n"
-        f"- Parentheses and multiple sentences within a line belong to that same line.\n"
-        f"- Only translate lines that start with 'Line ' followed by a number and a semicolon.\n"
-        f"- For each such line, translate only the TEXT after the first semicolon.\n"
-        f"- After translation, do NOT include 'Line N:' in the output; only output the translated TEXT.\n"
-        f"- Output only {dest_lang} text, with no explanations or comments.\n"
-        f"- Produce exactly {len(lines)} output lines, in the same order as the input, there should be no blank lines.\n"
-        f"- End each output line with a single newline character also known as line feed or LF (do not add extra blank lines between translated lines in the output).\n"
-    )
-    
-    if dest_lang.lower() == 'persian':
-        prompt += (
-            "- When writing decimal numbers in Persian, use a dot as the decimal separator, e.g. write \u00ab\u06F1\u06F2.\u06F5\u00bb not \u00ab\u06F1\u06F2/\u06F5\u00bb (and not \u00ab\u06F1\u06F2,\u06F5\u00bb).\n"
-            "- Do NOT add diacritics (no short vowels or tashkeel such as \u064E \u0650 \u064F \u0651 \u064C \u064B \u064D),  unless a rare word would be ambiguous without them.\n"
-            "- Apply the following fixed terminology rules whenever these English forms appear:\n"
-            "  - \"animal-person\" / \"animal-people\"  \u2192  \u00ab\u0634\u062E\u0635-\u062D\u06CC\u0648\u0627\u0646\u00bb / \u00ab\u0627\u0634\u062E\u0627\u0635-\u062D\u06CC\u0648\u0627\u0646\u00bb\n"
-            "  - \"tiger-person\" / \"tiger-people\"    \u2192  \u00ab\u0634\u062E\u0635-\u0628\u0628\u0631\u00bb   / \u00ab\u0627\u0634\u062E\u0627\u0635-\u0628\u0628\u0631\u00bb\n"
-            "  - \"cow-person\" / \"cow-people\"        \u2192  \u00ab\u0634\u062E\u0635-\u06AF\u0627\u0648\u00bb   / \u00ab\u0627\u0634\u062E\u0627\u0635-\u06AF\u0627\u0648\u00bb\n"
-            "  (Do NOT translate them as ordinary “animal(s) / tiger(s) / cow(s)”.)\n"
-        )
-    
-    prompt += f"Here is the text to translate:\n{numbered_text}\n"
-
-    return prompt
-
-def selenium_webservice_perplexity_translate(ctx: RuntimeContext, to_translate, retry_count):
-    """HTTP forwarder for Perplexity webservice. Threaded in Phase F1.1:
-    reads ``ctx.language.src_lang_name`` and ``ctx.language.dest_lang_name``
-    in place of the historical module globals."""
-    try:
-        url = "http://127.0.0.1:8000/translate"
-        payload = {
-            "src_lang_name":  ctx.language.src_lang_name,
-            "dest_lang_name": ctx.language.dest_lang_name,
-            "text":           to_translate,
-            "engine":         "perplexity",
-            "retry_count":    2,
-        }
-        response = requests.post(url, json=payload)
-        translation = response.json()['translation']
-        return True, translation
-    except Exception:
-        return False, ""
+# build_translation_prompt was deleted in C3 of the 2026-05-10
+# cleanup pass — its only callers were the now-deleted chatgpt-web /
+# perplexity-web engines.
 
 
-def set_translation_function(ctx: RuntimeContext):
-    """Resolve the per-call dispatcher for the active engine + method.
+# selenium_webservice_perplexity_translate was extracted to
+# ``src/engines/perplexity_webservice.py`` in C3.1 of the 2026-05-10
+# architecture cleanup. Imported here so the runner-injection call
+# site (and any historical caller) keeps resolving.
+from engines.perplexity_webservice import selenium_webservice_perplexity_translate
 
-    Threaded in Phase F1.4: writes ``ctx.engine.dispatcher`` instead of
-    the historical module-level pointer
-    ``selenium_chrome_machine_translate_once``. Reads engine + method
-    + max-block-size + splitonly through ``ctx`` instead of globals.
 
-    R15: this is the function that re-points the dispatcher during the
-    DeepL phrasesblock → singlephrase fallback. The structural test
-    `test_engine_method_flip_via_ctx` pins the contract.
-
-    Ctx-aware engine functions (e.g. selenium_chrome_deepl_translate
-    after F1.5) accept ``(ctx, text, retry)``. The dispatcher caller in
-    selenium_chrome_machine_translate passes only ``(text, retry)`` so
-    we bind ``ctx`` here via functools.partial.
-    """
-    import functools
-
-    if not ctx.flags.splitonly:
-        print("\ntranslation_engine=%s" % (ctx.engine.engine))
-        print("engine_method=%s"        % (ctx.engine.method))
-        if ctx.engine.method == "phrasesblock":
-            print("maximum number of characters per block: %d" % ctx.config.max_translation_block_size)
-
-    if ctx.engine.engine == 'deepl':
-        if ctx.engine.method == 'phrasesblock':
-            ctx.engine.dispatcher = selenium_chrome_translate_get_from_text_array
-        else:
-            ctx.engine.dispatcher = functools.partial(selenium_chrome_deepl_translate, ctx)
-    elif ctx.engine.engine == 'chatgpt' and ctx.engine.method == 'web':
-        # Phase 8 — restored chatgpt-web engine. Per-phrase web scraping
-        # of chatgpt.com via guest session; the wrapper sleeps 900 ms
-        # before each call and falls back to "" on any failure so the
-        # block-loop never hangs.
-        from engines import chatgpt_web as _cw
-        def _chatgpt_web_dispatch(text, *_args, _ctx=ctx, _mod=_cw):
-            ok, result = _mod.translate(_ctx, text)
-            return result if ok else ""
-        ctx.engine.dispatcher = _chatgpt_web_dispatch
-    elif ctx.engine.engine == 'perplexity' and ctx.engine.method == 'web':
-        # Phase 8 — restored perplexity-web engine. Mirrors the
-        # chatgpt-web adapter: 900 ms pre-sleep, graceful failure.
-        from engines import perplexity_web as _pw
-        def _perplexity_web_dispatch(text, *_args, _ctx=ctx, _mod=_pw):
-            ok, result = _mod.translate(_ctx, text)
-            return result if ok else ""
-        ctx.engine.dispatcher = _perplexity_web_dispatch
-    elif ctx.engine.engine == 'chatgpt':
-        # API path populates translation_array up front; dispatcher
-        # is just an array lookup by phrase index.
-        ctx.engine.dispatcher = selenium_chrome_translate_get_from_text_array
-    else:
-        if ctx.engine.method == 'textfile':
-            ctx.engine.dispatcher = selenium_chrome_translate_get_from_text_array
-        elif ctx.engine.method == 'singlephrase':
-            ctx.engine.dispatcher = functools.partial(selenium_chrome_google_translate, ctx)
-        else:
-            ctx.engine.dispatcher = selenium_chrome_translate_get_from_text_array
+# set_translation_function was extracted to ``src/dispatch.py`` in the
+# 2026-05-10 architecture cleanup. The dispatch module is the single
+# source of truth for engine routing — both ``set_translation_function``
+# AND the ``use_phrasesblock`` predicate live there, so future drift
+# between them is impossible.
+from dispatch import set_translation_function, use_phrasesblock as _dispatch_use_phrasesblock
+import dispatch as _dispatch_module
+_dispatch_module.set_array_dispatcher(selenium_chrome_translate_get_from_text_array)
 
 
 def selenium_chrome_machine_translate(ctx: RuntimeContext, to_translate, index):
@@ -3342,33 +3235,12 @@ def translate_docx(ctx: RuntimeContext):
         return translation_succeded
 
     # ------------------------------------------------------------------
-    # Phrase-block logic (centralized, no duplication)
+    # Phrase-block logic — predicate lives in src/dispatch.py so it
+    # can never drift from set_translation_function (both share the
+    # same engine ↔ method matrix). See dispatch.use_phrasesblock for
+    # the per-engine policy.
     # ------------------------------------------------------------------
-    use_phrasesblock = False
-
-    if translation_engine == "chatgpt":
-        # ChatGPT always uses phrase-block logic
-        use_phrasesblock = True
-    elif translation_engine == "deepl":
-        # Deepl: phrase-block only for the "phrasesblock" method
-        use_phrasesblock = engine_method == "phrasesblock"
-    elif translation_engine == "perplexity":
-        # Perplexity: phrase-block for HTTP webservice, classic
-        # phrasesblock, AND the live web-LLM (perplexity-web). The
-        # web variant was previously line-by-line because "web" was
-        # missing from this list — user-reported on 2026-05-10:
-        # "perplexity sends line-by-line but chatgpt-web sends
-        # block-by-block; align them."
-        use_phrasesblock = engine_method in ("phrasesblock", "webservice", "web")
-    elif translation_engine == "google":
-        # Google: phrasesblock joins many phrases into one URL, then
-        # splits on `\n`. Much faster than singlephrase (one round-trip
-        # per block instead of one per phrase). The classic file-mode
-        # paths (`javascript`, `textfile`, `xlsxfile`) handled their
-        # array population themselves and returned earlier.
-        use_phrasesblock = engine_method == "phrasesblock"
-
-    if use_phrasesblock:
+    if _dispatch_use_phrasesblock(translation_engine, engine_method):
         translation_succeded = translate_from_phrasesblock(ctx)
 
     return translation_succeded

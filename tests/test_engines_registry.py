@@ -1,4 +1,11 @@
-"""Mock-based tests for the engines package registry."""
+"""Mock-based tests for the engines package registry.
+
+chatgpt-web and perplexity-web were removed in the 2026-05-10 cleanup
+pass — Cloudflare gating made them never-reach-prod. The corresponding
+assertions ("web engines marked active", "dispatch table has web
+engines") were dropped; this file now asserts they are NOT present so
+a future accidental re-introduction is caught.
+"""
 from __future__ import annotations
 
 import sys
@@ -17,8 +24,6 @@ def test_engine_name_values_match_cli_strings():
     assert EngineName.DEEPL           == "deepl"
     assert EngineName.CHATGPT         == "chatgpt"
     assert EngineName.CHATGPT_POLISH  == "chatgpt-polish"
-    assert EngineName.CHATGPT_WEB     == "chatgpt-web"
-    assert EngineName.PERPLEXITY_WEB  == "perplexity-web"
 
 
 def test_active_engines_set_complete():
@@ -26,8 +31,6 @@ def test_active_engines_set_complete():
     assert EngineName.DEEPL           in ACTIVE_ENGINES
     assert EngineName.CHATGPT         in ACTIVE_ENGINES
     assert EngineName.CHATGPT_POLISH  in ACTIVE_ENGINES
-    assert EngineName.CHATGPT_WEB     in ACTIVE_ENGINES
-    assert EngineName.PERPLEXITY_WEB  in ACTIVE_ENGINES
 
 
 def test_dispatch_table_has_google_entry():
@@ -36,35 +39,24 @@ def test_dispatch_table_has_google_entry():
     assert DISPATCH_TABLE[EngineName.GOOGLE] is google_engine.translate
 
 
-def test_dispatch_table_has_web_engines():
-    """Phase 8 restored chatgpt-web and perplexity-web."""
-    from engines import chatgpt_web, perplexity_web
-    assert DISPATCH_TABLE[EngineName.CHATGPT_WEB]    is chatgpt_web.translate
-    assert DISPATCH_TABLE[EngineName.PERPLEXITY_WEB] is perplexity_web.translate
-    # Both adapters take (ctx, text) and return (ok, translation).
-    import inspect
-    for fn in (chatgpt_web.translate, perplexity_web.translate):
-        sig = inspect.signature(fn)
-        params = list(sig.parameters)
-        assert params[0] == "ctx"
-        assert params[1] == "text"
+def test_web_engines_removed():
+    """chatgpt-web and perplexity-web were deleted in 2026-05-10.
 
+    The modules and the corresponding ``EngineName`` members are gone.
+    A future accidental re-introduction would fail this test.
+    """
+    # Module imports must fail.
+    import importlib
+    for mod_name in ("engines.chatgpt_web", "engines.perplexity_web"):
+        try:
+            importlib.import_module(mod_name)
+            assert False, f"{mod_name} should not be importable"
+        except ImportError:
+            pass
 
-def test_web_engines_marked_active():
-    """Phase 8 flipped INACTIVE = False on the restored web modules."""
-    from engines import chatgpt_web, perplexity_web
-    assert chatgpt_web.INACTIVE    is False
-    assert perplexity_web.INACTIVE is False
-    # Pre-sleep aligned with legacy parity in the 2026-05-10 timing pass.
-    # The legacy translation-robot/main has no inter-call sleep on either
-    # web engine — page reload acts as the de-facto throttle. The phase 8
-    # 0.9 s defensive guard was unjustified additive cost; now 0.0.
-    # Source of truth: ``engines._timing`` constants.
-    from engines._timing import CHATGPT_WEB_PRE_SLEEP, PERPLEXITY_WEB_PRE_SLEEP
-    assert chatgpt_web.WEB_SLEEP_BETWEEN_PHRASES_SEC    == CHATGPT_WEB_PRE_SLEEP
-    assert perplexity_web.WEB_SLEEP_BETWEEN_PHRASES_SEC == PERPLEXITY_WEB_PRE_SLEEP
-    assert CHATGPT_WEB_PRE_SLEEP    == 0.0
-    assert PERPLEXITY_WEB_PRE_SLEEP == 0.0
+    # The corresponding EngineName members must not exist.
+    assert not hasattr(EngineName, "CHATGPT_WEB"),    "CHATGPT_WEB EngineName came back"
+    assert not hasattr(EngineName, "PERPLEXITY_WEB"), "PERPLEXITY_WEB EngineName came back"
 
 
 def test_google_translate_signature():

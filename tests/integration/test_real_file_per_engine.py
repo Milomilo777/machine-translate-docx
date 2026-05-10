@@ -47,7 +47,7 @@ pytestmark = pytest.mark.live   # whole module is opt-in
 
 
 ROOT     = Path(__file__).resolve().parents[2]
-SCRIPT   = ROOT / "src" / "machine-translate-docx.py"
+SCRIPT   = ROOT / "src" / "machine_translate_docx.py"
 FIXTURE  = ROOT / "tests" / "fixtures" / "sample_hyperlink.docx"
 PYTHON   = os.environ.get("MTD_TEST_PYTHON", sys.executable)
 DEFAULT_MODEL = os.environ.get("MTD_TEST_MODEL", "gpt-5.4-mini")

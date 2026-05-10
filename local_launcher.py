@@ -44,7 +44,7 @@ SUBSCRIBERS_FILE = ROOT / "subscribers.txt"
 CACHE_TTL_SEC = 36 * 60 * 60
 _API_ENGINES = frozenset({"chatgpt", "chatgpt-polish"})  # only API engines cache
 
-# ISO 639-2/B codes matching what machine-translate-docx.py produces via langcodes
+# ISO 639-2/B codes matching what machine_translate_docx.py produces via langcodes
 _LANG_ALPHA3B = {
     'fa': 'PER', 'ar': 'ARA', 'de': 'GER', 'fr': 'FRE',
     'zh-hans': 'CHI', 'zh-hant': 'CHI', 'zh-cn': 'CHI', 'zh-tw': 'CHI',
@@ -81,13 +81,13 @@ def _engine_suffix_for(translation_engine: str | None) -> str:
     has to guess the output filename because the subprocess never
     printed `Saved file name:`.
     """
+    # chatgpt-web / perplexity-web were removed in the 2026-05-10
+    # cleanup pass — Cloudflare gating made them never-reach-prod.
     return {
         'google':         '_Google',
         'deepl':          '_Deepl',
         'chatgpt':        '_chatGPT',
         'chatgpt-polish': '_Polish',
-        'chatgpt-web':    '_web_chatGPT',
-        'perplexity-web': '_web_Perplexity',
     }.get((translation_engine or '').lower().strip(), '')
 
 
@@ -273,7 +273,7 @@ def _build_placeholder_docx(
     doc.add_paragraph(f"Sound enabled: {enable_sound or '(not sent)'}")
     doc.add_paragraph(f"Sound selection: {sound_select or '(not sent)'}")
     doc.add_paragraph(
-        "If you want a real end-to-end translation run, the current machine still needs the missing Python dependencies used by src/machine-translate-docx.py."
+        "If you want a real end-to-end translation run, the current machine still needs the missing Python dependencies used by src/machine_translate_docx.py."
     )
     doc.save(output_path)
 
@@ -973,15 +973,11 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
         engine = translation_engine.lower().strip()
         extra: list[str] = []
 
+        # chatgpt-web / perplexity-web cases removed in the 2026-05-10
+        # cleanup pass — Cloudflare gating made them never-reach-prod.
         if engine == "chatgpt-polish":
             engine = "chatgpt"
             extra.extend(["--enginemethod", "api", "--with-polish"])
-        elif engine == "chatgpt-web":
-            engine = "chatgpt"
-            extra.extend(["--enginemethod", "web"])
-        elif engine == "perplexity-web":
-            engine = "perplexity"
-            extra.extend(["--enginemethod", "web"])
         elif engine == "perplexity":
             extra.extend(["--enginemethod", "webservice"])
         elif engine == "chatgpt":
@@ -1242,7 +1238,7 @@ def main() -> int:
     if args.backend == "real" and not python_exe.exists():
         raise FileNotFoundError(f"Python executable not found: {python_exe}")
 
-    script_path = ROOT / "src" / "machine-translate-docx.py"
+    script_path = ROOT / "src" / "machine_translate_docx.py"
     if not script_path.exists():
         raise FileNotFoundError(f"Backend script not found: {script_path}")
 

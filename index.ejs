@@ -74,8 +74,6 @@
             <option id="openai-engine-option" value="chatgpt">OpenAI API</option>
             <option id="openai-polish-engine-option" value="chatgpt-polish">OpenAI Translation + Polish</option>
             <option id="perplexity-engine-option" value="perplexity">Perplexity AI</option>
-            <option id="chatgpt-web-engine-option" value="chatgpt-web">ChatGPT (web)</option>
-            <option id="perplexity-web-engine-option" value="perplexity-web">Perplexity AI (web)</option>
           </select>
 
           <div id="aiModelRow" style="display:none;">
@@ -358,14 +356,14 @@
         const deeplOption        = document.querySelector('#deepl-engine-option');
         const googleOption       = document.querySelector('#google-engine-option');
         const perplexOption      = document.querySelector('#perplexity-engine-option');
-        const chatgptwebOption   = document.querySelector('#chatgpt-web-engine-option');
         const openaiAPIOption    = document.querySelector('#openai-engine-option');
         const openaiPolishOption = document.querySelector('#openai-polish-engine-option');
 
-        // Always-disabled engines
+        // Always-disabled engines.
         // perplexity (HTTP webservice) was deprecated in the refactor;
-        // chatgpt-web + perplexity-web were re-activated in phase 8 and
-        // are now selectable from the dropdown.
+        // chatgpt-web + perplexity-web options were removed entirely in
+        // the 2026-05-10 cleanup pass — Cloudflare gating made them
+        // never-reach-prod.
         if (perplexOption)    perplexOption.disabled    = true;
 
         // OpenAI API always available
