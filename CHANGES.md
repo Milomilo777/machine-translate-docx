@@ -59,6 +59,22 @@ after 1800 ms to avoid the Chrome multi-download permission prompt.
 
 ### 2026-05-10 — Persian Double Lines as a splitter (agent run, branch `next/persian-double-lines-as-splitter`)
 
+**Phase 7 — Classic split path removed; one file per job.**
+The `_Classic` and `_Double` companion outputs are gone. The `Job`
+dataclass loses `filename2` and `filename3`; the `/status/:id`
+response no longer includes them; `_send_zip_for_job` keeps only the
+`410 GONE` body (the multi-file ZIP packaging is dead code now);
+`_find_double_file` and `_find_classic_file` are deleted; the orphan
+`_simple_split_docx` and `_write_cell_text` helpers in
+`machine-translate-docx.py` are deleted. Both frontends collapse to a
+single download — legacy `index.ejs` drops the timed-sequential and
+ZIP-bundle paths; v2 `app.js` drops the aligner-double / classic-split
+result rows. The v2 sidebar copy and several state docs (CLAUDE.md,
+PROJECT_MEMORY.md, docs/architecture.md, docs/subtitle-syncing.md,
+docs/testing.md) are updated to the new naming. Historical logs
+(error-catalog, decisions-2026, post-refactor-audit) are intentionally
+left as records of past states. Tests: 56 passing.
+
 **Phase 6 — `_Double_Lines` filename suffix locked in.**
 The Persian-Double-Lines output appends `_Double_Lines` before `.docx`,
 after the engine suffix. Examples: `sample_PER_Polish_Double_Lines.docx`,

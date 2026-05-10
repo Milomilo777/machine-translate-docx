@@ -4689,78 +4689,13 @@ def save_docx_file(ctx: RuntimeContext):
                 log_path = re.sub(r"(?i)\.docx$", "_log.json", ctx.flags.word_file_to_translate_save_as_path)
                 write_translation_log(log_path)
 
-            # ── helpers for the three split passes ───────────────────────────────
-            def _write_cell_text(cell, text: str) -> None:
-                """Replace all text in a table cell with `text` (first paragraph)."""
-                for para in cell.paragraphs:
-                    for run in para.runs:
-                        run.text = ''
-                while len(cell.paragraphs) > 1:
-                    p_elem = cell.paragraphs[-1]._element
-                    p_elem.getparent().remove(p_elem)
-                if cell.paragraphs:
-                    p = cell.paragraphs[0]
-                    if p.runs:
-                        p.runs[0].text = text
-                    else:
-                        p.add_run(text)
-
-            def _simple_split_docx(input_path: str, output_path: str, max_len: int = 48) -> dict:
-                """Classic FA distribution — no doubling, no row insertion.
-
-                Distributes the translated FA text across the group's EXISTING rows.
-                Only the FA column (cells[2]) is ever written.
-                The timecode/number column (cells[0]) and the EN column (cells[1])
-                are never touched.
-
-                Groups rows by FA sentence (same FA-based logic as FASubtitleAligner),
-                splits the joined FA text into at most n_rows chunks, then writes
-                one chunk per row with empty padding — no chunk is ever repeated.
-                """
-                from openai_tools.aligner_per import (
-                    FASubtitleAligner as _Aligner,
-                    _split_for_n_rows  as _split,
-                    _set_fa_cell       as _write_fa,
-                    _normalize_fa      as _norm_fa,
-                )
-
-                # Lightweight aligner instance for grouping only
-                _al = _Aligner.__new__(_Aligner)
-                _al.model = 'classic'; _al.llm_threshold = 0
-                _al.token_budget = 0;  _al.last_stats = {}
-
-                _stats: dict = {"rows_processed": 0, "rows_written": 0}
-
-                _rows   = _al._read_rows(input_path)
-                _groups = _al._parse_groups(_rows)
-                _stats["rows_processed"] = len(_rows)
-
-                _doc   = Document(input_path)
-                _table = _doc.tables[0]
-
-                for _grp in _groups:
-                    _n_rows  = len(_grp['row_indices'])
-                    _full_fa = _norm_fa(' '.join(p for p in _grp['fa_parts'] if p))
-                    if not _full_fa:
-                        continue
-
-                    # Split into at most n_rows chunks — no chunk is ever repeated.
-                    _chunks = _split(_full_fa, _n_rows)
-
-                    # One chunk per row; trailing rows get empty string (no double).
-                    for _i, _ri in enumerate(_grp['row_indices']):
-                        _text = _chunks[_i] if _i < len(_chunks) else ''
-                        _write_fa(_table, _ri, _text)
-                        if _text:
-                            _stats["rows_written"] += 1
-
-                _doc.save(output_path)
-                return _stats
-
-            # Phase 1 — aligner detached from chatgpt-polish post-translation
-            # block. The aligner is reachable only through the new Persian
-            # Double Lines Split Method (phases 2-9). Translate + polish save
-            # completes here; launcher.py records progress=100 on success.
+            # Phase 7 — Classic split helper and write_cell_text utility
+            # are gone with the rest of the multi-file output flow. The
+            # single-file Persian Double Lines splitter lives in
+            # local_launcher._apply_splitter (post-translate path) and
+            # _materialise_cached_output (cache-hit path); both run the
+            # FA mechanical aligner directly against the translated docx.
+            # launcher.py records progress=100 on subprocess success.
         except Exception:
             var = traceback.format_exc()
             print(var)

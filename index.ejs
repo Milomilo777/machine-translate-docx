@@ -618,7 +618,7 @@
             if (!res.ok) continue; // network glitch — retry silently
             const data = await res.json();
             if (typeof data.progress === 'number') _updateProgress(data.progress);
-            if (data.status === 'done')  { _updateProgress(100); return { filename: data.filename, filename2: data.filename2 || null, filename3: data.filename3 || null }; }
+            if (data.status === 'done')  { _updateProgress(100); return { filename: data.filename }; }
             if (data.status === 'error') throw new Error(data.error || 'Translation failed on server.');
             // 'pending' → keep polling
           } catch (err) {
@@ -683,13 +683,13 @@
           }
 
           // Step 2: Poll until translation finishes
-          const { filename, filename2, filename3 } = await pollJobStatus(uploadData.jobId);
+          const { filename } = await pollJobStatus(uploadData.jobId);
 
-          // Step 3: Trigger download
-          //
-          // When more than one output file exists, fetch a single ZIP package
-          // from /download-zip/:jobId. This avoids the Chrome multi-download
-          // permission prompt (E9) — the browser only sees one download.
+          // Step 3: Trigger the single-file download. Phase 7 of the
+          // persian-double-lines roadmap collapsed the multi-file output
+          // (TranslatePolish + Classic + Double) to one docx per job, so
+          // the Chrome multi-download permission prompt no longer applies
+          // and the timed-sequential / ZIP-bundle workarounds are gone.
           function triggerDownload(href) {
             const a = document.createElement('a');
             a.href = href;
@@ -703,29 +703,7 @@
             .replace(/^\d{13}-/, '')
             .replace(/ - \d{4}-\d{2}-\d{2}T\d{6}\.\d{3}(?=\.docx$)/, '');
 
-          // For Persian + chatgpt-polish: 2 files download sequentially with an 1800 ms
-          // gap so Chrome does not trigger its multi-download permission prompt.
-          //   filename3 = _PER_Classic.docx  (algorithmic character-count word-wrap)
-          //   filename2 = _PER_Double.docx   (FA mechanical aligner)
-          //
-          // [DISABLED — ZIP] Phase 2 (E13) previously bundled both files into a single
-          // _PER_package.zip via /download-zip/:jobId to avoid the Chrome multi-download
-          // prompt. That required users to unzip before use. Replaced by the timed
-          // sequential approach below. The server-side endpoint returns 410 GONE.
-          const hasMultiple = !!(filename2 || filename3);
-          if (hasMultiple) {
-            // First file (Classic) downloads immediately
-            if (filename3) triggerDownload('/download/' + filename3.replace(/#/g, '%23'));
-            // Second file (Double) downloads after 1800 ms to avoid Chrome multi-download prompt
-            const secondFile = filename2 || null;
-            if (secondFile) {
-              setTimeout(function () {
-                triggerDownload('/download/' + secondFile.replace(/#/g, '%23'));
-              }, 1800);
-            }
-          } else {
-            triggerDownload('/download/' + filename.replace(/#/g, '%23'));
-          }
+          triggerDownload('/download/' + filename.replace(/#/g, '%23'));
 
           // Play notification sound after short delay (Safari-safe)
           setTimeout(() => {
@@ -741,13 +719,7 @@
           }, 500);
 
           flashTabTitle('Download ready!');
-          const extraFiles = [filename2, filename3]
-            .filter(Boolean)
-            .map(f => `\n• ${f.replace(/^\d{13}-/, '')}`).join('');
-          const alertMsg = hasMultiple
-            ? `Download complete — 2 files downloading separately:\n• ${displayName}${extraFiles}\n\nBoth files can be found in your default download folder.`
-            : `File download completed. File "${displayName}" can be found in your default download folder.`;
-          await showAlert(alertMsg);
+          await showAlert(`File download completed. File "${displayName}" can be found in your default download folder.`);
 
         } catch (err) {
           // Hide the loading overlay BEFORE the alert so the progress bar

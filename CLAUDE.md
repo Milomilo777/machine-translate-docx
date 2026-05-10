@@ -92,13 +92,18 @@ E:\Python311\python.exe -m pytest tests/ --ignore=tests/test_v2_e2e.py
 
 ## Output Naming Convention
 
-| File | Pattern |
-|------|---------|
-| Translate + Polish | `{stem}_PER_TranslatePolish.docx` |
-| Aligner double output | `{stem}_PER_Double.docx` |
-| JSON log | `{stem}_PER_TranslatePolish_log.json` |
+One file per job (phase 7 of the persian-double-lines roadmap). Filenames are
+`{stem}_{LANG}{_engine}{_Double_Lines?}.docx`. The engine tag is `_Polish` /
+`_chatGPT` / `_Google` / `_Deepl` / `_web_chatGPT` / `_web_Perplexity`. The
+`_Double_Lines` suffix is appended when the user picks Persian Double Lines as
+the Split Method (FA target only).
 
-Both files are served for download when the aligner runs.
+| Engine + split                        | Output                                  |
+|---------------------------------------|-----------------------------------------|
+| chatgpt-polish + basic                | `{stem}_PER_Polish.docx`                |
+| chatgpt-polish + persian_double_lines | `{stem}_PER_Polish_Double_Lines.docx`   |
+| chatgpt + persian_double_lines        | `{stem}_PER_chatGPT_Double_Lines.docx`  |
+| google                                | `{stem}_{LANG}_Google.docx`             |
 
 ---
 

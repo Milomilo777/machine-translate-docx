@@ -44,7 +44,7 @@ See [`docs/decisions-2026.md`](docs/decisions-2026.md) for full log.
 | Three-file output | TranslatePolish + Classic + Double; sequential browser downloads 0/1500/3000 ms |
 | Split section visibility | Hidden when Persian + chatgpt-polish (aligner handles distribution) |
 | Frontend–backend comms | Polling: POST `/upload` → jobId → GET `/status/:id` every 4 s |
-| Job store | In-memory dict in `local_launcher.py`; `filename`, `filename2`, `filename3`; no persistence |
+| Job store | In-memory dict in `local_launcher.py`; one `filename` per job (phase 7 collapsed multi-file output to one); no persistence |
 | Lang code convention | ISO 639-2/B in filenames; `_LANG_ALPHA3B` dict in `local_launcher.py` |
 | Prompt file naming | `{action}_{LANG_CODE}.txt` — e.g., `translate_PER.txt`, `polish_PER.txt` |
 | Java/Kotlin migration | Not recommended — API latency is bottleneck; python-docx has no Java equivalent |
@@ -55,14 +55,12 @@ See [`docs/decisions-2026.md`](docs/decisions-2026.md) for full log.
 
 | Term | Meaning |
 |------|---------|
-| `_PER_TranslatePolish` | Main output — translate + GPT polish pipeline |
-| `_PER_Classic` | Mechanical aligner output (no LLM, `llm_threshold=0`) |
-| `_PER_Double` | Mechanical aligner output (no LLM, `llm_threshold=0`) — currently identical to Classic |
-| `chatgpt-polish` | Engine name for the translate+polish+align pipeline |
+| `_PER_Polish` | Output of chatgpt-polish (translate + polish; phase 5 renamed from `_PER_TranslatePolish`) |
+| `_Double_Lines` | Suffix appended when Persian Double Lines Split Method is selected (phase 6) |
+| `Persian Double Lines` | Split Method that runs the FA mechanical aligner over the engine's translated docx (default for FA target) |
+| `chatgpt-polish` | Engine name for translate + polish (no longer runs the aligner since phase 1) |
 | `bridge row` | Table row to skip in aligner (timecodes, speaker tags, empty FA) |
 | `llm_threshold` | Groups with score *below* this go to LLM. Currently 0 = all mechanical |
-| `filename2` | Job field for `_PER_Double.docx` |
-| `filename3` | Job field for `_PER_Classic.docx` |
 | `splitSection` | HTML wrapper div for Split controls — hidden for Persian+chatgpt-polish |
 | `_normalize_lang()` | Internal lang normalizer — read-only |
 | `_prompt_lang_code()` | Maps normalized lang to prompt filename suffix (e.g. `fa` → `PER`) |

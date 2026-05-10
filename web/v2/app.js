@@ -8,8 +8,7 @@
       POST /upload      → multipart: file + sourceLanguage + targetLanguage
                           + translationEngine + aiModel + splitTranslate?
                           → { ok, jobId, cacheHit }
-      GET  /status/:id  → { status, progress, filename, filename2,
-                            filename3, error }
+      GET  /status/:id  → { status, progress, filename, error }
       GET  /download/<name> → docx bytes
       POST /subscribe   → JSON { email } → { ok, message }
    ────────────────────────────────────────────────────────────────────────── */
@@ -425,9 +424,7 @@
       a.textContent = 'Download';
       ul.appendChild(li);
     };
-    add(status.filename,  'translated');
-    add(status.filename2, 'aligner double');
-    add(status.filename3, 'classic split');
+    add(status.filename, 'translated');
     if (ul.children.length) ul.classList.remove('hidden');
   }
 
