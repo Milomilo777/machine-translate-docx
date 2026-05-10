@@ -36,7 +36,14 @@ from runtime import RuntimeContext
 from selenium_utils import safe_click, set_chrome_window_2_3_screen
 from config import get_nested_value_from_json_array
 from engines._prompts import build_translation_prompt
-from engines._timing import CHATGPT_WEB_PRE_SLEEP
+from engines._timing import (
+    CHATGPT_WEB_PRE_SLEEP,
+    CHATGPT_WEB_LOGGED_OUT_LINK_WAIT,
+    CHATGPT_WEB_STAY_LOGGED_OUT_WAIT,
+    CHATGPT_WEB_AFTER_INJECT_SLEEP,
+    CHATGPT_WEB_STREAMING_POLL,
+    CHATGPT_WEB_MAX_STREAMING_WAIT,
+)
 
 
 INACTIVE = False
@@ -161,7 +168,7 @@ def selenium_chrome_chatgpt_translate(to_translate, retry_count):
         
         try:
             # Wait until the link is visible
-            stay_logged_out_link = stop_button = WebDriverWait(driver, 1.2).until(
+            stay_logged_out_link = stop_button = WebDriverWait(driver, CHATGPT_WEB_LOGGED_OUT_LINK_WAIT).until(
                 EC.presence_of_element_located((By.CSS_SELECTOR, "button[aria-label='Close']"))
             )
             
@@ -172,7 +179,7 @@ def selenium_chrome_chatgpt_translate(to_translate, retry_count):
 
         try:
             # Wait until the link is visible
-            stay_logged_out_link = stop_button = WebDriverWait(driver, 1.2).until(
+            stay_logged_out_link = stop_button = WebDriverWait(driver, CHATGPT_WEB_LOGGED_OUT_LINK_WAIT).until(
                 EC.presence_of_element_located((By.CSS_SELECTOR, "button[aria-label='Close']"))
             )
 
@@ -182,7 +189,7 @@ def selenium_chrome_chatgpt_translate(to_translate, retry_count):
             pass
 
         try:
-            WebDriverWait(driver, 0.3).until(
+            WebDriverWait(driver, CHATGPT_WEB_STAY_LOGGED_OUT_WAIT).until(
                 EC.element_to_be_clickable((By.XPATH, "//a[contains(text(), 'Stay logged out')]"))
             ).click()
         except Exception:
@@ -241,8 +248,8 @@ def selenium_chrome_chatgpt_translate(to_translate, retry_count):
         #    if i < len(lines) - 1:
         #        textarea.send_keys(Keys.SHIFT + Keys.RETURN)
 
-        # Wait for the button to appear with a timeout of 3 seconds
-        sleep(1)
+        # Let the composer register the injected text before we click submit.
+        sleep(CHATGPT_WEB_AFTER_INJECT_SLEEP)
         #button = WebDriverWait(driver, 3).until(
         #    EC.presence_of_element_located((By.XPATH, "//button[@aria-label='Send prompt' and @data-testid='send-button']"))
         #)
@@ -270,7 +277,7 @@ def selenium_chrome_chatgpt_translate(to_translate, retry_count):
         timeout = 1  # Timeout after 10 seconds if not found
         found_stop_streaming_button = False
         
-        max_wait_time = 40  # Maximum number of seconds to wait
+        max_wait_time = CHATGPT_WEB_MAX_STREAMING_WAIT  # seconds
         start_time = time.time()
         found_stop_streaming_button = False
 
@@ -287,8 +294,8 @@ def selenium_chrome_chatgpt_translate(to_translate, retry_count):
                     found_stop_streaming_button = True
                     
                 
-                # Sleep for 0.5 seconds before checking again
-                time.sleep(0.25)
+                # Stop-streaming still visible — keep polling
+                time.sleep(CHATGPT_WEB_STREAMING_POLL)
                 
                 try:
                     close_button = WebDriverWait(driver, 0.01).until(

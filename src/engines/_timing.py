@@ -164,25 +164,30 @@ CHATGPT_WEB_ACCEPT_BUTTON_WAIT: Final[float] = 0.2
 """LEGACY: ``WebDriverWait(0.2)`` for the Accept-all button after page
 load."""
 
-CHATGPT_WEB_LOGGED_OUT_LINK_WAIT: Final[float] = 1.2
-"""LEGACY: ``WebDriverWait(1.2)`` for the Close button on the
-"Stay logged out" link. Called twice in sequence — the second is the
+CHATGPT_WEB_LOGGED_OUT_LINK_WAIT: Final[float] = 2.5
+"""OURS: ``WebDriverWait(2.5)`` (legacy was 1.2). chatgpt.com guest
+sessions in 2026 take longer to render the modal than they did during
+phase 8; 1.2 s often missed it and the modal blocked the textarea
+click that follows. Called twice in sequence — the second is the
 re-attempt after the first close shifts the layout."""
 
-CHATGPT_WEB_STAY_LOGGED_OUT_WAIT: Final[float] = 0.3
-"""LEGACY: ``WebDriverWait(0.3)`` for the "Stay logged out" anchor."""
+CHATGPT_WEB_STAY_LOGGED_OUT_WAIT: Final[float] = 0.5
+"""OURS: ``WebDriverWait(0.5)`` (legacy was 0.3). Same reasoning as
+``CHATGPT_WEB_LOGGED_OUT_LINK_WAIT``."""
 
-CHATGPT_WEB_AFTER_INJECT_SLEEP: Final[float] = 1.0
-"""LEGACY: ``sleep(1)`` after the JS textarea injection, before
-clicking submit."""
+CHATGPT_WEB_AFTER_INJECT_SLEEP: Final[float] = 2.0
+"""OURS: ``sleep(2)`` after the JS textarea injection, before clicking
+submit (legacy was 1.0). The composer needs a tick to register the
+injected text before submit becomes clickable; 1 s sometimes raced."""
 
 CHATGPT_WEB_STREAMING_POLL: Final[float] = 0.25
 """LEGACY: ``time.sleep(0.25)`` per iteration of the Stop-streaming
 poll loop."""
 
-CHATGPT_WEB_MAX_STREAMING_WAIT: Final[float] = 40.0
-"""LEGACY: ``max_wait_time = 40``. Maximum seconds to wait for
-ChatGPT to finish streaming the answer."""
+CHATGPT_WEB_MAX_STREAMING_WAIT: Final[float] = 60.0
+"""OURS: ``max_wait_time = 60`` (legacy was 40). Longer subtitle
+blocks need more streaming time; the loop exits early as soon as the
+Stop button disappears, so a higher cap doesn't slow the happy path."""
 
 
 # ── Perplexity-web (perplexity.ai via google.com search) ────────────────────
@@ -204,19 +209,30 @@ PERPLEXITY_WEB_GOOGLE_LINK_WAIT: Final[float] = 5.0
 """LEGACY: ``WebDriverWait(5)`` for the perplexity link on google
 search results."""
 
-PERPLEXITY_WEB_TEXTAREA_WAIT: Final[float] = 7.0
-"""LEGACY: ``WebDriverWait(7)`` for the ``ask-input`` textarea."""
+PERPLEXITY_WEB_TEXTAREA_WAIT: Final[float] = 10.0
+"""OURS: ``WebDriverWait(10)`` (legacy was 7). perplexity.ai got
+heavier in 2026 — guest sessions can take ~5 s just to render the
+ask-input box."""
 
-PERPLEXITY_WEB_SUBMIT_BUTTON_WAIT: Final[float] = 1.0
-"""LEGACY: ``WebDriverWait(1)`` for the Submit button."""
+PERPLEXITY_WEB_SUBMIT_BUTTON_WAIT: Final[float] = 5.0
+"""OURS: ``WebDriverWait(5)`` (legacy was 1). The Submit button only
+becomes enabled after the textarea registers the pasted text;
+1 s often raced and missed it, causing the engine to bail before
+ever submitting. User-reported: "perplexity opens the site, doesn't
+give it time to translate, closes and reopens" — this is the wait
+that was too short."""
 
-PERPLEXITY_WEB_AFTER_SUBMIT_SLEEP: Final[float] = 1.0
-"""LEGACY: ``time.sleep(1)`` after the submit click, before the
-Stop-generating poll."""
+PERPLEXITY_WEB_AFTER_SUBMIT_SLEEP: Final[float] = 2.0
+"""OURS: ``time.sleep(2)`` after the submit click (legacy was 1).
+Lets the Stop-generating button render before we start polling for
+its disappearance — otherwise the first poll sees no button and the
+loop exits as if generation already finished."""
 
-PERPLEXITY_WEB_STOP_BUTTON_POLL: Final[float] = 0.25
-"""LEGACY: ``time.sleep(0.25)`` per iteration of the Stop-generating
-poll loop."""
+PERPLEXITY_WEB_STOP_BUTTON_POLL: Final[float] = 0.5
+"""OURS: ``time.sleep(0.5)`` per Stop-generating poll (legacy was
+0.25). The fast cadence wasn't necessary — perplexity's streaming
+runs for seconds at minimum, so 0.5 s halves the CPU spin without
+delaying the exit."""
 
 PERPLEXITY_WEB_STOP_BUTTON_TIMEOUT: Final[float] = 300.0
 """LEGACY: ``timeout = 300``. Max seconds to wait for the
@@ -224,17 +240,25 @@ Stop-generating button to disappear. Long because perplexity's
 "Pro Search" mode can stream for a couple of minutes."""
 
 PERPLEXITY_WEB_STOP_BUTTON_POLL_INTERVAL: Final[float] = 1.0
-"""LEGACY: ``poll_interval = 1``. The fast-path uses 0.25 s; this is
-the slow-path interval when the Stop button is briefly missing."""
+"""LEGACY: ``poll_interval = 1``. The fast-path uses
+``PERPLEXITY_WEB_STOP_BUTTON_POLL``; this is the slow-path interval
+when the Stop button is briefly missing from the DOM."""
 
-PERPLEXITY_WEB_PROSE_FIRST_WAIT: Final[float] = 2.5
-"""LEGACY: ``WebDriverWait(2.5)`` for the prose div first attempt."""
+PERPLEXITY_WEB_PROSE_FIRST_WAIT: Final[float] = 8.0
+"""OURS: ``WebDriverWait(8)`` (legacy was 2.5). The prose div
+sometimes appears late on slower guest sessions; 2.5 s missed it
+and triggered the retry path immediately."""
 
-PERPLEXITY_WEB_PROSE_RETRY_SLEEP: Final[float] = 0.25
-"""LEGACY: ``time.sleep(0.25)`` before the prose div retry."""
+PERPLEXITY_WEB_PROSE_RETRY_SLEEP: Final[float] = 0.5
+"""OURS: ``time.sleep(0.5)`` before the prose div retry (legacy was
+0.25). Gives the page a tick to actually finish painting after
+streaming ends."""
 
-PERPLEXITY_WEB_PROSE_VISIBLE_WAIT: Final[float] = 5.0
-"""LEGACY: ``WebDriverWait(5)`` for the prose div to become visible."""
+PERPLEXITY_WEB_PROSE_VISIBLE_WAIT: Final[float] = 15.0
+"""OURS: ``WebDriverWait(15)`` (legacy was 5). The retry waits up
+to 15 s for the prose div to be visible — the whole pipeline before
+this point can take 30+ s on slow sessions, so a longer tail wait
+here is the cheap fix that turns "looped" into "succeeded once"."""
 
 
 __all__ = [

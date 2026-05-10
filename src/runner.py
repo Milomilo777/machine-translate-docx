@@ -137,11 +137,22 @@ def selenium_chrome_translate_maxchar_blocks(
         if success and translated:
             return translated.strip()
 
-        # Google last-resort fallback.
-        selenium_chrome_google_click_cookies_consent_button(ctx)
-        translated = selenium_chrome_google_translate(ctx, line)
-        if translated:
-            return translated.strip()
+        # Google last-resort fallback. Skipped for the web-LLM engines:
+        # falling back to Google.com mid-translation contaminates the
+        # browser state, so the next chatgpt-web / perplexity-web call
+        # has to redo the cookie + Cloudflare dance — observed by user
+        # on 2026-05-10 as "switched to Google then looped". Only the
+        # genuine engines (deepl, perplexity webservice, etc.) benefit
+        # from a Google bridge here.
+        is_web_llm = (
+            (engine == "chatgpt"    and method == "web") or
+            (engine == "perplexity" and method == "web")
+        )
+        if not is_web_llm:
+            selenium_chrome_google_click_cookies_consent_button(ctx)
+            translated = selenium_chrome_google_translate(ctx, line)
+            if translated:
+                return translated.strip()
 
         print(f"ERROR: Unable to translate line: {line}")
         return "Unable to get translation."

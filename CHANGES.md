@@ -57,6 +57,61 @@ after 1800 ms to avoid the Chrome multi-download permission prompt.
 
 ## Sessions
 
+### 2026-05-10 — web-engine timing bumps + Google fallback gated (branch `next/persian-double-lines-as-splitter`)
+
+User-observed runtime issues, two of them:
+
+1. **Perplexity-web closes too fast and loops.** "Doesn't give the
+   site time to translate, closes and reopens." Root cause: legacy
+   timings (1 s for the Submit button, 2.5 s for the first prose-div
+   read, 5 s for the visible retry) were too aggressive — perplexity.ai
+   guest sessions in 2026 are noticeably heavier than they were in
+   the 2024 reference build. Several waits raced and the body bailed
+   before the response landed; the runner saw `(False, "")` and
+   reopened the page, ad infinitum.
+
+2. **chatgpt-web mid-run switched to Google then looped.** The
+   block-loop's "single-line last-resort fallback" in
+   `runner.py:translate_lines_block` calls
+   `selenium_chrome_google_translate(ctx, line)` whenever the active
+   engine fails on a single line. The same browser/driver is reused,
+   so after Google answers, the browser is sitting on
+   translate.google.com — the next chatgpt-web call has to redo the
+   whole `delete_all_cookies()` + Cloudflare dance from a cold
+   document, every single time. That is the loop the user saw.
+
+**T1. Perplexity timing bumps in `src/engines/_timing.py`:**
+
+  - `PERPLEXITY_WEB_TEXTAREA_WAIT       7  → 10` s
+  - `PERPLEXITY_WEB_SUBMIT_BUTTON_WAIT  1  → 5`  s  ← user's pain point
+  - `PERPLEXITY_WEB_AFTER_SUBMIT_SLEEP  1  → 2`  s
+  - `PERPLEXITY_WEB_STOP_BUTTON_POLL    0.25 → 0.5` s
+  - `PERPLEXITY_WEB_PROSE_FIRST_WAIT    2.5 → 8`  s
+  - `PERPLEXITY_WEB_PROSE_RETRY_SLEEP   0.25 → 0.5` s
+  - `PERPLEXITY_WEB_PROSE_VISIBLE_WAIT  5  → 15` s
+
+**T2. ChatGPT-web timing bumps:**
+
+  - `CHATGPT_WEB_LOGGED_OUT_LINK_WAIT   1.2 → 2.5` s
+  - `CHATGPT_WEB_STAY_LOGGED_OUT_WAIT   0.3 → 0.5` s
+  - `CHATGPT_WEB_AFTER_INJECT_SLEEP     1   → 2`   s
+  - `CHATGPT_WEB_MAX_STREAMING_WAIT     40  → 60`  s
+
+**T3. Hardcoded literals in both web engines replaced with timing
+imports.** The constants are now the single source of truth — the
+function bodies reference them directly. Future bumps are a one-line
+edit instead of a hunt-and-peck across 400-line bodies.
+
+**T4. Google fallback gated.** `runner.py:translate_lines_block`'s
+single-line last-resort Google call is now skipped when
+`(engine, method)` is `(chatgpt, web)` or `(perplexity, web)`. The
+genuine LLM-web engines should fail loudly (return
+`"Unable to get translation."` for that line) rather than contaminate
+the browser. Other engines (deepl, perplexity webservice) still get
+the Google bridge.
+
+64 / 64 unit tests still pass.
+
 ### 2026-05-10 — web engines (chatgpt-web, perplexity-web) deep audit (branch `next/persian-double-lines-as-splitter`)
 
 User asked for an actual line-by-line debug + alignment of the two

@@ -49,7 +49,18 @@ from runtime import RuntimeContext
 from selenium_utils import safe_click, set_chrome_window_2_3_screen
 from config import get_nested_value_from_json_array
 from engines._prompts import build_translation_prompt
-from engines._timing import PERPLEXITY_WEB_PRE_SLEEP
+from engines._timing import (
+    PERPLEXITY_WEB_PRE_SLEEP,
+    PERPLEXITY_WEB_TEXTAREA_WAIT,
+    PERPLEXITY_WEB_SUBMIT_BUTTON_WAIT,
+    PERPLEXITY_WEB_AFTER_SUBMIT_SLEEP,
+    PERPLEXITY_WEB_STOP_BUTTON_POLL,
+    PERPLEXITY_WEB_STOP_BUTTON_TIMEOUT,
+    PERPLEXITY_WEB_STOP_BUTTON_POLL_INTERVAL,
+    PERPLEXITY_WEB_PROSE_FIRST_WAIT,
+    PERPLEXITY_WEB_PROSE_RETRY_SLEEP,
+    PERPLEXITY_WEB_PROSE_VISIBLE_WAIT,
+)
 
 
 INACTIVE = False
@@ -281,14 +292,14 @@ def selenium_chrome_perplexity_translate(to_translate, retry_count, max_try_coun
         
         # Locate the contenteditable div
         try:
-            textarea = WebDriverWait(driver, 7).until(
+            textarea = WebDriverWait(driver, PERPLEXITY_WEB_TEXTAREA_WAIT).until(
                 EC.presence_of_element_located((By.XPATH, "//*[@id='ask-input']"))
             )
 
             # Send text to the element
             safe_click(driver, textarea)
         except Exception:
-            textarea = WebDriverWait(driver, 7).until(
+            textarea = WebDriverWait(driver, PERPLEXITY_WEB_TEXTAREA_WAIT).until(
                 EC.presence_of_element_located((By.XPATH, "//*[@id='ask-input']"))
             )
 
@@ -345,15 +356,15 @@ def selenium_chrome_perplexity_translate(to_translate, retry_count, max_try_coun
         
         perplexity_close_messages()
         
-        submit_button = WebDriverWait(driver, 1).until(
+        submit_button = WebDriverWait(driver, PERPLEXITY_WEB_SUBMIT_BUTTON_WAIT).until(
             EC.presence_of_element_located((By.XPATH, '//button[@aria-label="Submit"]'))
         )
         safe_click(driver, submit_button)
 
-        time.sleep(1)
+        time.sleep(PERPLEXITY_WEB_AFTER_SUBMIT_SLEEP)
 
-        timeout = 300  # seconds
-        poll_interval = 1  # seconds
+        timeout = PERPLEXITY_WEB_STOP_BUTTON_TIMEOUT  # seconds
+        poll_interval = PERPLEXITY_WEB_STOP_BUTTON_POLL_INTERVAL  # seconds
         start_time = time.time()
 
        # print("⏳ Waiting for stop button to disappear", end='')
@@ -366,8 +377,8 @@ def selenium_chrome_perplexity_translate(to_translate, retry_count, max_try_coun
                             #print("⏳ Waiting for stop button to disappear...")
                             #print('.', end='')
                                         
-                            # Sleep for 0.5 seconds before checking again
-                            time.sleep(0.25)
+                            # Stop-button still visible — keep polling
+                            time.sleep(PERPLEXITY_WEB_STOP_BUTTON_POLL)
                             # Locate the div by its class
                             try:
                                 button = driver.find_element(By.CSS_SELECTOR, "button[data-testid='answer-mode-tabs-tab-search']")
@@ -390,9 +401,9 @@ def selenium_chrome_perplexity_translate(to_translate, retry_count, max_try_coun
                             
                             pass
                         else:
-                            #print("\n✅ Stop button is no longer visible.")
-                            #print("\n")
-                            time.sleep(1)
+                            # Stop-button hidden — generation finished. Brief
+                            # pause lets the prose div finish rendering.
+                            time.sleep(PERPLEXITY_WEB_AFTER_SUBMIT_SLEEP)
                             break
                     except Exception:
                         break
@@ -408,15 +419,15 @@ def selenium_chrome_perplexity_translate(to_translate, retry_count, max_try_coun
                 break
 
             time.sleep(poll_interval)
-            
-        time.sleep(1)
+
+        time.sleep(PERPLEXITY_WEB_AFTER_SUBMIT_SLEEP)
 
         input_nb_lines = len(to_translate.replace("\r", "").split("\n"))
 
         
         # Get the div with class "prose"
         try:
-            prose_div = WebDriverWait(driver, 2.5).until(
+            prose_div = WebDriverWait(driver, PERPLEXITY_WEB_PROSE_FIRST_WAIT).until(
                 EC.presence_of_element_located((By.CSS_SELECTOR, "div.prose"))
             )
         except Exception:
@@ -440,9 +451,9 @@ def selenium_chrome_perplexity_translate(to_translate, retry_count, max_try_coun
                 pass
                                 
         # Try to get the div again (big)
-        time.sleep(0.25)
+        time.sleep(PERPLEXITY_WEB_PROSE_RETRY_SLEEP)
         try:
-            prose_div = WebDriverWait(driver, 5).until(
+            prose_div = WebDriverWait(driver, PERPLEXITY_WEB_PROSE_VISIBLE_WAIT).until(
                 EC.visibility_of_element_located((By.CSS_SELECTOR, "div.prose"))
             )
         except Exception:
