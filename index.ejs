@@ -683,6 +683,16 @@
             return;
           }
 
+          // Phase 12 — cache feedback. The launcher returns
+          //   cacheHit:      true  when the engine call was skipped
+          //   splitterOnly:  true  when the cached translation was reused
+          //                        but a different Split Method was applied
+          //                        on top — e.g. a follow-up upload of the
+          //                        same source switching from `basic` to
+          //                        `persian_double_lines`.
+          const cacheHit      = !!uploadData.cacheHit;
+          const splitterOnly  = !!uploadData.splitterOnly;
+
           // Step 2: Poll until translation finishes
           const { filename } = await pollJobStatus(uploadData.jobId);
 
@@ -720,7 +730,13 @@
           }, 500);
 
           flashTabTitle('Download ready!');
-          await showAlert(`File download completed. File "${displayName}" can be found in your default download folder.`);
+          let _cacheNote = '';
+          if (splitterOnly) {
+            _cacheNote = '\n\nTranslated text reused from cache; only the split was redone.';
+          } else if (cacheHit) {
+            _cacheNote = '\n\nReused from the 36-hour translation cache.';
+          }
+          await showAlert(`File download completed. File "${displayName}" can be found in your default download folder.${_cacheNote}`);
 
         } catch (err) {
           // Hide the loading overlay BEFORE the alert so the progress bar

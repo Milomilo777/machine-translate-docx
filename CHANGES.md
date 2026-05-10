@@ -59,6 +59,18 @@ after 1800 ms to avoid the Chrome multi-download permission prompt.
 
 ### 2026-05-10 — Persian Double Lines as a splitter (agent run, branch `next/persian-double-lines-as-splitter`)
 
+**Phase 12 — cache UI feedback (splitterOnly banner).**
+The `splitterOnly` flag the launcher emits on cache hit (set in
+phase 4) is now consumed by both UIs. v2 swaps the existing
+"Cached — instant download" progress label for "Translated text
+reused from cache; only the split was redone" when splitter-only is
+true, and tags the result row with `(cached — splitter only)`.
+Legacy `index.ejs` previously ignored `cacheHit` entirely; it now
+appends a one-line note to the success alert distinguishing
+"Reused from the 36-hour translation cache" from "Translated text
+reused from cache; only the split was redone." The launcher contract
+is unchanged. Tests: 64 passing.
+
 **Phase 11 — line-count reconciler for the LLM single-call path.**
 New module `src/openai_tools/line_count_reconciler.py` exposes
 `reconcile_line_count(source_lines, translated_lines, src_lang_name,

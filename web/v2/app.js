@@ -9,6 +9,8 @@
                           + translationEngine + aiModel + splitTranslate?
                           → { ok, jobId, cacheHit }
       GET  /status/:id  → { status, progress, filename, error }
+      Cache-hit response also carries { cacheHit: true,
+                                        splitterOnly: bool }
       GET  /download/<name> → docx bytes
       POST /subscribe   → JSON { email } → { ok, message }
    ────────────────────────────────────────────────────────────────────────── */
@@ -309,11 +311,19 @@
     const upData = await upRes.json();
     if (!upData.ok) throw new Error(upData.comment || 'Upload rejected');
 
-    const wasCached = !!upData.cacheHit;
-    if (wasCached) setProgress(100, 'Cached — instant download');
+    const wasCached    = !!upData.cacheHit;
+    const splitterOnly = !!upData.splitterOnly;
+    if (wasCached) {
+      // Phase 12 banner: distinguish "cache hit, splitter applied" from
+      // "cache hit, identical output". Only the splitter case implies
+      // that the user just re-ran with a different Split Method.
+      setProgress(100, splitterOnly
+        ? 'Translated text reused from cache; only the split was redone'
+        : 'Cached — instant download');
+    }
 
     const status = await pollStatus(upData.jobId);
-    pushResults(status, wasCached);
+    pushResults(status, wasCached, splitterOnly);
   }
 
   async function pollStatus(jobId) {
@@ -400,9 +410,12 @@
     ul.classList.add('hidden');
   }
 
-  function pushResults(status, wasCached) {
+  function pushResults(status, wasCached, splitterOnly) {
     const ul = $('resultsList');
     if (!ul) return;
+    const tag = splitterOnly
+      ? '  (cached — splitter only)'
+      : (wasCached ? '  (cached)' : '');
     const add = (filename, suffix) => {
       if (!filename) return;
       const display = stripPrefix(filename);
@@ -417,7 +430,7 @@
         <span class="result-label"></span>
         <a class="result-link"></a>
       `;
-      li.querySelector('.result-label').textContent = `${display} — ${suffix}` + (wasCached ? '  (cached)' : '');
+      li.querySelector('.result-label').textContent = `${display} — ${suffix}${tag}`;
       const a = li.querySelector('.result-link');
       a.href = '/download/' + encodeURIComponent(filename);
       a.setAttribute('download', display);
