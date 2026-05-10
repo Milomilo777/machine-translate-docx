@@ -57,6 +57,55 @@ after 1800 ms to avoid the Chrome multi-download permission prompt.
 
 ## Sessions
 
+### 2026-05-10 — Checkpoint 1: web engines deleted (branch `next/architecture-cleanup-after-audit`)
+
+First of four checkpoints in the post-audit architecture cleanup. The
+two web-LLM engines (chatgpt-web, perplexity-web) were re-activated in
+phase 8 of the persian-double-lines roadmap but never reached a
+working live state — chatgpt.com Cloudflare-gates guest sessions, and
+perplexity.ai's selectors kept drifting. Their continued presence in
+the codebase was pure tax: every shared-helper refactor had to look
+at them, every UI list had to mention them, every dispatch table
+needed an entry. Deleted in five small commits on a fresh branch.
+
+Recovery if a future revival ever becomes worthwhile:
+
+  - git tag `archive/persian-double-lines-as-splitter-2026-05-10`
+    holds the working code at branch tip.
+  - Remote `upstream-old` (the legacy translation-robot/main) holds
+    the pre-refactor original.
+  - The legacy timing snapshot is preserved in `engines/_timing.py`'s
+    module docstring as a historical reference.
+
+**C1.1.** Deleted `src/engines/chatgpt_web.py`, `perplexity_web.py`,
+`_prompts.py` (only consumed by the two web engines).
+
+**C1.2.** Removed dispatch entries: `runner.py:translate_once` chatgpt-web
+and perplexity-web branches, the `is_web_llm` gate around the Google
+fallback (no longer needed), entry-script `set_translation_function`
+elif branches, perplexity's "web" entry in `use_phrasesblock`, CLI
+engine_method routing, `engines/__init__.py` `EngineName.CHATGPT_WEB`
++ `PERPLEXITY_WEB` members and DISPATCH_TABLE entries.
+
+**C1.3.** Dropped `CHATGPT_WEB_*` and `PERPLEXITY_WEB_*` constants from
+`engines/_timing.py` (25 constants gone). Module docstring's legacy
+snapshot kept as historical reference.
+
+**C1.4.** Removed UI options: `<option value="chatgpt-web">` and
+`perplexity-web` from `index.ejs` and `web/v2/index.html`; cleared
+the corresponding querySelectors and comments. `local_launcher.py`
+`_engine_suffix_for` table + `_map_engine` cases dropped.
+
+**C1.5.** `tests/test_engines_registry.py` web-engine assertions
+replaced with `test_web_engines_removed` — explicitly asserts the
+modules and `EngineName` members are GONE so a future accidental
+re-introduction fails the test. `tests/test_launcher_endpoints.py`
+suffix table assertion updated to expect "" for the deleted engines.
+
+63/63 unit tests pass.
+
+Next: Checkpoint 2 — rename entry script + extract dispatch.
+
 ### 2026-05-10 — perplexity-web block-mode + chatgpt-web inter-block revert (branch `next/persian-double-lines-as-splitter`)
 
 User-observed runtime asymmetry: chatgpt-web was sending block-by-block
