@@ -59,6 +59,22 @@ after 1800 ms to avoid the Chrome multi-download permission prompt.
 
 ### 2026-05-10 — Persian Double Lines as a splitter (agent run, branch `next/persian-double-lines-as-splitter`)
 
+**Phase 11 — line-count reconciler for the LLM single-call path.**
+New module `src/openai_tools/line_count_reconciler.py` exposes
+`reconcile_line_count(source_lines, translated_lines, src_lang_name,
+dest_lang_name, *, max_attempts=2)`. When the translator returns a
+mismatched line count, the reconciler asks `gpt-5.4-mini` (hardcoded,
+matching the aligner) up to two times for a strict line-aligned
+re-emission, then falls back to pad/truncate so the result always has
+exactly `len(source_lines)` entries. Every API call sets
+`prompt_cache_retention=24h`. Wired into
+`engines.chatgpt_api.run_openai_single_call` between translate and
+polish — polish therefore always sees correctly-aligned input. The
+runner block-loop and Selenium engines are untouched. Tests: 64
+passing (6 new for the reconciler, including pad / truncate fallbacks
+and an exception-during-API path; the OpenAI client is injected so the
+suite stays offline).
+
 **Phase 10 — real-file integration test scaffolded.**
 A new opt-in test module `tests/integration/test_real_file_per_engine.py`
 boots the entry script as a subprocess against the
