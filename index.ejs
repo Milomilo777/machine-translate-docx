@@ -74,7 +74,8 @@
             <option id="openai-engine-option" value="chatgpt">OpenAI API</option>
             <option id="openai-polish-engine-option" value="chatgpt-polish">OpenAI Translation + Polish</option>
             <option id="perplexity-engine-option" value="perplexity">Perplexity AI</option>
-            <option id="chatgpt-web-engine-option" value="chatgpt-web">ChatGPT</option>
+            <option id="chatgpt-web-engine-option" value="chatgpt-web">ChatGPT (web)</option>
+            <option id="perplexity-web-engine-option" value="perplexity-web">Perplexity AI (web)</option>
           </select>
 
           <div id="aiModelRow" style="display:none;">
@@ -95,6 +96,7 @@
             <select id="splitEngine" class="w-full mb-4 p-2 border rounded" name="splitEngine" disabled>
               <option id="basic-split-option" value="basic">Basic with excel file</option>
               <option id="openai-split-option" value="openai">OpenAI API</option>
+              <option id="persian-double-lines-split-option" value="persian_double_lines">Persian Double Lines</option>
             </select>
           </div>
 		  
@@ -133,6 +135,12 @@
               <span id="progressPct">0%</span>
             </div>
             <progress id="progressBar" value="0" max="100" class="w-full h-3"></progress>
+            <div class="mt-4 flex justify-center">
+              <button type="button" id="cancelBtn"
+                class="bg-red-600 hover:bg-red-700 text-white text-sm px-4 py-2 rounded shadow">
+                Cancel translation
+              </button>
+            </div>
           </div>
         </div>
 
@@ -355,8 +363,10 @@
         const openaiPolishOption = document.querySelector('#openai-polish-engine-option');
 
         // Always-disabled engines
+        // perplexity (HTTP webservice) was deprecated in the refactor;
+        // chatgpt-web + perplexity-web were re-activated in phase 8 and
+        // are now selectable from the dropdown.
         if (perplexOption)    perplexOption.disabled    = true;
-        if (chatgptwebOption) chatgptwebOption.disabled = true;
 
         // OpenAI API always available
         if (openaiAPIOption) openaiAPIOption.disabled = false;
@@ -391,25 +401,35 @@
           }
         }
 
-        // Split engine: enabled for Persian only
+        // Split engine: enabled for Persian only. Persian Double Lines is
+        // the default Split Method for FA; the option is hidden for every
+        // other target language and reverts to "basic" if it was active.
         const splitEnabledLanguages = ['fa'];
+        const splitSel = document.getElementById("splitEngine");
+        const pdlOption = document.getElementById("persian-double-lines-split-option");
         if (splitEnabledLanguages.includes(targetLanguage)) {
-          document.getElementById("splitEngine").disabled = false;
-          document.querySelector("#openai-split-option").selected = true;
+          splitSel.disabled = false;
+          if (pdlOption) {
+            pdlOption.hidden = false;
+            pdlOption.selected = true;
+          }
         } else {
+          if (pdlOption) {
+            pdlOption.hidden = true;
+            if (splitSel.value === 'persian_double_lines') splitSel.value = 'basic';
+          }
           document.querySelector("#basic-split-option").selected = true;
-          document.getElementById("splitEngine").disabled = true;
+          splitSel.disabled = true;
         }
 
-        // Hide Split section when Persian + OpenAI Polish (aligner handles line distribution)
+        // Phase 1 detached the FA aligner from the chatgpt-polish engine,
+        // so the splitSection is no longer hidden when fa+chatgpt-polish
+        // is selected — the user picks "Persian Double Lines" from the
+        // Split Method dropdown to get the doubling behaviour. Keep the
+        // splitSection visible for every combination.
         const splitSection = document.getElementById('splitSection');
-        const isAlignerPipeline = (targetLanguage === 'fa' && engineSel && engineSel.value === 'chatgpt-polish');
         if (splitSection) {
-          splitSection.style.display = isAlignerPipeline ? 'none' : '';
-          if (isAlignerPipeline) {
-            const cb = document.getElementById('splitTranslate');
-            if (cb) cb.checked = false;
-          }
+          splitSection.style.display = '';
         }
 
         // Apply language-specific default engine — only on language change (setDefault=true).
@@ -606,13 +626,15 @@
             if (!res.ok) continue; // network glitch — retry silently
             const data = await res.json();
             if (typeof data.progress === 'number') _updateProgress(data.progress);
-            if (data.status === 'done')  { _updateProgress(100); return { filename: data.filename, filename2: data.filename2 || null, filename3: data.filename3 || null }; }
+            if (data.status === 'done')  { _updateProgress(100); return { filename: data.filename }; }
             if (data.status === 'error') throw new Error(data.error || 'Translation failed on server.');
+            if (data.status === 'cancelled') throw new Error('Translation cancelled by user.');
             // 'pending' → keep polling
           } catch (err) {
             // Re-throw terminal errors; swallow transient network errors
             if (err.message && (
               err.message.includes('Translation failed') ||
+              err.message.includes('Translation cancelled') ||
               err.message.includes('timed out') ||
               err.message.includes('not found')
             )) throw err;
@@ -622,10 +644,29 @@
         throw new Error('Translation timed out after 40 minutes. Please try again.');
       }
 
+      // ------- Persist file selection across DOM churn -------
+      // The legacy form occasionally clears the <input type="file">'s
+      // FileList when other selects are toggled (some browsers do this
+      // when the surrounding form re-layouts). Cache the chosen File
+      // object the moment the user picks it, and fall back to the
+      // cached copy in sendToServer when the input has gone empty.
+      let _persistedDocxFile = null;
+      const _docxInputEl = document.getElementById('docxFile');
+      if (_docxInputEl) {
+        _docxInputEl.addEventListener('change', () => {
+          if (_docxInputEl.files && _docxInputEl.files.length > 0) {
+            _persistedDocxFile = _docxInputEl.files[0];
+          }
+        });
+      }
+
       // ------- Upload & poll download -------
       async function sendToServer() {
         const docxFileInput = document.getElementById('docxFile');
-        if (!docxFileInput || docxFileInput.files.length === 0) {
+        const docxFile = (docxFileInput && docxFileInput.files.length > 0)
+          ? docxFileInput.files[0]
+          : _persistedDocxFile;
+        if (!docxFile) {
           await showAlert('Please select a Word .docx file to translate.');
           return;
         }
@@ -634,7 +675,6 @@
         _updateProgress(0);
 
         const formData = new FormData();
-        const docxFile = docxFileInput.files[0];
         const sanitizedFileName = docxFile.name.replace(/）/g, ')').replace(/（/g, '(').replace(/&/g, '');
         formData.append('file', docxFile, sanitizedFileName);
 
@@ -670,14 +710,44 @@
             return;
           }
 
-          // Step 2: Poll until translation finishes
-          const { filename, filename2, filename3 } = await pollJobStatus(uploadData.jobId);
+          // Phase 12 — cache feedback. The launcher returns
+          //   cacheHit:      true  when the engine call was skipped
+          //   splitterOnly:  true  when the cached translation was reused
+          //                        but a different Split Method was applied
+          //                        on top — e.g. a follow-up upload of the
+          //                        same source switching from `basic` to
+          //                        `persian_double_lines`.
+          const cacheHit      = !!uploadData.cacheHit;
+          const splitterOnly  = !!uploadData.splitterOnly;
 
-          // Step 3: Trigger download
-          //
-          // When more than one output file exists, fetch a single ZIP package
-          // from /download-zip/:jobId. This avoids the Chrome multi-download
-          // permission prompt (E9) — the browser only sees one download.
+          // Wire the Cancel button to POST /cancel/<jobId> for *this* job.
+          // Removed when the job ends (any status).
+          const _cancelBtn = document.getElementById('cancelBtn');
+          let _cancelHandler = null;
+          if (_cancelBtn) {
+            _cancelHandler = async () => {
+              _cancelBtn.disabled = true;
+              try {
+                await fetch('/cancel/' + encodeURIComponent(uploadData.jobId),
+                            { method: 'POST' });
+              } catch (_) { /* the polling loop will see status=cancelled */ }
+            };
+            _cancelBtn.addEventListener('click', _cancelHandler);
+          }
+
+          // Step 2: Poll until translation finishes
+          const { filename } = await pollJobStatus(uploadData.jobId);
+
+          if (_cancelBtn && _cancelHandler) {
+            _cancelBtn.removeEventListener('click', _cancelHandler);
+            _cancelBtn.disabled = false;
+          }
+
+          // Step 3: Trigger the single-file download. Phase 7 of the
+          // persian-double-lines roadmap collapsed the multi-file output
+          // (TranslatePolish + Classic + Double) to one docx per job, so
+          // the Chrome multi-download permission prompt no longer applies
+          // and the timed-sequential / ZIP-bundle workarounds are gone.
           function triggerDownload(href) {
             const a = document.createElement('a');
             a.href = href;
@@ -691,29 +761,7 @@
             .replace(/^\d{13}-/, '')
             .replace(/ - \d{4}-\d{2}-\d{2}T\d{6}\.\d{3}(?=\.docx$)/, '');
 
-          // For Persian + chatgpt-polish: 2 files download sequentially with an 1800 ms
-          // gap so Chrome does not trigger its multi-download permission prompt.
-          //   filename3 = _PER_Classic.docx  (algorithmic character-count word-wrap)
-          //   filename2 = _PER_Double.docx   (FA mechanical aligner)
-          //
-          // [DISABLED — ZIP] Phase 2 (E13) previously bundled both files into a single
-          // _PER_package.zip via /download-zip/:jobId to avoid the Chrome multi-download
-          // prompt. That required users to unzip before use. Replaced by the timed
-          // sequential approach below. The server-side endpoint returns 410 GONE.
-          const hasMultiple = !!(filename2 || filename3);
-          if (hasMultiple) {
-            // First file (Classic) downloads immediately
-            if (filename3) triggerDownload('/download/' + filename3.replace(/#/g, '%23'));
-            // Second file (Double) downloads after 1800 ms to avoid Chrome multi-download prompt
-            const secondFile = filename2 || null;
-            if (secondFile) {
-              setTimeout(function () {
-                triggerDownload('/download/' + secondFile.replace(/#/g, '%23'));
-              }, 1800);
-            }
-          } else {
-            triggerDownload('/download/' + filename.replace(/#/g, '%23'));
-          }
+          triggerDownload('/download/' + filename.replace(/#/g, '%23'));
 
           // Play notification sound after short delay (Safari-safe)
           setTimeout(() => {
@@ -729,13 +777,13 @@
           }, 500);
 
           flashTabTitle('Download ready!');
-          const extraFiles = [filename2, filename3]
-            .filter(Boolean)
-            .map(f => `\n• ${f.replace(/^\d{13}-/, '')}`).join('');
-          const alertMsg = hasMultiple
-            ? `Download complete — 2 files downloading separately:\n• ${displayName}${extraFiles}\n\nBoth files can be found in your default download folder.`
-            : `File download completed. File "${displayName}" can be found in your default download folder.`;
-          await showAlert(alertMsg);
+          let _cacheNote = '';
+          if (splitterOnly) {
+            _cacheNote = '\n\nTranslated text reused from cache; only the split was redone.';
+          } else if (cacheHit) {
+            _cacheNote = '\n\nReused from the 36-hour translation cache.';
+          }
+          await showAlert(`File download completed. File "${displayName}" can be found in your default download folder.${_cacheNote}`);
 
         } catch (err) {
           // Hide the loading overlay BEFORE the alert so the progress bar

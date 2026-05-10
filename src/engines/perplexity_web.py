@@ -1,11 +1,29 @@
-"""Perplexity-web Selenium engine — INACTIVE.
+"""Perplexity-web Selenium engine — restored in phase 8.
 
-Preserved as-is for future revival. This module is NOT imported by the active
-dispatcher (per refactor work-order R12). Function bodies reference module-
-level globals (driver, src_lang_name, dest_lang_name, …) that existed in the
-historical entry script; they are not defined here, so calling these
-functions from a fresh import will fail at attribute lookup. That is by
-design — Phase D's job is preservation, not testability.
+Block-mode web scraping over perplexity.ai using a guest session (no
+login). The anti-bot dance starts at google.com → searches for
+"perplexity ai" → clicks the link, then falls back to a direct
+``.get()`` if the link is missing. The legacy global-based body is
+preserved verbatim; a thin :func:`translate` adapter binds the
+required names from :class:`RuntimeContext` and returns ``(False, "")``
+on any failure so the launcher pipe stays drained even when the
+upstream UI breaks.
+
+Timing
+------
+The 0.9 s pre-sleep introduced in phase 8 was a defensive guard added
+before we ran a real-traffic test; the legacy code has no such sleep
+because the google → search → click dance + page-load times alone are
+enough throttle. The sleep is now ``0.0`` (legacy parity) —
+:data:`engines._timing.PERPLEXITY_WEB_PRE_SLEEP`.
+
+Signature note
+--------------
+The legacy body is ``selenium_chrome_perplexity_translate(to_translate,
+retry_count, max_try_count)`` — three positional args. The phase 8
+adapter accidentally passed only two; the bug was masked because the
+function rarely runs and ``max_try_count`` is only read in a debug
+``print``. Fixed in the 2026-05-10 alignment pass.
 """
 from __future__ import annotations
 
@@ -27,14 +45,79 @@ from selenium.common.exceptions import (
 
 from bs4 import BeautifulSoup
 
+from runtime import RuntimeContext
+from selenium_utils import safe_click, set_chrome_window_2_3_screen
+from config import get_nested_value_from_json_array
+from engines._prompts import build_translation_prompt
+from engines._timing import (
+    PERPLEXITY_WEB_PRE_SLEEP,
+    PERPLEXITY_WEB_TEXTAREA_WAIT,
+    PERPLEXITY_WEB_SUBMIT_BUTTON_WAIT,
+    PERPLEXITY_WEB_AFTER_SUBMIT_SLEEP,
+    PERPLEXITY_WEB_STOP_BUTTON_POLL,
+    PERPLEXITY_WEB_STOP_BUTTON_TIMEOUT,
+    PERPLEXITY_WEB_STOP_BUTTON_POLL_INTERVAL,
+    PERPLEXITY_WEB_PROSE_FIRST_WAIT,
+    PERPLEXITY_WEB_PROSE_RETRY_SLEEP,
+    PERPLEXITY_WEB_PROSE_VISIBLE_WAIT,
+)
 
-INACTIVE = True   # not in active dispatcher
+
+INACTIVE = False
+# Legacy parity: zero pre-sleep. See ``engines._timing`` for the reasoning.
+WEB_SLEEP_BETWEEN_PHRASES_SEC = PERPLEXITY_WEB_PRE_SLEEP
 
 __all__ = [
     "INACTIVE",
+    "WEB_SLEEP_BETWEEN_PHRASES_SEC",
+    "translate",
     "perplexity_close_messages",
     "selenium_chrome_perplexity_translate",
 ]
+
+
+def translate(ctx: RuntimeContext, text: str) -> tuple[bool, str]:
+    """Block-mode translation entry point used by the active dispatcher.
+
+    Honours :data:`WEB_SLEEP_BETWEEN_PHRASES_SEC` (0.0 by default —
+    legacy parity), seeds the module globals the legacy body still
+    reads, and delegates to :func:`selenium_chrome_perplexity_translate`.
+    Any exception collapses to ``(False, "")`` so the block-loop
+    continues with an empty translation rather than hanging.
+
+    The legacy signature takes ``(to_translate, retry_count,
+    max_try_count)`` — three args. Phase 8 passed only two, which
+    masked a ``TypeError`` because the function rarely ran and
+    ``max_try_count`` is only used in a debug ``print``. Fixed.
+    """
+    if WEB_SLEEP_BETWEEN_PHRASES_SEC > 0:
+        time.sleep(WEB_SLEEP_BETWEEN_PHRASES_SEC)
+    try:
+        g = globals()
+        g["driver"]         = ctx.browser.driver
+        g["src_lang_name"]  = ctx.language.src_lang_name
+        g["dest_lang_name"] = ctx.language.dest_lang_name
+        # Seed the active RuntimeContext so legacy-body calls to
+        # ``set_chrome_window_2_3_screen(ctx)`` resolve.
+        g["ctx"]            = ctx
+        g.setdefault("closed_cookies_accept_message_bool",  False)
+        g.setdefault("close_install_extension_message_bool", False)
+        g.setdefault("deepl_nb_clear_cached_times",          0)
+        g.setdefault("engine_method",                        "web")
+        g.setdefault("end_time",                             0.0)
+        g.setdefault("elapsed_time",                         0.0)
+        g.setdefault("json_configuration_array",             {})
+        g.setdefault("logged_into_chatgpt",                  False)
+        g.setdefault("bloc_number",                          1)
+        g.setdefault("chrome_options",                       None)
+        g.setdefault("service",                              None)
+        # Three positional args — the third is ``max_try_count``,
+        # used only in a debug ``print`` inside the legacy body. We
+        # pass ``3`` (matches the runner's max_try_count default).
+        return selenium_chrome_perplexity_translate(text, 2, 3)
+    except Exception as exc:
+        print(f"[perplexity_web] translate failed: {exc}")
+        return False, ""
 
 
 # Names referenced inside the function bodies that historically came from the
@@ -95,8 +178,17 @@ def perplexity_close_messages():
             continue
     
     if close_install_extension_message_bool:
-        #Call another time in case some messages because layers order
-        deepl_close_messages()
+        # Legacy called ``deepl_close_messages()`` here — a sibling
+        # zero-arg function that no longer exists in our refactor
+        # (``deepl_close_messages`` now takes ``ctx``). The intent was
+        # "call once more in case popups stacked"; recurse into ourselves
+        # instead, with a re-entry guard via a function attribute.
+        if not getattr(perplexity_close_messages, "_in_progress", False):
+            perplexity_close_messages._in_progress = True
+            try:
+                perplexity_close_messages()
+            finally:
+                perplexity_close_messages._in_progress = False
 
 
 def selenium_chrome_perplexity_translate(to_translate, retry_count, max_try_count):
@@ -130,7 +222,7 @@ def selenium_chrome_perplexity_translate(to_translate, retry_count, max_try_coun
     to_translate_phrases_array = to_translate.split("\n")
     to_translate_phrases_array_len = len(to_translate_phrases_array)
 
-    set_chrome_window_2_3_screen()
+    set_chrome_window_2_3_screen(ctx)  # ctx seeded by translate() wrapper
     
 
     try:
@@ -200,14 +292,14 @@ def selenium_chrome_perplexity_translate(to_translate, retry_count, max_try_coun
         
         # Locate the contenteditable div
         try:
-            textarea = WebDriverWait(driver, 7).until(
+            textarea = WebDriverWait(driver, PERPLEXITY_WEB_TEXTAREA_WAIT).until(
                 EC.presence_of_element_located((By.XPATH, "//*[@id='ask-input']"))
             )
 
             # Send text to the element
             safe_click(driver, textarea)
         except Exception:
-            textarea = WebDriverWait(driver, 7).until(
+            textarea = WebDriverWait(driver, PERPLEXITY_WEB_TEXTAREA_WAIT).until(
                 EC.presence_of_element_located((By.XPATH, "//*[@id='ask-input']"))
             )
 
@@ -264,15 +356,15 @@ def selenium_chrome_perplexity_translate(to_translate, retry_count, max_try_coun
         
         perplexity_close_messages()
         
-        submit_button = WebDriverWait(driver, 1).until(
+        submit_button = WebDriverWait(driver, PERPLEXITY_WEB_SUBMIT_BUTTON_WAIT).until(
             EC.presence_of_element_located((By.XPATH, '//button[@aria-label="Submit"]'))
         )
         safe_click(driver, submit_button)
 
-        time.sleep(1)
+        time.sleep(PERPLEXITY_WEB_AFTER_SUBMIT_SLEEP)
 
-        timeout = 300  # seconds
-        poll_interval = 1  # seconds
+        timeout = PERPLEXITY_WEB_STOP_BUTTON_TIMEOUT  # seconds
+        poll_interval = PERPLEXITY_WEB_STOP_BUTTON_POLL_INTERVAL  # seconds
         start_time = time.time()
 
        # print("⏳ Waiting for stop button to disappear", end='')
@@ -285,8 +377,8 @@ def selenium_chrome_perplexity_translate(to_translate, retry_count, max_try_coun
                             #print("⏳ Waiting for stop button to disappear...")
                             #print('.', end='')
                                         
-                            # Sleep for 0.5 seconds before checking again
-                            time.sleep(0.25)
+                            # Stop-button still visible — keep polling
+                            time.sleep(PERPLEXITY_WEB_STOP_BUTTON_POLL)
                             # Locate the div by its class
                             try:
                                 button = driver.find_element(By.CSS_SELECTOR, "button[data-testid='answer-mode-tabs-tab-search']")
@@ -309,9 +401,9 @@ def selenium_chrome_perplexity_translate(to_translate, retry_count, max_try_coun
                             
                             pass
                         else:
-                            #print("\n✅ Stop button is no longer visible.")
-                            #print("\n")
-                            time.sleep(1)
+                            # Stop-button hidden — generation finished. Brief
+                            # pause lets the prose div finish rendering.
+                            time.sleep(PERPLEXITY_WEB_AFTER_SUBMIT_SLEEP)
                             break
                     except Exception:
                         break
@@ -327,15 +419,15 @@ def selenium_chrome_perplexity_translate(to_translate, retry_count, max_try_coun
                 break
 
             time.sleep(poll_interval)
-            
-        time.sleep(1)
+
+        time.sleep(PERPLEXITY_WEB_AFTER_SUBMIT_SLEEP)
 
         input_nb_lines = len(to_translate.replace("\r", "").split("\n"))
 
         
         # Get the div with class "prose"
         try:
-            prose_div = WebDriverWait(driver, 2.5).until(
+            prose_div = WebDriverWait(driver, PERPLEXITY_WEB_PROSE_FIRST_WAIT).until(
                 EC.presence_of_element_located((By.CSS_SELECTOR, "div.prose"))
             )
         except Exception:
@@ -359,9 +451,9 @@ def selenium_chrome_perplexity_translate(to_translate, retry_count, max_try_coun
                 pass
                                 
         # Try to get the div again (big)
-        time.sleep(0.25)
+        time.sleep(PERPLEXITY_WEB_PROSE_RETRY_SLEEP)
         try:
-            prose_div = WebDriverWait(driver, 5).until(
+            prose_div = WebDriverWait(driver, PERPLEXITY_WEB_PROSE_VISIBLE_WAIT).until(
                 EC.visibility_of_element_located((By.CSS_SELECTOR, "div.prose"))
             )
         except Exception:

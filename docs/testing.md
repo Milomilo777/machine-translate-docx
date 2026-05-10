@@ -90,13 +90,14 @@ Open browser → `http://127.0.0.1:3000`
 
 **Test matrix:**
 
-| Engine | Target | Expected outputs |
-|--------|--------|-----------------|
-| `chatgpt-polish` | Persian (fa) | `_PER_TranslatePolish.docx` + `_PER_Double.docx` + `_PER_Classic.docx` |
-| `google` | German (de) | `_GER_Google.docx` (or similar) |
-| `chatgpt` | Arabic (ar) | `_ARA_...docx` |
+| Engine | Target | Split Method | Expected output (single file per job) |
+|--------|--------|--------------|---------------------------------------|
+| `chatgpt-polish` | Persian (fa) | Persian Double Lines | `_PER_Polish_Double_Lines.docx` |
+| `chatgpt-polish` | Persian (fa) | basic                | `_PER_Polish.docx` |
+| `google`         | German (de)  | basic                | `_GER_Google.docx` |
+| `chatgpt`        | Arabic (ar)  | basic                | `_ARA_chatGPT.docx` |
 
-**Split section check:** When Persian + chatgpt-polish selected, the "Split Translation" section must be **hidden** and not sent to server.
+**Split Method default:** Persian Double Lines is auto-selected when target = `fa`; for any other target it is hidden and the dropdown falls back to `basic`.
 
 ---
 
@@ -111,16 +112,13 @@ print("Aligner OK, threshold:", a.llm_threshold)  # should print 10
 
 ---
 
-## 5. Three-File Download Test
+## 5. Single-File Download Test
 
-After a Persian `chatgpt-polish` job:
-1. All three files must appear in `$TMPDIR/machine_translate_docx_local/uploads/`:
-   - `_PER_TranslatePolish.docx`
-   - `_PER_Double.docx`
-   - `_PER_Classic.docx`
-2. Browser must initiate three downloads (at 0ms / 1500ms / 3000ms)
-3. Alert message must list all three filenames
-4. **Chrome note:** first time, must click "Allow multiple downloads" in notification bar
+After any job (one file per job since phase 7):
+1. Exactly one docx appears in `$TMPDIR/machine_translate_docx_local/uploads/`
+   matching the engine + split table in section 3.
+2. Browser initiates a single download — no Chrome multi-download permission prompt.
+3. Alert message lists exactly one filename.
 
 ---
 
@@ -129,14 +127,10 @@ After a Persian `chatgpt-polish` job:
 Look for these lines in the console output:
 
 ```
-[job {id}] done -> {stem}_PER_TranslatePolish.docx      ← main output
-[job {id}] double file found -> {stem}_PER_Double.docx  ← double aligner
-[job {id}] classic file found -> {stem}_PER_Classic.docx ← classic aligner
-Saved file name: /path/to/{stem}_PER_TranslatePolish.docx
-[INFO] Classic saved: /path/to/{stem}_PER_Classic.docx
-[INFO] Double saved: /path/to/{stem}_PER_Double.docx
-[TIMER] Classic: X.Xs | groups: N | doubles: Y | triples: 0
-[TIMER] Double:  X.Xs | groups: N | LLM: 0 | doubles: Y | triples: 0
+[job {id}] ▶ start — file: …
+[job {id}] running real backend via: …
+Saved file name: /path/to/{stem}_PER_Polish.docx
+[job {id}] ✓ done in {N}s -> {stem}_PER_Polish_Double_Lines.docx
 ```
 
 Red flags in logs:

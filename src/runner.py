@@ -60,8 +60,17 @@ def selenium_chrome_translate_maxchar_blocks(
         if engine == "deepl":
             return selenium_chrome_deepl_translate(ctx, text, attempt)
 
+        if engine == "google":
+            # Google Translate: textarea path. The underlying helper
+            # returns a plain string (possibly empty) — wrap it into the
+            # ``(success, translated)`` shape the runner expects. Both
+            # ``phrasesblock`` and ``singlephrase`` flow through here;
+            # the difference is the size of ``text`` passed in.
+            translated = selenium_chrome_google_translate(ctx, text)
+            success = bool(translated and translated.strip())
+            return success, translated
+
         if engine == "chatgpt":
-            # ChatGPT-web Selenium is inactive (Phase D). Only API survives.
             if method == "api":
                 response, translated = ctx.openai.translator.translate(
                     ctx.language.src_lang_name, ctx.language.dest_lang_name, text
@@ -71,22 +80,32 @@ def selenium_chrome_translate_maxchar_blocks(
                     and len(translated.split("\n")) == len(text.split("\n"))
                 )
                 return success, translated
+            if method == "web":
+                # Phase 8 — chatgpt-web active again. The wrapper sleeps
+                # 0.9 s between phrases and falls back to (False, "") on
+                # any error so the block-loop continues.
+                from engines import chatgpt_web
+                return chatgpt_web.translate(ctx, text)
             raise ValueError(
-                f"chatgpt non-api method '{method}' is no longer supported "
-                f"(selenium engine moved to inactive)"
+                f"chatgpt method '{method}' not supported "
+                f"(supported: api, web)"
             )
 
         if engine == "perplexity":
-            # Perplexity-web Selenium is inactive (Phase D). Webservice only.
             if method == "webservice":
                 if selenium_webservice_perplexity_translate is None:
                     raise ValueError(
                         "perplexity webservice helper not provided to runner"
                     )
                 return selenium_webservice_perplexity_translate(ctx, text, attempt)
+            if method == "web":
+                # Phase 8 — perplexity-web active again. Same sleep +
+                # graceful-fail contract as chatgpt_web.
+                from engines import perplexity_web
+                return perplexity_web.translate(ctx, text)
             raise ValueError(
-                f"perplexity non-webservice method '{method}' is no longer "
-                f"supported (selenium engine moved to inactive)"
+                f"perplexity method '{method}' not supported "
+                f"(supported: webservice, web)"
             )
 
         raise ValueError(f"Unknown translation engine: {engine}")
@@ -118,11 +137,22 @@ def selenium_chrome_translate_maxchar_blocks(
         if success and translated:
             return translated.strip()
 
-        # Google last-resort fallback.
-        selenium_chrome_google_click_cookies_consent_button(ctx)
-        translated = selenium_chrome_google_translate(ctx, line)
-        if translated:
-            return translated.strip()
+        # Google last-resort fallback. Skipped for the web-LLM engines:
+        # falling back to Google.com mid-translation contaminates the
+        # browser state, so the next chatgpt-web / perplexity-web call
+        # has to redo the cookie + Cloudflare dance — observed by user
+        # on 2026-05-10 as "switched to Google then looped". Only the
+        # genuine engines (deepl, perplexity webservice, etc.) benefit
+        # from a Google bridge here.
+        is_web_llm = (
+            (engine == "chatgpt"    and method == "web") or
+            (engine == "perplexity" and method == "web")
+        )
+        if not is_web_llm:
+            selenium_chrome_google_click_cookies_consent_button(ctx)
+            translated = selenium_chrome_google_translate(ctx, line)
+            if translated:
+                return translated.strip()
 
         print(f"ERROR: Unable to translate line: {line}")
         return "Unable to get translation."

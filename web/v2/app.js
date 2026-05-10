@@ -8,8 +8,9 @@
       POST /upload      → multipart: file + sourceLanguage + targetLanguage
                           + translationEngine + aiModel + splitTranslate?
                           → { ok, jobId, cacheHit }
-      GET  /status/:id  → { status, progress, filename, filename2,
-                            filename3, error }
+      GET  /status/:id  → { status, progress, filename, error }
+      Cache-hit response also carries { cacheHit: true,
+                                        splitterOnly: bool }
       GET  /download/<name> → docx bytes
       POST /subscribe   → JSON { email } → { ok, message }
    ────────────────────────────────────────────────────────────────────────── */
@@ -47,6 +48,7 @@
     restoreTheme();
     restoreLanguages();
     syncEngineUI();
+    syncSplitMethodUI();
     syncTargetEngineCascade();
     wireDropZone();
     wireFormControls();
@@ -111,6 +113,7 @@
         eng.value = 'deepl';
       }
       syncEngineUI();
+      syncSplitMethodUI();
     };
     tgt.addEventListener('change', onChange);
     const src = $('sourceLanguage');
@@ -125,6 +128,27 @@
     if (!eng || !aim) return;
     const showModel = (eng.value === 'chatgpt' || eng.value === 'chatgpt-polish');
     aim.classList.toggle('hidden', !showModel);
+  }
+
+  // Hide the Persian Double Lines option whenever the target language is
+  // not Persian, and reset the dropdown if it was the active selection.
+  // When target switches back to Persian, the option becomes visible and
+  // is auto-selected as the default Split Method.
+  function syncSplitMethodUI() {
+    const tgt = $('targetLanguage');
+    const sel = $('splitEngine');
+    if (!tgt || !sel) return;
+    const pdl = sel.querySelector('option[value="persian_double_lines"]');
+    if (!pdl) return;
+    if (tgt.value === 'fa') {
+      pdl.hidden = false;
+      pdl.disabled = false;
+      sel.value = 'persian_double_lines';
+    } else {
+      if (sel.value === 'persian_double_lines') sel.value = 'basic';
+      pdl.hidden = true;
+      pdl.disabled = true;
+    }
   }
 
   // ── Drop zone + file input ───────────────────────────────────────────────
@@ -271,8 +295,15 @@
     if (eng === 'chatgpt' || eng === 'chatgpt-polish') {
       fd.append('aiModel', $('aiModel').value);
     }
-    if (eng === 'google' || eng === 'deepl') {
+    const splitSelectEl = $('splitEngine');
+    const splitVal = splitSelectEl ? splitSelectEl.value : 'basic';
+    // Persian Double Lines is a post-translate step: it pairs with any
+    // engine, so toggling splitTranslate here covers chatgpt-polish too.
+    if (eng === 'google' || eng === 'deepl' || splitVal === 'persian_double_lines') {
       fd.append('splitTranslate', 'true');
+    }
+    if (splitVal && splitVal !== 'basic') {
+      fd.append('splitEngine', splitVal);
     }
 
     const upRes = await fetch('/upload', { method: 'POST', body: fd });
@@ -280,11 +311,19 @@
     const upData = await upRes.json();
     if (!upData.ok) throw new Error(upData.comment || 'Upload rejected');
 
-    const wasCached = !!upData.cacheHit;
-    if (wasCached) setProgress(100, 'Cached — instant download');
+    const wasCached    = !!upData.cacheHit;
+    const splitterOnly = !!upData.splitterOnly;
+    if (wasCached) {
+      // Phase 12 banner: distinguish "cache hit, splitter applied" from
+      // "cache hit, identical output". Only the splitter case implies
+      // that the user just re-ran with a different Split Method.
+      setProgress(100, splitterOnly
+        ? 'Translated text reused from cache; only the split was redone'
+        : 'Cached — instant download');
+    }
 
     const status = await pollStatus(upData.jobId);
-    pushResults(status, wasCached);
+    pushResults(status, wasCached, splitterOnly);
   }
 
   async function pollStatus(jobId) {
@@ -371,9 +410,12 @@
     ul.classList.add('hidden');
   }
 
-  function pushResults(status, wasCached) {
+  function pushResults(status, wasCached, splitterOnly) {
     const ul = $('resultsList');
     if (!ul) return;
+    const tag = splitterOnly
+      ? '  (cached — splitter only)'
+      : (wasCached ? '  (cached)' : '');
     const add = (filename, suffix) => {
       if (!filename) return;
       const display = stripPrefix(filename);
@@ -388,16 +430,14 @@
         <span class="result-label"></span>
         <a class="result-link"></a>
       `;
-      li.querySelector('.result-label').textContent = `${display} — ${suffix}` + (wasCached ? '  (cached)' : '');
+      li.querySelector('.result-label').textContent = `${display} — ${suffix}${tag}`;
       const a = li.querySelector('.result-link');
       a.href = '/download/' + encodeURIComponent(filename);
       a.setAttribute('download', display);
       a.textContent = 'Download';
       ul.appendChild(li);
     };
-    add(status.filename,  'translated');
-    add(status.filename2, 'aligner double');
-    add(status.filename3, 'classic split');
+    add(status.filename, 'translated');
     if (ul.children.length) ul.classList.remove('hidden');
   }
 

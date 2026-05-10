@@ -30,12 +30,15 @@ local_launcher.py  ────────────────────�
                     │       model: gpt-5.5
                     │       single call, whole file
                     │       extra_body: prompt_cache_retention 24h
-                    │       output: {stem}_PER_TranslatePolish.docx
+                    │       output: {stem}_PER_Polish.docx
                     │
-                    └─► FASubtitleAligner.align()            ← aligner_per.py
+                    └─► (optional Split Method = persian_double_lines)
+                        FASubtitleAligner.align()            ← aligner_per.py
                             model: gpt-5.4-mini (hardcoded)
-                            llm_threshold: 10
-                            output: {stem}_PER_Double.docx
+                            llm_threshold: 0
+                            output: {stem}_PER_Polish_Double_Lines.docx
+                            (run by local_launcher._apply_splitter,
+                             not by the engine subprocess — phase 1)
 ```
 
 ## Component Responsibilities
@@ -73,16 +76,19 @@ local_launcher.py  ────────────────────�
 - `ThreadingHTTPServer` on configurable port (default 3000)
 - Two modes: `real` (invokes actual backend) and `mock` (generates placeholder DOCX)
 - `_strip_timestamp()` — removes `{13-digit-ts}-` prefix from output filename
-- `_find_double_file()` — detects `_PER_Double.docx` sibling of main output
-- `Job` dataclass: `filename` (main) + `filename2` (double, optional)
+- `_apply_splitter()` — runs the requested Split Method on the engine's
+  translated docx (Persian Double Lines: in-process FA aligner)
+- `_materialise_cached_output()` — cache-hit path that reuses the cached
+  engine output and re-applies the requested splitter on top
+- `Job` dataclass: `filename` only (one file per job after phase 7)
 
 ### `index.ejs`
 - EJS template (served as plain HTML by local_launcher)
 - `engineChecker()` — manages engine availability by target language
   - Persian: auto-selects `chatgpt-polish`, enables the option
   - Other languages: disables `chatgpt-polish`
-- `pollJobStatus()` — returns `{ filename, filename2 }`
-- `triggerDownload()` — triggers both files (filename2 delayed 800 ms)
+- `pollJobStatus()` — returns `{ filename }`
+- `triggerDownload()` — single docx download per job
 
 ## Output Files
 
@@ -90,10 +96,10 @@ local_launcher.py  ────────────────────�
 uploads/
   {ts}-input.docx                    ← uploaded file (timestamped)
 
-uploads/ (outputs written alongside uploads):
-  input_PER_TranslatePolish.docx     ← main output (timestamp stripped)
-  input_PER_Double.docx              ← aligner output (timestamp stripped)
-  input_PER_TranslatePolish_log.json ← cost/token log
+uploads/ (output written alongside uploads — one file per job):
+  input_PER_Polish.docx                  ← chatgpt-polish, basic split (timestamp stripped)
+  input_PER_Polish_Double_Lines.docx     ← chatgpt-polish + persian_double_lines split
+  input_PER_Polish_log.json              ← cost/token log
 ```
 
 ## Prompt Files

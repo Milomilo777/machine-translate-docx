@@ -41,6 +41,11 @@ from time import sleep
 
 import progressbar
 
+try:
+    import clipboard  # type: ignore[import-not-found]
+except ImportError:  # clipboard is optional — fallback path; tolerated if missing
+    clipboard = None  # type: ignore[assignment]
+
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
@@ -53,11 +58,25 @@ from selenium.common.exceptions import (
 )
 
 from runtime import RuntimeContext
-from selenium_utils import safe_click
+from selenium_utils import safe_click, set_chrome_window_2_3_screen
 
 from config import (
     get_nested_value_from_json_array,
 )
+
+
+def _remove_span_tag(text: str) -> str:
+    """Strip ``<span class="…">`` and ``</span>`` from a DeepL HTML snippet.
+
+    DeepL wraps individual words in ``<span class="…">…</span>`` for
+    terminology highlighting. The HTML noise breaks downstream parsers, so
+    we strip both opening and closing tags and return plain text.
+    """
+    if not text:
+        return text
+    text = re.sub(r'(?i)<span class="[a-zA-Z]+">', "", text)
+    text = re.sub(r"(?i)</span>", "", text)
+    return text
 
 
 __all__ = [
@@ -496,10 +515,18 @@ def selenium_chrome_deepl_translate(ctx: RuntimeContext, to_translate, retry_cou
             return False
             #print(f"[WARNING] Failed to ensure target language '{dest_lang_name}' ({dest_lang}): {e}")
             
+    # Pull lang codes from the runtime context. Legacy code relied on module
+    # globals (`src_lang`, `dest_lang`, `dest_lang_name`); after the Phase F
+    # refactor these moved to ``ctx.language``. Without this the URL-build
+    # below would NameError on the first iteration.
+    src_lang = ctx.language.src_lang or "en"
+    dest_lang = ctx.language.dest_lang or "en"
+    dest_lang_name = ctx.language.dest_lang_name or dest_lang
+
     try:
         translation_page_openeing_loop_count = 4
         translation_page_opened = False
-        
+
         # Open Deepl translation page
         while translation_page_opened == False and translation_page_openeing_loop_count > 0:
             #print(f"{translation_page_openeing_loop_count} trying left")
@@ -580,31 +607,34 @@ def selenium_chrome_deepl_translate(ctx: RuntimeContext, to_translate, retry_cou
         # Wait for copy translation button
         # Removed on 2022-05-25
         found_copy_button = False
+        copy_translation_button = None
         loop_counter_search_button = 4
         while (found_copy_button is False) and (loop_counter_search_button > 0):
             #print(f"loop {loop_counter_search_button}")
             deepl_close_messages(ctx)
-            
-            try:
-                # Accept cookies
-                deepl_translation_section_element = "section[aria-labelledby='translation-target-heading']"
-                
-                deepl_translation_section = WebDriverWait(ctx.browser.driver, 0.01).until(
-                    EC.presence_of_element_located(
-                        (By.CSS_SELECTOR, deepl_translation_section_element)
+
+            # Visibility check on `copy_translation_button` only makes sense
+            # *after* it has been resolved on a previous iteration; on the
+            # first pass it is None, in which case we skip the block.
+            if copy_translation_button is not None:
+                try:
+                    deepl_translation_section_element = "section[aria-labelledby='translation-target-heading']"
+                    WebDriverWait(ctx.browser.driver, 0.01).until(
+                        EC.presence_of_element_located(
+                            (By.CSS_SELECTOR, deepl_translation_section_element)
+                        )
                     )
-                )
-                is_visible = ctx.browser.driver.execute_script("""
-                    const r = arguments[0].getBoundingClientRect();
-                    return (r.top >= 0 && r.bottom <= window.innerHeight);
-                """, copy_translation_button)
-                if not is_visible:
-                    ctx.browser.driver.execute_script(
-                        "arguments[0].scrollIntoView({block: 'end'});",
-                        copy_translation_button
-                    )
-            except Exception:
-                pass
+                    is_visible = ctx.browser.driver.execute_script("""
+                        const r = arguments[0].getBoundingClientRect();
+                        return (r.top >= 0 && r.bottom <= window.innerHeight);
+                    """, copy_translation_button)
+                    if not is_visible:
+                        ctx.browser.driver.execute_script(
+                            "arguments[0].scrollIntoView({block: 'end'});",
+                            copy_translation_button
+                        )
+                except Exception:
+                    pass
             
             try:
                 # Added on 2023-09-26
@@ -652,7 +682,7 @@ def selenium_chrome_deepl_translate(ctx: RuntimeContext, to_translate, retry_cou
         
         busy_element = ".lmt__textarea_separator__border_inner"
         # busy_element = "//div[@id='dl_translator']/div/div/div[5]"
-        sleep(deepl_sleep_wait_translation_seconds)
+        sleep(ctx.browser.deepl_sleep_wait_translation_seconds)
 
         busybox_innerhtml = ""
         timeout_busy_translating = 50
@@ -734,7 +764,12 @@ def selenium_chrome_deepl_translate(ctx: RuntimeContext, to_translate, retry_cou
         copy_button_clicked = False
         copy_button_clicked_loop_count = 7
         res = ""
-        still_translating_html_str = 'div class="lmt__progress_popup lmt__progress_popup--visible lmt__progress_popup--visible_2" dl-test="translator-progress-popup"'
+        translated_phrases_array: list[str] = []
+        # The progress popup HTML changed at some point — match either of the
+        # two known shapes by anchoring on a stable attribute (`dl-test` or
+        # the lmt__progress_popup--visible class). The shorter substring
+        # matches both legacy and current DeepL builds.
+        still_translating_html_str = 'lmt__progress_popup lmt__progress_popup--visible'
         
         # When failing to get translation from HTML, use button copy and clipboard and warn user.
         warned_using_clipboard = False
@@ -855,13 +890,21 @@ def selenium_chrome_deepl_translate(ctx: RuntimeContext, to_translate, retry_cou
                             print("Warning: Failed to get translation from html, copying from clipboard")
                             warned_using_clipboard = True
                             
-                        if warned_using_clipboard and (res == "" or res == None):
-                            #return False, None
-                            clipboard.copy('')
-                            safe_click(ctx.browser.driver, copy_translation_button)
-                            copy_button_clicked = True
-                            res = clipboard.paste()
-                            if len(res) == 0 or res == None:
+                        if warned_using_clipboard and (res == "" or res is None):
+                            # Optional clipboard fallback. If the package is
+                            # missing or the click fails, return cleanly so
+                            # the runner can mark the call failed and retry.
+                            if clipboard is None or copy_translation_button is None:
+                                print("Error : failed to get translation from Deepl (no clipboard fallback available).")
+                                return False, ""
+                            try:
+                                clipboard.copy('')
+                                safe_click(ctx.browser.driver, copy_translation_button)
+                                copy_button_clicked = True
+                                res = clipboard.paste()
+                            except Exception:
+                                res = ""
+                            if not res:
                                 print("Error : failed to get translation from Deepl.")
                                 return False, ""
                             
@@ -878,7 +921,7 @@ def selenium_chrome_deepl_translate(ctx: RuntimeContext, to_translate, retry_cou
                 # contains the translation
                 res = res.replace("\r", "")
                 res = re.sub(r"\n+", "\n", res)
-                res = remove_span_tag(res)
+                res = _remove_span_tag(res)
                 
                 input_nb_lines = len(re.sub(r"\n+", "\n", to_translate).replace("\r", "").split("\n"))
 

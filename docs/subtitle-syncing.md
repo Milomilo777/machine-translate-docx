@@ -229,16 +229,17 @@ G1–G5 failures block output delivery.
 
 ## Output
 
-Two files produced:
+One file per job (phase 7 of the persian-double-lines roadmap):
 
-| File | Suffix | `job` field |
-|------|--------|-------------|
-| Mechanical Classic | `_PER_Classic.docx` | `filename3` |
-| Mechanical Double | `_PER_Double.docx` | `filename2` |
+| Engine + split                        | Output filename                                  |
+|---------------------------------------|--------------------------------------------------|
+| chatgpt-polish + basic                | `{stem}_PER_Polish.docx`                         |
+| chatgpt-polish + persian_double_lines | `{stem}_PER_Polish_Double_Lines.docx`            |
+| chatgpt + persian_double_lines        | `{stem}_PER_chatGPT_Double_Lines.docx`           |
+| google / deepl + basic                | `{stem}_{LANG}_Google.docx` / `_Deepl.docx`      |
 
-- Both paths derived from the **original input file**, not the timestamped upload copy
-- `local_launcher.py` detects them via `_find_double_file()` / `_find_classic_file()` (3-strategy search each)
-- Frontend triggers downloads at +1500ms (Double) and +3000ms (Classic) after main file
+- Path derived from the **original input file**, not the timestamped upload copy
+- The Persian Double Lines splitter is applied by `local_launcher._apply_splitter` (post-translate path) and `_materialise_cached_output` (cache-hit path); both run the FA mechanical aligner in-process
 
 ---
 

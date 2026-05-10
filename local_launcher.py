@@ -60,6 +60,37 @@ def _lang_suffix(target_language: str) -> str:
     return _LANG_ALPHA3B.get(target_language.lower(), target_language.replace('-', '').upper())
 
 
+def _double_lines_output_path(base_path: Path) -> Path:
+    """Return the Persian Double Lines variant of a translated docx path.
+
+    Phase 6 contract: the suffix is `_Double_Lines` and is appended after
+    the engine suffix, just before `.docx`. Examples:
+
+        sample_PER_Polish.docx  → sample_PER_Polish_Double_Lines.docx
+        sample_PER_chatGPT.docx → sample_PER_chatGPT_Double_Lines.docx
+    """
+    stem = _re.sub(r"(?i)\.docx$", "", base_path.name)
+    return base_path.with_name(f"{stem}_Double_Lines.docx")
+
+
+def _engine_suffix_for(translation_engine: str | None) -> str:
+    """Filename suffix appended after the lang code, per engine.
+
+    Mirrors the table in `save_docx_file._engine_suffix(ctx)` on the
+    backend side. Used by `_fallback_output_path` when the launcher
+    has to guess the output filename because the subprocess never
+    printed `Saved file name:`.
+    """
+    return {
+        'google':         '_Google',
+        'deepl':          '_Deepl',
+        'chatgpt':        '_chatGPT',
+        'chatgpt-polish': '_Polish',
+        'chatgpt-web':    '_web_chatGPT',
+        'perplexity-web': '_web_Perplexity',
+    }.get((translation_engine or '').lower().strip(), '')
+
+
 def _sanitize_filename(name: str) -> str:
     name = Path(name).name
     name = name.replace("\x00", "")
@@ -253,8 +284,6 @@ class Job:
     filename: str | None
     error: str | None
     created_at: float
-    filename2: str | None = None  # _PER_Double.docx   (FA mechanical aligner)
-    filename3: str | None = None  # _PER_Classic.docx  (simple word-wrap split)
     progress: int = 0             # 0-100; updated by PROGRESS:N markers from backend
 
 
@@ -273,11 +302,23 @@ class LocalState:
         self.script_path = script_path
         self.lock = threading.Lock()
         self.jobs: dict[str, Job] = {}
+        # Subprocess handles, keyed by job_id. Held while a real-backend
+        # job runs so POST /cancel/<id> can terminate it. Mock jobs never
+        # populate this. Cleared when the subprocess exits.
+        self.job_procs: dict[str, "subprocess.Popen"] = {}
         self.total_uploads = 0
-        # cache_key → (timestamp, [(file_kind, abs_path)])
-        # file_kind ∈ {"main","double","classic"} matches Job's
-        # filename / filename2 / filename3 fields.
-        self.cache: dict[str, tuple[float, list[tuple[str, Path]]]] = {}
+        # cache_key → (timestamp, payload_dict). The dict carries:
+        #   main_path:                Path  — engine output, no splitter
+        #   source_path:              Path  — original upload bytes
+        #   translation_array:        list[str] — for line-aware splitters
+        #   phrase_separator_table:   list[str]
+        #   engine, ai_model, src_lang, dest_lang: str | None
+        # The cache key intentionally excludes the splitter so a re-upload
+        # with a different Split Method reuses the cached translation and
+        # only re-runs the splitter (phase 4 of the persian-double-lines
+        # roadmap). Pre-phase-4 (timestamp, list-of-tuples) entries are
+        # evicted on access.
+        self.cache: dict[str, tuple[float, dict]] = {}
 
     def boot(self) -> None:
         for directory in [
@@ -324,6 +365,32 @@ class LocalState:
         with self.lock:
             return dict(self.jobs)
 
+    def cancel_job(self, job_id: str) -> tuple[bool, str]:
+        """Terminate a running real-backend job.
+
+        Returns (ok, message). The subprocess is killed (SIGTERM/TerminateProcess);
+        the running stdout-reader thread observes the broken pipe, marks the
+        job as ``status='cancelled'``, and exits. Idempotent — calling on an
+        already-finished job returns (False, message).
+        """
+        with self.lock:
+            job = self.jobs.get(job_id)
+            proc = self.job_procs.get(job_id)
+        if job is None:
+            return False, "no such job"
+        if job.status != "pending":
+            return False, f"job already {job.status}"
+        if proc is None:
+            # Mock-backend or pre-subprocess; just flip status.
+            self.update_job(job_id, status="cancelled", error="cancelled by user")
+            return True, "cancelled (no subprocess to kill)"
+        try:
+            proc.kill()
+        except Exception as exc:
+            return False, f"kill failed: {exc}"
+        self.update_job(job_id, status="cancelled", error="cancelled by user")
+        return True, "cancelled"
+
     def cleanup_old_jobs(self, max_age_sec: int = 3600) -> int:
         """Remove finished jobs older than `max_age_sec`. Returns count removed."""
         now = time.time()
@@ -331,57 +398,86 @@ class LocalState:
         with self.lock:
             for jid in [
                 j for j, job in self.jobs.items()
-                if job.status in ("done", "error") and (now - job.created_at) > max_age_sec
+                if job.status in ("done", "error", "cancelled") and (now - job.created_at) > max_age_sec
             ]:
                 del self.jobs[jid]
+                self.job_procs.pop(jid, None)
                 removed += 1
         return removed
 
     # ── 36-hour cache ────────────────────────────────────────────────────────
 
-    def cache_lookup(self, key: str) -> list[tuple[str, Path]] | None:
-        """Return [(kind, path), ...] if a fresh entry exists, else None.
+    def cache_lookup(self, key: str) -> dict | None:
+        """Return the cache payload dict if a fresh entry exists, else None.
 
-        Stale entries (older than CACHE_TTL_SEC) are evicted on access.
-        Entries whose paths have disappeared from disk are also evicted.
+        Stale entries (older than CACHE_TTL_SEC) are evicted on access, as
+        are entries whose `main_path` has disappeared from disk. Pre-phase-4
+        entries (the legacy (timestamp, list-of-tuples) shape) are also
+        evicted on access so the next upload re-runs the engine cleanly.
         """
         with self.lock:
             entry = self.cache.get(key)
         if not entry:
             return None
-        ts, paths = entry
+        ts, data = entry
+        if not isinstance(data, dict):
+            self._evict(key)
+            return None
         if time.time() - ts > CACHE_TTL_SEC:
             self._evict(key)
             return None
-        for _, p in paths:
-            if not p.exists():
-                self._evict(key)
-                return None
-        return list(paths)
+        main_path = data.get("main_path")
+        if not main_path or not Path(main_path).exists():
+            self._evict(key)
+            return None
+        return data
 
-    def cache_store(self, key: str, paths: list[tuple[str, Path]]) -> None:
-        """Copy `paths` into runtime/cache/<key>/ and remember them.
+    def cache_store(
+        self,
+        key: str,
+        *,
+        main_path: Path,
+        source_file: Path | None = None,
+        translation_array: list[str] | None = None,
+        phrase_separator_table: list[str] | None = None,
+        engine: str | None = None,
+        ai_model: str | None = None,
+        src_lang: str | None = None,
+        dest_lang: str | None = None,
+    ) -> None:
+        """Persist a cached translation under `runtime/cache/<key>/`.
 
-        We copy (not move) so the live job's outputs remain in the uploads
-        directory — the launcher's existing /download/<name> route still
-        serves them. The cache copy is a backup that survives upload-dir
-        cleanup.
+        Stores the engine's main output docx and a copy of the source
+        upload (so a future request with a different splitter can apply
+        it without needing the original upload to still be on disk).
+        Optional translation arrays are kept for line-aware splitters and
+        the line-count reconciler; either may be empty in early phases.
         """
-        if not paths:
+        if not main_path.exists():
             return
         try:
             entry_dir = self.cache_dir / key
             entry_dir.mkdir(parents=True, exist_ok=True)
-            stored: list[tuple[str, Path]] = []
-            for kind, src in paths:
-                if not src.exists():
-                    continue
-                dst = entry_dir / src.name
-                if not dst.exists() or dst.stat().st_size != src.stat().st_size:
-                    shutil.copy2(src, dst)
-                stored.append((kind, dst))
+            dst_main = entry_dir / main_path.name
+            if not dst_main.exists() or dst_main.stat().st_size != main_path.stat().st_size:
+                shutil.copy2(main_path, dst_main)
+            dst_src: Path | None = None
+            if source_file and source_file.exists():
+                dst_src = entry_dir / "_source.docx"
+                if not dst_src.exists() or dst_src.stat().st_size != source_file.stat().st_size:
+                    shutil.copy2(source_file, dst_src)
+            data: dict = {
+                "main_path": dst_main,
+                "source_path": dst_src,
+                "translation_array": list(translation_array or []),
+                "phrase_separator_table": list(phrase_separator_table or []),
+                "engine": engine,
+                "ai_model": ai_model,
+                "src_lang": src_lang,
+                "dest_lang": dest_lang,
+            }
             with self.lock:
-                self.cache[key] = (time.time(), stored)
+                self.cache[key] = (time.time(), data)
         except Exception as exc:
             print(f"[cache] store failed for {key[:12]}…: {exc}")
 
@@ -506,58 +602,15 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def _send_zip_for_job(self, job_id: str) -> None:
-        """[DISABLED] ZIP packaging for multi-file download.
+        """[RETIRED] Multi-file ZIP packaging.
 
-        Was introduced in Phase 2 (fix E13) to work around Chrome's multi-download
-        permission prompt: all output files were packed into a single ZIP so the
-        browser only saw one download request.
-
-        Replaced by sequential timed downloads in the frontend (1800 ms apart),
-        which avoids the Chrome prompt without requiring users to unzip anything.
-        Kept here in case ZIP bundling is needed again in the future.
-
-        The /download-zip/ route still exists and forwards to this method,
-        but returns 410 GONE so no client should rely on it.
+        Phase 7 of the persian-double-lines roadmap collapsed the output
+        from three files (TranslatePolish + Classic + Double) to one
+        single docx per job, so there is nothing left to bundle. The
+        /download-zip/ route is kept to avoid 404s for any client that
+        still has the URL cached, but always responds 410 GONE.
         """
         self._send_text("ZIP download is no longer active.", HTTPStatus.GONE)
-        return
-        # --- original implementation below (kept for reference) ---
-        job = self.state.get_job(job_id)
-        if not job or job.status != "done" or not job.filename:
-            self._send_text("Not found", HTTPStatus.NOT_FOUND)
-            return
-
-        import io
-        import zipfile
-
-        names = [n for n in (job.filename, job.filename2, job.filename3, job.filename4) if n]
-        existing = [(n, self.state.uploads_dir / n) for n in names
-                    if (self.state.uploads_dir / n).exists()]
-        if not existing:
-            self._send_text("Not found", HTTPStatus.NOT_FOUND)
-            return
-
-        # Strip _PER_TranslatePolish suffix to derive package stem.
-        main_stem = Path(job.filename).stem
-        pkg_stem = _re.sub(
-            r'_(?:PER|ARA|GER|FRE|CHI|SPA|POR|ITA|JPN|KOR|RUS|TUR|POL|DUT|SWE|NOR|DAN|FIN|HEB|HIN|THA|VIE|UKR|CZE|HUN|ROM|BUL).*$',
-            '', main_stem, flags=_re.IGNORECASE,
-        ) or main_stem
-        zip_name = f"{pkg_stem}_PER_package.zip"
-
-        buf = io.BytesIO()
-        with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as z:
-            for name, path in existing:
-                z.write(path, name)
-        data = buf.getvalue()
-
-        self.send_response(HTTPStatus.OK)
-        self.send_header("Content-Type", "application/zip")
-        self.send_header("Content-Length", str(len(data)))
-        self.send_header("Content-Disposition", f'attachment; filename="{zip_name}"')
-        self.send_header("Cache-Control", "no-store")
-        self.end_headers()
-        self.wfile.write(data)
 
     def do_GET(self):
         parsed = urlparse(self.path)
@@ -596,10 +649,6 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
                 "error": job.error,
                 "progress": job.progress,
             }
-            if job.filename2:
-                payload["filename2"] = job.filename2
-            if job.filename3:
-                payload["filename3"] = job.filename3
             self._send_json(payload)
             return
 
@@ -662,6 +711,18 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         parsed = urlparse(self.path)
+
+        # Cancel a running job. The frontend Cancel button hits this.
+        # We kill the subprocess; the job thread observes the broken
+        # pipe and exits without overwriting the cancelled status.
+        if parsed.path.startswith("/cancel/"):
+            job_id = parsed.path.removeprefix("/cancel/").strip("/")
+            ok, msg = self.state.cancel_job(job_id)
+            self._send_json(
+                {"ok": ok, "message": msg},
+                HTTPStatus.OK if ok else HTTPStatus.BAD_REQUEST,
+            )
+            return
 
         # Newsletter subscribe endpoint — accepts JSON {"email": "..."} OR
         # multipart/form-data with field name "email". Used by the v2 UI
@@ -741,30 +802,30 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
             cache_key = _cache_key(payload, target_language, translation_engine, ai_model)
             cached = self.state.cache_lookup(cache_key)
             if cached:
-                # Materialise the cached files back into the uploads dir
-                # under the new job's expected names so the existing
-                # /download/<name> route serves them unchanged.
-                fname = fname2 = fname3 = None
-                for kind, src in cached:
-                    dst = self.state.uploads_dir / src.name
-                    if not dst.exists():
-                        try:
-                            shutil.copy2(src, dst)
-                        except Exception as exc:
-                            print(f"[cache] copy-back failed: {exc}")
-                            cached = None
-                            break
-                    if kind == "main":   fname  = src.name
-                    if kind == "double": fname2 = src.name
-                    if kind == "classic": fname3 = src.name
-                if cached and fname:
+                # Materialise the cached engine output back into uploads/
+                # and apply the requested Split Method on top. A different
+                # splitter than was used last time is the whole point of
+                # the phase-4 dict-shape cache.
+                served = self._materialise_cached_output(
+                    cached,
+                    split_engine=split_engine,
+                    target_language=target_language,
+                )
+                if served:
+                    splitter_only = served.name.endswith("_Double_Lines.docx")
                     self.state.update_job(
                         job_id, status="done",
-                        filename=fname, filename2=fname2, filename3=fname3,
+                        filename=served.name,
                         progress=100, error=None,
                     )
-                    print(f"[cache hit] {cache_key[:12]}… reused {len(cached)} file(s) for job {job_id}")
-                    self._send_json({"ok": True, "jobId": job_id, "cacheHit": True})
+                    print(
+                        f"[cache hit] {cache_key[:12]}… reused; "
+                        f"split={split_engine or 'none'} splitter_only={splitter_only}"
+                    )
+                    self._send_json({
+                        "ok": True, "jobId": job_id,
+                        "cacheHit": True, "splitterOnly": splitter_only,
+                    })
                     return
 
         print(f"[job {job_id}] upload={saved_name}")
@@ -860,41 +921,51 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
             count = _read_int(self.state.count_file, 0) + 1
             _write_int(self.state.count_file, count)
 
-            # Companion split output files (fa + chatgpt-polish only)
-            double_path = self._find_double_file(output_path)
-            if double_path:
-                double_path = self._strip_timestamp(double_path)
-                print(f"[job {job_id}] double file found -> {double_path.name}")
-
-            classic_path = self._find_classic_file(output_path)
-            if classic_path:
-                classic_path = self._strip_timestamp(classic_path)
-                print(f"[job {job_id}] classic file found -> {classic_path.name}")
+            # Apply the requested Split Method on top of the engine's
+            # raw translated output. For Persian Double Lines this runs
+            # the FA mechanical aligner in-process; for any other splitter
+            # (or none) the engine output is served unchanged.
+            served_path = self._apply_splitter(
+                output_path,
+                split_engine=split_engine,
+                target_language=target_language,
+            )
 
             self.state.update_job(
                 job_id,
                 status="done",
-                filename=output_path.name,
-                filename2=double_path.name if double_path else None,
-                filename3=classic_path.name if classic_path else None,
+                filename=served_path.name,
                 error=None,
             )
 
             # Cache outputs for 36 hours (API engines only — `cache_key` is
-            # only set for them in do_POST). Cache hits at the next upload
-            # of byte-identical input + same lang + engine + model.
+            # only set for them in do_POST). The cache stores the engine's
+            # *raw* translated docx (no splitter applied) so a re-upload
+            # with a different Split Method can reuse it.
             if cache_key:
-                cache_paths: list[tuple[str, Path]] = [("main", output_path)]
-                if double_path:  cache_paths.append(("double", double_path))
-                if classic_path: cache_paths.append(("classic", classic_path))
-                self.state.cache_store(cache_key, cache_paths)
+                self.state.cache_store(
+                    cache_key,
+                    main_path=output_path,
+                    source_file=source_file,
+                    engine=translation_engine,
+                    ai_model=ai_model,
+                    src_lang=source_language,
+                    dest_lang=target_language,
+                )
 
             _job_elapsed = time.time() - _job_t0
-            print(f"[job {job_id}] ✓ done in {_job_elapsed:.0f}s -> {output_path.name}")
+            print(f"[job {job_id}] ✓ done in {_job_elapsed:.0f}s -> {served_path.name}")
         except Exception as exc:
             _job_elapsed = time.time() - _job_t0
-            self.state.update_job(job_id, status="error", filename=None, error=str(exc))
-            print(f"[job {job_id}] ✗ error after {_job_elapsed:.0f}s: {exc}")
+            # If the user already cancelled this job, the subprocess kill
+            # raised inside us as a non-zero exit. Don't overwrite the
+            # 'cancelled' status with 'error' in that case.
+            cur = self.state.get_job(job_id)
+            if cur and cur.status == "cancelled":
+                print(f"[job {job_id}] ✗ cancelled by user after {_job_elapsed:.0f}s")
+            else:
+                self.state.update_job(job_id, status="error", filename=None, error=str(exc))
+                print(f"[job {job_id}] ✗ error after {_job_elapsed:.0f}s: {exc}")
         finally:
             _job_semaphore.release()
 
@@ -906,7 +977,11 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
             engine = "chatgpt"
             extra.extend(["--enginemethod", "api", "--with-polish"])
         elif engine == "chatgpt-web":
-            raise ValueError("The current real backend does not support chatgpt-web in this launcher.")
+            engine = "chatgpt"
+            extra.extend(["--enginemethod", "web"])
+        elif engine == "perplexity-web":
+            engine = "perplexity"
+            extra.extend(["--enginemethod", "web"])
         elif engine == "perplexity":
             extra.extend(["--enginemethod", "webservice"])
         elif engine == "chatgpt":
@@ -956,8 +1031,8 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
             cmd.extend(["--srclang", source_language])
         if split_translate:
             cmd.append("--split")
-        if split_engine == "openai":
-            cmd.extend(["--splitengine", "openai"])
+        if split_engine in ("openai", "persian_double_lines"):
+            cmd.extend(["--splitengine", split_engine])
         if engine == "google":
             cmd.append("--showbrowser")
 
@@ -998,6 +1073,10 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
             },
         )
 
+        # Register the subprocess so POST /cancel/<id> can kill it.
+        with self.state.lock:
+            self.state.job_procs[job_id] = proc
+
         saved_filename: str | None = None
         if proc.stdout is not None:
             for line in proc.stdout:
@@ -1024,7 +1103,7 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
         if code != 0:
             raise RuntimeError(f"Backend exited with code {code}")
 
-        output_path = Path(saved_filename) if saved_filename else self._fallback_output_path(source_file, target_language)
+        output_path = Path(saved_filename) if saved_filename else self._fallback_output_path(source_file, target_language, translation_engine)
         deadline = time.time() + 120
         while time.time() < deadline:
             if output_path.exists():
@@ -1046,94 +1125,89 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
         path.unlink()  # duplicate — remove timestamped copy, clean already exists
         return clean_path
 
-    def _fallback_output_path(self, source_file: Path, target_language: str) -> Path:
-        suffix = _lang_suffix(target_language) or "OUT"
-        stem = _re.sub(r'^\d{10,}-', '', source_file.stem)
-        return source_file.with_name(f"{stem}_{suffix}.docx")
+    def _apply_splitter(
+        self,
+        base_path: Path,
+        *,
+        split_engine: str | None,
+        target_language: str,
+    ) -> Path:
+        """Apply the requested Split Method to a translated docx.
 
-    def _find_double_file(self, main_output: Path) -> Path | None:
-        """Look for the _PER_Double.docx sibling of the main output file.
+        For ``persian_double_lines`` (FA target only): run the FA mechanical
+        aligner in-process — no API call, no extra subprocess — and emit
+        ``{stem}_Double_Lines.docx`` next to the input. For any other
+        splitter or target language, return ``base_path`` unchanged.
 
-        Search order:
-          1. Exact name: replace _TranslatePolish → _Double in main output name.
-          2. Timestamped variant: same but with a leading timestamp prefix on disk
-             (aligner may write before _strip_timestamp runs).
-          3. Fallback glob filtered by stem: scan uploads dir for *_PER_Double.docx
-             whose clean stem matches the current job's clean stem.
+        Falls back to the input path on any aligner error so the user
+        always receives at least the engine's translated docx.
         """
-        parent = main_output.parent
+        if split_engine != "persian_double_lines":
+            return base_path
+        if not (target_language or "").lower().startswith("fa"):
+            return base_path
+        try:
+            out_path = _double_lines_output_path(base_path)
+            if out_path.exists():
+                return out_path
+            src_dir = str(ROOT / "src")
+            if src_dir not in sys.path:
+                sys.path.insert(0, src_dir)
+            # Lazy import — keeps the launcher's start-up cheap and avoids
+            # loading python-docx until a Persian Double Lines job arrives.
+            from openai_tools.persian_double_lines import FASubtitleAligner
+            aligner = FASubtitleAligner(
+                model="gpt-5.4-mini",   # aligner is hardcoded mini (C1)
+                llm_threshold=0,        # purely mechanical; no LLM call
+                token_budget=0,
+            )
+            aligner.align(str(base_path), str(out_path))
+            return out_path
+        except Exception as exc:
+            print(f"[splitter] persian_double_lines failed: {exc}")
+            return base_path
 
-        # Derive the clean stem shared by both output files.
-        # main_output.name is already timestamp-stripped at this point.
-        # e.g. "myfile_PER_TranslatePolish.docx" → clean_stem = "myfile"
-        clean_stem = _re.sub(
-            r'[_\-](?:PER|ARA|GER|FRE|CHI|SPA|POR|ITA|JPN|KOR|RUS|TUR|POL|DUT|SWE|NOR|DAN|FIN|HEB|HIN|THA|VIE|UKR|CZE|HUN|ROM|BUL|CAT|HRV|SLK|SLV|LIT|LAV|EST).*$',
-            '',
-            main_output.stem,
-            flags=_re.IGNORECASE,
-        ) or main_output.stem
-
-        # Strategy 1: exact name — replace TranslatePolish with Double
-        candidate_name = _re.sub(
-            r'_TranslatePolish(?=\.docx$)', '_Double', main_output.name, flags=_re.IGNORECASE
-        )
-        if candidate_name != main_output.name:
-            p = parent / candidate_name
-            if p.exists():
-                return p
-
-        # Strategy 2: timestamped variant still on disk
-        # e.g. "1778036666789-myfile_PER_Double.docx"
-        for p in parent.glob(f"*-{clean_stem}_PER_Double.docx"):
-            if p.exists():
-                return p
-
-        # Strategy 3: any *_PER_Double.docx whose clean stem matches this job
-        # (handles edge-case naming variations)
-        for p in parent.glob("*_PER_Double.docx"):
-            p_clean = _re.sub(r'^\d{10,}-', '', p.name)          # strip timestamp
-            p_stem  = _re.sub(r'[_\-]PER_Double\.docx$', '', p_clean, flags=_re.IGNORECASE)
-            if p_stem == clean_stem:
-                return p
-
-        return None
-
-    def _find_classic_file(self, main_output: Path) -> Path | None:
-        """Look for the _PER_Classic.docx sibling of the main output file.
-
-        Mirrors _find_double_file() but targets _PER_Classic.docx.
+    def _materialise_cached_output(
+        self,
+        cached: dict,
+        *,
+        split_engine: str | None,
+        target_language: str,
+    ) -> Path | None:
+        """Copy the cached engine output back into uploads/, applying the
+        requested splitter (Phase 4: Persian Double Lines re-runs the FA
+        aligner against the cached translation in <2 s — no engine call).
         """
-        parent = main_output.parent
-
-        clean_stem = _re.sub(
-            r'[_\-](?:PER|ARA|GER|FRE|CHI|SPA|POR|ITA|JPN|KOR|RUS|TUR|POL|DUT|SWE|NOR|DAN|FIN|HEB|HIN|THA|VIE|UKR|CZE|HUN|ROM|BUL|CAT|HRV|SLK|SLV|LIT|LAV|EST).*$',
-            '',
-            main_output.stem,
-            flags=_re.IGNORECASE,
-        ) or main_output.stem
-
-        # Strategy 1: exact name — replace TranslatePolish with Classic
-        candidate_name = _re.sub(
-            r'_TranslatePolish(?=\.docx$)', '_Classic', main_output.name, flags=_re.IGNORECASE
+        main_src = cached.get("main_path")
+        if not main_src:
+            return None
+        main_src = Path(main_src)
+        if not main_src.exists():
+            return None
+        uploads_dir = self.state.uploads_dir
+        base_dst = uploads_dir / main_src.name
+        if not base_dst.exists():
+            try:
+                shutil.copy2(main_src, base_dst)
+            except Exception as exc:
+                print(f"[cache] copy-back failed: {exc}")
+                return None
+        return self._apply_splitter(
+            base_dst,
+            split_engine=split_engine,
+            target_language=target_language,
         )
-        if candidate_name != main_output.name:
-            p = parent / candidate_name
-            if p.exists():
-                return p
 
-        # Strategy 2: timestamped variant still on disk
-        for p in parent.glob(f"*-{clean_stem}_PER_Classic.docx"):
-            if p.exists():
-                return p
-
-        # Strategy 3: any *_PER_Classic.docx whose clean stem matches this job
-        for p in parent.glob("*_PER_Classic.docx"):
-            p_clean = _re.sub(r'^\d{10,}-', '', p.name)
-            p_stem  = _re.sub(r'[_\-]PER_Classic\.docx$', '', p_clean, flags=_re.IGNORECASE)
-            if p_stem == clean_stem:
-                return p
-
-        return None
+    def _fallback_output_path(
+        self,
+        source_file: Path,
+        target_language: str,
+        translation_engine: str | None = None,
+    ) -> Path:
+        suffix     = _lang_suffix(target_language) or "OUT"
+        engine_tag = _engine_suffix_for(translation_engine)
+        stem       = _re.sub(r'^\d{10,}-', '', source_file.stem)
+        return source_file.with_name(f"{stem}_{suffix}{engine_tag}.docx")
 
 
 def _find_free_port(start_port: int) -> int:

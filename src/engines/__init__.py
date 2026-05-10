@@ -23,6 +23,8 @@ from runtime import RuntimeContext
 from . import google
 from . import deepl
 from . import chatgpt_api
+from . import chatgpt_web
+from . import perplexity_web
 
 __all__ = [
     "EngineName",
@@ -39,10 +41,12 @@ class EngineName(StrEnum):
     with the existing ``--engine`` CLI flag.
     """
 
-    GOOGLE         = "google"
-    DEEPL          = "deepl"
-    CHATGPT        = "chatgpt"
-    CHATGPT_POLISH = "chatgpt-polish"
+    GOOGLE          = "google"
+    DEEPL           = "deepl"
+    CHATGPT         = "chatgpt"
+    CHATGPT_POLISH  = "chatgpt-polish"
+    CHATGPT_WEB     = "chatgpt-web"      # phase 8 — guest session
+    PERPLEXITY_WEB  = "perplexity-web"   # phase 8 — guest session
 
 
 # Membership-test set for fast ``engine in ACTIVE_ENGINES`` checks.
@@ -53,8 +57,10 @@ ACTIVE_ENGINES: Final[frozenset[EngineName]] = frozenset(EngineName)
 # Engines not yet here remain in the entry script and reach the dispatcher
 # via the legacy ``set_translation_function`` glue.
 DISPATCH_TABLE: Final[dict[EngineName, Callable[[RuntimeContext, str], tuple[bool, str]]]] = {
-    EngineName.GOOGLE: google.translate,
-    EngineName.DEEPL:  deepl.translate,
+    EngineName.GOOGLE:         google.translate,
+    EngineName.DEEPL:          deepl.translate,
+    EngineName.CHATGPT_WEB:    chatgpt_web.translate,
+    EngineName.PERPLEXITY_WEB: perplexity_web.translate,
     # EngineName.CHATGPT / CHATGPT_POLISH still flow through
     # run_openai_single_call in chatgpt_api.py and the legacy
     # block-loop dispatcher; a future phase will give them an

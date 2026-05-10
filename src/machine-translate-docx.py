@@ -215,6 +215,13 @@ from engines.deepl import (
     deepl_close_messages,
     selenium_chrome_deepl_translate,
 )
+# build_translation_prompt now also lives in engines/_prompts.py so the
+# web-Selenium engines (chatgpt_web, perplexity_web) can import it
+# directly. A local `def build_translation_prompt(...)` later in this
+# file shadows the imported name with an identical body; both resolve
+# to the same prompt text. Kept as a safety import so the symbol is
+# always reachable even if the local def is later moved or deleted.
+import engines._prompts as _engine_prompts  # noqa: F401
 from runner import selenium_chrome_translate_maxchar_blocks as _runner_translate_maxchar_blocks
 
 # Module-level RuntimeContext singleton — Phase F1 transition shim.
@@ -632,7 +639,7 @@ parser.add_argument('--xlsxreplacefile', '-x', required = False, help="Excel xls
 parser.add_argument('--destfont', '-f', required = False, help="Destination font name")
 parser.add_argument('--useapi', '-a', required = False, help="Use api to get translation, lower quality but faster", action='store_true')
 parser.add_argument('--split', '-s', required = False, help="Split web translation into cells", action='store_true')
-parser.add_argument('--splitengine', '-p', required = False, help="Specify AI split engine (openai)")
+parser.add_argument('--splitengine', '-p', required = False, help="Specify split engine (openai | persian_double_lines)")
 parser.add_argument('--splitonly', required = False, help="Split translation into lines only, do not translate.", action='store_true')
 parser.add_argument('--showbrowser', '-b', required = False, help="Show browser", action='store_true')
 parser.add_argument('--exitonsuccess', '-t', required = False, help="Exit progream on success", action='store_true')
@@ -718,8 +725,8 @@ split_translation = args.split
 split_engine = args.splitengine
 if split_engine is not None:
     split_engine = split_engine.lower()
-    if split_engine != 'openai':
-        print(f"Unknown split engine, accepted values : openai. Defaulting to non AI line splitting.")
+    if split_engine not in ('openai', 'persian_double_lines'):
+        print("Unknown split engine, accepted values : openai, persian_double_lines. Defaulting to non AI line splitting.")
         split_engine = None
 
 use_api = args.useapi
@@ -878,7 +885,15 @@ elif translation_engine == 'google':
     elif engine_method  == 'javascript':
         engine_method = 'javascript'
     else:
-        engine_method = 'javascript'
+        # Default for `--engine google` was historically `javascript`,
+        # which uploads a local HTML file to translate.google.com. That
+        # path stopped working when modern Chrome started blocking the
+        # widget on file:// URLs (~2022); it now fails fast with an
+        # error message but produces an empty docx. Switch the default
+        # to `phrasesblock`, which uses the textarea URL — fast and
+        # actually working. Users who genuinely want the old file-mode
+        # path can still pass `--enginemethod javascript` explicitly.
+        engine_method = 'phrasesblock'
 elif translation_engine == 'deepl':
     if engine_method == 'singlephrase' or use_api == True:
         engine_method = 'singlephrase'
@@ -890,12 +905,18 @@ elif translation_engine == 'chatgpt':
     if engine_method == 'api' or use_api == True:
         engine_method = 'api'
         showbrowser = False
+    elif engine_method == 'web':
+        # Phase 8 — chatgpt-web Selenium engine reactivated.
+        engine_method = 'web'
     else:
         engine_method = 'phrasesblock'
 
 elif translation_engine == 'perplexity':
     if engine_method  == 'webservice':
         engine_method = 'webservice'
+    elif engine_method == 'web':
+        # Phase 8 — perplexity-web Selenium engine reactivated.
+        engine_method = 'web'
     else:
         engine_method = 'phrasesblock'
 else:
@@ -906,7 +927,9 @@ if engine_method == 'webservice':
 
 if translation_engine == 'chatgpt' and engine_method == 'api':
     from openai_tools import OpenAITranslator, OpenAIPolisher
-    from openai_tools.aligner_per import FASubtitleAligner
+    # FASubtitleAligner is no longer imported here (Phase 1): the aligner is
+    # decoupled from chatgpt-polish and reached only via the Persian Double
+    # Lines Split Method, which performs its own local import on demand.
     chatgpt_max_char_bloc_size_key = ['chatgpt', 'api','maximum_character_block']
 else:
     chatgpt_max_char_bloc_size_key = ['chatgpt', 'no_account','maximum_character_block']
@@ -1925,8 +1948,27 @@ def set_translation_function(ctx: RuntimeContext):
             ctx.engine.dispatcher = selenium_chrome_translate_get_from_text_array
         else:
             ctx.engine.dispatcher = functools.partial(selenium_chrome_deepl_translate, ctx)
+    elif ctx.engine.engine == 'chatgpt' and ctx.engine.method == 'web':
+        # Phase 8 — restored chatgpt-web engine. Per-phrase web scraping
+        # of chatgpt.com via guest session; the wrapper sleeps 900 ms
+        # before each call and falls back to "" on any failure so the
+        # block-loop never hangs.
+        from engines import chatgpt_web as _cw
+        def _chatgpt_web_dispatch(text, *_args, _ctx=ctx, _mod=_cw):
+            ok, result = _mod.translate(_ctx, text)
+            return result if ok else ""
+        ctx.engine.dispatcher = _chatgpt_web_dispatch
+    elif ctx.engine.engine == 'perplexity' and ctx.engine.method == 'web':
+        # Phase 8 — restored perplexity-web engine. Mirrors the
+        # chatgpt-web adapter: 900 ms pre-sleep, graceful failure.
+        from engines import perplexity_web as _pw
+        def _perplexity_web_dispatch(text, *_args, _ctx=ctx, _mod=_pw):
+            ok, result = _mod.translate(_ctx, text)
+            return result if ok else ""
+        ctx.engine.dispatcher = _perplexity_web_dispatch
     elif ctx.engine.engine == 'chatgpt':
-        # Same for API and web scraping
+        # API path populates translation_array up front; dispatcher
+        # is just an array lookup by phrase index.
         ctx.engine.dispatcher = selenium_chrome_translate_get_from_text_array
     else:
         if ctx.engine.method == 'textfile':
@@ -3307,9 +3349,24 @@ def translate_docx(ctx: RuntimeContext):
     if translation_engine == "chatgpt":
         # ChatGPT always uses phrase-block logic
         use_phrasesblock = True
-    elif translation_engine in ("deepl", "perplexity"):
-        # Deepl & Perplexity only for these methods
-        use_phrasesblock = engine_method in ("phrasesblock", "webservice")
+    elif translation_engine == "deepl":
+        # Deepl: phrase-block only for the "phrasesblock" method
+        use_phrasesblock = engine_method == "phrasesblock"
+    elif translation_engine == "perplexity":
+        # Perplexity: phrase-block for HTTP webservice, classic
+        # phrasesblock, AND the live web-LLM (perplexity-web). The
+        # web variant was previously line-by-line because "web" was
+        # missing from this list — user-reported on 2026-05-10:
+        # "perplexity sends line-by-line but chatgpt-web sends
+        # block-by-block; align them."
+        use_phrasesblock = engine_method in ("phrasesblock", "webservice", "web")
+    elif translation_engine == "google":
+        # Google: phrasesblock joins many phrases into one URL, then
+        # splits on `\n`. Much faster than singlephrase (one round-trip
+        # per block instead of one per phrase). The classic file-mode
+        # paths (`javascript`, `textfile`, `xlsxfile`) handled their
+        # array population themselves and returned earlier.
+        use_phrasesblock = engine_method == "phrasesblock"
 
     if use_phrasesblock:
         translation_succeded = translate_from_phrasesblock(ctx)
@@ -4546,6 +4603,38 @@ def open_app_docx_file(ctx: RuntimeContext):
     except Exception as e:
         print("Error:", e)
         print("Warning, unable to open file %s." % (out_path))
+def _engine_suffix(ctx: 'RuntimeContext') -> str:
+    """Return the per-engine filename suffix appended after the lang code.
+
+    Matches the phase-5 naming convention:
+
+        google           → _Google
+        deepl            → _Deepl
+        chatgpt + api  + with-polish → _Polish
+        chatgpt + api  − with-polish → _chatGPT
+        chatgpt + web                → _web_chatGPT
+        perplexity + web             → _web_Perplexity
+
+    Anything outside this table returns the empty string so the file
+    keeps the legacy bare ``_{LANG}.docx`` name and nothing breaks.
+    """
+    engine = (ctx.engine.engine or '').lower().strip()
+    method = (ctx.engine.method or '').lower().strip()
+    if engine == 'google':
+        return '_Google'
+    if engine == 'deepl':
+        return '_Deepl'
+    if engine == 'chatgpt':
+        if method == 'api':
+            return '_Polish' if ctx.flags.with_polish else '_chatGPT'
+        if method == 'web':
+            return '_web_chatGPT'
+    if engine == 'perplexity':
+        if method == 'web':
+            return '_web_Perplexity'
+    return ''
+
+
 def save_docx_file(ctx: RuntimeContext):
     # PROGRESS:90 — about to write the docx to disk. The aligner branch
     # in print_console_docx_file_translated also emits 90 (and 100), so
@@ -4588,9 +4677,9 @@ def save_docx_file(ctx: RuntimeContext):
         if not re.search(find_alpha3_code_suffix, ctx.flags.word_file_to_translate):
             ctx.flags.word_file_to_translate_save_as_path = re.sub("(?i)_{lang_alpha3b_code}.docx$", f".docx", ctx.flags.word_file_to_translate)
             lang_alpha3b_code = lang_alpha3b_code.upper()
-            polish_tag = "_TranslatePolish" if ctx.flags.with_polish else ""
-            ctx.flags.word_file_to_translate_save_as_path = re.sub("(?i).docx$", f"_{lang_alpha3b_code}{polish_tag}.docx", ctx.flags.word_file_to_translate)
-            print(f"\nAdding file name suffix _{lang_alpha3b_code}{polish_tag}.")
+            engine_tag = _engine_suffix(ctx)
+            ctx.flags.word_file_to_translate_save_as_path = re.sub("(?i).docx$", f"_{lang_alpha3b_code}{engine_tag}.docx", ctx.flags.word_file_to_translate)
+            print(f"\nAdding file name suffix _{lang_alpha3b_code}{engine_tag}.")
 
     if os.path.exists(ctx.flags.word_file_to_translate_save_as_path):
         stem = re.sub(r'(?i)\.docx$', '', ctx.flags.word_file_to_translate_save_as_path)
@@ -4655,129 +4744,13 @@ def save_docx_file(ctx: RuntimeContext):
                 log_path = re.sub(r"(?i)\.docx$", "_log.json", ctx.flags.word_file_to_translate_save_as_path)
                 write_translation_log(log_path)
 
-            # ── helpers for the three split passes ───────────────────────────────
-            def _write_cell_text(cell, text: str) -> None:
-                """Replace all text in a table cell with `text` (first paragraph)."""
-                for para in cell.paragraphs:
-                    for run in para.runs:
-                        run.text = ''
-                while len(cell.paragraphs) > 1:
-                    p_elem = cell.paragraphs[-1]._element
-                    p_elem.getparent().remove(p_elem)
-                if cell.paragraphs:
-                    p = cell.paragraphs[0]
-                    if p.runs:
-                        p.runs[0].text = text
-                    else:
-                        p.add_run(text)
-
-            def _simple_split_docx(input_path: str, output_path: str, max_len: int = 48) -> dict:
-                """Classic FA distribution — no doubling, no row insertion.
-
-                Distributes the translated FA text across the group's EXISTING rows.
-                Only the FA column (cells[2]) is ever written.
-                The timecode/number column (cells[0]) and the EN column (cells[1])
-                are never touched.
-
-                Groups rows by FA sentence (same FA-based logic as FASubtitleAligner),
-                splits the joined FA text into at most n_rows chunks, then writes
-                one chunk per row with empty padding — no chunk is ever repeated.
-                """
-                from openai_tools.aligner_per import (
-                    FASubtitleAligner as _Aligner,
-                    _split_for_n_rows  as _split,
-                    _set_fa_cell       as _write_fa,
-                    _normalize_fa      as _norm_fa,
-                )
-
-                # Lightweight aligner instance for grouping only
-                _al = _Aligner.__new__(_Aligner)
-                _al.model = 'classic'; _al.llm_threshold = 0
-                _al.token_budget = 0;  _al.last_stats = {}
-
-                _stats: dict = {"rows_processed": 0, "rows_written": 0}
-
-                _rows   = _al._read_rows(input_path)
-                _groups = _al._parse_groups(_rows)
-                _stats["rows_processed"] = len(_rows)
-
-                _doc   = Document(input_path)
-                _table = _doc.tables[0]
-
-                for _grp in _groups:
-                    _n_rows  = len(_grp['row_indices'])
-                    _full_fa = _norm_fa(' '.join(p for p in _grp['fa_parts'] if p))
-                    if not _full_fa:
-                        continue
-
-                    # Split into at most n_rows chunks — no chunk is ever repeated.
-                    _chunks = _split(_full_fa, _n_rows)
-
-                    # One chunk per row; trailing rows get empty string (no double).
-                    for _i, _ri in enumerate(_grp['row_indices']):
-                        _text = _chunks[_i] if _i < len(_chunks) else ''
-                        _write_fa(_table, _ri, _text)
-                        if _text:
-                            _stats["rows_written"] += 1
-
-                _doc.save(output_path)
-                return _stats
-
-            # ── Subtitle aligner: two output files ───────────────────────────────
-            # Classic  (_PER_Classic.docx)  = simple word-wrap split, no AI
-            # Double   (_PER_Double.docx)   = FA-specific mechanical aligner (llm_threshold=0)
-            # Guard: only for Persian + chatgpt-polish pipeline
-            if ctx.flags.with_polish and ctx.language.dest_lang.startswith('fa'):
-                _ai_model_align  = 'gpt-5.4-mini'  # aligner always uses mini — never change
-                _stem_path       = re.sub(r'(?i)\.docx$', '', ctx.flags.word_file_to_translate)
-                _classic_path    = f"{_stem_path}_PER_Classic.docx"
-                _double_path     = f"{_stem_path}_PER_Double.docx"
-
-                # ── Pass 1: Classic — simple algorithmic word-wrap ────────────
-                # PROGRESS marker — translate+polish+save complete; splitting about to start.
-                print("PROGRESS:75", flush=True)
-                try:
-                    print(f"\n[INFO] Running Classic split -> {_classic_path}")
-                    _t0 = time.time()
-                    _cs = _simple_split_docx(ctx.flags.word_file_to_translate_save_as_path, _classic_path)
-                    print(
-                        f"[TIMER] Classic: {time.time()-_t0:.1f}s"
-                        f" | processed: {_cs.get('rows_processed','?')}"
-                        f" | split: {_cs.get('rows_split','?')}"
-                    )
-                    print(f"[INFO] Classic saved: {_classic_path}")
-                except Exception as _ae:
-                    import traceback as _tb
-                    print(f"[WARN] Classic split failed: {_ae}")
-                    print(_tb.format_exc())
-
-                print("PROGRESS:90", flush=True)
-
-                # ── Pass 2: Double — FA mechanical aligner (no LLM) ──────────
-                try:
-                    print(f"\n[INFO] Running Double aligner -> {_double_path}")
-                    _t0 = time.time()
-                    _double_aligner = FASubtitleAligner(
-                        model=_ai_model_align,
-                        llm_threshold=0,   # never call LLM
-                        token_budget=0,
-                    )
-                    _ds = _double_aligner.align(ctx.flags.word_file_to_translate_save_as_path, _double_path)
-                    print(
-                        f"[TIMER] Double:  {time.time()-_t0:.1f}s"
-                        f" | groups: {_ds.get('groups','?')}"
-                        f" | doubles: {_ds.get('doubles','?')}"
-                        f" | triples: {_ds.get('triples',0)}"
-                        f" | over-48: {_ds.get('over_limit',0)}"
-                    )
-                    print(f"[INFO] Double saved: {_double_path}")
-                except Exception as _ae:
-                    import traceback as _tb
-                    print(f"[WARN] Double aligner failed: {_ae}")
-                    print(_tb.format_exc())
-
-                # PROGRESS marker — both passes complete.
-                print("PROGRESS:100", flush=True)
+            # Phase 7 — Classic split helper and write_cell_text utility
+            # are gone with the rest of the multi-file output flow. The
+            # single-file Persian Double Lines splitter lives in
+            # local_launcher._apply_splitter (post-translate path) and
+            # _materialise_cached_output (cache-hit path); both run the
+            # FA mechanical aligner directly against the translated docx.
+            # launcher.py records progress=100 on subprocess success.
         except Exception:
             var = traceback.format_exc()
             print(var)

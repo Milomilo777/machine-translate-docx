@@ -57,6 +57,657 @@ after 1800 ms to avoid the Chrome multi-download permission prompt.
 
 ## Sessions
 
+### 2026-05-10 — perplexity-web block-mode + chatgpt-web inter-block revert (branch `next/persian-double-lines-as-splitter`)
+
+User-observed runtime asymmetry: chatgpt-web was sending block-by-block
+(many phrases per call) but perplexity-web was sending line-by-line
+(one phrase per call) — much slower and against design intent. Plus
+the previous 3× timeout pass over-bumped the *between-blocks* setup
+waits in chatgpt-web; only the post-submit translation waits were
+supposed to grow.
+
+**A1. perplexity-web routing fix.** `translate_docx` in the entry
+script gated `use_phrasesblock` on `engine_method in ("phrasesblock",
+"webservice")` for perplexity — `"web"` was missing, so the
+phrase-block runner was skipped and the dispatcher fell back to a
+per-phrase loop. Added `"web"` to the list. Now perplexity-web
+behaves exactly like chatgpt-web: one engine call per ~1500-char
+block, regardless of how many lines that contains.
+
+**A2. Reverted *between-blocks* chatgpt-web timings to pre-3× values.**
+
+  - `CHATGPT_WEB_ACCEPT_BUTTON_WAIT     0.6 → 0.2`
+  - `CHATGPT_WEB_LOGGED_OUT_LINK_WAIT   7.5 → 2.5`
+  - `CHATGPT_WEB_STAY_LOGGED_OUT_WAIT   1.5 → 0.5`
+  - `CHATGPT_WEB_AFTER_INJECT_SLEEP     6   → 2`
+
+These are the modal/cookie/inject waits — page-setup overhead. They
+fire BEFORE submit and contribute to "between blocks" wall time.
+Tripling them was unhelpful; reverted.
+
+**A3. Kept *post-submit* timings elevated.** The waits that gave
+ChatGPT room to actually translate stay at the higher values from
+the previous pass:
+
+  - `CHATGPT_WEB_AFTER_SUBMIT_SLEEP     5.0` s (added new)
+  - `CHATGPT_WEB_STOP_BUTTON_FIND_WAIT  3.0` s (added new — replaces
+                                                hardcoded `timeout = 1`)
+  - `CHATGPT_WEB_STREAMING_POLL         0.75` s (was 0.25 before)
+  - `CHATGPT_WEB_MAX_STREAMING_WAIT     180` s (was 60 before)
+
+64/64 unit tests still pass.
+
+### 2026-05-10 — chatgpt-web 3× timeout pass + missing post-submit wait (branch `next/persian-double-lines-as-splitter`)
+
+User confirmed the previous timing bump was still too aggressive on
+chatgpt-web — the page loaded, the prompt pasted, then the body
+declared the call dead before ChatGPT had even started streaming.
+Two fixes per user direction "تقریباً ۳ برابر کن":
+
+**P1. The real bug — no wait between submit and the polling loop.**
+The legacy body went straight from `safe_click(button_submit_prompt)`
+into `WebDriverWait(driver, timeout=1).until(stop_streaming_button)`.
+On a 2026 guest session, ChatGPT typically takes 2–5 s after submit
+before the Stop-streaming UI renders. The 1 s WebDriverWait raised
+TimeoutException, the `while` loop `break`-ed, the body fell through
+to BeautifulSoup parsing, and `articles[1]` either IndexError-ed
+(if user turn was the only article) or returned the user's own
+prompt as "translation".
+
+  - **New** `CHATGPT_WEB_AFTER_SUBMIT_SLEEP = 5.0 s` — explicit pause
+    between the submit click and the start of the polling loop.
+  - **New** `CHATGPT_WEB_STOP_BUTTON_FIND_WAIT = 3.0 s` — replaces
+    the hardcoded `timeout = 1` per WebDriverWait iteration.
+
+Together: ChatGPT now has at least 5 s to begin streaming before
+we look, and each look gives 3 s of grace before assuming "done".
+
+**P2. Triple all existing chatgpt-web timings.**
+
+  - `CHATGPT_WEB_ACCEPT_BUTTON_WAIT     0.2  → 0.6`
+  - `CHATGPT_WEB_LOGGED_OUT_LINK_WAIT   2.5  → 7.5`
+  - `CHATGPT_WEB_STAY_LOGGED_OUT_WAIT   0.5  → 1.5`
+  - `CHATGPT_WEB_AFTER_INJECT_SLEEP     2.0  → 6.0`
+  - `CHATGPT_WEB_STREAMING_POLL         0.25 → 0.75`
+  - `CHATGPT_WEB_MAX_STREAMING_WAIT     60   → 180`
+
+Every literal in the function body now resolves to one of these
+constants — `_timing.py` is the single source of truth.
+
+64 / 64 unit tests still pass. The body NameError / IndexError
+diagnostics from the previous pass are unchanged; only timings moved.
+
+### 2026-05-10 — web-engine timing bumps + Google fallback gated (branch `next/persian-double-lines-as-splitter`)
+
+User-observed runtime issues, two of them:
+
+1. **Perplexity-web closes too fast and loops.** "Doesn't give the
+   site time to translate, closes and reopens." Root cause: legacy
+   timings (1 s for the Submit button, 2.5 s for the first prose-div
+   read, 5 s for the visible retry) were too aggressive — perplexity.ai
+   guest sessions in 2026 are noticeably heavier than they were in
+   the 2024 reference build. Several waits raced and the body bailed
+   before the response landed; the runner saw `(False, "")` and
+   reopened the page, ad infinitum.
+
+2. **chatgpt-web mid-run switched to Google then looped.** The
+   block-loop's "single-line last-resort fallback" in
+   `runner.py:translate_lines_block` calls
+   `selenium_chrome_google_translate(ctx, line)` whenever the active
+   engine fails on a single line. The same browser/driver is reused,
+   so after Google answers, the browser is sitting on
+   translate.google.com — the next chatgpt-web call has to redo the
+   whole `delete_all_cookies()` + Cloudflare dance from a cold
+   document, every single time. That is the loop the user saw.
+
+**T1. Perplexity timing bumps in `src/engines/_timing.py`:**
+
+  - `PERPLEXITY_WEB_TEXTAREA_WAIT       7  → 10` s
+  - `PERPLEXITY_WEB_SUBMIT_BUTTON_WAIT  1  → 5`  s  ← user's pain point
+  - `PERPLEXITY_WEB_AFTER_SUBMIT_SLEEP  1  → 2`  s
+  - `PERPLEXITY_WEB_STOP_BUTTON_POLL    0.25 → 0.5` s
+  - `PERPLEXITY_WEB_PROSE_FIRST_WAIT    2.5 → 8`  s
+  - `PERPLEXITY_WEB_PROSE_RETRY_SLEEP   0.25 → 0.5` s
+  - `PERPLEXITY_WEB_PROSE_VISIBLE_WAIT  5  → 15` s
+
+**T2. ChatGPT-web timing bumps:**
+
+  - `CHATGPT_WEB_LOGGED_OUT_LINK_WAIT   1.2 → 2.5` s
+  - `CHATGPT_WEB_STAY_LOGGED_OUT_WAIT   0.3 → 0.5` s
+  - `CHATGPT_WEB_AFTER_INJECT_SLEEP     1   → 2`   s
+  - `CHATGPT_WEB_MAX_STREAMING_WAIT     40  → 60`  s
+
+**T3. Hardcoded literals in both web engines replaced with timing
+imports.** The constants are now the single source of truth — the
+function bodies reference them directly. Future bumps are a one-line
+edit instead of a hunt-and-peck across 400-line bodies.
+
+**T4. Google fallback gated.** `runner.py:translate_lines_block`'s
+single-line last-resort Google call is now skipped when
+`(engine, method)` is `(chatgpt, web)` or `(perplexity, web)`. The
+genuine LLM-web engines should fail loudly (return
+`"Unable to get translation."` for that line) rather than contaminate
+the browser. Other engines (deepl, perplexity webservice) still get
+the Google bridge.
+
+64 / 64 unit tests still pass.
+
+### 2026-05-10 — web engines (chatgpt-web, perplexity-web) deep audit (branch `next/persian-double-lines-as-splitter`)
+
+User asked for an actual line-by-line debug + alignment of the two
+guest-session web engines vs `translation-robot/main` legacy. Outcome:
+the function bodies match legacy almost exactly (only the `except:` →
+`except Exception:` cosmetic cleanup we did earlier). The structural
+problems are all in the **module surface** — the bodies reference
+helpers that historically lived in the same module and were never
+re-imported when phase 8 extracted the engines. Every call to either
+engine NameError'd on the first line and the wrapper silently
+returned `(False, "")` so the bug was invisible.
+
+**W1. `build_translation_prompt` not importable from web engines.**
+The helper sat in `src/machine-translate-docx.py`, which has a hyphen
+in the filename and is therefore not a regular importable Python
+module. Extracted to a new file:
+
+```
+src/engines/_prompts.py
+```
+
+The entry script re-imports it via `import engines._prompts as
+_engine_prompts` so the module-level name keeps resolving for any
+caller that still goes through it; the local `def` later in the file
+is left as-is and shadows the import with an identical body.
+
+**W2. Missing helper imports.** Added to both `chatgpt_web.py` and
+`perplexity_web.py`:
+
+```
+from selenium_utils import safe_click, set_chrome_window_2_3_screen
+from config import get_nested_value_from_json_array
+from engines._prompts import build_translation_prompt
+```
+
+**W3. `set_chrome_window_2_3_screen()` zero-arg call vs ctx-arg helper.**
+The legacy body called `set_chrome_window_2_3_screen()` (no args, used
+module globals). Our refactored helper takes `ctx`. The `translate()`
+wrapper now seeds `g["ctx"] = ctx` alongside the other globals; the
+in-body call is `set_chrome_window_2_3_screen(ctx)`.
+
+**W4. `perplexity_close_messages` called `deepl_close_messages()` (zero
+args).** Legacy `deepl_close_messages` was a sibling zero-arg function;
+our refactor moved it under `engines.deepl` with a `ctx` parameter.
+Replaced the legacy "call again to be safe" with a recursive
+self-call into `perplexity_close_messages` plus a re-entry guard via
+a function attribute (`_in_progress`). Same intent, no infinite
+recursion.
+
+**W5. `perplexity_web` wrapper passed 2 positional args to a 3-arg
+body.** Caught earlier in the timing pass. Now passes
+`(text, 2, 3)` — the third is `max_try_count`, used only in a debug
+`print` inside the legacy body.
+
+**W6. `articles[1]` IndexError when ChatGPT response missing.** Legacy
+assumed at least 2 articles in the DOM (index 0 = user prompt, index 1
+= ChatGPT response). On a guest session that gets rate-limited or
+Cloudflare-gated, only the prompt article (or zero) is in the DOM and
+the body raises `IndexError`. Added an early bail at
+`chatgpt_web.py:372` that returns `(False, "")` with a one-line
+diagnostic so the runner can fall back gracefully.
+
+**Smoke status.** Real-file run on
+`tests/fixtures/sample_hyperlink.docx` confirms chatgpt-web now reaches
+the response-parse step (no more silent NameError); the actual
+translation fails because chatgpt.com guest sessions are
+Cloudflare-gated for automated traffic — recorded as a recommended
+follow-up. The same fixes apply to perplexity-web; live verification
+is deferred to the same selector/captcha sweep.
+
+64 / 64 unit tests still pass.
+
+### 2026-05-10 — engine timing alignment + reference module (branch `next/persian-double-lines-as-splitter`)
+
+User flagged the engines as "feeling slower than the legacy
+translation-robot/main repo" and asked for a one-time timing audit so
+we don't have to re-clone the legacy on every regression. Outcome: a
+new `src/engines/_timing.py` module that documents every wait /
+sleep / poll-interval used by all four Selenium engines, with
+``LEGACY``/``OURS`` citations and reasoning for each divergence. The
+module IS the source of truth — `chatgpt_web.py` and `perplexity_web.py`
+import the constants and the registry test asserts equality.
+
+**Findings.** Legacy has **no inter-request sleep on any engine**. The
+de-facto throttle is page-load time (Google, DeepL) or `delete_all_cookies()`
++ `.get()` reload (chatgpt-web, perplexity-web). Phase 8 added a 0.9 s
+defensive pre-sleep to both web engines as a guard against rate-limiting,
+without verification — pure additive cost. Aligned to legacy parity:
+
+  - `CHATGPT_WEB_PRE_SLEEP    = 0.0`  (was 0.9)
+  - `PERPLEXITY_WEB_PRE_SLEEP = 0.0`  (was 0.9)
+
+`WEB_SLEEP_BETWEEN_PHRASES_SEC` on each module now aliases the timing
+constant; external imports still resolve to the value. The pre-sleep
+is only triggered when `> 0`, so a future bump is one-line.
+
+**Bonus bug.** The phase 8 perplexity-web wrapper called the legacy
+body with **two positional args** (`text, 2`); the legacy signature is
+`(to_translate, retry_count, max_try_count)` — three. Masked because
+`max_try_count` is only used in a debug `print`. Fixed: pass `(text, 2, 3)`.
+
+**DeepL + Google verified unchanged.** Real-file re-run on
+`tests/fixtures/sample_hyperlink.docx`:
+
+| engine + method            | wall time | source mismatches | hyperlink |
+|----------------------------|-----------|-------------------|-----------|
+| deepl phrasesblock en→fr   | 29 s      | 0 / 42            | yes       |
+| google phrasesblock en→fr  | 11 s      | 0 / 42            | yes       |
+
+64 / 64 unit tests pass (the registry test was updated to assert
+legacy parity instead of "0.7 ≤ sleep ≤ 1.2").
+
+### 2026-05-10 — Google engine repaired + 4 fixes (branch `next/persian-double-lines-as-splitter`)
+
+After DeepL was unblocked, the Google engine was the next stop on the
+real-file matrix. Two of its three methods were broken in different
+ways; one of those was masked by an empty default that produced an
+unreadable failure mode. Changes:
+
+**G1. Google `phrasesblock` was dispatchable but never populated.**
+The block-loop runner (`src/runner.py:translate_once`) had branches for
+`deepl`, `chatgpt`, and `perplexity` but raised `ValueError("Unknown
+translation engine: google")` on the first call. Worse, `translate_docx`
+in the entry script never even routed Google through the phrasesblock
+path — `use_phrasesblock` was set true only for `chatgpt`, `deepl`, and
+`perplexity`. So the dispatcher fell back to a stale `translation_array`
+lookup, the array stayed empty (length 0), and every phrase looped
+through 14 retries of `[WARN] translation_array index out of range`
+before giving up. Fixed both:
+
+  - Added a `google` branch to `translate_once` that calls
+    `selenium_chrome_google_translate(ctx, text)` and returns the
+    `(success, translated)` shape the rest of the runner expects.
+  - Added `google` to the `use_phrasesblock` selector in `translate_docx`.
+
+**G2. Default method for `--engine google` was a dead path.**
+The default fell through to `engine_method = 'javascript'`, which
+uploads a local HTML file to translate.google.com — a path that modern
+Chrome (~2022+) blocks on file:// URLs. The fail-fast banner from the
+last session kept this from cascading into hundreds of warnings, but
+the user still got an empty docx. Switched the default to
+`phrasesblock`. Users who genuinely want the file-mode path can still
+pass `--enginemethod javascript` explicitly.
+
+**G3. `html.unescape` not applied to final translation.**
+`google.py` reads the result via `result_element.get_attribute('innerHTML')`,
+which returns HTML-escaped text (`&nbsp;`, `&amp;`). The historical
+unescape happened only inside the `_still_translating` retry loop —
+but that loop's regex (`'$Translation'`) is permanently disabled by
+audit finding F-010 and never matches. So entity escapes leaked into
+the docx (visible as the literal `&nbsp;` substring on row 26 of the
+fixture). Always unescape now, after the main read.
+
+**G4. 15-second TimeoutException on every phrasesblock call.**
+A `WebDriverWait(15)` for the Copy-to-clipboard button was a leftover
+sentinel from when the engine actually clicked it; the textarea-read
+path doesn't use it. On targets that surface the toolbar slowly (FA),
+the wait timed out every single call, dumped a noisy traceback, then
+proceeded normally. Cut to 3 s and replaced the traceback with silent
+fall-through.
+
+**Real-file verification with `tests/fixtures/sample_hyperlink.docx`
+on translate.google.com (no `--showbrowser` for the speed-test):**
+
+| target  | method        | wall time | source-column mismatches | nbsp leak | hyperlink populated |
+|---------|---------------|-----------|--------------------------|-----------|---------------------|
+| French  | singlephrase  | 5 m 25 s  | 0 / 42                   | YES (pre-G3) | yes              |
+| French  | phrasesblock  | 26 s → **10 s** (after G4) | 0 / 42 | no | yes              |
+| Persian | phrasesblock  | 30 s      | 0 / 42                   | no        | yes                 |
+
+64 / 64 unit tests still pass.
+
+### 2026-05-10 — DeepL engine real-file run + NameError fixes (branch `next/persian-double-lines-as-splitter`)
+
+The agent's run report flagged DeepL as deferred — "translation step
+hangs". A direct read of `src/engines/deepl.py` against the legacy
+`translation-robot/main` revealed the hang was actually a fast-failing
+NameError that the outer try/except swallowed silently. Five concrete
+bugs:
+
+**D1. `src_lang` / `dest_lang` / `dest_lang_name` not pulled from ctx.**
+Lines 512 / 522 of the previous file referenced bare module-level names
+that existed in the legacy globals world but never made it into the
+Phase F refactor. Added an explicit triple at the top of the function:
+
+```
+src_lang       = ctx.language.src_lang or "en"
+dest_lang      = ctx.language.dest_lang or "en"
+dest_lang_name = ctx.language.dest_lang_name or dest_lang
+```
+
+Without this, the URL-build line raised NameError on the very first
+iteration of the page-open loop and the function fell through to
+`except Exception: print(traceback)` → returned `(False, "")`.
+
+**D2. `copy_translation_button` referenced before definition.** A
+visibility-check block read `copy_translation_button` inside a
+`getBoundingClientRect` JS call BEFORE the variable was even
+declared (it gets assigned ~50 lines later when the copy button is
+located). Wrapped the block in `if copy_translation_button is not
+None`, and pre-initialized the var to `None` outside the loop.
+
+**D3. `remove_span_tag` not imported.** The legacy code used a
+module-global helper that was never re-exported when the engine moved
+into `src/engines/deepl.py`. Inlined a local `_remove_span_tag()` that
+does the same regex pass.
+
+**D4. `clipboard` package not imported.** The clipboard fallback path
+called `clipboard.copy('')` and `clipboard.paste()` without an import.
+Added a defensive `try: import clipboard / except ImportError: clipboard
+= None` and gated the fallback on `clipboard is not None`.
+
+**D5. `translated_phrases_array` could be undefined at function exit.**
+The variable was only set inside the inner-loop try block. If every
+iteration raised, the outer `translation = "\n".join(translated_phrases_array)`
+NameError'd. Pre-initialized to `[]` at the top of the loop scope.
+
+**Bonus.** Replaced the brittle full-class-string completion-detection
+literal with a stable substring (`lmt__progress_popup
+lmt__progress_popup--visible`) — DeepL has rotated the surrounding
+class names twice in the last year; the shorter anchor matches both
+the legacy and current popup builds.
+
+**Real-file verification (not smoke).**
+Ran `tests/fixtures/sample_hyperlink.docx` (41 rows, hyperlinks +
+shaded cells) through the actual DeepL site with `--showbrowser`:
+
+| target | wall time | rows translated | source-column mismatches | hyperlink row populated |
+|--------|-----------|-----------------|--------------------------|-------------------------|
+| French | 21 s      | all visible rows | 0 / 42                   | yes                     |
+| Persian| 26 s      | 18 (rest are shaded/empty) | 0 / 42      | yes                     |
+
+The agent's "DeepL deferred" follow-up is closed by this entry.
+
+64 / 64 unit tests still pass.
+
+### 2026-05-10 — post-agent UX fixes (branch `next/persian-double-lines-as-splitter`)
+
+User-reported regressions and a feature request after the agent's first
+end-to-end live run on the legacy `index.ejs` UI:
+
+**U1. `Persian Double Lines` option was hidden for FA targets.**
+The legacy frontend still had the pre-phase-1 logic that hid the entire
+splitSection whenever target=fa + engine=chatgpt-polish (the assumption
+being that the engine ran the aligner internally). Phase 1 detached the
+aligner from the engine, so this hide-block is wrong now: hiding the
+splitSection meant the user could never reach the Persian Double Lines
+option at all. Removed the hide-block from `engineChecker()`; the
+splitSection is visible for every combination.
+
+**U2. `Split Method = OpenAI API` was not applied with
+`chatgpt-polish`.** Same pre-phase-1 logic also force-unchecked the
+splitTranslate checkbox under fa+chatgpt-polish, so even when the user
+picked an OpenAI splitter the request shipped without `splitTranslate`,
+and the splitter never ran. Removed.
+
+**U3. `chatgpt-web` engine was disabled in the engine dropdown.**
+`engineChecker()` had `chatgptwebOption.disabled = true` left over from
+when the engine sat in `src/engines/inactive/`. Phase 8 reactivated the
+engine but the frontend was not updated. Removed the disable.
+
+**U4. File selection vanished when the user changed dropdown values.**
+The legacy form's `<input type="file">` would lose its FileList on some
+browsers when surrounding `<select>` elements toggled. Added a small
+guard: the chosen File object is captured into a JS variable on
+`change`, and `sendToServer()` falls back to that cached object when the
+input element has gone empty. The user no longer has to re-pick the
+file after changing engine / language.
+
+**U5. Cancel button — new feature.**
+Mid-translation, the user had no way to abort a job. Added:
+- `LocalState.cancel_job(job_id)` — kills the registered subprocess and
+  marks the job `status='cancelled'`.
+- `LocalState.job_procs[job_id]` — handles registered when the
+  subprocess starts, cleared on exit.
+- `POST /cancel/<job_id>` endpoint.
+- `_run_real_backend` registers its `Popen` immediately after spawn.
+- The job-thread `except` no longer overwrites `cancelled` with `error`
+  if the user already cancelled.
+- A red "Cancel translation" button under the progress bar in the
+  loading overlay; wired to `POST /cancel/<jobId>` for the active job.
+- Polling treats `status='cancelled'` as a terminal state and surfaces
+  it as a regular alert ("Translation cancelled by user").
+
+The launcher contract is unchanged for non-cancelled flows.
+Tests: 64 passing.
+
+---
+
+### 2026-05-10 — Persian Double Lines as a splitter (agent run, branch `next/persian-double-lines-as-splitter`)
+
+**Phase 13 — end-to-end runs and fixes uncovered by them.**
+First live execution of `tests/integration/test_real_file_per_engine.py`
+under `pytest -m live`. Results:
+
+| Engine          | Target | Outcome     |
+|-----------------|--------|-------------|
+| chatgpt (api)   | mn     | ✅ pass     |
+| chatgpt (api)   | fa     | ✅ pass     |
+| chatgpt-polish  | mn     | ✅ pass     |
+| chatgpt-polish  | fa     | ✅ pass (Persian Double Lines split + suffix) |
+| google          | mn     | ✅ pass     |
+| deepl           | mn     | ⚠ timeout (deferred after two fix attempts) |
+| chatgpt-web     | mn     | ⚠ smoke skip (upstream selectors changed) |
+| perplexity-web  | mn     | ⚠ smoke skip |
+
+Live runs surfaced four bugs left from earlier extraction work:
+
+  * `src/engines/deepl.py` referenced two bare globals
+    (`set_chrome_window_2_3_screen`, `deepl_sleep_wait_translation_seconds`)
+    that no longer existed in module scope after Phase G3. Both are now
+    properly imported / read through `ctx.browser`.
+  * `src/machine-translate-docx.py` engine_method switch silently
+    rewrote `--enginemethod web` to `phrasesblock` for chatgpt and
+    perplexity. Adds `elif engine_method == 'web':` branches so the
+    method survives.
+  * `src/runner.py` translate_once raised on chatgpt method != 'api' and
+    perplexity method != 'webservice'. Adds method == 'web' branches
+    that delegate to `engines.chatgpt_web.translate(ctx, text)` /
+    `engines.perplexity_web.translate(ctx, text)`.
+
+DeepL hang and the two web-engine selector breakages are documented in
+`docs/agent-run-report.md` §3 and listed as recommended follow-ups.
+The launcher contract is unchanged. Tests: 64 passing under default
+`pytest`; 5 of 8 live integration scenarios pass under `pytest -m live`.
+
+**Phase 12 — cache UI feedback (splitterOnly banner).**
+The `splitterOnly` flag the launcher emits on cache hit (set in
+phase 4) is now consumed by both UIs. v2 swaps the existing
+"Cached — instant download" progress label for "Translated text
+reused from cache; only the split was redone" when splitter-only is
+true, and tags the result row with `(cached — splitter only)`.
+Legacy `index.ejs` previously ignored `cacheHit` entirely; it now
+appends a one-line note to the success alert distinguishing
+"Reused from the 36-hour translation cache" from "Translated text
+reused from cache; only the split was redone." The launcher contract
+is unchanged. Tests: 64 passing.
+
+**Phase 11 — line-count reconciler for the LLM single-call path.**
+New module `src/openai_tools/line_count_reconciler.py` exposes
+`reconcile_line_count(source_lines, translated_lines, src_lang_name,
+dest_lang_name, *, max_attempts=2)`. When the translator returns a
+mismatched line count, the reconciler asks `gpt-5.4-mini` (hardcoded,
+matching the aligner) up to two times for a strict line-aligned
+re-emission, then falls back to pad/truncate so the result always has
+exactly `len(source_lines)` entries. Every API call sets
+`prompt_cache_retention=24h`. Wired into
+`engines.chatgpt_api.run_openai_single_call` between translate and
+polish — polish therefore always sees correctly-aligned input. The
+runner block-loop and Selenium engines are untouched. Tests: 64
+passing (6 new for the reconciler, including pad / truncate fallbacks
+and an exception-during-API path; the OpenAI client is injected so the
+suite stays offline).
+
+**Phase 10 — real-file integration test scaffolded.**
+A new opt-in test module `tests/integration/test_real_file_per_engine.py`
+boots the entry script as a subprocess against the
+`tests/fixtures/sample_hyperlink.docx` fixture for every supported engine
+and asserts the AGENT.md contract on the output: source columns 0+1
+byte-identical, target column 2 populated, hyperlinked text preserved,
+correct engine suffix, no Traceback, no `[LOCK] Restored …`. Web engines
+(`chatgpt-web`, `perplexity-web`) are smoke-tested only — non-zero exit
+converts to `pytest.skip` so a guest-session UI change upstream does not
+turn this into a blocking CI failure. Tests are marked
+`@pytest.mark.live` (module-wide `pytestmark`) so they stay excluded
+from the default `pytest` invocation; run with
+`pytest -m live tests/integration`. The test target is `mn` for the
+non-FA flow and `fa` for the FA-only Persian Double Lines case;
+`MTD_TEST_MODEL=gpt-5.4-mini` overrides the OpenAI model so the live
+runs stay cheap. Tests: 58 passing default, 8 additional live tests
+collected under `-m live`.
+
+**Phase 9 — module rename: `aligner_per` → `persian_double_lines`.**
+The aligner module is renamed to match the user-facing Split Method
+name. The class `FASubtitleAligner` is unchanged. A thin
+`openai_tools.aligner_per` shim re-exports every public and private
+symbol from the new module via a star-import + `__getattr__`
+forwarder, so existing callers (the two test modules and any future
+external consumer) keep working without modification. Internal
+references in `openai_tools/__init__.py` and `local_launcher.py` are
+updated to the new name. Tests: 58 passing.
+
+**Phase 8 — chatgpt-web and perplexity-web engines reactivated.**
+The two Selenium guest-session engines are moved out of
+`src/engines/inactive/` into the active engines package. Each gets a
+thin :func:`translate(ctx, text)` adapter that sleeps 0.9 s before
+each call (within the documented 700-1200 ms range to stay under
+unauthenticated rate-limit thresholds), seeds the legacy module
+globals from `RuntimeContext`, delegates to the existing
+selenium-based body, and returns `(False, "")` on any exception so
+the launcher pipe never hangs.
+
+The dispatcher registry (`src/engines/__init__.py`) gains
+`EngineName.CHATGPT_WEB` and `EngineName.PERPLEXITY_WEB` plus
+matching `DISPATCH_TABLE` entries. `set_translation_function` in the
+entry script now special-cases method=`web` for both engines and
+binds the adapter as the per-phrase dispatcher. `local_launcher`'s
+`_map_engine` rejects nothing now: `chatgpt-web` →
+`--engine chatgpt --enginemethod web`; `perplexity-web` →
+`--engine perplexity --enginemethod web`. Both UIs gain the new
+options. The `_API_ENGINES` cache list is unchanged, so web engines
+do not cache (Selenium sessions are stateful and not idempotent).
+
+The legacy global-seeding bridge is intentionally minimal — the web
+bodies still reference helper names (`safe_click`,
+`set_chrome_window_2_3_screen`, `build_translation_prompt`,
+`get_nested_value_from_json_array`) that exist on the entry-script
+module and are reached via Python's regular import machinery once the
+adapter is invoked from inside the entry-script process. Any selector
+breakage on chatgpt.com / perplexity.ai surfaces as `(False, "")` so
+the block-loop continues with empty translations rather than crashing
+the job. Tests: 58 passing (3 new on `test_engines_registry`).
+
+**Phase 7 — Classic split path removed; one file per job.**
+The `_Classic` and `_Double` companion outputs are gone. The `Job`
+dataclass loses `filename2` and `filename3`; the `/status/:id`
+response no longer includes them; `_send_zip_for_job` keeps only the
+`410 GONE` body (the multi-file ZIP packaging is dead code now);
+`_find_double_file` and `_find_classic_file` are deleted; the orphan
+`_simple_split_docx` and `_write_cell_text` helpers in
+`machine-translate-docx.py` are deleted. Both frontends collapse to a
+single download — legacy `index.ejs` drops the timed-sequential and
+ZIP-bundle paths; v2 `app.js` drops the aligner-double / classic-split
+result rows. The v2 sidebar copy and several state docs (CLAUDE.md,
+PROJECT_MEMORY.md, docs/architecture.md, docs/subtitle-syncing.md,
+docs/testing.md) are updated to the new naming. Historical logs
+(error-catalog, decisions-2026, post-refactor-audit) are intentionally
+left as records of past states. Tests: 56 passing.
+
+**Phase 6 — `_Double_Lines` filename suffix locked in.**
+The Persian-Double-Lines output appends `_Double_Lines` before `.docx`,
+after the engine suffix. Examples: `sample_PER_Polish_Double_Lines.docx`,
+`sample_PER_chatGPT_Double_Lines.docx`. The actual splitter logic was
+already in `_apply_splitter` from phase 4; this phase extracts the
+naming bit into a pure module-level helper `_double_lines_output_path`
+so it is unit-testable without spinning up an HTTP request handler. New
+tests cover the suffix table, including unknown / blank engine names
+falling back to no tag, plus the `_Double_Lines` naming. Tests: 56
+passing (3 new for filename helpers).
+
+**Phase 5 — engine-aware output filename suffixes.**
+The bare `_TranslatePolish` polish tag is replaced by a per-engine tag
+appended after the lang code. New mapping:
+
+```
+google           _Google
+deepl            _Deepl
+chatgpt + api    _Polish (with-polish) | _chatGPT (without)
+chatgpt-web      _web_chatGPT
+perplexity-web   _web_Perplexity
+```
+
+`save_docx_file` now calls a new module-level helper `_engine_suffix(ctx)`
+to derive the tag from the engine + method + with_polish triple. The
+launcher mirrors the same table in `_engine_suffix_for(engine)`, used
+by `_fallback_output_path` when the subprocess never prints
+`Saved file name:`. Old `_PER_TranslatePolish.docx` files keep working
+on cache hit (they are stored by name, not derived). `_Classic`
+references stay until phase 7. Tests: 53 passing.
+
+**Phase 4 — cache stores the engine output (not the splitter result).**
+`LocalState.cache` switched from `(timestamp, [(kind, path), ...])` to
+`(timestamp, dict)` carrying `main_path`, `source_path`,
+`translation_array`, `phrase_separator_table`, and the
+engine/model/language tuple. The cache key is unchanged, so a re-upload
+with a different Split Method now reuses the cached translation and
+applies the splitter on top — Persian Double Lines, in particular,
+re-runs the FA mechanical aligner in-process (no API call) for a
+sub-2 s response. Pre-phase-4 (legacy) cache entries are detected by
+their list shape and evicted on access. Two new launcher methods carry
+the splitter logic: `_apply_splitter` (post-translate path) and
+`_materialise_cached_output` (cache-hit path); both fall back to the
+unsplit engine output on any aligner error. `_find_double_file` and
+`_find_classic_file` callsites are dropped in `_process_job`; the
+helpers themselves remain for now and get removed in phase 7.
+Tests: 53 passing (5 cache tests adapted to the new keyword-only
+signature, 2 new tests cover the dict shape and pre-phase-4 eviction).
+
+**Phase 3 — conditional UI for Persian Double Lines.**
+The `persian_double_lines` `<option>` is now visible only when the
+target language is `fa`; switching to any other target hides it and
+falls back to `basic` if it had been selected. When the user picks
+`fa` as target, Persian Double Lines becomes the auto-selected default
+in both UIs (replacing the previous OpenAI-API auto-pick in legacy).
+v2 gains a `syncSplitMethodUI()` helper that fires on boot, on engine
+change, and on target-language change. Tests: 51 passing.
+
+**Phase 2 — Persian Double Lines exposed as a Split Method.**
+Both frontends now expose a `persian_double_lines` value on their
+`splitEngine` dropdown. Legacy `index.ejs` adds a third `<option>`. v2
+gains a 5th `form-field` ("Split method") with the same three choices
+(`basic` / `openai` / `persian_double_lines`); v2 `app.js` reads the new
+field and forwards it as `splitEngine` whenever the user picked
+something other than `basic`, and additionally sets `splitTranslate=true`
+when the value is `persian_double_lines` (so chatgpt-polish jobs can
+opt into the splitter even though v2 omits the legacy
+`splitTranslate` checkbox). `local_launcher.py` now passes the value
+straight through to `--splitengine`. CLI argparse validation accepts
+`persian_double_lines` alongside `openai`. Wiring of the actual splitter
+behaviour (re-runs the FA aligner against the cached translation) lands
+in phases 4-6. Tests: 51 passing.
+
+**Phase 1 — aligner detached from chatgpt-polish.**
+The post-translation block in `src/machine-translate-docx.py` that produced
+`_PER_Classic.docx` and `_PER_Double.docx` for every FA + chatgpt-polish run
+is removed. The engine still does translate + polish; it no longer drives the
+aligner. Module-level `from openai_tools.aligner_per import FASubtitleAligner`
+import retired (the aligner is reached on demand from the new Split Method
+flow planned in phases 2-9). One file out per job for FA + chatgpt-polish:
+`{stem}_PER_TranslatePolish.docx` (suffix rename to `_Polish` lands in
+phase 5). `local_launcher.py` `_find_double_file` / `_find_classic_file` still
+exist; they now return `None` for new jobs (cleanup in phase 7). Tests:
+51 passing, no regressions.
+
+---
+
 ### 2026-05-09 (part seven) — long-standing hyperlink bug fixed
 
 **S1. Hyperlinked text was silently dropped from cell output.**

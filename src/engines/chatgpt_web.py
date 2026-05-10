@@ -1,11 +1,18 @@
-"""ChatGPT-web Selenium engine — INACTIVE.
+"""ChatGPT-web Selenium engine — restored in phase 8.
 
-Preserved as-is for future revival. This module is NOT imported by the active
-dispatcher (per refactor work-order R12). Function bodies reference module-
-level globals (driver, src_lang_name, dest_lang_name, …) that existed in the
-historical entry script; they are not defined here, so calling these
-functions from a fresh import will fail at attribute lookup. That is by
-design — Phase D's job is preservation, not testability.
+Block-mode web scraping over chatgpt.com using a guest session (no
+login). The legacy global-based body is preserved verbatim; a thin
+:func:`translate` adapter binds the required names from
+:class:`RuntimeContext` and returns ``(False, "")`` on any failure so
+the launcher pipe stays drained even when the upstream UI breaks.
+
+Timing
+------
+The 0.9 s pre-sleep introduced in phase 8 was a defensive guard added
+before we ran a real-traffic test; the legacy code has no such sleep
+because each call's ``delete_all_cookies()`` + ``driver.get()`` is
+the de-facto throttle. The sleep is now ``0.0`` (legacy parity) —
+:data:`engines._timing.CHATGPT_WEB_PRE_SLEEP`.
 """
 from __future__ import annotations
 
@@ -25,14 +32,71 @@ from selenium.common.exceptions import (
 
 from bs4 import BeautifulSoup
 
+from runtime import RuntimeContext
+from selenium_utils import safe_click, set_chrome_window_2_3_screen
+from config import get_nested_value_from_json_array
+from engines._prompts import build_translation_prompt
+from engines._timing import (
+    CHATGPT_WEB_PRE_SLEEP,
+    CHATGPT_WEB_ACCEPT_BUTTON_WAIT,
+    CHATGPT_WEB_LOGGED_OUT_LINK_WAIT,
+    CHATGPT_WEB_STAY_LOGGED_OUT_WAIT,
+    CHATGPT_WEB_AFTER_INJECT_SLEEP,
+    CHATGPT_WEB_AFTER_SUBMIT_SLEEP,
+    CHATGPT_WEB_STOP_BUTTON_FIND_WAIT,
+    CHATGPT_WEB_STREAMING_POLL,
+    CHATGPT_WEB_MAX_STREAMING_WAIT,
+)
 
-INACTIVE = True   # not in active dispatcher
+
+INACTIVE = False
+# Legacy parity: zero pre-sleep. See ``engines._timing`` for the reasoning
+# trail. Kept as a module-level alias so external code that imported it
+# during phase 8 keeps working — but the value is now 0.0.
+WEB_SLEEP_BETWEEN_PHRASES_SEC = CHATGPT_WEB_PRE_SLEEP
 
 __all__ = [
     "INACTIVE",
+    "WEB_SLEEP_BETWEEN_PHRASES_SEC",
+    "translate",
     "selenium_chrome_chatgpt_translate",
     "click_verify_human_checkbox_if_present",
 ]
+
+
+def translate(ctx: RuntimeContext, text: str) -> tuple[bool, str]:
+    """Block-mode translation entry point used by the active dispatcher.
+
+    Honours :data:`WEB_SLEEP_BETWEEN_PHRASES_SEC` (0.0 by default —
+    legacy parity), seeds the module globals the legacy body still
+    reads, and delegates to :func:`selenium_chrome_chatgpt_translate`.
+    Any exception (broken selector, captcha, network) collapses to
+    ``(False, "")`` so the block-loop continues with an empty
+    translation rather than hanging.
+    """
+    if WEB_SLEEP_BETWEEN_PHRASES_SEC > 0:
+        time.sleep(WEB_SLEEP_BETWEEN_PHRASES_SEC)
+    try:
+        g = globals()
+        g["driver"]         = ctx.browser.driver
+        g["src_lang_name"]  = ctx.language.src_lang_name
+        g["dest_lang_name"] = ctx.language.dest_lang_name
+        # Seed the active RuntimeContext into module globals so the
+        # legacy body can pass it back to ctx-aware helpers like
+        # ``set_chrome_window_2_3_screen(ctx)`` without restructuring.
+        g["ctx"]            = ctx
+        g.setdefault("closed_cookies_accept_message_bool",  False)
+        g.setdefault("close_install_extension_message_bool", False)
+        g.setdefault("deepl_nb_clear_cached_times",          0)
+        g.setdefault("engine_method",                        "web")
+        g.setdefault("end_time",                             0.0)
+        g.setdefault("elapsed_time",                         0.0)
+        g.setdefault("json_configuration_array",             {})
+        g.setdefault("logged_into_chatgpt",                  False)
+        return selenium_chrome_chatgpt_translate(text, 2)
+    except Exception as exc:
+        print(f"[chatgpt_web] translate failed: {exc}")
+        return False, ""
 
 
 # Names referenced inside the function bodies that historically came from the
@@ -74,7 +138,7 @@ def selenium_chrome_chatgpt_translate(to_translate, retry_count):
     to_translate_phrases_array = to_translate.split("\n")
     to_translate_phrases_array_len = len(to_translate_phrases_array)
 
-    set_chrome_window_2_3_screen()
+    set_chrome_window_2_3_screen(ctx)  # ctx seeded by translate() wrapper
 
     try:
         translation_page_openeing_loop_count = 4
@@ -95,8 +159,7 @@ def selenium_chrome_chatgpt_translate(to_translate, retry_count):
             translation_page_openeing_loop_count = translation_page_openeing_loop_count - 1
         
         try:
-            # Wait up to 1 second for the button to appear
-            button = WebDriverWait(driver, 0.2).until(
+            button = WebDriverWait(driver, CHATGPT_WEB_ACCEPT_BUTTON_WAIT).until(
                 EC.element_to_be_clickable((By.XPATH, "//button[contains(., 'Accept all')]"))
             )
             safe_click(driver, button)
@@ -107,7 +170,7 @@ def selenium_chrome_chatgpt_translate(to_translate, retry_count):
         
         try:
             # Wait until the link is visible
-            stay_logged_out_link = stop_button = WebDriverWait(driver, 1.2).until(
+            stay_logged_out_link = stop_button = WebDriverWait(driver, CHATGPT_WEB_LOGGED_OUT_LINK_WAIT).until(
                 EC.presence_of_element_located((By.CSS_SELECTOR, "button[aria-label='Close']"))
             )
             
@@ -118,7 +181,7 @@ def selenium_chrome_chatgpt_translate(to_translate, retry_count):
 
         try:
             # Wait until the link is visible
-            stay_logged_out_link = stop_button = WebDriverWait(driver, 1.2).until(
+            stay_logged_out_link = stop_button = WebDriverWait(driver, CHATGPT_WEB_LOGGED_OUT_LINK_WAIT).until(
                 EC.presence_of_element_located((By.CSS_SELECTOR, "button[aria-label='Close']"))
             )
 
@@ -128,7 +191,7 @@ def selenium_chrome_chatgpt_translate(to_translate, retry_count):
             pass
 
         try:
-            WebDriverWait(driver, 0.3).until(
+            WebDriverWait(driver, CHATGPT_WEB_STAY_LOGGED_OUT_WAIT).until(
                 EC.element_to_be_clickable((By.XPATH, "//a[contains(text(), 'Stay logged out')]"))
             ).click()
         except Exception:
@@ -187,8 +250,8 @@ def selenium_chrome_chatgpt_translate(to_translate, retry_count):
         #    if i < len(lines) - 1:
         #        textarea.send_keys(Keys.SHIFT + Keys.RETURN)
 
-        # Wait for the button to appear with a timeout of 3 seconds
-        sleep(1)
+        # Let the composer register the injected text before we click submit.
+        sleep(CHATGPT_WEB_AFTER_INJECT_SLEEP)
         #button = WebDriverWait(driver, 3).until(
         #    EC.presence_of_element_located((By.XPATH, "//button[@aria-label='Send prompt' and @data-testid='send-button']"))
         #)
@@ -211,12 +274,24 @@ def selenium_chrome_chatgpt_translate(to_translate, retry_count):
         # Click the button
         safe_click(driver, button_submit_prompt)
 
+        # Critical: give ChatGPT a few seconds to actually start
+        # streaming BEFORE we begin polling for the Stop button.
+        # The legacy body went from ``safe_click(submit)`` straight
+        # into ``WebDriverWait(1).until(stop_streaming)`` — if the
+        # server took >1 s to begin streaming (the norm in 2026),
+        # the WebDriverWait raised TimeoutException, the poll loop
+        # ``break``-ed, and the body tried to read a response that
+        # wasn't on the page yet. User-reported on 2026-05-10 as
+        # "doesn't give the server time to translate".
+        time.sleep(CHATGPT_WEB_AFTER_SUBMIT_SLEEP)
 
-        # Set a timeout value for waiting for the element
-        timeout = 1  # Timeout after 10 seconds if not found
+        # Per-iteration timeout for the Stop-streaming WebDriverWait.
+        # Was hardcoded ``timeout = 1`` in legacy — bumped via the
+        # new ``CHATGPT_WEB_STOP_BUTTON_FIND_WAIT`` constant.
+        timeout = CHATGPT_WEB_STOP_BUTTON_FIND_WAIT
         found_stop_streaming_button = False
-        
-        max_wait_time = 40  # Maximum number of seconds to wait
+
+        max_wait_time = CHATGPT_WEB_MAX_STREAMING_WAIT  # seconds
         start_time = time.time()
         found_stop_streaming_button = False
 
@@ -233,8 +308,8 @@ def selenium_chrome_chatgpt_translate(to_translate, retry_count):
                     found_stop_streaming_button = True
                     
                 
-                # Sleep for 0.5 seconds before checking again
-                time.sleep(0.25)
+                # Stop-streaming still visible — keep polling
+                time.sleep(CHATGPT_WEB_STREAMING_POLL)
                 
                 try:
                     close_button = WebDriverWait(driver, 0.01).until(
@@ -313,7 +388,17 @@ def selenium_chrome_chatgpt_translate(to_translate, retry_count):
         # Find all the article tags
         articles = soup.find_all('article')
 
-        #print(len(articles))
+        # Legacy assumed at least 2 articles — index 0 is the user's
+        # prompt, index 1 is ChatGPT's first response. If guest-session
+        # rate-limits or Cloudflare gates the request, only the prompt
+        # article (or zero) is in the DOM and the legacy ``articles[1]``
+        # raises ``IndexError`` which the outer try/except catches —
+        # but only after one full page-load wasted. Bail early instead.
+        if len(articles) < 2:
+            print(f"[chatgpt_web] no response article in DOM "
+                  f"(found {len(articles)}). Likely rate-limit or "
+                  f"Cloudflare gate on the guest session.")
+            return False, ""
 
         second_article_html = str(articles[1])
         #print (second_article_html)
