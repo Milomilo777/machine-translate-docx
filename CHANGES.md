@@ -57,6 +57,53 @@ after 1800 ms to avoid the Chrome multi-download permission prompt.
 
 ## Sessions
 
+### 2026-05-11 — v2 frontend rebuild (branch `next/v2-frontend-rebuild`)
+
+The legacy `index.ejs` UI at `/` is **untouched** — every byte still
+serves the same way. The v2 SPA at `/v2/` was rebuilt in place to match
+the smch.ir layout pattern (left announcements column, centre
+translator + stories, right info / newsletter), recoloured with the
+Anthropic / Claude warm palette (cream `#FAF9F5`, clay-orange
+`#D97757`, near-black ink).
+
+**Editorial surface — `web/v2/content.json`.** New single-source-of-
+truth file with two arrays: `announcements` (date + title + body) and
+`stories` (title + summary + optional badge + optional link). Editing
+this file is the only thing required to push a new announcement
+or story tile — no HTML / JS / CSS change. The page falls back
+gracefully when the file is missing or malformed.
+
+**Files touched (only inside `web/v2/`):**
+
+  - `index.html` — three-column main grid with `<aside>` panels;
+    same translator form + drop zone + progress + results section as
+    before, just relocated to a `tool-card` in the centre column. The
+    AI-model dropdown is trimmed to `gpt-5.5` and `gpt-5.4-mini` to
+    match `config.VALID_AI_MODELS` (the stale `gpt-5.4` option that
+    would now hit B-004 was removed).
+  - `styles.css` — full rewrite of layout + tokens; new card +
+    panel + story-grid components; explicit RTL accents on the
+    announcements panel border + the select arrow; light + dark
+    palettes both tuned to the Claude warm tones.
+  - `app.js` — adds `loadAndRenderContent()` (fetches
+    `/v2/content.json`, renders both blocks via `textContent` so any
+    JSON edit is XSS-safe), `syncDocumentDir()` (auto-flips
+    `<html dir="rtl">` when either Source or Target is fa / ar / he /
+    ur, called on every language change), and a small
+    `paintFooterBuild()` watermark.
+  - `README.md` — documents the new content-editing workflow and the
+    auto-RTL behaviour.
+
+**Smoke-tested live** via `local_launcher.py --backend mock` on port
+18081: `/v2/` returns 200 with the new HTML, `/v2/content.json` is
+served with `application/json`, four announcements + three stories
+render, the theme toggle flips light↔dark, and the language picker
+flips `<html dir>` between LTR (en) and RTL (fa). The legacy `/` still
+returns 200 with the original `index.ejs`.
+
+Master tip going in: `ed4cab3`. Tests: 88 / 88 pass — backend
+untouched.
+
 ### 2026-05-11 — remaining W-* fixes + final real-engine validation (branch `next/remaining-fixes-and-final-validation`)
 
 Drained the rest of the W-* backlog from

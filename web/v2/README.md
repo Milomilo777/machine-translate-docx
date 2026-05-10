@@ -4,17 +4,50 @@ A Claude-inspired single-page UI that talks to the existing
 `local_launcher.py` (or the production `server.js`) without changing any
 backend behaviour. The legacy `index.ejs` continues to live at `/`.
 
-> Stack: HTML + compiled Tailwind 3.4 + Alpine.js (CDN).
-> Tailwind needs a one-time `npm run build:css` to regenerate
-> `tailwind.css` after editing utility classes in `index.html` / `app.js`
-> or palette tokens in `tailwind.config.js`. The compiled CSS is committed
-> so the page works without Node at runtime.
+> Stack: plain HTML + a single hand-written `styles.css` + plain JS in
+> `app.js`. Tailwind compile is preserved for forward-compat (`tailwind.css`)
+> but every visible class is also defined in `styles.css` so a missing
+> build step never blanks the page.
+
+> 2026-05-11 rebuild: layout went from a two-column form/sidebar split
+> to a three-column **announcements | translator + stories | info**
+> grid that mimics the smch.ir homepage pattern, recoloured with the
+> Anthropic / Claude warm palette (cream + clay-orange). Content for
+> the announcements panel and the stories grid is now read from
+> `web/v2/content.json` — edit that file alone to push a new
+> announcement; no HTML / JS change required.
 
 > 2026-05-09 rewrite: i18n.json is no longer loaded at runtime — all UI
 > copy is inline English in `index.html` for resilience (the previous
 > async fetch could leave the page blank if it raced with Alpine init).
 > The `i18n.json` file is preserved for future re-introduction, but
 > nothing imports it today.
+
+## Editing announcements / stories
+
+Open [`content.json`](./content.json). Two arrays:
+
+```jsonc
+{
+  "announcements": [
+    { "date": "2026-05-11", "title": "...", "body": "Plain text — no markdown" }
+  ],
+  "stories": [
+    { "title": "...", "summary": "...", "badge": "Tip", "link": "https://..." }
+  ]
+}
+```
+
+The page falls back gracefully when the file is missing or malformed
+(announcements panel shows "No announcements yet."; stories section
+hides itself entirely). Empty fields are skipped per item.
+
+## Persian / Arabic / Hebrew RTL
+
+`<html dir="rtl">` flips automatically when either the Source or Target
+language is `fa`, `ar`, `he`, or `ur`. The announcement card's accent
+border swaps from left to right; selects flip arrow position; the
+stories grid stays left-aligned (cards are language-neutral).
 
 ---
 

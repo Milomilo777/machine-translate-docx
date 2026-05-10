@@ -1,0 +1,42 @@
+{
+  "_comment": "Single source of truth for the v2 frontend's editable content. Edit this file to update announcements / stories without touching index.html or app.js. Schema (informal): announcements[].{ date, title, body }; stories[].{ title, summary, link?, badge? }. Markdown is NOT parsed — `body` is plain text. The page falls back gracefully when this file is missing.",
+  "announcements": [
+    {
+      "date": "2026-05-11",
+      "title": "Real-engine validation pass complete",
+      "body": "Every translation engine (DeepL, Google, ChatGPT API + polish) has been re-validated on the sample fixture. Source columns are preserved 42 / 42, the 24-hour prompt cache hits 91.7% on translation and 76.2% on polish, and structured failure exits (code 20 with a [FAIL] reason=…) are wired into the launcher's failure archive."
+    },
+    {
+      "date": "2026-05-11",
+      "title": "Failed-job archive is live",
+      "body": "Whenever a translation run fails, the launcher copies the input docx, captured stdout, and a meta.json into runtime_dir/failures/<job_id>__<utc-ts>/ so the issue can be triaged offline. Optional email + Discord/Slack webhook alerts ride on the same hook — set MTD_FAILURE_EMAIL or MTD_FAILURE_WEBHOOK to enable."
+    },
+    {
+      "date": "2026-05-10",
+      "title": "Empty docx no longer reports success",
+      "body": "If you upload a docx with no translatable text, the run now exits with a structured failure instead of cheerfully saving an empty output. The error reason is surfaced in the toast, the JSON sidecar, and the failure archive."
+    },
+    {
+      "date": "2026-05-10",
+      "title": "Model whitelist + CLI validation",
+      "body": "Unknown OpenAI model names (e.g. a typoed gpt-5.5-mini) are rejected at upload time with a clear message instead of failing deep inside the API call. Allowed values: gpt-5.5, gpt-5.4-mini."
+    }
+  ],
+  "stories": [
+    {
+      "title": "How phrase-grouping works",
+      "summary": "DeepL and Google write the translation onto the first row of every phrase group, leaving the rest of the phrase empty by design. ChatGPT with split-translation distributes per-row instead. The parse stage now prints a one-line summary so the layout never surprises a fresh reader.",
+      "badge": "Tip"
+    },
+    {
+      "title": "Persian Double Lines",
+      "summary": "When the target language is Persian, the Split Method dropdown unlocks a second option that runs the FA mechanical aligner on top of the engine's translation and emits a bilingual two-line file ready for TV subtitles.",
+      "badge": "Persian"
+    },
+    {
+      "title": "24-hour prompt cache",
+      "summary": "Every OpenAI call sets prompt_cache_retention=24h. Re-running the same document in the same day cuts the prompt token bill by ~92%. The JSON sidecar logs the cached_tokens count per call so you can verify it is hitting.",
+      "badge": "OpenAI"
+    }
+  ]
+}

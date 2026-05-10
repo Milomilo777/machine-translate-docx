@@ -13,43 +13,36 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
-    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Vazirmatn:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,500;9..144,600&display=swap"
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Vazirmatn:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&display=swap"
     rel="stylesheet"
   />
 
   <link rel="stylesheet" href="/v2/tailwind.css" />
   <link rel="stylesheet" href="/v2/styles.css" />
 
-  <!-- Plain-JS rewrite (2026-05-09): no Alpine, no async i18n. Every
-       interactive behaviour is wired by addEventListener in app.js so
-       the page works even if a single network request fails. -->
+  <!-- Plain-JS app: no framework, no Alpine, all interactive behaviour
+       wired by addEventListener so a single missing network request
+       never blanks the page. -->
   <script src="/v2/app.js" defer></script>
 </head>
 
 <body class="page-shell">
-  <!-- Decorative blobs (purely visual, behind everything) -->
-  <div aria-hidden="true" class="blob-layer">
-    <div class="blob blob-1"></div>
-    <div class="blob blob-2"></div>
-    <div class="blob blob-3"></div>
-  </div>
-
-  <!-- Header -->
+  <!-- ── Header ─────────────────────────────────────────────────────────── -->
   <header class="page-header">
     <div class="header-inner">
-      <a href="/v2/" class="brand-link">
-        <span class="brand-mark">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path d="M4 4h12l4 4v12H4V4z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
-            <path d="M8 12h8M8 16h6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+      <a href="/v2/" class="brand-link" aria-label="Home">
+        <span class="brand-mark" aria-hidden="true">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+            <path d="M4 4h12l4 4v12H4V4z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+            <path d="M8 12h8M8 16h6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
           </svg>
         </span>
         <span class="brand-text">SMTV Translate</span>
       </a>
-      <nav class="header-nav">
+      <nav class="header-nav" aria-label="Primary">
         <a href="/" class="nav-link" title="Open the legacy UI">Legacy UI</a>
-        <a href="https://github.com/translation-robot/machine-translate-docx" class="nav-link" target="_blank" rel="noopener">GitHub</a>
-        <button id="themeBtn" type="button" class="nav-link" aria-label="Toggle theme">
+        <a href="https://github.com/Milomilo777/machine-translate-docx" class="nav-link" target="_blank" rel="noopener">GitHub</a>
+        <button id="themeBtn" type="button" class="nav-link nav-icon" aria-label="Toggle theme">
           <span id="themeIconLight" aria-hidden="true">🌙</span>
           <span id="themeIconDark" aria-hidden="true" class="hidden">☀</span>
         </button>
@@ -57,194 +50,219 @@
     </div>
   </header>
 
-  <!-- Main two-column layout, fits a single viewport -->
+  <!-- ── Three-column layout: announcements | center | stories ─────────── -->
   <main class="page-main">
-    <!-- Left: form -->
-    <section class="form-col">
-      <h1 class="page-title">SMTV Translate documents</h1>
 
-      <!-- Drop-zone -->
-      <div
-        id="dropZone"
-        class="drop-zone"
-        role="button"
-        tabindex="0"
-        aria-label="Click or drop one to two .docx files"
-      >
-        <input
-          id="fileInput"
-          type="file"
-          accept=".docx"
-          multiple
-          class="hidden"
-        />
-        <span class="drop-icon">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path d="M12 16V4M12 4l-4 4M12 4l4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-            <path d="M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-        </span>
-        <div class="drop-text">
-          Drag &amp; drop, or
-          <span class="drop-link">click to choose</span>
-        </div>
-        <div class="drop-hint">.docx · max 2 files · 50&nbsp;MB each</div>
-      </div>
+    <!-- LEFT: Announcements panel (smch.ir-style title + date + body) -->
+    <aside id="announcementsPanel" class="side-panel announcements-panel" aria-label="Announcements">
+      <h2 class="side-title">
+        <span class="side-title-text">Announcements</span>
+        <span class="side-title-rule" aria-hidden="true"></span>
+      </h2>
+      <ol id="announcementsList" class="announce-list" aria-live="polite">
+        <!-- populated by app.js from /v2/content.json -->
+        <li class="announce-empty">Loading…</li>
+      </ol>
+    </aside>
 
-      <!-- Selected files (compact, hidden when empty) -->
-      <ul id="fileList" class="file-list hidden"></ul>
+    <!-- CENTER: Translator + stories. The translator stays compact at the
+         top so the page works on a laptop screen; stories sit below. -->
+    <section class="center-col">
 
-      <!-- Form fields (2x2 grid) -->
-      <div class="form-grid">
-        <label class="form-field">
-          <span class="form-label">Source</span>
-          <select id="sourceLanguage" class="form-select">
-            <option value="en">English</option>
-            <option value="ar">Arabic</option>
-            <option value="bg">Bulgarian</option>
-            <option value="zh-CN">Chinese (Simplified)</option>
-            <option value="zh-TW">Chinese (Traditional)</option>
-            <option value="cs">Czech</option>
-            <option value="fr">French</option>
-            <option value="de">German</option>
-            <option value="hi">Hindi</option>
-            <option value="hu">Hungarian</option>
-            <option value="id">Indonesian</option>
-            <option value="it">Italian</option>
-            <option value="ja">Japanese</option>
-            <option value="ko">Korean</option>
-            <option value="ms">Malay</option>
-            <option value="mn">Mongolian</option>
-            <option value="ne">Nepali</option>
-            <option value="fa">Persian</option>
-            <option value="pl">Polish</option>
-            <option value="pa">Punjabi</option>
-            <option value="ro">Romanian</option>
-            <option value="ru">Russian</option>
-            <option value="es">Spanish</option>
-            <option value="te">Telugu</option>
-            <option value="th">Thai</option>
-            <option value="uk">Ukrainian</option>
-            <option value="ur">Urdu</option>
-            <option value="vi">Vietnamese</option>
-          </select>
-        </label>
+      <!-- Hero / title -->
+      <header class="hero">
+        <h1 class="hero-title">Translate Word documents</h1>
+        <p class="hero-sub">
+          Drop a <code>.docx</code> on the form, choose the target language and engine, and download the translated file. Optimised for broadcast subtitles and general documents.
+        </p>
+      </header>
 
-        <label class="form-field">
-          <span class="form-label">Target</span>
-          <select id="targetLanguage" class="form-select">
-            <option value="fa">Persian</option>
-            <option value="en">English</option>
-            <option value="ar">Arabic</option>
-            <option value="bg">Bulgarian</option>
-            <option value="zh-CN">Chinese (Simplified)</option>
-            <option value="zh-TW">Chinese (Traditional)</option>
-            <option value="cs">Czech</option>
-            <option value="fr">French</option>
-            <option value="de">German</option>
-            <option value="hi">Hindi</option>
-            <option value="hu">Hungarian</option>
-            <option value="id">Indonesian</option>
-            <option value="it">Italian</option>
-            <option value="ja">Japanese</option>
-            <option value="ko">Korean</option>
-            <option value="ms">Malay</option>
-            <option value="mn">Mongolian</option>
-            <option value="ne">Nepali</option>
-            <option value="pl">Polish</option>
-            <option value="pa">Punjabi</option>
-            <option value="ro">Romanian</option>
-            <option value="ru">Russian</option>
-            <option value="es">Spanish</option>
-            <option value="te">Telugu</option>
-            <option value="th">Thai</option>
-            <option value="uk">Ukrainian</option>
-            <option value="ur">Urdu</option>
-            <option value="vi">Vietnamese</option>
-          </select>
-        </label>
+      <!-- Translator card -->
+      <section class="tool-card" aria-label="Translator">
 
-        <label class="form-field">
-          <span class="form-label">Engine</span>
-          <select id="engine" class="form-select">
-            <option value="chatgpt-polish">OpenAI Translate + Polish (Persian)</option>
-            <option value="deepl">DeepL</option>
-            <option value="google">Google Translate</option>
-            <option value="chatgpt">OpenAI API</option>
-          </select>
-        </label>
-
-        <label class="form-field" id="aiModelField">
-          <span class="form-label">OpenAI model</span>
-          <select id="aiModel" class="form-select">
-            <option value="gpt-5.5">GPT-5.5 — recommended</option>
-            <option value="gpt-5.4">GPT-5.4</option>
-            <option value="gpt-5.4-mini">GPT-5.4 mini — faster, cheaper</option>
-          </select>
-        </label>
-
-        <label class="form-field" id="splitEngineField">
-          <span class="form-label">Split method</span>
-          <select id="splitEngine" class="form-select">
-            <option value="basic">Basic with excel file</option>
-            <option value="openai">OpenAI API</option>
-            <option value="persian_double_lines">Persian Double Lines</option>
-          </select>
-        </label>
-      </div>
-
-      <!-- Translate button + status -->
-      <div class="action-row">
-        <button id="translateBtn" type="button" class="btn-primary">
-          <span id="btnIdle" class="btn-idle">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <!-- Drop zone -->
+        <div
+          id="dropZone"
+          class="drop-zone"
+          role="button"
+          tabindex="0"
+          aria-label="Click or drop one to two .docx files"
+        >
+          <input id="fileInput" type="file" accept=".docx" multiple class="hidden" />
+          <span class="drop-icon" aria-hidden="true">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+              <path d="M12 16V4M12 4l-4 4M12 4l4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
-            Translate document
           </span>
-          <span id="btnRunning" class="btn-running hidden">
-            <span class="spinner" aria-hidden="true"></span>
-            <span id="btnRunningLabel">Working…</span>
-          </span>
-        </button>
-        <span id="fileSelectedNote" class="action-note hidden"></span>
-      </div>
-
-      <!-- Progress (shown during run) -->
-      <div id="progressBox" class="progress-box hidden">
-        <div class="progress-meta">
-          <span id="progressLabel">Starting…</span>
-          <span id="progressPct" class="tabular">0%</span>
+          <div class="drop-text">
+            Drag &amp; drop, or
+            <span class="drop-link">click to choose</span>
+          </div>
+          <div class="drop-hint">.docx · max 2 files · 50&nbsp;MB each</div>
         </div>
-        <div class="progress-track">
-          <div id="progressFill" class="progress-fill"></div>
+
+        <ul id="fileList" class="file-list hidden"></ul>
+
+        <!-- Form fields -->
+        <div class="form-grid">
+          <label class="form-field">
+            <span class="form-label">Source</span>
+            <select id="sourceLanguage" class="form-select">
+              <option value="en">English</option>
+              <option value="ar">Arabic</option>
+              <option value="bg">Bulgarian</option>
+              <option value="zh-CN">Chinese (Simplified)</option>
+              <option value="zh-TW">Chinese (Traditional)</option>
+              <option value="cs">Czech</option>
+              <option value="fr">French</option>
+              <option value="de">German</option>
+              <option value="hi">Hindi</option>
+              <option value="hu">Hungarian</option>
+              <option value="id">Indonesian</option>
+              <option value="it">Italian</option>
+              <option value="ja">Japanese</option>
+              <option value="ko">Korean</option>
+              <option value="ms">Malay</option>
+              <option value="mn">Mongolian</option>
+              <option value="ne">Nepali</option>
+              <option value="fa">Persian</option>
+              <option value="pl">Polish</option>
+              <option value="pa">Punjabi</option>
+              <option value="ro">Romanian</option>
+              <option value="ru">Russian</option>
+              <option value="es">Spanish</option>
+              <option value="te">Telugu</option>
+              <option value="th">Thai</option>
+              <option value="uk">Ukrainian</option>
+              <option value="ur">Urdu</option>
+              <option value="vi">Vietnamese</option>
+            </select>
+          </label>
+
+          <label class="form-field">
+            <span class="form-label">Target</span>
+            <select id="targetLanguage" class="form-select">
+              <option value="fa">Persian</option>
+              <option value="en">English</option>
+              <option value="ar">Arabic</option>
+              <option value="bg">Bulgarian</option>
+              <option value="zh-CN">Chinese (Simplified)</option>
+              <option value="zh-TW">Chinese (Traditional)</option>
+              <option value="cs">Czech</option>
+              <option value="fr">French</option>
+              <option value="de">German</option>
+              <option value="hi">Hindi</option>
+              <option value="hu">Hungarian</option>
+              <option value="id">Indonesian</option>
+              <option value="it">Italian</option>
+              <option value="ja">Japanese</option>
+              <option value="ko">Korean</option>
+              <option value="ms">Malay</option>
+              <option value="mn">Mongolian</option>
+              <option value="ne">Nepali</option>
+              <option value="pl">Polish</option>
+              <option value="pa">Punjabi</option>
+              <option value="ro">Romanian</option>
+              <option value="ru">Russian</option>
+              <option value="es">Spanish</option>
+              <option value="te">Telugu</option>
+              <option value="th">Thai</option>
+              <option value="uk">Ukrainian</option>
+              <option value="ur">Urdu</option>
+              <option value="vi">Vietnamese</option>
+            </select>
+          </label>
+
+          <label class="form-field">
+            <span class="form-label">Engine</span>
+            <select id="engine" class="form-select">
+              <option value="chatgpt-polish">OpenAI Translate + Polish (Persian)</option>
+              <option value="deepl">DeepL</option>
+              <option value="google">Google Translate</option>
+              <option value="chatgpt">OpenAI API</option>
+            </select>
+          </label>
+
+          <label class="form-field" id="aiModelField">
+            <span class="form-label">OpenAI model</span>
+            <select id="aiModel" class="form-select">
+              <!-- Values mirror config.VALID_AI_MODELS on the backend.
+                   Keep this list in sync (or fetch it). -->
+              <option value="gpt-5.5">GPT-5.5 — recommended</option>
+              <option value="gpt-5.4-mini">GPT-5.4 mini — faster, cheaper</option>
+            </select>
+          </label>
+
+          <label class="form-field" id="splitEngineField">
+            <span class="form-label">Split method</span>
+            <select id="splitEngine" class="form-select">
+              <option value="basic">Basic with excel file</option>
+              <option value="openai">OpenAI API</option>
+              <option value="persian_double_lines">Persian Double Lines</option>
+            </select>
+          </label>
         </div>
-        <div id="progressJob" class="progress-job"></div>
-      </div>
 
-      <!-- Error -->
-      <div id="errorBox" class="error-box hidden" role="alert">
-        <strong>Translation failed:</strong>
-        <span id="errorText"></span>
-      </div>
+        <!-- Translate button + status -->
+        <div class="action-row">
+          <button id="translateBtn" type="button" class="btn-primary">
+            <span id="btnIdle" class="btn-idle">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              Translate document
+            </span>
+            <span id="btnRunning" class="btn-running hidden">
+              <span class="spinner" aria-hidden="true"></span>
+              <span id="btnRunningLabel">Working…</span>
+            </span>
+          </button>
+          <span id="fileSelectedNote" class="action-note hidden"></span>
+        </div>
 
-      <!-- Results -->
-      <ul id="resultsList" class="results-list hidden"></ul>
+        <!-- Progress -->
+        <div id="progressBox" class="progress-box hidden">
+          <div class="progress-meta">
+            <span id="progressLabel">Starting…</span>
+            <span id="progressPct" class="tabular">0%</span>
+          </div>
+          <div class="progress-track">
+            <div id="progressFill" class="progress-fill"></div>
+          </div>
+          <div id="progressJob" class="progress-job"></div>
+        </div>
+
+        <!-- Error -->
+        <div id="errorBox" class="error-box hidden" role="alert">
+          <strong>Translation failed:</strong>
+          <span id="errorText"></span>
+        </div>
+
+        <!-- Results -->
+        <ul id="resultsList" class="results-list hidden"></ul>
+      </section>
+
+      <!-- Stories block, populated from content.json -->
+      <section class="stories-section" aria-label="How it works">
+        <header class="stories-header">
+          <h2 class="stories-title">Notes &amp; tips</h2>
+          <p class="stories-sub">Short reads on what the engines do and how to read the output.</p>
+        </header>
+        <div id="storiesGrid" class="stories-grid">
+          <!-- populated by app.js -->
+        </div>
+      </section>
+
     </section>
 
-    <!-- Right: sidebar info -->
-    <aside class="info-col">
+    <!-- RIGHT: secondary info (newsletter + quick stats). Hidden on
+         narrow viewports — announcements moves above the form there. -->
+    <aside id="infoPanel" class="side-panel info-panel" aria-label="More">
       <div class="info-card">
-        <h2 class="info-title">How it works</h2>
-        <p class="info-line">
-          Drop a Word file on the left, choose target language and engine, then download the result. Works for general docs and broadcast subtitles.
-        </p>
-      </div>
-
-      <div class="info-card">
-        <h3 class="info-subtitle">Engines</h3>
+        <h3 class="info-subtitle">Engines at a glance</h3>
         <ul class="info-list">
-          <li><strong>OpenAI Translate + Polish</strong> — Persian only. Adds a quality polish pass and a bilingual aligned <em>Double</em> file for TV subtitles.</li>
+          <li><strong>OpenAI Translate + Polish</strong> — Persian only. Adds a quality polish pass and (with Persian Double Lines) a bilingual aligned <em>Double</em> file for TV subtitles.</li>
           <li><strong>DeepL</strong> — best for European languages.</li>
           <li><strong>Google</strong> — widest language coverage.</li>
           <li><strong>OpenAI API</strong> — single-call API translation.</li>
@@ -270,6 +288,15 @@
         <p id="newsletterMsg" class="newsletter-msg hidden"></p>
       </div>
     </aside>
+
   </main>
+
+  <!-- ── Footer ─────────────────────────────────────────────────────────── -->
+  <footer class="page-footer">
+    <div class="footer-inner">
+      <span class="footer-text">SMTV Document Translator · plain JS, no framework</span>
+      <span class="footer-text-muted" id="footerBuild"></span>
+    </div>
+  </footer>
 </body>
 </html>

@@ -50,11 +50,14 @@
     syncEngineUI();
     syncSplitMethodUI();
     syncTargetEngineCascade();
+    syncDocumentDir();
     wireDropZone();
     wireFormControls();
     wireTranslateButton();
     wireNewsletter();
     wireThemeButton();
+    paintFooterBuild();
+    void loadAndRenderContent();
   }
 
   if (document.readyState === 'loading') {
@@ -114,11 +117,32 @@
       }
       syncEngineUI();
       syncSplitMethodUI();
+      syncDocumentDir();
     };
     tgt.addEventListener('change', onChange);
     const src = $('sourceLanguage');
-    if (src) src.addEventListener('change', () => lsSet(LS.source, src.value));
+    if (src) src.addEventListener('change', () => {
+      lsSet(LS.source, src.value);
+      syncDocumentDir();
+    });
     eng.addEventListener('change', syncEngineUI);
+  }
+
+  // Set <html dir="rtl"> when the source OR target language is RTL so the
+  // Persian / Arabic / Hebrew side gets correct alignment + Vazirmatn font
+  // without dragging the entire UI rightward (the form labels stay LTR
+  // because the language picker is *English* — switching the whole page
+  // just because the target is FA was confusing during testing).
+  // Heuristic: if EITHER side is RTL, lean RTL. Saves the user from having
+  // to toggle by hand.
+  function syncDocumentDir() {
+    const RTL = new Set(['fa', 'ar', 'he', 'ur']);
+    const src = $('sourceLanguage');
+    const tgt = $('targetLanguage');
+    const wantRTL =
+      (src && RTL.has((src.value || '').toLowerCase())) ||
+      (tgt && RTL.has((tgt.value || '').toLowerCase()));
+    document.documentElement.setAttribute('dir', wantRTL ? 'rtl' : 'ltr');
   }
 
   // Toggle the AI-model field's visibility based on the chosen engine.
@@ -481,6 +505,113 @@
         if (btn) { btn.disabled = false; btn.textContent = 'Subscribe'; }
       }
     });
+  }
+
+  // ── Content (announcements + stories from /v2/content.json) ────────────
+  //
+  // The page degrades gracefully when content.json is unreachable (offline
+  // mode, dev-time syntax error, 404). Empty content blocks just hide the
+  // surrounding section instead of rendering a broken card.
+  async function loadAndRenderContent() {
+    let payload = null;
+    try {
+      const res = await fetch('/v2/content.json', { cache: 'no-store' });
+      if (res.ok) payload = await res.json();
+    } catch (_) { /* offline / parse error — fall through to empty render */ }
+    payload = payload && typeof payload === 'object' ? payload : {};
+    renderAnnouncements(Array.isArray(payload.announcements) ? payload.announcements : []);
+    renderStories(Array.isArray(payload.stories) ? payload.stories : []);
+  }
+
+  function renderAnnouncements(items) {
+    const ol = $('announcementsList');
+    if (!ol) return;
+    ol.innerHTML = '';
+    if (!items.length) {
+      const li = document.createElement('li');
+      li.className = 'announce-empty';
+      li.textContent = 'No announcements yet.';
+      ol.appendChild(li);
+      return;
+    }
+    for (const a of items) {
+      const li = document.createElement('li');
+      li.className = 'announce-item';
+      // Build the three pieces explicitly so anything in the JSON that
+      // isn't a string is silently rendered as empty — defensive against
+      // editor mistakes in content.json.
+      const dateEl = document.createElement('span');
+      dateEl.className = 'announce-date tabular';
+      dateEl.textContent = String(a.date || '');
+      const titleEl = document.createElement('h3');
+      titleEl.className = 'announce-title';
+      titleEl.textContent = String(a.title || '');
+      const bodyEl = document.createElement('p');
+      bodyEl.className = 'announce-body';
+      bodyEl.textContent = String(a.body || '');
+      if (dateEl.textContent)  li.appendChild(dateEl);
+      if (titleEl.textContent) li.appendChild(titleEl);
+      if (bodyEl.textContent)  li.appendChild(bodyEl);
+      ol.appendChild(li);
+    }
+  }
+
+  function renderStories(items) {
+    const grid = $('storiesGrid');
+    if (!grid) return;
+    grid.innerHTML = '';
+    // Hide the surrounding section when there's nothing to show — the
+    // header would dangle awkwardly.
+    const section = grid.closest('.stories-section');
+    if (!items.length) {
+      if (section) section.classList.add('hidden');
+      return;
+    }
+    if (section) section.classList.remove('hidden');
+    for (const s of items) {
+      const card = document.createElement('article');
+      card.className = 'story-card';
+      if (s.badge) {
+        const b = document.createElement('span');
+        b.className = 'story-badge';
+        b.textContent = String(s.badge);
+        card.appendChild(b);
+      }
+      if (s.title) {
+        const h = document.createElement('h3');
+        h.className = 'story-title';
+        h.textContent = String(s.title);
+        card.appendChild(h);
+      }
+      if (s.summary) {
+        const p = document.createElement('p');
+        p.className = 'story-summary';
+        p.textContent = String(s.summary);
+        card.appendChild(p);
+      }
+      if (s.link) {
+        const a = document.createElement('a');
+        a.className = 'story-link';
+        a.href = String(s.link);
+        a.target = '_blank';
+        a.rel = 'noopener';
+        a.textContent = 'Read more →';
+        card.appendChild(a);
+      }
+      grid.appendChild(card);
+    }
+  }
+
+  // ── Footer build line — small, harmless, gives a release-watcher a
+  // visible signal that they're on the right deploy. The build slug is
+  // injected at deploy time from a meta tag if present; otherwise we
+  // show today's UTC date so a stale tab is obvious.
+  function paintFooterBuild() {
+    const el = $('footerBuild');
+    if (!el) return;
+    const slug = (document.querySelector('meta[name="build-slug"]') || {}).content || '';
+    const today = new Date().toISOString().slice(0, 10);
+    el.textContent = slug ? `build ${slug}` : `build ${today}`;
   }
 
   // ── Helpers ──────────────────────────────────────────────────────────────
