@@ -572,9 +572,10 @@ str_needs_update = "0"
 shading_color_ignore_text_update_key = ["document", "shading_color_ignore_text"]
 shading_color_ignore_text = get_nested_value_from_json_array(json_configuration_array,
     shading_color_ignore_text_update_key)
-# G2 (2026-05-10): mirror onto ctx so docx_io.cells.get_cell_data reads
-# the colour list from the RuntimeContext rather than this module global.
-_get_ctx().config.shading_color_ignore_text = shading_color_ignore_text
+# G2 (2026-05-10): the colour list is mirrored onto ctx.config inside
+# `_get_ctx()`'s lazy snapshot — see the snapshot block above. Calling
+# `_get_ctx()` here would force the snapshot to fire before the engine /
+# CLI args are parsed below, which would leave ctx.engine.engine empty.
 
 process_platform = platform.system()
 if platform.system() == 'Windows':
@@ -967,7 +968,14 @@ if translation_engine in ['perplexity', 'chatgpt'] and engine_method != "webserv
     import undetected_chromedriver as webdriver
 else:
     from selenium import webdriver  # regular selenium webdriver
-    
+
+# Mirror the webdriver module onto ctx now that it has been chosen.
+# `_get_ctx()`'s lazy snapshot may have fired earlier (e.g. from the
+# G2 shading-color mirror at line ~570) when this name did not yet
+# exist; re-set it explicitly so create_webdriver(ctx) downstream
+# sees the right module.
+_get_ctx().browser.webdriver_module = webdriver
+
 def lineno():
     """Returns the current line number in our program."""
     return inspect.currentframe().f_back.f_lineno
@@ -1240,6 +1248,10 @@ chrome_options.add_argument("--lang=en-GB")
 #chrome_options.add_argument("--verbose")
 chrome_options.add_argument("--log-level=3")  # fatal
 chrome_options.add_argument("--password-store=basic")
+# Mirror onto ctx so create_webdriver(ctx) sees the populated options.
+# `_get_ctx()`'s lazy snapshot may have fired earlier (e.g. from the
+# G1 docxdoc mirror at line ~1091) when this name did not yet exist.
+_get_ctx().browser.chrome_options = chrome_options
 
 
 if  translation_engine.lower() == "chatgpt" and False:
@@ -2320,280 +2332,15 @@ def cell_add_paragraph(ctx: RuntimeContext, row_n, paragraph_text):
     ctx.docx.table_cells[row_n][2] = current_cell
 
 
-def read_and_parse_docx_document(ctx: RuntimeContext):
-    """Parse the input DOCX into the parallel arrays on ``ctx.docx``.
-
-    Threaded in Phase F1.3: every parallel array, table_cells, the
-    table reference, and the row/column geometry move from module
-    globals into ``ctx.docx``. The +1 indexing convention
-    (arrays sized ``numrows + 1``, accessed at ``[i + 1]``) is
-    preserved exactly. R16's structural test
-    (``test_docx_arrays_plus_one_indexing``) pins this contract.
-    """
-    docx = ctx.docx
-
-
-    start = timeit.timeit()
-
-    if use_html:
-        print("Content-Type: text/html\n")
-
-    docx.word_translation_table_length = len(docxdoc.tables[0].rows)
-
-    nb_tables = len(docxdoc.tables)
-
-    nb_character_total = 0
-
-    if use_html:
-        print(
-            "<!doctype html><head><meta http-equiv=""Content-Type"" content=""text/html"" charset=utf-8 /><title>Winword in python</title></head><h2>tables</h2><span style=""font-family:monospace,monospace;"">")
-
-    # Number of tables</h2>nb_tables=", nb_tables
-
-    numerrors = 0
-    # print("docx.word_translation_table_length=%d" %(docx.word_translation_table_length))
-    # print("docx_translation_table_length=%d" %(docx_translation_table_length))
-
-    try:
-        docx.table = docxdoc.tables[0]
-    except Exception:
-        print(f"Error: document {docxfile} does not have a table. Exiting.")
-        exit(14)
-    docx.table_cells = [['' for i in range(len(docx.table.columns))] for j in range(len(docx.table.rows))]
-
-    docx.numrows = len(docx.table.rows)
-    docx.numcols = len(docx.table.columns)
-
-    if docx.numcols <= 2:
-        print("ERROR : The table has %s column but expected 3" % (docx.numcols))
-        print("Exiting\n")
-
-        print("\nDeveloper: %s" %(E_mail_str))
-        print("Program version: %s\n" % (PROGRAM_VERSION))
-        if not silent:
-            input("Enter to close program")
-        else:
-            print("Program ended with errors")
-        sys.exit(11)
-
-    rownum = 0
-
-    docx.from_text_table = [''] * (docx.numrows + 1)
-    docx.from_text_is_greyed_table = [0] * (docx.numrows + 1)
-    docx.from_text_is_red_color_table = [0] * (docx.numrows + 1)
-    docx.from_text_is_end_of_line_table = [0] * (docx.numrows + 1)
-    docx.from_text_is_beginning_of_line_table = [0] * (docx.numrows + 1)
-    docx.from_text_is_empty_line_table = [0] * (docx.numrows + 1)
-    docx.from_text_is_conditional_end_of_line_table = [0] * (docx.numrows + 1)
-    docx.from_text_by_phrase_separator_table = [''] * (docx.numrows + 1)
-    docx.from_text_by_phrase_table = [''] * (docx.numrows + 1)
-    #number of lines in per phrase
-    docx.from_text_nb_lines_in_phrase = [0] * (docx.numrows + 1)
-    docx.from_text_nb_lines_in_cell = [0] * (docx.numrows + 1)
-   #input(docx.numrows)
-    #
-    docx.to_text_by_phrase_separator_table = [''] * (docx.numrows + 1)
-    docx.to_text_by_phrase_separator_removed_table = [''] * (docx.numrows + 1)
-    docx.to_text_splited_table1 = [''] * (docx.numrows + 1)
-    docx.to_text_by_phrase_table = [''] * (docx.numrows + 1)
-    docx.to_text_table = [''] * (docx.numrows + 1)
-    docx.to_raw_translated_table = [''] * (docx.numrows + 1)
-    docx.to_text_removed_line_separator = [''] * (docx.numrows + 1)
-    docx.translation_result_using_separator = [''] * (docx.numrows + 1)
-    # `[[]] * n` would have every slot pointing at the same shared list,
-    # so any future `array[i].append(...)` would silently mutate every
-    # other slot. List-comprehension gives each slot a distinct list.
-    docx.translation_result_phrase_array = [[] for _ in range(docx.numrows + 1)]
-    docx.translation_result = [''] * (docx.numrows + 1)
-    docx.from_text_is_read = [0] * (docx.numrows + 1)
-
-    if use_html :
-        print("<br>%s rows.<br>%d colums.<br>" % (docx.numrows, docx.numcols))
-
-    for i, row in enumerate(docx.table.rows):
-        col_no = 1
-        row_n = i + 1
-        
-        p_remove_pause = re.compile('(?i)<pause>')
-        p_remove_double_spaces = re.compile(' +')
-        p_remove_parenthesis_spaces = re.compile('\( +')
-        
-        try:
-            for j, cell in enumerate(row.cells):
-                #if cell.text:
-                #    df[i][j] = cell.text
-                docx.table_cells[i][j] = cell
-                # XML is ._tc
-                #df[i][j] = cell._tc
-                # Defensive lock: snapshot every source-side cell (columns 0
-                # and 1 — line-number and EN text) so save_docx_file can
-                # restore them before writing the docx to disk. Guarantees
-                # the source language column is never altered by any engine
-                # or helper, even via a future leak we haven't audited.
-                # Store both the visible text and the deepcopy'd XML so the
-                # save-time check can prefer text comparison (immune to
-                # python-docx's XML re-serialisation noise) and only fall
-                # back to XML restore on actual content drift.
-                if j in (0, 1):
-                    from copy import deepcopy as _dc
-                    docx.source_columns_snapshot[(i, j)] = (cell.text, _dc(cell._tc))
-                if col_no == 2:
-                
-                    #docx.from_text_is_greyed_table[row_n] = is_greyed_line(cell)
-                    #cellvalue = cell.text.replace('’', "'").strip()
-                    #print(docx.from_text_is_greyed_table)
-                    #print(docx.from_text_is_red_color_table)
-                    #print("row_n=%d" % (row_n))
-                    cellvalue, docx.from_text_is_greyed_table[i], docx.from_text_is_red_color_table[i] = get_cell_data(ctx, cell,row_n)
-                    p_remove_pause
-                    cellvalue = p_remove_pause.sub(' ', cellvalue)
-                    cellvalue = p_remove_double_spaces.sub(' ', cellvalue)
-                    cellvalue = p_remove_parenthesis_spaces.sub('(', cellvalue)
-                    length = len(cellvalue)
-
-                    try:
-                        print("%d : %s" % (i, cellvalue), flush=True)
-                    except Exception:
-                        try:
-                            print("%d : %s" % (i, cellvalue.encode("utf-8")))
-                        except Exception:
-                            print("%d : (unable to print content to screen)" )
-
-                    docx.from_text_is_end_of_line_table[i] = is_end_of_line(cellvalue) or docx.from_text_is_red_color_table[i]
-                    docx.from_text_is_empty_line_table[i] = is_empty_line(cellvalue)
-                    docx.from_text_is_beginning_of_line_table[i] = is_beginning_of_line(cellvalue)
-                    docx.from_text_is_conditional_end_of_line_table[i] = is_conditional_end_of_line(cellvalue)
-
-                    if docx.from_text_is_greyed_table[i] == 1:
-                        docx.from_text_is_beginning_of_line_table[i] = 0
-                        docx.from_text_is_end_of_line_table[i] = 0
-                        
-                    if i == 2 and len(cellvalue) > 0:
-                        docx.from_text_is_beginning_of_line_table[i] = 1
-
-                    if i > 1:
-                        #Test conditionel de fin de ligne
-                        if docx.from_text_is_conditional_end_of_line_table[i - 1] == 1 \
-                            and docx.from_text_is_beginning_of_line_table[i] == 1:
-                            docx.from_text_is_end_of_line_table [i - 1] = 1
-                            docx.from_text_is_beginning_of_line_table [i] = 1
-
-                        # Verifier debut de ligne special
-                        # Si ligne precedente est vide ou grisee:
-                        #    Si ligne courante est non vide et non grisee
-                        #        ligne courante est debut de ligne
-                        if (docx.from_text_is_empty_line_table[i - 1] == 1 \
-                            or docx.from_text_is_greyed_table[i - 1] == 1):
-                            if (docx.from_text_is_empty_line_table[i] == 1 \
-                                and docx.from_text_is_greyed_table[i] == 1):
-                                docx.from_text_is_beginning_of_line_table[i] = 1
-
-                        # Verifier la ligne precedente est fin de ligne
-                        # Si ligne precedente est non vide et non grisee
-                        #    Si ligne courante est vide ou grisee
-                        #        la ligne precedente est fin de ligne
-                        if (docx.from_text_is_empty_line_table[i - 1] == 0 \
-                            and docx.from_text_is_greyed_table[i - 1] == 0):
-                            if (docx.from_text_is_empty_line_table[i] == 1 \
-                                or docx.from_text_is_greyed_table[i] == 1):
-                                docx.from_text_is_end_of_line_table[i - 1] = 1
-
-
-                        # Verifier que c'est vraiment un debut de ligne suivant une fin de ligne
-                        # Si ligne precedente n'est pas fin de ligne
-                        #    et ligne oourante est debut de ligne
-                        #        la ligne courante n'est pas un debut de ligne
-                        if docx.from_text_is_beginning_of_line_table[i] == 1 and \
-                            docx.from_text_is_end_of_line_table[i - 1] == 0 \
-                            and docx.from_text_is_greyed_table[i - 1] == 0 \
-                            and i > 2:
-                            docx.from_text_is_beginning_of_line_table[i] = 0
-
-
-                        # Verifier qu'on a pas loupe un debut de ligne
-                        # Si ligne precedente est fin de ligne
-                        #    et ligne oourante n'est pas grisee et pas debut de ligne
-                        #        la ligne courante est un debut de ligne
-                        if docx.from_text_is_end_of_line_table[i - 1] == 1 \
-                            and docx.from_text_is_greyed_table[i] == 0 \
-                            and docx.from_text_is_beginning_of_line_table[i] == 0:
-                            docx.from_text_is_beginning_of_line_table[i] = 1
-
-                        if (docx.from_text_is_empty_line_table[i - 1] == 1 \
-                            or docx.from_text_is_greyed_table[i - 1] == 1) \
-                            and (docx.from_text_is_empty_line_table[i] == 0 \
-                            and docx.from_text_is_greyed_table[i] == 0):
-                            docx.from_text_is_beginning_of_line_table[i] = 1
-
-                        if docx.from_text_is_empty_line_table[i - 1] == 1:
-                            docx.from_text_is_beginning_of_line_table[i - 1] = 0
-
-                        if i == docx.numrows:
-                            docx.from_text_is_end_of_line_table[i - 1] = 1
-
-                    docx.from_text_table[i] = cellvalue
-                col_no = col_no + 1
-            
-            if not splitonly and i > 1:
-                prepare_and_clear_cell_for_writing(ctx, i, '')
-            docx.from_text_is_read[i] = 1
-        except Exception:
-            var = traceback.format_exc()
-            print(var)
-            numerrors = numerrors + 1
-
-    if docx.from_text_is_greyed_table[docx.numrows] == 0 \
-        and docx.from_text_is_empty_line_table[docx.numrows] == 0:
-        docx.from_text_is_end_of_line_table[docx.numrows] = 1
-
-    split_phrases(ctx)
-
-    if use_html :
-        print("<table border=1 width=800>")
-
-    for row_n in range(1, len(docx.from_text_table)):
-        try:
-            if use_html :
-                print("<tr>")
-                print("<td width=50>", row_n)
-                print("<td width=250>")
-
-            if docx.from_text_is_beginning_of_line_table[row_n] == 1:
-                if use_html :
-                    print("<hr style=\"height:5px;border:none;color:#ffff00;background-color:#ffff00;\" />")
-            
-            if docx.from_text_is_greyed_table[row_n] == 1:
-                if use_html :
-                    print("'<span style=\"background-color: #DCDCDC\">%s</span>' (%s)" % (docx.from_text_table[row_n], len(docx.from_text_table[row_n])))
-                    print("<hr style=\"height:5px;border-top: dotted 2px;color:##DCDCDC;background-color:#DCDCDC;\" />")
-            else:
-
-                if use_html :
-                    print("'%s' (%s)" % (docx.from_text_table[row_n], len(docx.from_text_table[row_n])))
-
-            if docx.from_text_is_end_of_line_table[row_n] == 1:
-                
-                if use_html :
-                    print("<hr style=\"height:5px;border:none;color:#333;background-color:#333;\" />")
-            
-            if docx.from_text_is_empty_line_table[row_n] == 1:
-
-                if use_html :
-                    print("<hr style=\"height:5px;border-top: dotted 2px;color:##DCDCDC;background-color:#DCDCDC;\" />")
-                    print("<td>is_greyed=%s<br>is_end_of_line=%s<br>is_empty_line=%s<br>is_beginning_of_line=%s<br>is_conditional_end_of_line=%s" %(
-                docx.from_text_is_greyed_table[row_n], \
-                docx.from_text_is_end_of_line_table[row_n], \
-                docx.from_text_is_empty_line_table[row_n], \
-                docx.from_text_is_beginning_of_line_table[row_n], \
-                docx.from_text_is_conditional_end_of_line_table[row_n]))
-
-            if use_html :
-                print("<td>'%s' (%d)<td>'%s' (%d)" % (docx.from_text_by_phrase_table[row_n], len(docx.from_text_by_phrase_table[row_n]), \
-                                                  docx.from_text_by_phrase_separator_table[row_n], len(docx.from_text_by_phrase_separator_table[row_n])))
-        except Exception:
-            var = traceback.format_exc()
-            print(var)
-            numerrors = numerrors + 1
+# read_and_parse_docx_document was extracted to ``src/docx_io/parse.py``
+# in the 2026-05-10 G3 thread-globals pass. The function is re-exported
+# from the package root so existing callers (`main()` in this module)
+# keep working without a signature change. The new implementation reads
+# `docxdoc` and `use_html` from `ctx.docx`, `silent` / `splitonly` /
+# `word_file_to_translate` from `ctx.flags`, and lazy-imports the four
+# `is_*_line` predicates plus `prepare_and_clear_cell_for_writing` and
+# `split_phrases` from this module to avoid an import cycle.
+from docx_io.parse import read_and_parse_docx_document  # noqa: E402,F401
 
 def reverse_string(s):
     return s[::-1]

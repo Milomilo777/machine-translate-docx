@@ -80,7 +80,7 @@ the cells.py / save.py shims.
     `get_run_shading_color`) now lives in `src/docx_io/cells.py`. The
     function reads the colour-ignore list from
     `ctx.config.shading_color_ignore_text` (new field on `ConfigCtx`,
-    populated in the entry script after the JSON configuration merge).
+    populated in the entry script via `_get_ctx()`'s lazy snapshot).
     The two shading helpers are private (`_paragraph_shading_color`,
     `_run_shading_color`) and share a `_shading_fill_color` core that
     drops the dead `attrib_val` / `attrib_color` reads from the
@@ -91,9 +91,42 @@ the cells.py / save.py shims.
     `get_cell_data` against an in-memory python-docx document
     (plain text / `<pause>` + `<enter>` markers / whitespace
     collapse). All 70 unit tests pass after the move.
+  - **G3 — `read_and_parse_docx_document` extracted to
+    `docx_io/parse.py`.** The ~330-line parser now lives next to the
+    other docx-IO helpers. The function reads `docxdoc` and `use_html`
+    from `ctx.docx`, `silent` / `splitonly` /
+    `word_file_to_translate` from `ctx.flags`, and lazy-imports the
+    four `is_*_line` predicates plus `prepare_and_clear_cell_for_writing`
+    and `split_phrases` from the entry script (avoids an import cycle
+    — those helpers still own state that is not yet on ctx).
+    `E_MAIL_STR` and `PROGRAM_VERSION` are module constants in the new
+    file, used only by the error-exit branches; if the entry-script
+    values drift, this banner drifts too — accepted duplication, not
+    a behaviour bug. **Bug fix in the same pass:** the original
+    "document does not have a table" branch referenced an undefined
+    name `docxfile`; replaced with `ctx.flags.word_file_to_translate`.
+    The entry script keeps a re-export shim (`from docx_io.parse
+    import read_and_parse_docx_document`) so `main()` is unchanged.
+  - **G3 ordering follow-up — explicit ctx mirrors at the source.**
+    Threading G1's `_get_ctx().docx.docxdoc = ...` mirror onto line
+    1091 made that the *first* `_get_ctx()` call site, which forced
+    the lazy snapshot to fire before `chrome_options` (line 1243) had
+    been built — leaving `ctx.browser.chrome_options` empty so
+    `create_webdriver(ctx)` raised `'NoneType' object has no
+    attribute Chrome'`. Fix: removed the eager `_get_ctx()` call at
+    line ~570 (G2 mirror — it fired even earlier, before
+    `translation_engine` was parsed) so the snapshot now lands
+    after both globals exist; added an explicit
+    `_get_ctx().browser.webdriver_module = webdriver` mirror right
+    after the conditional `import webdriver` (since the snapshot
+    might still pre-date this branch in some call paths) and an
+    explicit `_get_ctx().browser.chrome_options = chrome_options`
+    mirror right after `chrome_options = Options()` for the same
+    reason. Smoke test back to ~27 s / 0 of 42 source-column
+    mismatches.
 
-Master tip going in: `0f07c14`. Tests: 70 / 70 pass after G2 (63 prior
-+ 7 new for `docx_io/cells.py`).
+Master tip going in: `0f07c14`. Tests: 70 / 70 pass. Smoke:
+DeepL en→fr in 27 s, 0 / 42 mismatches.
 
 ### 2026-05-10 — session-close: branch cleanup + next-session handoff
 

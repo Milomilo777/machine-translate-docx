@@ -48,3 +48,7 @@ web/v2/node_modules/
 /*_GER_*.docx
 /*_ARA_*.docx
 /*_MON_*.docx
+
+# Smoke / live target output directory (created by `tasks.bat smoke`
+# and the `make smoke` / `make live-*` targets). Always scratch.
+/_real_test/

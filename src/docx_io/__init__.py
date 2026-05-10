@@ -30,6 +30,7 @@ from docx_io.cells import (
     set_first_paragraph as _cell_set_first_paragraph_impl,
     get_cell_data,
 )
+from docx_io.parse import read_and_parse_docx_document
 
 __all__ = [
     "_iter_paragraph_runs",
@@ -37,4 +38,5 @@ __all__ = [
     "_change_cell_font_impl",
     "_cell_set_first_paragraph_impl",
     "get_cell_data",
+    "read_and_parse_docx_document",
 ]
