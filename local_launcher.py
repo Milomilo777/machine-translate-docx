@@ -302,6 +302,10 @@ class LocalState:
         self.script_path = script_path
         self.lock = threading.Lock()
         self.jobs: dict[str, Job] = {}
+        # Subprocess handles, keyed by job_id. Held while a real-backend
+        # job runs so POST /cancel/<id> can terminate it. Mock jobs never
+        # populate this. Cleared when the subprocess exits.
+        self.job_procs: dict[str, "subprocess.Popen"] = {}
         self.total_uploads = 0
         # cache_key → (timestamp, payload_dict). The dict carries:
         #   main_path:                Path  — engine output, no splitter
@@ -361,6 +365,32 @@ class LocalState:
         with self.lock:
             return dict(self.jobs)
 
+    def cancel_job(self, job_id: str) -> tuple[bool, str]:
+        """Terminate a running real-backend job.
+
+        Returns (ok, message). The subprocess is killed (SIGTERM/TerminateProcess);
+        the running stdout-reader thread observes the broken pipe, marks the
+        job as ``status='cancelled'``, and exits. Idempotent — calling on an
+        already-finished job returns (False, message).
+        """
+        with self.lock:
+            job = self.jobs.get(job_id)
+            proc = self.job_procs.get(job_id)
+        if job is None:
+            return False, "no such job"
+        if job.status != "pending":
+            return False, f"job already {job.status}"
+        if proc is None:
+            # Mock-backend or pre-subprocess; just flip status.
+            self.update_job(job_id, status="cancelled", error="cancelled by user")
+            return True, "cancelled (no subprocess to kill)"
+        try:
+            proc.kill()
+        except Exception as exc:
+            return False, f"kill failed: {exc}"
+        self.update_job(job_id, status="cancelled", error="cancelled by user")
+        return True, "cancelled"
+
     def cleanup_old_jobs(self, max_age_sec: int = 3600) -> int:
         """Remove finished jobs older than `max_age_sec`. Returns count removed."""
         now = time.time()
@@ -368,9 +398,10 @@ class LocalState:
         with self.lock:
             for jid in [
                 j for j, job in self.jobs.items()
-                if job.status in ("done", "error") and (now - job.created_at) > max_age_sec
+                if job.status in ("done", "error", "cancelled") and (now - job.created_at) > max_age_sec
             ]:
                 del self.jobs[jid]
+                self.job_procs.pop(jid, None)
                 removed += 1
         return removed
 
@@ -681,6 +712,18 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         parsed = urlparse(self.path)
 
+        # Cancel a running job. The frontend Cancel button hits this.
+        # We kill the subprocess; the job thread observes the broken
+        # pipe and exits without overwriting the cancelled status.
+        if parsed.path.startswith("/cancel/"):
+            job_id = parsed.path.removeprefix("/cancel/").strip("/")
+            ok, msg = self.state.cancel_job(job_id)
+            self._send_json(
+                {"ok": ok, "message": msg},
+                HTTPStatus.OK if ok else HTTPStatus.BAD_REQUEST,
+            )
+            return
+
         # Newsletter subscribe endpoint — accepts JSON {"email": "..."} OR
         # multipart/form-data with field name "email". Used by the v2 UI
         # but also accessible from any client.
@@ -914,8 +957,15 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
             print(f"[job {job_id}] ✓ done in {_job_elapsed:.0f}s -> {served_path.name}")
         except Exception as exc:
             _job_elapsed = time.time() - _job_t0
-            self.state.update_job(job_id, status="error", filename=None, error=str(exc))
-            print(f"[job {job_id}] ✗ error after {_job_elapsed:.0f}s: {exc}")
+            # If the user already cancelled this job, the subprocess kill
+            # raised inside us as a non-zero exit. Don't overwrite the
+            # 'cancelled' status with 'error' in that case.
+            cur = self.state.get_job(job_id)
+            if cur and cur.status == "cancelled":
+                print(f"[job {job_id}] ✗ cancelled by user after {_job_elapsed:.0f}s")
+            else:
+                self.state.update_job(job_id, status="error", filename=None, error=str(exc))
+                print(f"[job {job_id}] ✗ error after {_job_elapsed:.0f}s: {exc}")
         finally:
             _job_semaphore.release()
 
@@ -1022,6 +1072,10 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
                 "PYTHONUTF8": "1",
             },
         )
+
+        # Register the subprocess so POST /cancel/<id> can kill it.
+        with self.state.lock:
+            self.state.job_procs[job_id] = proc
 
         saved_filename: str | None = None
         if proc.stdout is not None:

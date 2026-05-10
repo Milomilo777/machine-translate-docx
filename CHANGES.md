@@ -57,6 +57,59 @@ after 1800 ms to avoid the Chrome multi-download permission prompt.
 
 ## Sessions
 
+### 2026-05-10 — post-agent UX fixes (branch `next/persian-double-lines-as-splitter`)
+
+User-reported regressions and a feature request after the agent's first
+end-to-end live run on the legacy `index.ejs` UI:
+
+**U1. `Persian Double Lines` option was hidden for FA targets.**
+The legacy frontend still had the pre-phase-1 logic that hid the entire
+splitSection whenever target=fa + engine=chatgpt-polish (the assumption
+being that the engine ran the aligner internally). Phase 1 detached the
+aligner from the engine, so this hide-block is wrong now: hiding the
+splitSection meant the user could never reach the Persian Double Lines
+option at all. Removed the hide-block from `engineChecker()`; the
+splitSection is visible for every combination.
+
+**U2. `Split Method = OpenAI API` was not applied with
+`chatgpt-polish`.** Same pre-phase-1 logic also force-unchecked the
+splitTranslate checkbox under fa+chatgpt-polish, so even when the user
+picked an OpenAI splitter the request shipped without `splitTranslate`,
+and the splitter never ran. Removed.
+
+**U3. `chatgpt-web` engine was disabled in the engine dropdown.**
+`engineChecker()` had `chatgptwebOption.disabled = true` left over from
+when the engine sat in `src/engines/inactive/`. Phase 8 reactivated the
+engine but the frontend was not updated. Removed the disable.
+
+**U4. File selection vanished when the user changed dropdown values.**
+The legacy form's `<input type="file">` would lose its FileList on some
+browsers when surrounding `<select>` elements toggled. Added a small
+guard: the chosen File object is captured into a JS variable on
+`change`, and `sendToServer()` falls back to that cached object when the
+input element has gone empty. The user no longer has to re-pick the
+file after changing engine / language.
+
+**U5. Cancel button — new feature.**
+Mid-translation, the user had no way to abort a job. Added:
+- `LocalState.cancel_job(job_id)` — kills the registered subprocess and
+  marks the job `status='cancelled'`.
+- `LocalState.job_procs[job_id]` — handles registered when the
+  subprocess starts, cleared on exit.
+- `POST /cancel/<job_id>` endpoint.
+- `_run_real_backend` registers its `Popen` immediately after spawn.
+- The job-thread `except` no longer overwrites `cancelled` with `error`
+  if the user already cancelled.
+- A red "Cancel translation" button under the progress bar in the
+  loading overlay; wired to `POST /cancel/<jobId>` for the active job.
+- Polling treats `status='cancelled'` as a terminal state and surfaces
+  it as a regular alert ("Translation cancelled by user").
+
+The launcher contract is unchanged for non-cancelled flows.
+Tests: 64 passing.
+
+---
+
 ### 2026-05-10 — Persian Double Lines as a splitter (agent run, branch `next/persian-double-lines-as-splitter`)
 
 **Phase 13 — end-to-end runs and fixes uncovered by them.**

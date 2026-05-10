@@ -135,6 +135,12 @@
               <span id="progressPct">0%</span>
             </div>
             <progress id="progressBar" value="0" max="100" class="w-full h-3"></progress>
+            <div class="mt-4 flex justify-center">
+              <button type="button" id="cancelBtn"
+                class="bg-red-600 hover:bg-red-700 text-white text-sm px-4 py-2 rounded shadow">
+                Cancel translation
+              </button>
+            </div>
           </div>
         </div>
 
@@ -357,8 +363,10 @@
         const openaiPolishOption = document.querySelector('#openai-polish-engine-option');
 
         // Always-disabled engines
+        // perplexity (HTTP webservice) was deprecated in the refactor;
+        // chatgpt-web + perplexity-web were re-activated in phase 8 and
+        // are now selectable from the dropdown.
         if (perplexOption)    perplexOption.disabled    = true;
-        if (chatgptwebOption) chatgptwebOption.disabled = true;
 
         // OpenAI API always available
         if (openaiAPIOption) openaiAPIOption.disabled = false;
@@ -414,15 +422,14 @@
           splitSel.disabled = true;
         }
 
-        // Hide Split section when Persian + OpenAI Polish (aligner handles line distribution)
+        // Phase 1 detached the FA aligner from the chatgpt-polish engine,
+        // so the splitSection is no longer hidden when fa+chatgpt-polish
+        // is selected — the user picks "Persian Double Lines" from the
+        // Split Method dropdown to get the doubling behaviour. Keep the
+        // splitSection visible for every combination.
         const splitSection = document.getElementById('splitSection');
-        const isAlignerPipeline = (targetLanguage === 'fa' && engineSel && engineSel.value === 'chatgpt-polish');
         if (splitSection) {
-          splitSection.style.display = isAlignerPipeline ? 'none' : '';
-          if (isAlignerPipeline) {
-            const cb = document.getElementById('splitTranslate');
-            if (cb) cb.checked = false;
-          }
+          splitSection.style.display = '';
         }
 
         // Apply language-specific default engine — only on language change (setDefault=true).
@@ -621,11 +628,13 @@
             if (typeof data.progress === 'number') _updateProgress(data.progress);
             if (data.status === 'done')  { _updateProgress(100); return { filename: data.filename }; }
             if (data.status === 'error') throw new Error(data.error || 'Translation failed on server.');
+            if (data.status === 'cancelled') throw new Error('Translation cancelled by user.');
             // 'pending' → keep polling
           } catch (err) {
             // Re-throw terminal errors; swallow transient network errors
             if (err.message && (
               err.message.includes('Translation failed') ||
+              err.message.includes('Translation cancelled') ||
               err.message.includes('timed out') ||
               err.message.includes('not found')
             )) throw err;
@@ -635,10 +644,29 @@
         throw new Error('Translation timed out after 40 minutes. Please try again.');
       }
 
+      // ------- Persist file selection across DOM churn -------
+      // The legacy form occasionally clears the <input type="file">'s
+      // FileList when other selects are toggled (some browsers do this
+      // when the surrounding form re-layouts). Cache the chosen File
+      // object the moment the user picks it, and fall back to the
+      // cached copy in sendToServer when the input has gone empty.
+      let _persistedDocxFile = null;
+      const _docxInputEl = document.getElementById('docxFile');
+      if (_docxInputEl) {
+        _docxInputEl.addEventListener('change', () => {
+          if (_docxInputEl.files && _docxInputEl.files.length > 0) {
+            _persistedDocxFile = _docxInputEl.files[0];
+          }
+        });
+      }
+
       // ------- Upload & poll download -------
       async function sendToServer() {
         const docxFileInput = document.getElementById('docxFile');
-        if (!docxFileInput || docxFileInput.files.length === 0) {
+        const docxFile = (docxFileInput && docxFileInput.files.length > 0)
+          ? docxFileInput.files[0]
+          : _persistedDocxFile;
+        if (!docxFile) {
           await showAlert('Please select a Word .docx file to translate.');
           return;
         }
@@ -647,7 +675,6 @@
         _updateProgress(0);
 
         const formData = new FormData();
-        const docxFile = docxFileInput.files[0];
         const sanitizedFileName = docxFile.name.replace(/）/g, ')').replace(/（/g, '(').replace(/&/g, '');
         formData.append('file', docxFile, sanitizedFileName);
 
@@ -693,8 +720,28 @@
           const cacheHit      = !!uploadData.cacheHit;
           const splitterOnly  = !!uploadData.splitterOnly;
 
+          // Wire the Cancel button to POST /cancel/<jobId> for *this* job.
+          // Removed when the job ends (any status).
+          const _cancelBtn = document.getElementById('cancelBtn');
+          let _cancelHandler = null;
+          if (_cancelBtn) {
+            _cancelHandler = async () => {
+              _cancelBtn.disabled = true;
+              try {
+                await fetch('/cancel/' + encodeURIComponent(uploadData.jobId),
+                            { method: 'POST' });
+              } catch (_) { /* the polling loop will see status=cancelled */ }
+            };
+            _cancelBtn.addEventListener('click', _cancelHandler);
+          }
+
           // Step 2: Poll until translation finishes
           const { filename } = await pollJobStatus(uploadData.jobId);
+
+          if (_cancelBtn && _cancelHandler) {
+            _cancelBtn.removeEventListener('click', _cancelHandler);
+            _cancelBtn.disabled = false;
+          }
 
           // Step 3: Trigger the single-file download. Phase 7 of the
           // persian-double-lines roadmap collapsed the multi-file output
