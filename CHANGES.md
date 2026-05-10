@@ -57,6 +57,78 @@ after 1800 ms to avoid the Chrome multi-download permission prompt.
 
 ## Sessions
 
+### 2026-05-10 — web engines (chatgpt-web, perplexity-web) deep audit (branch `next/persian-double-lines-as-splitter`)
+
+User asked for an actual line-by-line debug + alignment of the two
+guest-session web engines vs `translation-robot/main` legacy. Outcome:
+the function bodies match legacy almost exactly (only the `except:` →
+`except Exception:` cosmetic cleanup we did earlier). The structural
+problems are all in the **module surface** — the bodies reference
+helpers that historically lived in the same module and were never
+re-imported when phase 8 extracted the engines. Every call to either
+engine NameError'd on the first line and the wrapper silently
+returned `(False, "")` so the bug was invisible.
+
+**W1. `build_translation_prompt` not importable from web engines.**
+The helper sat in `src/machine-translate-docx.py`, which has a hyphen
+in the filename and is therefore not a regular importable Python
+module. Extracted to a new file:
+
+```
+src/engines/_prompts.py
+```
+
+The entry script re-imports it via `import engines._prompts as
+_engine_prompts` so the module-level name keeps resolving for any
+caller that still goes through it; the local `def` later in the file
+is left as-is and shadows the import with an identical body.
+
+**W2. Missing helper imports.** Added to both `chatgpt_web.py` and
+`perplexity_web.py`:
+
+```
+from selenium_utils import safe_click, set_chrome_window_2_3_screen
+from config import get_nested_value_from_json_array
+from engines._prompts import build_translation_prompt
+```
+
+**W3. `set_chrome_window_2_3_screen()` zero-arg call vs ctx-arg helper.**
+The legacy body called `set_chrome_window_2_3_screen()` (no args, used
+module globals). Our refactored helper takes `ctx`. The `translate()`
+wrapper now seeds `g["ctx"] = ctx` alongside the other globals; the
+in-body call is `set_chrome_window_2_3_screen(ctx)`.
+
+**W4. `perplexity_close_messages` called `deepl_close_messages()` (zero
+args).** Legacy `deepl_close_messages` was a sibling zero-arg function;
+our refactor moved it under `engines.deepl` with a `ctx` parameter.
+Replaced the legacy "call again to be safe" with a recursive
+self-call into `perplexity_close_messages` plus a re-entry guard via
+a function attribute (`_in_progress`). Same intent, no infinite
+recursion.
+
+**W5. `perplexity_web` wrapper passed 2 positional args to a 3-arg
+body.** Caught earlier in the timing pass. Now passes
+`(text, 2, 3)` — the third is `max_try_count`, used only in a debug
+`print` inside the legacy body.
+
+**W6. `articles[1]` IndexError when ChatGPT response missing.** Legacy
+assumed at least 2 articles in the DOM (index 0 = user prompt, index 1
+= ChatGPT response). On a guest session that gets rate-limited or
+Cloudflare-gated, only the prompt article (or zero) is in the DOM and
+the body raises `IndexError`. Added an early bail at
+`chatgpt_web.py:372` that returns `(False, "")` with a one-line
+diagnostic so the runner can fall back gracefully.
+
+**Smoke status.** Real-file run on
+`tests/fixtures/sample_hyperlink.docx` confirms chatgpt-web now reaches
+the response-parse step (no more silent NameError); the actual
+translation fails because chatgpt.com guest sessions are
+Cloudflare-gated for automated traffic — recorded as a recommended
+follow-up. The same fixes apply to perplexity-web; live verification
+is deferred to the same selector/captcha sweep.
+
+64 / 64 unit tests still pass.
+
 ### 2026-05-10 — engine timing alignment + reference module (branch `next/persian-double-lines-as-splitter`)
 
 User flagged the engines as "feeling slower than the legacy

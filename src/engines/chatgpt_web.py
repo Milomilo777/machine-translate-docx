@@ -33,6 +33,9 @@ from selenium.common.exceptions import (
 from bs4 import BeautifulSoup
 
 from runtime import RuntimeContext
+from selenium_utils import safe_click, set_chrome_window_2_3_screen
+from config import get_nested_value_from_json_array
+from engines._prompts import build_translation_prompt
 from engines._timing import CHATGPT_WEB_PRE_SLEEP
 
 
@@ -68,6 +71,10 @@ def translate(ctx: RuntimeContext, text: str) -> tuple[bool, str]:
         g["driver"]         = ctx.browser.driver
         g["src_lang_name"]  = ctx.language.src_lang_name
         g["dest_lang_name"] = ctx.language.dest_lang_name
+        # Seed the active RuntimeContext into module globals so the
+        # legacy body can pass it back to ctx-aware helpers like
+        # ``set_chrome_window_2_3_screen(ctx)`` without restructuring.
+        g["ctx"]            = ctx
         g.setdefault("closed_cookies_accept_message_bool",  False)
         g.setdefault("close_install_extension_message_bool", False)
         g.setdefault("deepl_nb_clear_cached_times",          0)
@@ -121,7 +128,7 @@ def selenium_chrome_chatgpt_translate(to_translate, retry_count):
     to_translate_phrases_array = to_translate.split("\n")
     to_translate_phrases_array_len = len(to_translate_phrases_array)
 
-    set_chrome_window_2_3_screen()
+    set_chrome_window_2_3_screen(ctx)  # ctx seeded by translate() wrapper
 
     try:
         translation_page_openeing_loop_count = 4
@@ -360,7 +367,17 @@ def selenium_chrome_chatgpt_translate(to_translate, retry_count):
         # Find all the article tags
         articles = soup.find_all('article')
 
-        #print(len(articles))
+        # Legacy assumed at least 2 articles — index 0 is the user's
+        # prompt, index 1 is ChatGPT's first response. If guest-session
+        # rate-limits or Cloudflare gates the request, only the prompt
+        # article (or zero) is in the DOM and the legacy ``articles[1]``
+        # raises ``IndexError`` which the outer try/except catches —
+        # but only after one full page-load wasted. Bail early instead.
+        if len(articles) < 2:
+            print(f"[chatgpt_web] no response article in DOM "
+                  f"(found {len(articles)}). Likely rate-limit or "
+                  f"Cloudflare gate on the guest session.")
+            return False, ""
 
         second_article_html = str(articles[1])
         #print (second_article_html)

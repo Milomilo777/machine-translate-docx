@@ -46,6 +46,9 @@ from selenium.common.exceptions import (
 from bs4 import BeautifulSoup
 
 from runtime import RuntimeContext
+from selenium_utils import safe_click, set_chrome_window_2_3_screen
+from config import get_nested_value_from_json_array
+from engines._prompts import build_translation_prompt
 from engines._timing import PERPLEXITY_WEB_PRE_SLEEP
 
 
@@ -83,6 +86,9 @@ def translate(ctx: RuntimeContext, text: str) -> tuple[bool, str]:
         g["driver"]         = ctx.browser.driver
         g["src_lang_name"]  = ctx.language.src_lang_name
         g["dest_lang_name"] = ctx.language.dest_lang_name
+        # Seed the active RuntimeContext so legacy-body calls to
+        # ``set_chrome_window_2_3_screen(ctx)`` resolve.
+        g["ctx"]            = ctx
         g.setdefault("closed_cookies_accept_message_bool",  False)
         g.setdefault("close_install_extension_message_bool", False)
         g.setdefault("deepl_nb_clear_cached_times",          0)
@@ -161,8 +167,17 @@ def perplexity_close_messages():
             continue
     
     if close_install_extension_message_bool:
-        #Call another time in case some messages because layers order
-        deepl_close_messages()
+        # Legacy called ``deepl_close_messages()`` here — a sibling
+        # zero-arg function that no longer exists in our refactor
+        # (``deepl_close_messages`` now takes ``ctx``). The intent was
+        # "call once more in case popups stacked"; recurse into ourselves
+        # instead, with a re-entry guard via a function attribute.
+        if not getattr(perplexity_close_messages, "_in_progress", False):
+            perplexity_close_messages._in_progress = True
+            try:
+                perplexity_close_messages()
+            finally:
+                perplexity_close_messages._in_progress = False
 
 
 def selenium_chrome_perplexity_translate(to_translate, retry_count, max_try_count):
@@ -196,7 +211,7 @@ def selenium_chrome_perplexity_translate(to_translate, retry_count, max_try_coun
     to_translate_phrases_array = to_translate.split("\n")
     to_translate_phrases_array_len = len(to_translate_phrases_array)
 
-    set_chrome_window_2_3_screen()
+    set_chrome_window_2_3_screen(ctx)  # ctx seeded by translate() wrapper
     
 
     try:

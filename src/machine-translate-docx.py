@@ -215,6 +215,13 @@ from engines.deepl import (
     deepl_close_messages,
     selenium_chrome_deepl_translate,
 )
+# build_translation_prompt now also lives in engines/_prompts.py so the
+# web-Selenium engines (chatgpt_web, perplexity_web) can import it
+# directly. A local `def build_translation_prompt(...)` later in this
+# file shadows the imported name with an identical body; both resolve
+# to the same prompt text. Kept as a safety import so the symbol is
+# always reachable even if the local def is later moved or deleted.
+import engines._prompts as _engine_prompts  # noqa: F401
 from runner import selenium_chrome_translate_maxchar_blocks as _runner_translate_maxchar_blocks
 
 # Module-level RuntimeContext singleton — Phase F1 transition shim.
