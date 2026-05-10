@@ -392,14 +392,25 @@
           }
         }
 
-        // Split engine: enabled for Persian only
+        // Split engine: enabled for Persian only. Persian Double Lines is
+        // the default Split Method for FA; the option is hidden for every
+        // other target language and reverts to "basic" if it was active.
         const splitEnabledLanguages = ['fa'];
+        const splitSel = document.getElementById("splitEngine");
+        const pdlOption = document.getElementById("persian-double-lines-split-option");
         if (splitEnabledLanguages.includes(targetLanguage)) {
-          document.getElementById("splitEngine").disabled = false;
-          document.querySelector("#openai-split-option").selected = true;
+          splitSel.disabled = false;
+          if (pdlOption) {
+            pdlOption.hidden = false;
+            pdlOption.selected = true;
+          }
         } else {
+          if (pdlOption) {
+            pdlOption.hidden = true;
+            if (splitSel.value === 'persian_double_lines') splitSel.value = 'basic';
+          }
           document.querySelector("#basic-split-option").selected = true;
-          document.getElementById("splitEngine").disabled = true;
+          splitSel.disabled = true;
         }
 
         // Hide Split section when Persian + OpenAI Polish (aligner handles line distribution)

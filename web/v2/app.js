@@ -47,6 +47,7 @@
     restoreTheme();
     restoreLanguages();
     syncEngineUI();
+    syncSplitMethodUI();
     syncTargetEngineCascade();
     wireDropZone();
     wireFormControls();
@@ -111,6 +112,7 @@
         eng.value = 'deepl';
       }
       syncEngineUI();
+      syncSplitMethodUI();
     };
     tgt.addEventListener('change', onChange);
     const src = $('sourceLanguage');
@@ -125,6 +127,27 @@
     if (!eng || !aim) return;
     const showModel = (eng.value === 'chatgpt' || eng.value === 'chatgpt-polish');
     aim.classList.toggle('hidden', !showModel);
+  }
+
+  // Hide the Persian Double Lines option whenever the target language is
+  // not Persian, and reset the dropdown if it was the active selection.
+  // When target switches back to Persian, the option becomes visible and
+  // is auto-selected as the default Split Method.
+  function syncSplitMethodUI() {
+    const tgt = $('targetLanguage');
+    const sel = $('splitEngine');
+    if (!tgt || !sel) return;
+    const pdl = sel.querySelector('option[value="persian_double_lines"]');
+    if (!pdl) return;
+    if (tgt.value === 'fa') {
+      pdl.hidden = false;
+      pdl.disabled = false;
+      sel.value = 'persian_double_lines';
+    } else {
+      if (sel.value === 'persian_double_lines') sel.value = 'basic';
+      pdl.hidden = true;
+      pdl.disabled = true;
+    }
   }
 
   // ── Drop zone + file input ───────────────────────────────────────────────

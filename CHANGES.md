@@ -59,6 +59,15 @@ after 1800 ms to avoid the Chrome multi-download permission prompt.
 
 ### 2026-05-10 — Persian Double Lines as a splitter (agent run, branch `next/persian-double-lines-as-splitter`)
 
+**Phase 3 — conditional UI for Persian Double Lines.**
+The `persian_double_lines` `<option>` is now visible only when the
+target language is `fa`; switching to any other target hides it and
+falls back to `basic` if it had been selected. When the user picks
+`fa` as target, Persian Double Lines becomes the auto-selected default
+in both UIs (replacing the previous OpenAI-API auto-pick in legacy).
+v2 gains a `syncSplitMethodUI()` helper that fires on boot, on engine
+change, and on target-language change. Tests: 51 passing.
+
 **Phase 2 — Persian Double Lines exposed as a Split Method.**
 Both frontends now expose a `persian_double_lines` value on their
 `splitEngine` dropdown. Legacy `index.ejs` adds a third `<option>`. v2
