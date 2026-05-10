@@ -1992,22 +1992,15 @@ def get_run_shading_color(xml_run_str):
     return attrib_fill
 
 # Return cell_non_greyed_text (string), cell_is_gray (integer for boolean)
-def _iter_paragraph_runs(paragraph):
-    """Yield every ``<w:r>`` element below ``paragraph`` wrapped in a
-    ``Run`` object — including those nested inside ``<w:hyperlink>``,
-    ``<w:smartTag>``, ``<w:fldSimple>``, or any other container.
-
-    ``paragraph.runs`` only returns the runs that are direct children
-    of ``<w:p>``. Hyperlinked text lives inside ``<w:hyperlink>`` and
-    is therefore silently dropped, leading to translated cells that
-    are missing exactly the words readers most often want translated
-    (URLs aside, the visible link label is meaningful prose).
-
-    Using ``etree.iter`` walks the subtree in document order, which
-    is the only order that preserves the original sentence flow.
-    """
-    for r_elem in paragraph._p.iter(qn('w:r')):
-        yield _DocxRun(r_elem, paragraph)
+# Docx_io extracted helpers (2026-05-10). The shim wrappers below
+# (change_cell_font, cell_set_1st_paragraph, cell_add_paragraph) read
+# the entry-script globals and delegate to these implementations.
+from docx_io import (
+    _iter_paragraph_runs,
+    _cell_add_paragraph_impl,
+    _change_cell_font_impl,
+    _cell_set_first_paragraph_impl,
+)
 
 
 def get_cell_data(ctx: RuntimeContext, cell,row_n):
@@ -2134,13 +2127,11 @@ def get_cell_data(ctx: RuntimeContext, cell,row_n):
 
 
 
+# change_cell_font was extracted to ``src/docx_io/cells.py`` in the
+# 2026-05-10 docx_io extraction pass. Thin shim — reads the entry-script
+# global ``dest_font`` and delegates to the new implementation.
 def change_cell_font(cell):
-
-    #print("cell has %d runs," % (len(paragraph[0].runs) ))
-    for paragraph in cell.paragraphs:
-        for run in paragraph.runs:
-            run.font.name = dest_font
-    return
+    _change_cell_font_impl(cell, dest_font)
 
 def join_from_lines(line_start, line_end, separator_str):
     joined_str = ""
@@ -2435,71 +2426,32 @@ def prepare_and_clear_cell_for_writing(ctx: RuntimeContext, row_n, translation_c
     ctx.docx.table_cells[row_n][2] = current_cell
 
 
+# cell_set_1st_paragraph and cell_add_paragraph were extracted to
+# ``src/docx_io/cells.py`` in the 2026-05-10 docx_io extraction pass.
+# Thin shims here — read the entry-script globals and delegate. The
+# new implementations take their dependencies as explicit kwargs so
+# they can be unit-tested without RuntimeContext.
 def cell_set_1st_paragraph(ctx: RuntimeContext, row_n, paragraph_text):
-    paragraph_no = 0
     current_cell = ctx.docx.table_cells[row_n][2]
-    
-    #print("cell_add_paragraph")
-    #print("paragraph[%d]: %s" % (row_n,paragraph_text))
-    cell_paragraph = cell_paragraph = current_cell.paragraphs[0]
-
-    # Add orientation from Right To Left (RTL) for specific languages
-    if dest_lang in right_to_left_languages_list.keys():
-        run = cell_paragraph.add_run(paragraph_text,style = "rtlstyle")
-        run.style = rtlstyle
-        font = run.font
-        font.rtl = True
-        cell_paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    else:
-        cell_paragraph.text = paragraph_text
-        try:
-            cell_paragraph.style = 'Normal'
-        except KeyError:
-            #print("Warning: 'Normal' style not found. Falling back to 'Default Paragraph Font'.")
-            try:
-                cell_paragraph.style = 'Default Paragraph Font'
-            except KeyError:
-                #print("Error: No usable default style found. Proceeding without style assignment.")
-                pass
-        cell_paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
-
-    if dest_font != "":
-        change_cell_font (current_cell)
-
+    _cell_set_first_paragraph_impl(
+        current_cell,
+        paragraph_text,
+        dest_lang=dest_lang,
+        dest_font=dest_font,
+        rtlstyle=rtlstyle,
+    )
     ctx.docx.table_cells[row_n][2] = current_cell
 
 
 def cell_add_paragraph(ctx: RuntimeContext, row_n, paragraph_text):
-    paragraph_no = 0
     current_cell = ctx.docx.table_cells[row_n][2]
-    
-    #print("cell_add_paragraph")
-    #print("paragraph[%d]: %s" % (row_n,paragraph_text))
-    cell_paragraph = current_cell.add_paragraph("")
-
-    # Add orientation from Right To Left (RTL) for specific languages
-    if dest_lang in right_to_left_languages_list.keys():
-        run = cell_paragraph.add_run(paragraph_text,style = "rtlstyle")
-        run.style = rtlstyle
-        font = run.font
-        font.rtl = True
-        cell_paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    else:
-        cell_paragraph.text = paragraph_text
-        try:
-            cell_paragraph.style = 'Normal'
-        except KeyError:
-            #print("Warning: 'Normal' style not found. Falling back to 'Default Paragraph Font'.")
-            try:
-                cell_paragraph.style = 'Default Paragraph Font'
-            except KeyError:
-                #print("Error: No usable default style found. Proceeding without style assignment.")
-                pass
-        cell_paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
-
-    if dest_font != "":
-        change_cell_font (current_cell)
-
+    _cell_add_paragraph_impl(
+        current_cell,
+        paragraph_text,
+        dest_lang=dest_lang,
+        dest_font=dest_font,
+        rtlstyle=rtlstyle,
+    )
     ctx.docx.table_cells[row_n][2] = current_cell
 
 
@@ -4475,38 +4427,20 @@ def open_app_docx_file(ctx: RuntimeContext):
     except Exception as e:
         print("Error:", e)
         print("Warning, unable to open file %s." % (out_path))
-def _engine_suffix(ctx: 'RuntimeContext') -> str:
-    """Return the per-engine filename suffix appended after the lang code.
-
-    Matches the phase-5 naming convention:
-
-        google           → _Google
-        deepl            → _Deepl
-        chatgpt + api  + with-polish → _Polish
-        chatgpt + api  − with-polish → _chatGPT
-        chatgpt + web                → _web_chatGPT
-        perplexity + web             → _web_Perplexity
-
-    Anything outside this table returns the empty string so the file
-    keeps the legacy bare ``_{LANG}.docx`` name and nothing breaks.
-    """
-    engine = (ctx.engine.engine or '').lower().strip()
-    method = (ctx.engine.method or '').lower().strip()
-    if engine == 'google':
-        return '_Google'
-    if engine == 'deepl':
-        return '_Deepl'
-    if engine == 'chatgpt':
-        if method == 'api':
-            return '_Polish' if ctx.flags.with_polish else '_chatGPT'
-        if method == 'web':
-            return '_web_chatGPT'
-    if engine == 'perplexity':
-        if method == 'web':
-            return '_web_Perplexity'
-    return ''
+# _engine_suffix was extracted to src/docx_io/save.py in the
+# 2026-05-10 docx_io extraction pass. Re-imported under the legacy
+# private name so any other call site keeps resolving. The
+# implementation save_docx_file is wrapped by the same-named shim
+# below this comment block.
+from docx_io.save import engine_suffix as _engine_suffix
+from docx_io.save import save_docx_file as _save_docx_file_impl
 
 
+# save_docx_file was extracted to ``src/docx_io/save.py`` in the
+# 2026-05-10 docx_io extraction pass. Thin shim — emits the
+# PROGRESS:90 marker the launcher watches, then delegates to the
+# implementation, passing the entry-script globals (docxdoc, silent,
+# write_translation_log) through.
 def save_docx_file(ctx: RuntimeContext):
     # PROGRESS:90 — about to write the docx to disk. The aligner branch
     # in print_console_docx_file_translated also emits 90 (and 100), so
@@ -4514,125 +4448,12 @@ def save_docx_file(ctx: RuntimeContext):
     # Perplexity) it fills the gap between block-loop's last 75 and the
     # final 100.
     print("PROGRESS:90", flush=True)
-
-    lang_name = ""
-    lang_code = ctx.language.dest_lang
-    
-    # Find valid two letter code (Norwegian is invalid nb, but should be no)
-    try:
-        lang_name = google_translate_lang_codes[lang_code]
-    except Exception:
-        try:
-            lang_name = deepl_translate_lang_codes[lang_code]
-            for google_lang_code in google_translate_lang_codes.keys():
-                try:
-                    if deepl_translate_lang_codes[lang_code].lower() == google_translate_lang_codes[google_lang_code].lower() and lang_code != google_lang_code:
-                        lang_code = google_lang_code
-                except Exception:
-                    pass
-        except Exception:
-            pass
-    
-    language_alpha_extension = None
-    lang_alpha3b_code = None
-        
-    try:
-        lang_alpha3_code = Language.get(lang_code).to_alpha3()
-        lang_alpha3b_code = Language.get(lang_code).to_alpha3(variant='B')
-        pass
-    except Exception:
-        lang_alpha3b_code = None
-
-    ctx.flags.word_file_to_translate_save_as_path = ctx.flags.word_file_to_translate
-    if lang_alpha3b_code is not None:
-        find_alpha3_code_suffix = f"(?i)_{lang_alpha3b_code}.docx$"
-        if not re.search(find_alpha3_code_suffix, ctx.flags.word_file_to_translate):
-            ctx.flags.word_file_to_translate_save_as_path = re.sub("(?i)_{lang_alpha3b_code}.docx$", f".docx", ctx.flags.word_file_to_translate)
-            lang_alpha3b_code = lang_alpha3b_code.upper()
-            engine_tag = _engine_suffix(ctx)
-            ctx.flags.word_file_to_translate_save_as_path = re.sub("(?i).docx$", f"_{lang_alpha3b_code}{engine_tag}.docx", ctx.flags.word_file_to_translate)
-            print(f"\nAdding file name suffix _{lang_alpha3b_code}{engine_tag}.")
-
-    if os.path.exists(ctx.flags.word_file_to_translate_save_as_path):
-        stem = re.sub(r'(?i)\.docx$', '', ctx.flags.word_file_to_translate_save_as_path)
-        idx = 1
-        while os.path.exists(f"{stem}_{idx}.docx"):
-            idx += 1
-        ctx.flags.word_file_to_translate_save_as_path = f"{stem}_{idx}.docx"
-        print(f"[INFO] Output file already exists — saving as: {ctx.flags.word_file_to_translate_save_as_path}")
-
-    local_time_offset()
-
-    # Defensive lock: restore the snapshotted source-side cells (columns
-    # 0 and 1) just before writing the docx. If anything in the pipeline
-    # mutated them — translation memory leak, an engine touching the
-    # wrong column, a helper rewriting cell text — this brings them back
-    # to their parse-time state. The user's contract: source column is
-    # frozen, no engine and no process may change it.
-    try:
-        from copy import deepcopy as _dc
-        _restored = 0
-        _snap = ctx.docx.source_columns_snapshot or {}
-        for (_ri, _cj), _entry in _snap.items():
-            try:
-                # Backwards compat: older snapshots stored just the XML.
-                if isinstance(_entry, tuple):
-                    _orig_text, _orig_tc = _entry
-                else:
-                    _orig_text, _orig_tc = None, _entry
-
-                _row = ctx.docx.table.rows[_ri]
-                if _cj >= len(_row.cells):
-                    continue
-                _cell = _row.cells[_cj]
-                # Primary check: visible text. python-docx may re-serialise
-                # the XML with reordered namespace attributes / whitespace
-                # even when the cell content is identical, so byte-level
-                # XML comparison generates false positives. Restore only
-                # when the visible text genuinely drifted.
-                if _orig_text is not None and _cell.text == _orig_text:
-                    continue
-                _cur_tc = _cell._tc
-                _parent = _cur_tc.getparent()
-                if _parent is None:
-                    continue
-                _parent.replace(_cur_tc, _dc(_orig_tc))
-                _restored += 1
-            except Exception:
-                # Per-row failures are non-fatal; we continue restoring
-                # the remaining cells.
-                continue
-        if _restored:
-            print(f"[LOCK] Restored {_restored} source-column cell(s) before save (text drift detected — translation memory leak suspected)")
-    except Exception as _lock_exc:
-        print(f"[LOCK] Source-column lock skipped: {_lock_exc}")
-
-    file_saved = 0
-    while file_saved == 0:
-        try:
-            docxdoc.save(ctx.flags.word_file_to_translate_save_as_path)
-            file_saved = 1
-            if ctx.flags.with_polish and ctx.openai.translation_log.get("blocks"):
-                log_path = re.sub(r"(?i)\.docx$", "_log.json", ctx.flags.word_file_to_translate_save_as_path)
-                write_translation_log(log_path)
-
-            # Phase 7 — Classic split helper and write_cell_text utility
-            # are gone with the rest of the multi-file output flow. The
-            # single-file Persian Double Lines splitter lives in
-            # local_launcher._apply_splitter (post-translate path) and
-            # _materialise_cached_output (cache-hit path); both run the
-            # FA mechanical aligner directly against the translated docx.
-            # launcher.py records progress=100 on subprocess success.
-        except Exception:
-            var = traceback.format_exc()
-            print(var)
-            if not silent:
-                txt_readline = input(
-                    "\n\nERROR: File saving failed. Please close microsoft word or other program and press enter to save the translated document.\n")
-            else:
-                # No user to dismiss the prompt; back off briefly and
-                # retry the save instead of hanging the launcher pipe.
-                time.sleep(2)
+    _save_docx_file_impl(
+        ctx,
+        docxdoc,
+        silent=silent,
+        write_translation_log_fn=write_translation_log,
+    )
 
 import os
 import re
