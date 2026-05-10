@@ -53,7 +53,7 @@ from selenium.common.exceptions import (
 )
 
 from runtime import RuntimeContext
-from selenium_utils import safe_click
+from selenium_utils import safe_click, set_chrome_window_2_3_screen
 
 from config import (
     get_nested_value_from_json_array,
@@ -652,7 +652,7 @@ def selenium_chrome_deepl_translate(ctx: RuntimeContext, to_translate, retry_cou
         
         busy_element = ".lmt__textarea_separator__border_inner"
         # busy_element = "//div[@id='dl_translator']/div/div/div[5]"
-        sleep(deepl_sleep_wait_translation_seconds)
+        sleep(ctx.browser.deepl_sleep_wait_translation_seconds)
 
         busybox_innerhtml = ""
         timeout_busy_translating = 50
