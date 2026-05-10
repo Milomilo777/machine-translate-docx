@@ -1101,7 +1101,7 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
                 sys.path.insert(0, src_dir)
             # Lazy import — keeps the launcher's start-up cheap and avoids
             # loading python-docx until a Persian Double Lines job arrives.
-            from openai_tools.aligner_per import FASubtitleAligner
+            from openai_tools.persian_double_lines import FASubtitleAligner
             aligner = FASubtitleAligner(
                 model="gpt-5.4-mini",   # aligner is hardcoded mini (C1)
                 llm_threshold=0,        # purely mechanical; no LLM call

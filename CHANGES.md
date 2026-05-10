@@ -59,6 +59,16 @@ after 1800 ms to avoid the Chrome multi-download permission prompt.
 
 ### 2026-05-10 — Persian Double Lines as a splitter (agent run, branch `next/persian-double-lines-as-splitter`)
 
+**Phase 9 — module rename: `aligner_per` → `persian_double_lines`.**
+The aligner module is renamed to match the user-facing Split Method
+name. The class `FASubtitleAligner` is unchanged. A thin
+`openai_tools.aligner_per` shim re-exports every public and private
+symbol from the new module via a star-import + `__getattr__`
+forwarder, so existing callers (the two test modules and any future
+external consumer) keep working without modification. Internal
+references in `openai_tools/__init__.py` and `local_launcher.py` are
+updated to the new name. Tests: 58 passing.
+
 **Phase 8 — chatgpt-web and perplexity-web engines reactivated.**
 The two Selenium guest-session engines are moved out of
 `src/engines/inactive/` into the active engines package. Each gets a
