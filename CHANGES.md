@@ -59,6 +59,26 @@ after 1800 ms to avoid the Chrome multi-download permission prompt.
 
 ### 2026-05-10 — Persian Double Lines as a splitter (agent run, branch `next/persian-double-lines-as-splitter`)
 
+**Phase 5 — engine-aware output filename suffixes.**
+The bare `_TranslatePolish` polish tag is replaced by a per-engine tag
+appended after the lang code. New mapping:
+
+```
+google           _Google
+deepl            _Deepl
+chatgpt + api    _Polish (with-polish) | _chatGPT (without)
+chatgpt-web      _web_chatGPT
+perplexity-web   _web_Perplexity
+```
+
+`save_docx_file` now calls a new module-level helper `_engine_suffix(ctx)`
+to derive the tag from the engine + method + with_polish triple. The
+launcher mirrors the same table in `_engine_suffix_for(engine)`, used
+by `_fallback_output_path` when the subprocess never prints
+`Saved file name:`. Old `_PER_TranslatePolish.docx` files keep working
+on cache hit (they are stored by name, not derived). `_Classic`
+references stay until phase 7. Tests: 53 passing.
+
 **Phase 4 — cache stores the engine output (not the splitter result).**
 `LocalState.cache` switched from `(timestamp, [(kind, path), ...])` to
 `(timestamp, dict)` carrying `main_path`, `source_path`,

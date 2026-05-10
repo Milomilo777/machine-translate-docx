@@ -60,6 +60,24 @@ def _lang_suffix(target_language: str) -> str:
     return _LANG_ALPHA3B.get(target_language.lower(), target_language.replace('-', '').upper())
 
 
+def _engine_suffix_for(translation_engine: str | None) -> str:
+    """Filename suffix appended after the lang code, per engine.
+
+    Mirrors the table in `save_docx_file._engine_suffix(ctx)` on the
+    backend side. Used by `_fallback_output_path` when the launcher
+    has to guess the output filename because the subprocess never
+    printed `Saved file name:`.
+    """
+    return {
+        'google':         '_Google',
+        'deepl':          '_Deepl',
+        'chatgpt':        '_chatGPT',
+        'chatgpt-polish': '_Polish',
+        'chatgpt-web':    '_web_chatGPT',
+        'perplexity-web': '_web_Perplexity',
+    }.get((translation_engine or '').lower().strip(), '')
+
+
 def _sanitize_filename(name: str) -> str:
     name = Path(name).name
     name = name.replace("\x00", "")
@@ -1065,7 +1083,7 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
         if code != 0:
             raise RuntimeError(f"Backend exited with code {code}")
 
-        output_path = Path(saved_filename) if saved_filename else self._fallback_output_path(source_file, target_language)
+        output_path = Path(saved_filename) if saved_filename else self._fallback_output_path(source_file, target_language, translation_engine)
         deadline = time.time() + 120
         while time.time() < deadline:
             if output_path.exists():
@@ -1161,10 +1179,16 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
             target_language=target_language,
         )
 
-    def _fallback_output_path(self, source_file: Path, target_language: str) -> Path:
-        suffix = _lang_suffix(target_language) or "OUT"
-        stem = _re.sub(r'^\d{10,}-', '', source_file.stem)
-        return source_file.with_name(f"{stem}_{suffix}.docx")
+    def _fallback_output_path(
+        self,
+        source_file: Path,
+        target_language: str,
+        translation_engine: str | None = None,
+    ) -> Path:
+        suffix     = _lang_suffix(target_language) or "OUT"
+        engine_tag = _engine_suffix_for(translation_engine)
+        stem       = _re.sub(r'^\d{10,}-', '', source_file.stem)
+        return source_file.with_name(f"{stem}_{suffix}{engine_tag}.docx")
 
     def _find_double_file(self, main_output: Path) -> Path | None:
         """Look for the _PER_Double.docx sibling of the main output file.

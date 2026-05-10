@@ -4548,6 +4548,38 @@ def open_app_docx_file(ctx: RuntimeContext):
     except Exception as e:
         print("Error:", e)
         print("Warning, unable to open file %s." % (out_path))
+def _engine_suffix(ctx: 'RuntimeContext') -> str:
+    """Return the per-engine filename suffix appended after the lang code.
+
+    Matches the phase-5 naming convention:
+
+        google           → _Google
+        deepl            → _Deepl
+        chatgpt + api  + with-polish → _Polish
+        chatgpt + api  − with-polish → _chatGPT
+        chatgpt + web                → _web_chatGPT
+        perplexity + web             → _web_Perplexity
+
+    Anything outside this table returns the empty string so the file
+    keeps the legacy bare ``_{LANG}.docx`` name and nothing breaks.
+    """
+    engine = (ctx.engine.engine or '').lower().strip()
+    method = (ctx.engine.method or '').lower().strip()
+    if engine == 'google':
+        return '_Google'
+    if engine == 'deepl':
+        return '_Deepl'
+    if engine == 'chatgpt':
+        if method == 'api':
+            return '_Polish' if ctx.flags.with_polish else '_chatGPT'
+        if method == 'web':
+            return '_web_chatGPT'
+    if engine == 'perplexity':
+        if method == 'web':
+            return '_web_Perplexity'
+    return ''
+
+
 def save_docx_file(ctx: RuntimeContext):
     # PROGRESS:90 — about to write the docx to disk. The aligner branch
     # in print_console_docx_file_translated also emits 90 (and 100), so
@@ -4590,9 +4622,9 @@ def save_docx_file(ctx: RuntimeContext):
         if not re.search(find_alpha3_code_suffix, ctx.flags.word_file_to_translate):
             ctx.flags.word_file_to_translate_save_as_path = re.sub("(?i)_{lang_alpha3b_code}.docx$", f".docx", ctx.flags.word_file_to_translate)
             lang_alpha3b_code = lang_alpha3b_code.upper()
-            polish_tag = "_TranslatePolish" if ctx.flags.with_polish else ""
-            ctx.flags.word_file_to_translate_save_as_path = re.sub("(?i).docx$", f"_{lang_alpha3b_code}{polish_tag}.docx", ctx.flags.word_file_to_translate)
-            print(f"\nAdding file name suffix _{lang_alpha3b_code}{polish_tag}.")
+            engine_tag = _engine_suffix(ctx)
+            ctx.flags.word_file_to_translate_save_as_path = re.sub("(?i).docx$", f"_{lang_alpha3b_code}{engine_tag}.docx", ctx.flags.word_file_to_translate)
+            print(f"\nAdding file name suffix _{lang_alpha3b_code}{engine_tag}.")
 
     if os.path.exists(ctx.flags.word_file_to_translate_save_as_path):
         stem = re.sub(r'(?i)\.docx$', '', ctx.flags.word_file_to_translate_save_as_path)
