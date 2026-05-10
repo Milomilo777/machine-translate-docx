@@ -1917,51 +1917,14 @@ def selenium_webservice_perplexity_translate(ctx: RuntimeContext, to_translate, 
         return False, ""
 
 
-def set_translation_function(ctx: RuntimeContext):
-    """Resolve the per-call dispatcher for the active engine + method.
-
-    Threaded in Phase F1.4: writes ``ctx.engine.dispatcher`` instead of
-    the historical module-level pointer
-    ``selenium_chrome_machine_translate_once``. Reads engine + method
-    + max-block-size + splitonly through ``ctx`` instead of globals.
-
-    R15: this is the function that re-points the dispatcher during the
-    DeepL phrasesblock → singlephrase fallback. The structural test
-    `test_engine_method_flip_via_ctx` pins the contract.
-
-    Ctx-aware engine functions (e.g. selenium_chrome_deepl_translate
-    after F1.5) accept ``(ctx, text, retry)``. The dispatcher caller in
-    selenium_chrome_machine_translate passes only ``(text, retry)`` so
-    we bind ``ctx`` here via functools.partial.
-    """
-    import functools
-
-    if not ctx.flags.splitonly:
-        print("\ntranslation_engine=%s" % (ctx.engine.engine))
-        print("engine_method=%s"        % (ctx.engine.method))
-        if ctx.engine.method == "phrasesblock":
-            print("maximum number of characters per block: %d" % ctx.config.max_translation_block_size)
-
-    if ctx.engine.engine == 'deepl':
-        if ctx.engine.method == 'phrasesblock':
-            ctx.engine.dispatcher = selenium_chrome_translate_get_from_text_array
-        else:
-            ctx.engine.dispatcher = functools.partial(selenium_chrome_deepl_translate, ctx)
-    elif ctx.engine.engine == 'chatgpt':
-        # API path populates translation_array up front; dispatcher
-        # is just an array lookup by phrase index. (chatgpt-web was
-        # removed in the 2026-05-10 cleanup pass — Cloudflare gating
-        # made it never-reaches-prod.)
-        ctx.engine.dispatcher = selenium_chrome_translate_get_from_text_array
-    else:
-        # google / perplexity-webservice paths.
-        # (perplexity-web was removed in the 2026-05-10 cleanup pass.)
-        if ctx.engine.method == 'textfile':
-            ctx.engine.dispatcher = selenium_chrome_translate_get_from_text_array
-        elif ctx.engine.method == 'singlephrase':
-            ctx.engine.dispatcher = functools.partial(selenium_chrome_google_translate, ctx)
-        else:
-            ctx.engine.dispatcher = selenium_chrome_translate_get_from_text_array
+# set_translation_function was extracted to ``src/dispatch.py`` in the
+# 2026-05-10 architecture cleanup. The dispatch module is the single
+# source of truth for engine routing — both ``set_translation_function``
+# AND the ``use_phrasesblock`` predicate live there, so future drift
+# between them is impossible.
+from dispatch import set_translation_function, use_phrasesblock as _dispatch_use_phrasesblock
+import dispatch as _dispatch_module
+_dispatch_module.set_array_dispatcher(selenium_chrome_translate_get_from_text_array)
 
 
 def selenium_chrome_machine_translate(ctx: RuntimeContext, to_translate, index):
@@ -3327,30 +3290,12 @@ def translate_docx(ctx: RuntimeContext):
         return translation_succeded
 
     # ------------------------------------------------------------------
-    # Phrase-block logic (centralized, no duplication)
+    # Phrase-block logic — predicate lives in src/dispatch.py so it
+    # can never drift from set_translation_function (both share the
+    # same engine ↔ method matrix). See dispatch.use_phrasesblock for
+    # the per-engine policy.
     # ------------------------------------------------------------------
-    use_phrasesblock = False
-
-    if translation_engine == "chatgpt":
-        # ChatGPT always uses phrase-block logic
-        use_phrasesblock = True
-    elif translation_engine == "deepl":
-        # Deepl: phrase-block only for the "phrasesblock" method
-        use_phrasesblock = engine_method == "phrasesblock"
-    elif translation_engine == "perplexity":
-        # Perplexity: phrase-block for HTTP webservice and classic
-        # phrasesblock. (perplexity-web was removed in the 2026-05-10
-        # cleanup pass.)
-        use_phrasesblock = engine_method in ("phrasesblock", "webservice")
-    elif translation_engine == "google":
-        # Google: phrasesblock joins many phrases into one URL, then
-        # splits on `\n`. Much faster than singlephrase (one round-trip
-        # per block instead of one per phrase). The classic file-mode
-        # paths (`javascript`, `textfile`, `xlsxfile`) handled their
-        # array population themselves and returned earlier.
-        use_phrasesblock = engine_method == "phrasesblock"
-
-    if use_phrasesblock:
+    if _dispatch_use_phrasesblock(translation_engine, engine_method):
         translation_succeded = translate_from_phrasesblock(ctx)
 
     return translation_succeded
