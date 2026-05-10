@@ -44,7 +44,7 @@ SUBSCRIBERS_FILE = ROOT / "subscribers.txt"
 CACHE_TTL_SEC = 36 * 60 * 60
 _API_ENGINES = frozenset({"chatgpt", "chatgpt-polish"})  # only API engines cache
 
-# ISO 639-2/B codes matching what machine-translate-docx.py produces via langcodes
+# ISO 639-2/B codes matching what machine_translate_docx.py produces via langcodes
 _LANG_ALPHA3B = {
     'fa': 'PER', 'ar': 'ARA', 'de': 'GER', 'fr': 'FRE',
     'zh-hans': 'CHI', 'zh-hant': 'CHI', 'zh-cn': 'CHI', 'zh-tw': 'CHI',
@@ -273,7 +273,7 @@ def _build_placeholder_docx(
     doc.add_paragraph(f"Sound enabled: {enable_sound or '(not sent)'}")
     doc.add_paragraph(f"Sound selection: {sound_select or '(not sent)'}")
     doc.add_paragraph(
-        "If you want a real end-to-end translation run, the current machine still needs the missing Python dependencies used by src/machine-translate-docx.py."
+        "If you want a real end-to-end translation run, the current machine still needs the missing Python dependencies used by src/machine_translate_docx.py."
     )
     doc.save(output_path)
 
@@ -1238,7 +1238,7 @@ def main() -> int:
     if args.backend == "real" and not python_exe.exists():
         raise FileNotFoundError(f"Python executable not found: {python_exe}")
 
-    script_path = ROOT / "src" / "machine-translate-docx.py"
+    script_path = ROOT / "src" / "machine_translate_docx.py"
     if not script_path.exists():
         raise FileNotFoundError(f"Backend script not found: {script_path}")
 

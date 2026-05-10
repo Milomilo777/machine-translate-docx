@@ -214,7 +214,7 @@ app.get("/robotscount", async (req, res) => {
         processes.forEach(p => {
             const name = (p.name || "").toLowerCase();
             const cmd  = (p.cmd  || "").toLowerCase();
-            const isPython = /^python\d*(\.\d+)*$/.test(name) && cmd.includes("machine-translate-docx.py");
+            const isPython = /^python\d*(\.\d+)*$/.test(name) && cmd.includes("machine_translate_docx.py");
             const isExe    = name === "machine-translate-docx.exe";
             if (isPython || isExe) {
                 allCount++;
@@ -285,7 +285,7 @@ app.post("/upload", upload.single("file"), async (req, res) => {
         for (const p of processes) {
             const name = (p.name || "").toLowerCase();
             const cmd  = (p.cmd  || "").toLowerCase();
-            const isPython = /^python\d*(\.\d+)*$/.test(name) && cmd.includes("machine-translate-docx.py");
+            const isPython = /^python\d*(\.\d+)*$/.test(name) && cmd.includes("machine_translate_docx.py");
             const isExe    = name === "machine-translate-docx.exe";
             if (isPython || isExe) {
                 allCount++;
@@ -336,7 +336,7 @@ app.post("/upload", upload.single("file"), async (req, res) => {
 
     let fullCommand =
         `source /home/robot/.bashrc; source /home/robot/venv_python311/bin/activate; python3 ` +
-        shellEscape('/home/robot/robot-app/machine-translate-docx-main/src/machine-translate-docx.py') + ' ' +
+        shellEscape('/home/robot/robot-app/machine-translate-docx-main/src/machine_translate_docx.py') + ' ' +
         `--srclang ${shellEscape(sourceLanguage)} ` +
         `--destlang ${shellEscape(targetLanguage)} ` +
         `--engine ${shellEscape(translationEngine)} ` +

@@ -2,7 +2,7 @@
   "name": "machine-translate-docx",
   "version": "1.0.0",
   "private": true,
-  "description": "Express server that wraps src/machine-translate-docx.py for the production deployment. The local Python launcher (local_launcher.py) is the alternative for development.",
+  "description": "Express server that wraps src/machine_translate_docx.py for the production deployment. The local Python launcher (local_launcher.py) is the alternative for development.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"

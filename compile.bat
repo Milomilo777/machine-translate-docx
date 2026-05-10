@@ -55,7 +55,7 @@ REM pyinstaller .\src\machine-translate-docx.py --noconfirm --icon=".\img\app.ic
 
 ECHO INSTALL WITH HAZM
 ECHO REMOVED --nowindowed 
-pyinstaller .\src\machine-translate-docx.py --noconfirm --icon=".\img\app.ico"  --add-data "C:\Python311\Lib\site-packages\newmm_tokenizer\words_th.txt;newmm_tokenizer" --add-data "C:\Python311\Lib\site-packages\demoji\codes.json;demoji"  --hidden-import hazm.Normalizer --hidden-import comtypes.gen._944DE083_8FB8_45CF_BCB7_C477ACB2F897_0_1_0 --hidden-import comtypes.gen.UIAutomationClient  --add-data "C:\Python311\Lib\site-packages\gensim\test\test_data\lee_background.cor;gensim/test/test_data" --add-data "C:\Python311\Lib\site-packages\hazm\data\*;hazm/data" --exclude-module PyQt5 --exclude-module PySide6   --exclude-module matplotlib  --exclude-module wx --exclude-module matplotlib  --exclude-module wx 
+pyinstaller .\src\machine_translate_docx.py --noconfirm --icon=".\img\app.ico"  --add-data "C:\Python311\Lib\site-packages\newmm_tokenizer\words_th.txt;newmm_tokenizer" --add-data "C:\Python311\Lib\site-packages\demoji\codes.json;demoji"  --hidden-import hazm.Normalizer --hidden-import comtypes.gen._944DE083_8FB8_45CF_BCB7_C477ACB2F897_0_1_0 --hidden-import comtypes.gen.UIAutomationClient  --add-data "C:\Python311\Lib\site-packages\gensim\test\test_data\lee_background.cor;gensim/test/test_data" --add-data "C:\Python311\Lib\site-packages\hazm\data\*;hazm/data" --exclude-module PyQt5 --exclude-module PySide6   --exclude-module matplotlib  --exclude-module wx --exclude-module matplotlib  --exclude-module wx
 
 REM --exclude-module torch  --exclude-module transformers --exclude-module llvmlite    
 
@@ -97,7 +97,7 @@ MOVE .\dist\bin .\dist\SMTVRobot
 ROBOCOPY .\excel_files .\dist\SMTVRobot *.xlsx
 ROBOCOPY .\excel_files .\dist\SMTVRobot *.docx
 
-ROBOCOPY .\src\ .\dist\SMTVRobot\source_code machine-translate-docx.py /E
+ROBOCOPY .\src\ .\dist\SMTVRobot\source_code machine_translate_docx.py /E
 ROBOCOPY .\src\ .\dist\SMTVRobot\source_code machine_translate_gui.py /E
 ROBOCOPY .\src\xlsx_translation_memory .\dist\SMTVRobot\source_code\xlsx_translation_memory *.py
 ROBOCOPY .\SendTo .\dist\SMTVRobot\source_code\SendTo *.lnk

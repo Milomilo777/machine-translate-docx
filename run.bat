@@ -113,7 +113,7 @@ SET PYTHONSCRIPT=machine-translate-docx-2021-06-30.py
 SET PYTHONSCRIPT="machine-translate-docx - Copy (15).py"
 SET PYTHONSCRIPT=machine-translate-docx-th-500.py
 SET PYTHONSCRIPT=machine-translate-docx-dev-javascript.py
-SET PYTHONSCRIPT=machine-translate-docx.py
+SET PYTHONSCRIPT=machine_translate_docx.py
 
 SET PYTHONSCRIPTFOLDER=.\src\
 
