@@ -57,6 +57,66 @@ after 1800 ms to avoid the Chrome multi-download permission prompt.
 
 ## Sessions
 
+### 2026-05-10 — Google engine repaired + 4 fixes (branch `next/persian-double-lines-as-splitter`)
+
+After DeepL was unblocked, the Google engine was the next stop on the
+real-file matrix. Two of its three methods were broken in different
+ways; one of those was masked by an empty default that produced an
+unreadable failure mode. Changes:
+
+**G1. Google `phrasesblock` was dispatchable but never populated.**
+The block-loop runner (`src/runner.py:translate_once`) had branches for
+`deepl`, `chatgpt`, and `perplexity` but raised `ValueError("Unknown
+translation engine: google")` on the first call. Worse, `translate_docx`
+in the entry script never even routed Google through the phrasesblock
+path — `use_phrasesblock` was set true only for `chatgpt`, `deepl`, and
+`perplexity`. So the dispatcher fell back to a stale `translation_array`
+lookup, the array stayed empty (length 0), and every phrase looped
+through 14 retries of `[WARN] translation_array index out of range`
+before giving up. Fixed both:
+
+  - Added a `google` branch to `translate_once` that calls
+    `selenium_chrome_google_translate(ctx, text)` and returns the
+    `(success, translated)` shape the rest of the runner expects.
+  - Added `google` to the `use_phrasesblock` selector in `translate_docx`.
+
+**G2. Default method for `--engine google` was a dead path.**
+The default fell through to `engine_method = 'javascript'`, which
+uploads a local HTML file to translate.google.com — a path that modern
+Chrome (~2022+) blocks on file:// URLs. The fail-fast banner from the
+last session kept this from cascading into hundreds of warnings, but
+the user still got an empty docx. Switched the default to
+`phrasesblock`. Users who genuinely want the file-mode path can still
+pass `--enginemethod javascript` explicitly.
+
+**G3. `html.unescape` not applied to final translation.**
+`google.py` reads the result via `result_element.get_attribute('innerHTML')`,
+which returns HTML-escaped text (`&nbsp;`, `&amp;`). The historical
+unescape happened only inside the `_still_translating` retry loop —
+but that loop's regex (`'$Translation'`) is permanently disabled by
+audit finding F-010 and never matches. So entity escapes leaked into
+the docx (visible as the literal `&nbsp;` substring on row 26 of the
+fixture). Always unescape now, after the main read.
+
+**G4. 15-second TimeoutException on every phrasesblock call.**
+A `WebDriverWait(15)` for the Copy-to-clipboard button was a leftover
+sentinel from when the engine actually clicked it; the textarea-read
+path doesn't use it. On targets that surface the toolbar slowly (FA),
+the wait timed out every single call, dumped a noisy traceback, then
+proceeded normally. Cut to 3 s and replaced the traceback with silent
+fall-through.
+
+**Real-file verification with `tests/fixtures/sample_hyperlink.docx`
+on translate.google.com (no `--showbrowser` for the speed-test):**
+
+| target  | method        | wall time | source-column mismatches | nbsp leak | hyperlink populated |
+|---------|---------------|-----------|--------------------------|-----------|---------------------|
+| French  | singlephrase  | 5 m 25 s  | 0 / 42                   | YES (pre-G3) | yes              |
+| French  | phrasesblock  | 26 s → **10 s** (after G4) | 0 / 42 | no | yes              |
+| Persian | phrasesblock  | 30 s      | 0 / 42                   | no        | yes                 |
+
+64 / 64 unit tests still pass.
+
 ### 2026-05-10 — DeepL engine real-file run + NameError fixes (branch `next/persian-double-lines-as-splitter`)
 
 The agent's run report flagged DeepL as deferred — "translation step

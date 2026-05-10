@@ -60,6 +60,16 @@ def selenium_chrome_translate_maxchar_blocks(
         if engine == "deepl":
             return selenium_chrome_deepl_translate(ctx, text, attempt)
 
+        if engine == "google":
+            # Google Translate: textarea path. The underlying helper
+            # returns a plain string (possibly empty) — wrap it into the
+            # ``(success, translated)`` shape the runner expects. Both
+            # ``phrasesblock`` and ``singlephrase`` flow through here;
+            # the difference is the size of ``text`` passed in.
+            translated = selenium_chrome_google_translate(ctx, text)
+            success = bool(translated and translated.strip())
+            return success, translated
+
         if engine == "chatgpt":
             if method == "api":
                 response, translated = ctx.openai.translator.translate(

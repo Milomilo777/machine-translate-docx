@@ -878,7 +878,15 @@ elif translation_engine == 'google':
     elif engine_method  == 'javascript':
         engine_method = 'javascript'
     else:
-        engine_method = 'javascript'
+        # Default for `--engine google` was historically `javascript`,
+        # which uploads a local HTML file to translate.google.com. That
+        # path stopped working when modern Chrome started blocking the
+        # widget on file:// URLs (~2022); it now fails fast with an
+        # error message but produces an empty docx. Switch the default
+        # to `phrasesblock`, which uses the textarea URL — fast and
+        # actually working. Users who genuinely want the old file-mode
+        # path can still pass `--enginemethod javascript` explicitly.
+        engine_method = 'phrasesblock'
 elif translation_engine == 'deepl':
     if engine_method == 'singlephrase' or use_api == True:
         engine_method = 'singlephrase'
@@ -3337,6 +3345,13 @@ def translate_docx(ctx: RuntimeContext):
     elif translation_engine in ("deepl", "perplexity"):
         # Deepl & Perplexity only for these methods
         use_phrasesblock = engine_method in ("phrasesblock", "webservice")
+    elif translation_engine == "google":
+        # Google: phrasesblock joins many phrases into one URL, then
+        # splits on `\n`. Much faster than singlephrase (one round-trip
+        # per block instead of one per phrase). The classic file-mode
+        # paths (`javascript`, `textfile`, `xlsxfile`) handled their
+        # array population themselves and returned earlier.
+        use_phrasesblock = engine_method == "phrasesblock"
 
     if use_phrasesblock:
         translation_succeded = translate_from_phrasesblock(ctx)

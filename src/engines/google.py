@@ -148,16 +148,26 @@ def selenium_chrome_google_translate(ctx: RuntimeContext, to_translate: str) -> 
         except Exception:
             pass
 
+        # Wait for the Copy-to-clipboard button — historically this was
+        # used as a "translation finished" sentinel. We never actually
+        # click it (we read the textarea directly below), so the wait is
+        # only a "page is interactive" cue. Cut the timeout to 3 s; on
+        # Persian / FA targets the button can be slow but the textarea
+        # populates much earlier, so a TimeoutException here doesn't
+        # mean translation failed — just that the toolbar took its time.
         try:
             copy_translation_element = (
                 "//button[@aria-label='Copy to clipboard' and not(@disabled) "
                 "and (@aria-disabled='false' or not(@aria-disabled))]"
             )
-            WebDriverWait(ctx.browser.driver, 15).until(
+            WebDriverWait(ctx.browser.driver, 3).until(
                 EC.presence_of_element_located((By.XPATH, copy_translation_element))
             )
         except Exception:
-            print(traceback.format_exc())
+            # Best-effort sentinel; the textarea read below is what
+            # actually drives the result. Suppress noisy traceback —
+            # log a one-liner instead.
+            pass
 
         res_element_xpath = "//textarea[@lang='%s']" % (ctx.language.dest_lang)
         # F-010 (audit): the historical regex was '$Translation', which in
@@ -213,6 +223,18 @@ def selenium_chrome_google_translate(ctx: RuntimeContext, to_translate: str) -> 
     # Force-read page_source for parity with the historical body (some
     # encoding pre-warm side effects depend on this access).
     ctx.browser.driver.page_source
+
+    # ``innerHTML`` of a textarea returns HTML-escaped content (e.g. the
+    # literal characters ``&nbsp;`` rather than U+00A0, ``&amp;`` rather
+    # than ``&``). The historical code only un-escaped inside the
+    # ``_still_translating`` retry loop — but that regex is permanently
+    # disabled (audit finding F-010), so the loop never ran and the
+    # entity escapes leaked into the docx. Always un-escape now.
+    if translation:
+        try:
+            translation = html.unescape(translation)
+        except Exception:
+            pass
 
     return translation
 
