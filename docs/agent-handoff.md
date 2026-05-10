@@ -19,6 +19,19 @@ Run report: [`docs/agent-run-report.md`](agent-run-report.md). Live
 integration matrix: 5 of 8 scenarios pass; DeepL hang and the two
 web-engine guest-session UIs are recorded as recommended follow-ups.
 
+The `gh` CLI is not installed in the agent environment, so phase 15's
+PR was not opened automatically. The PR title + body are pre-composed
+in [`docs/PR-text.md`](PR-text.md) — open the PR manually via that
+file or the GitHub web UI:
+
+```
+gh pr create \
+  --base master \
+  --head next/persian-double-lines-as-splitter \
+  --title "Persian Double Lines as a Split Method" \
+  --body-file docs/PR-text.md
+```
+
 ## What the user just verified on master
 
 - ChatGPT API engine end-to-end: works. Translated en→mn on a
