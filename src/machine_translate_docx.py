@@ -215,13 +215,9 @@ from engines.deepl import (
     deepl_close_messages,
     selenium_chrome_deepl_translate,
 )
-# build_translation_prompt now also lives in engines/_prompts.py so the
-# web-Selenium engines (chatgpt_web, perplexity_web) can import it
-# directly. A local `def build_translation_prompt(...)` later in this
-# file shadows the imported name with an identical body; both resolve
-# to the same prompt text. Kept as a safety import so the symbol is
-# always reachable even if the local def is later moved or deleted.
-import engines._prompts as _engine_prompts  # noqa: F401
+# Stale ``engines._prompts`` shim was removed in C3 of the 2026-05-10
+# cleanup. The only callers of ``build_translation_prompt`` were the
+# now-deleted chatgpt-web / perplexity-web engines.
 from runner import selenium_chrome_translate_maxchar_blocks as _runner_translate_maxchar_blocks
 
 # Module-level RuntimeContext singleton — Phase F1 transition shim.
@@ -1854,67 +1850,16 @@ def selenium_chrome_perplexity_wait_log_in():
 
 
 
-def build_translation_prompt(source_lang, dest_lang, text):
-    lines = text.split("\n")
-    numbered_lines = [f"Line {i+1}: {line}" for i, line in enumerate(lines)]
-    numbered_text = "\n".join(numbered_lines)
-    
-    prompt = (
-        f"You are a professional subtitling translator.\n"
-        f"Your task is to translate {source_lang} into {dest_lang}.\n\n"
-        f"Overall context and style:\n"
-        f"- Read all lines first so you understand the full context.\n"
-        f"- Treat the entire input as one coherent text when choosing tone and terminology.\n"
-        f"- Ensure consistent translations for recurring terms, names, and concepts across all lines.\n"
-        f"- If part of the text to translate is already in {dest_lang}, treat it as a translation memory and keep it literal.\n"
-        f"Line-by-line constraints:\n"
-        f"- Translate line by line: produce exactly one output line for each input line.\n"
-        f"- Do NOT merge, split, add, remove, or repeat lines.\n"
-        f"- Use formal, standard and natural {dest_lang} (non-colloquial);preserve all information.\n"
-        f"- But the wording inside each line is allowed to become a bit shorter or longer in order to produce natural {dest_lang}.\n"
-        f"- Preserve the input line order.\n"
-        f"- Parentheses and multiple sentences within a line belong to that same line.\n"
-        f"- Only translate lines that start with 'Line ' followed by a number and a semicolon.\n"
-        f"- For each such line, translate only the TEXT after the first semicolon.\n"
-        f"- After translation, do NOT include 'Line N:' in the output; only output the translated TEXT.\n"
-        f"- Output only {dest_lang} text, with no explanations or comments.\n"
-        f"- Produce exactly {len(lines)} output lines, in the same order as the input, there should be no blank lines.\n"
-        f"- End each output line with a single newline character also known as line feed or LF (do not add extra blank lines between translated lines in the output).\n"
-    )
-    
-    if dest_lang.lower() == 'persian':
-        prompt += (
-            "- When writing decimal numbers in Persian, use a dot as the decimal separator, e.g. write \u00ab\u06F1\u06F2.\u06F5\u00bb not \u00ab\u06F1\u06F2/\u06F5\u00bb (and not \u00ab\u06F1\u06F2,\u06F5\u00bb).\n"
-            "- Do NOT add diacritics (no short vowels or tashkeel such as \u064E \u0650 \u064F \u0651 \u064C \u064B \u064D),  unless a rare word would be ambiguous without them.\n"
-            "- Apply the following fixed terminology rules whenever these English forms appear:\n"
-            "  - \"animal-person\" / \"animal-people\"  \u2192  \u00ab\u0634\u062E\u0635-\u062D\u06CC\u0648\u0627\u0646\u00bb / \u00ab\u0627\u0634\u062E\u0627\u0635-\u062D\u06CC\u0648\u0627\u0646\u00bb\n"
-            "  - \"tiger-person\" / \"tiger-people\"    \u2192  \u00ab\u0634\u062E\u0635-\u0628\u0628\u0631\u00bb   / \u00ab\u0627\u0634\u062E\u0627\u0635-\u0628\u0628\u0631\u00bb\n"
-            "  - \"cow-person\" / \"cow-people\"        \u2192  \u00ab\u0634\u062E\u0635-\u06AF\u0627\u0648\u00bb   / \u00ab\u0627\u0634\u062E\u0627\u0635-\u06AF\u0627\u0648\u00bb\n"
-            "  (Do NOT translate them as ordinary “animal(s) / tiger(s) / cow(s)”.)\n"
-        )
-    
-    prompt += f"Here is the text to translate:\n{numbered_text}\n"
+# build_translation_prompt was deleted in C3 of the 2026-05-10
+# cleanup pass — its only callers were the now-deleted chatgpt-web /
+# perplexity-web engines.
 
-    return prompt
 
-def selenium_webservice_perplexity_translate(ctx: RuntimeContext, to_translate, retry_count):
-    """HTTP forwarder for Perplexity webservice. Threaded in Phase F1.1:
-    reads ``ctx.language.src_lang_name`` and ``ctx.language.dest_lang_name``
-    in place of the historical module globals."""
-    try:
-        url = "http://127.0.0.1:8000/translate"
-        payload = {
-            "src_lang_name":  ctx.language.src_lang_name,
-            "dest_lang_name": ctx.language.dest_lang_name,
-            "text":           to_translate,
-            "engine":         "perplexity",
-            "retry_count":    2,
-        }
-        response = requests.post(url, json=payload)
-        translation = response.json()['translation']
-        return True, translation
-    except Exception:
-        return False, ""
+# selenium_webservice_perplexity_translate was extracted to
+# ``src/engines/perplexity_webservice.py`` in C3.1 of the 2026-05-10
+# architecture cleanup. Imported here so the runner-injection call
+# site (and any historical caller) keeps resolving.
+from engines.perplexity_webservice import selenium_webservice_perplexity_translate
 
 
 # set_translation_function was extracted to ``src/dispatch.py`` in the
