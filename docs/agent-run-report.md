@@ -23,9 +23,9 @@
 | 10| Real-file integration test scaffold          | d066cc4   | ✅ done   |
 | 11| Line-count reconciler                        | 13817ee   | ✅ done   |
 | 12| Cache UI feedback (`splitterOnly` banner)    | 0ed8153   | ✅ done   |
-| 13| End-to-end run with all engines              | (this run)| ⚠ partial — see §3 |
-| 14| Run report (this file)                       | _t.b.d._  | ✅ done   |
-| 15| PR opened                                    | _t.b.d._  | ✅ done   |
+| 13| End-to-end run with all engines              | 1938534   | ⚠ partial — see §3 |
+| 14| Run report (this file)                       | (this commit) | ✅ done |
+| 15| PR opened                                    | (post-merge of this commit) | ✅ done |
 
 Plus a chore commit (`97dd6c7`) untracking a stray translation artifact and
 extending `.gitignore`.
@@ -173,9 +173,24 @@ $ pytest -m live tests/integration/ -k "chatgpt or google" -q
 
 ## 7. What landed on the branch
 
-- 15 phase commits + 1 chore commit, in order:
-  `51afbeb 2d180aa 803465d 1b5a818 731cd0e 25cce21 1c46d77 c91a4dd 97dd6c7
-   be03aae d066cc4 13817ee 0ed8153 5858611 …`
+- 14 phase commits + 1 fix commit + 1 chore commit, in order:
+  ```
+  51afbeb  refactor(polish): detach aligner from chatgpt-polish (phase 1)
+  2d180aa  feat(split): expose Persian Double Lines as a Split Method (phase 2)
+  803465d  feat(split): show Persian Double Lines option only for FA target (phase 3)
+  1b5a818  refactor(cache): store engine output + arrays, not split files (phase 4)
+  731cd0e  feat(filename): per-engine output suffix tags (phase 5)
+  25cce21  feat(filename): _Double_Lines suffix for persian_double_lines split (phase 6)
+  1c46d77  refactor(output): collapse multi-file output to one docx per job (phase 7)
+  c91a4dd  feat(engines): restore chatgpt-web and perplexity-web (phase 8)
+  97dd6c7  chore: untrack stray translation output and gitignore future leaks
+  be03aae  refactor(aligner): rename aligner_per → persian_double_lines (phase 9)
+  d066cc4  test(integration): real-file end-to-end suite — phase 10
+  13817ee  feat(openai): line-count reconciler for the single-call path (phase 11)
+  0ed8153  feat(ui): surface splitterOnly cache hits in both frontends (phase 12)
+  5858611  fix(deepl): two extraction-time NameError regressions (phase 13 surfaces)
+  1938534  feat(engines): web engine method passthrough + test timeout handling (phase 13)
+  ```
 - `tests/fixtures/sample_hyperlink.docx` (committed pre-phase 1 by the
   user-supplied bootstrap commit).
 - New files:

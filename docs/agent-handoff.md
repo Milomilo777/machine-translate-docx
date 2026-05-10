@@ -11,9 +11,13 @@
 date          2026-05-10
 branch        next/persian-double-lines-as-splitter
 base          master @ c8f284c
-phases done   0 of 15
-status        in progress (handed off to agent)
+phases done   15 of 15
+status        complete; awaiting user PR review
 ```
+
+Run report: [`docs/agent-run-report.md`](agent-run-report.md). Live
+integration matrix: 5 of 8 scenarios pass; DeepL hang and the two
+web-engine guest-session UIs are recorded as recommended follow-ups.
 
 ## What the user just verified on master
 
