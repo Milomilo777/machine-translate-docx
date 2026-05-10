@@ -59,6 +59,24 @@ after 1800 ms to avoid the Chrome multi-download permission prompt.
 
 ### 2026-05-10 — Persian Double Lines as a splitter (agent run, branch `next/persian-double-lines-as-splitter`)
 
+**Phase 10 — real-file integration test scaffolded.**
+A new opt-in test module `tests/integration/test_real_file_per_engine.py`
+boots the entry script as a subprocess against the
+`tests/fixtures/sample_hyperlink.docx` fixture for every supported engine
+and asserts the AGENT.md contract on the output: source columns 0+1
+byte-identical, target column 2 populated, hyperlinked text preserved,
+correct engine suffix, no Traceback, no `[LOCK] Restored …`. Web engines
+(`chatgpt-web`, `perplexity-web`) are smoke-tested only — non-zero exit
+converts to `pytest.skip` so a guest-session UI change upstream does not
+turn this into a blocking CI failure. Tests are marked
+`@pytest.mark.live` (module-wide `pytestmark`) so they stay excluded
+from the default `pytest` invocation; run with
+`pytest -m live tests/integration`. The test target is `mn` for the
+non-FA flow and `fa` for the FA-only Persian Double Lines case;
+`MTD_TEST_MODEL=gpt-5.4-mini` overrides the OpenAI model so the live
+runs stay cheap. Tests: 58 passing default, 8 additional live tests
+collected under `-m live`.
+
 **Phase 9 — module rename: `aligner_per` → `persian_double_lines`.**
 The aligner module is renamed to match the user-facing Split Method
 name. The class `FASubtitleAligner` is unchanged. A thin
