@@ -190,7 +190,7 @@ the next legacy helper that sneaks in a `global foo` will be caught.
 Benefit: removes a whole class of "I added a ctx field, the global
 copy stayed empty" bugs.
 
-### W-2 — Persian text in stdout shows reversed characters on Windows console
+### W-2 — Persian text in stdout shows reversed characters on Windows console ✅ FIXED 2026-05-11 (`next/remaining-fixes-and-final-validation`)
 DocX content is correct (verified). Only the Windows console fallback
 to cp1252 / cp65001 reverses RTL for visual display. Operationally
 harmless; cosmetically confusing during debugging.
@@ -199,6 +199,14 @@ harmless; cosmetically confusing during debugging.
 Could explicitly add `os.environ["PYTHONUTF8"] = "1"` at process
 start so child subprocesses inherit it.
 
+**Fix landed 2026-05-11:** `local_launcher.py` now sets
+`PYTHONUTF8=1` and `PYTHONIOENCODING=utf-8` via
+`os.environ.setdefault(...)` at startup so any code path that
+doesn't go through the explicit `subprocess.Popen(env=...)` mapping
+(e.g. an aligner helper that spawns its own child) inherits the
+UTF-8 IO mode. This is belt-and-suspenders — the explicit env in
+`_run_real_backend` already covered the main subprocess path.
+
 ### W-3 — `aimodel` default `"gpt-5.5"` is hardcoded in two places ✅ FIXED 2026-05-10 (`next/post-test-hardening`)
 `src/runner.py:141` and `src/openai_tools/translator.py` /
 `polisher.py` constructor defaults. Drift risk.
@@ -206,7 +214,7 @@ start so child subprocesses inherit it.
 **Idea:** export a `DEFAULT_AI_MODEL` constant from `config.py` and
 import everywhere.
 
-### W-4 — `_log.json` is overwritten on second run with same name
+### W-4 — `_log.json` is overwritten on second run with same name ✅ FIXED 2026-05-11 (`next/remaining-fixes-and-final-validation`)
 `save_docx_file` does `_1` / `_2` collision avoidance for the docx
 (C6) but the `_log.json` next to it follows the *new* path, so
 running twice produces `foo_PER_Polish.docx` + `foo_PER_Polish_log.json`
@@ -214,12 +222,26 @@ running twice produces `foo_PER_Polish.docx` + `foo_PER_Polish_log.json`
 (second run). This is **fine**, but worth pinning a unit test that
 the pair always travel together.
 
-### W-5 — Phrase-grouping looks like missing translations to a fresh user
+**Fix landed 2026-05-11:** `tests/test_log_sidecar_pair.py` now
+exercises `local_launcher.MockTranslatorHandler._strip_timestamp`
+on a temp pair: the helper renames the sidecar alongside the docx
+and rewrites the sidecar's `run_info.output_file` field so the
+two never drift apart. Four scenarios covered (no-sidecar,
+with-sidecar, output_file rewrite, no-prefix idempotency). This
+also closes W-8 — see below.
+
+### W-5 — Phrase-grouping looks like missing translations to a fresh user ✅ FIXED 2026-05-11 (`next/remaining-fixes-and-final-validation`)
 The "18 / 40 rows have target text" pattern is correct (one cell per
 phrase) but every reviewer who opens the output for the first time
 asks the same question. Consider adding a one-line
 `[INFO] N phrases / M lines — translation written to phrase head row`
 print in the entry script.
+
+**Fix landed 2026-05-11:** `docx_io/parse.py` now prints
+`[INFO] Parsed N source lines into M phrase groups — translation
+will be written to phrase-head rows; other rows of the same
+phrase remain empty by design.` immediately after `split_phrases(ctx)`.
+Verified live in all 6 V2 real-engine runs.
 
 ### W-6 — Aligner runs only when `with_polish` is on AND target == fa
 T5/T6 used `--with-polish` but no `--splitengine persian_double_lines`,
@@ -228,17 +250,39 @@ and the aligner did not fire. That's the correct behaviour, but the
 `Persian Double Lines` is a *separate* option from `--with-polish`.
 Consider renaming the dropdown labels in the UI for clarity.
 
-### W-7 — `[Purple highlight or shade]` row 10 silently dropped
+### W-7 — `[Purple highlight or shade]` row 10 silently dropped ✅ INVESTIGATED 2026-05-11 (`next/remaining-fixes-and-final-validation`) — *not a bug, working as designed*
 T6 had row 10 as source `"[Purple highlight or shade]"` but target
 empty — even though it is bracketed text, not greyed. Worth checking
 whether the polisher is treating `[...]` as a comment / instruction
 to skip. If so, document it; if not, file as a real bug.
 
-### W-8 — `run_info["output_file"]` is *.docx but the docx may be renamed
+**Investigation result 2026-05-11:** the row 10 paragraph carries
+a `<w:shd w:fill="002060"/>` (dark blue), which is in
+`shading_color_ignore_text`. So `_paragraph_shading_color()`
+returns `002060`, the cell-walker `continue`s past every run,
+and the cell text becomes empty (`gray=1`). The polisher never
+sees the `[Purple…]` literal. This is the documented
+"shaded paragraph → ignore" behaviour from the source DOCX
+convention; row 9 / 11 / 12 differ only because they have a
+*second* unshaded paragraph carrying the trailing
+`Purple/Dark Blue ... is ignored.` text that survives.
+
+Decision: not a bug. The fixture's "row 10 is *only* bracketed
+shaded text" is intentional and the engine correctly produces an
+empty target. If a future fixture wants the bracket text
+translated, the source needs an unshaded paragraph alongside.
+
+### W-8 — `run_info["output_file"]` is *.docx but the docx may be renamed ✅ FIXED 2026-05-11 (`next/remaining-fixes-and-final-validation`)
 Same root cause as W-4. The sidecar records the output filename based
 on the path passed to `write_translation_log`, but if the launcher
 later renames the file (e.g. to add `_1` for collision) the sidecar
 points to a stale name.
+
+**Fix landed 2026-05-11:** `_strip_timestamp` in `local_launcher.py`
+now (a) renames the matching `_log.json` sidecar alongside the
+docx and (b) rewrites the sidecar's `run_info.output_file` to
+match the post-rename docx name. Covered by 4 unit tests in
+`tests/test_log_sidecar_pair.py`.
 
 ---
 
@@ -306,3 +350,40 @@ cd _real_test && E:/Python311/python.exe ../src/machine_translate_docx.py \
 Remaining items (W-2, W-4, W-5, W-6, W-7, W-8) are still
 nice-to-have. Pick from the list when there is budget; keep the
 rest in this doc until they are done.
+
+---
+
+## Final validation pass — 2026-05-11 (`next/remaining-fixes-and-final-validation`)
+
+After the W-2 / W-4 / W-5 / W-7 / W-8 fixes landed, ran the full
+real-engine matrix again on the same fixture. Pinned every test
+to a structured exit code so the launcher can flag failures
+correctly.
+
+| # | Engine | Method | Lang | Polish | Split | Exit | Source col | Target rows | Notes |
+|---|--------|--------|------|--------|-------|------|-----------|-------------|-------|
+| V2.1 | DeepL  | phrasesblock | en→fr | – | off | 0 | 42/42 ✓ | 18/40 phrase | W-5 info line emitted ✓ |
+| V2.2 | Google | phrasesblock | en→fr | – | off | 0 | 42/42 ✓ | 18/40 phrase | French diacritics OK |
+| V2.3 | Google | phrasesblock | en→de | – | off | 0 | 42/42 ✓ | 18/40 phrase | German umlauts OK |
+| V2.4 | DeepL  | phrasesblock | en→es | – | off | 0 | 42/42 ✓ | 18/40 phrase | Spanish accents OK |
+| V2.5 | chatgpt | api | en→fa | yes | off | 0 | 42/42 ✓ | 18/40 phrase | sidecar populated; cache cold (24 h elapsed) |
+| V2.6 | chatgpt | api | en→fa | yes | **on** | 0 | 42/42 ✓ | **37/40 row** | distribution per-row works |
+| V2.7 | chatgpt | api | en→fa | yes | off | 0 | 42/42 ✓ | 18/40 phrase | second run, cache 91.7 % / 76.2 % ✓ |
+| V2.NEG-empty | chatgpt | api | en→fa | – | – | **20** | – | – | `[FAIL] reason=engine_empty …` |
+| V2.NEG-model | chatgpt | api | en→fa | – | – | **1** | – | – | `ERROR: --aimodel 'gpt-99' is not a recognised…` |
+
+Cache verification (V2.7 vs V2.5, both same day):
+
+```
+First run (cache cold, 24 h after the prior session):
+  translation: cached    0/5860 = 0.0 %
+  polish:      cached    0/4385 = 0.0 %
+Second run (immediately after V2.5):
+  translation: cached 5376/5860 = 91.7 % ✓
+  polish:      cached 3328/4365 = 76.2 % ✓
+  total cost:  $0.018923 (vs $0.0286 cold)
+```
+
+Tests at tip: 88 / 88 pass (84 prior + 4 new
+`tests/test_log_sidecar_pair.py`). All five remaining hardening
+items closed.

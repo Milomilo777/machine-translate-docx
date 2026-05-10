@@ -57,6 +57,53 @@ after 1800 ms to avoid the Chrome multi-download permission prompt.
 
 ## Sessions
 
+### 2026-05-11 — remaining W-* fixes + final real-engine validation (branch `next/remaining-fixes-and-final-validation`)
+
+Drained the rest of the W-* backlog from
+`docs/real-engine-test-findings.md` and re-ran the full real-engine
+matrix to confirm nothing regressed:
+
+  - **W-2** — `local_launcher.py` now exports `PYTHONUTF8=1` and
+    `PYTHONIOENCODING=utf-8` to the parent process environment via
+    `os.environ.setdefault(...)`. Subprocess.Popen calls already
+    passed these via the explicit `env=` mapping; this is a
+    belt-and-suspenders default for any child that doesn't go
+    through the explicit path (e.g. an aligner helper that spawns
+    its own subprocess).
+  - **W-4 + W-8** — `_strip_timestamp` in the launcher used to
+    rename only the docx, leaving the `_log.json` sidecar under
+    the timestamped name and pointing at a non-existent docx.
+    Helper now (a) renames the matching sidecar alongside the docx
+    and (b) rewrites the sidecar's `run_info.output_file` field
+    to the post-rename name. New `tests/test_log_sidecar_pair.py`
+    pins four scenarios (no-sidecar, with-sidecar, output_file
+    rewrite, no-prefix idempotency).
+  - **W-5** — `docx_io/parse.py` now prints
+    `[INFO] Parsed N source lines into M phrase groups — translation
+    will be written to phrase-head rows; other rows of the same
+    phrase remain empty by design.` immediately after
+    `split_phrases(ctx)`. Closes the recurring "why are 22 of my
+    40 cells empty?" review question. Verified live in all 6
+    real-engine runs.
+  - **W-7** — investigated. Not a bug: row 10 of the sample
+    fixture is a paragraph carrying `<w:shd w:fill="002060"/>`,
+    which is in `shading_color_ignore_text`. The cell-walker
+    correctly skips it and the cell becomes empty. Documented in
+    the findings doc; no code change.
+  - **Final real-engine matrix** (V2.1 through V2.7 in the findings
+    doc): DeepL en→fr, Google en→fr / en→de, DeepL en→es,
+    chatgpt+polish en→fa, chatgpt+polish+split en→fa,
+    plus a second-run cache verification. Two negative tests:
+    empty source (exits 20 with `[FAIL] reason=engine_empty`)
+    and invalid `--aimodel gpt-99` (exits 1 with the structured
+    "not a recognised" message). Source column 42/42 preserved
+    everywhere. Cache hit on the second-run path: 91.7 % on
+    translation, 76.2 % on polish.
+
+Master tip going in: `c114ca2`. Tests: 88 / 88 pass (84 prior +
+4 new for `_log.json` + docx pair). Smoke unchanged: DeepL en→fr
+in ~27 s, 0 / 42 mismatches.
+
 ### 2026-05-10 — post-test hardening pass (branch `next/post-test-hardening`)
 
 Drained the queue of bugs and weaknesses surfaced during the

@@ -304,6 +304,24 @@ def read_and_parse_docx_document(ctx: "RuntimeContext") -> None:
 
     split_phrases(ctx)
 
+    # W-5 (2026-05-11): emit a one-line summary of the phrase-grouping
+    # outcome so a fresh reader of the log understands why the output
+    # docx has translations only on phrase-head rows. Without this line,
+    # users opening a phrase-grouped output file (DeepL/Google) for the
+    # first time consistently asked "why are 22 of my 40 cells empty?".
+    _phrase_heads = sum(
+        1 for v in docx.from_text_by_phrase_separator_table if v and v.strip()
+    )
+    _src_lines = sum(
+        1 for v in docx.from_text_table if v and v.strip()
+    )
+    print(
+        f"[INFO] Parsed {_src_lines} source lines into {_phrase_heads} phrase "
+        f"groups — translation will be written to phrase-head rows; other "
+        f"rows of the same phrase remain empty by design.",
+        flush=True,
+    )
+
     if use_html:
         print("<table border=1 width=800>")
 
