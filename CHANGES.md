@@ -57,6 +57,28 @@ after 1800 ms to avoid the Chrome multi-download permission prompt.
 
 ## Sessions
 
+### 2026-05-10 — session-close: branch cleanup + next-session handoff
+
+End-of-session bookkeeping after the docx_io extraction was merged.
+
+  - Deleted `next/persian-double-lines-as-splitter` (local + remote).
+    Tag `archive/persian-double-lines-as-splitter-2026-05-10` retains
+    the working state for any future revival.
+  - Created `docs/next-session-handoff.md` — focused entry point for
+    the next session: thread the remaining ~6 docx-related module
+    globals (`docxdoc`, `use_html`, `silent`, `E_mail_str`,
+    `PROGRAM_VERSION`, plus the `docxfile` typo to fix-as-you-go) to
+    `ctx`, then extract `read_and_parse_docx_document` (~800 lines)
+    and `get_cell_data` (~440 lines) to `src/docx_io/parse.py` and
+    `src/docx_io/cells.py`. New branch will be
+    `next/thread-docx-globals-to-ctx`.
+  - Updated agent memory: `project_state.md` now points to the new
+    handoff doc; key-files list reflects the post-cleanup layout
+    (deleted web engines + new dispatch.py + docx_io package).
+
+Master tip: `0f07c14`. 63/63 unit tests pass. Real-file smoke
+verified earlier in the day (DeepL en→fr ~28 s, 0/42 mismatches).
+
 ### 2026-05-10 — docx_io extraction (branch `next/extract-docx-parse`)
 
 Follow-up to the architecture-cleanup checkpoints. Tackled the
