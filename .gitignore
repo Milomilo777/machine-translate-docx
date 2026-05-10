@@ -39,3 +39,12 @@ web/v2/node_modules/
 
 # Local working notes (untracked, user-only — promote to docs/ when ready)
 .doc/
+
+# Translation outputs left in the working tree by previous test runs.
+# tests/fixtures/ is the canonical fixture location; everything else is
+# scratch and should not land in the repo.
+/*_PER_*.docx
+/*_PER_*.json
+/*_GER_*.docx
+/*_ARA_*.docx
+/*_MON_*.docx
