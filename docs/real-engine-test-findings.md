@@ -65,7 +65,7 @@ elapsed_seconds drops from ~9 to ~9 (reasoning + completion still
 
 ## Bugs to fix in a follow-up commit (queue)
 
-### B-001 — Empty / no-translatable-content runs reported as success
+### B-001 — Empty / no-translatable-content runs reported as success ✅ FIXED 2026-05-10 (`next/post-test-hardening`)
 
 **Reproduction:**
 ```
@@ -100,7 +100,7 @@ docx with only a header row + two source-empty rows
    empty-source docx, run the chatgpt-mock engine, assert exit
    non-zero.
 
-### B-002 — No failed-job archive / no alerting
+### B-002 — No failed-job archive / no alerting ✅ FIXED 2026-05-10 (`next/post-test-hardening`)
 
 **Symptom:** when a launcher subprocess fails, the input file +
 traceback live only in stdout / in-memory state — no post-mortem
@@ -148,7 +148,7 @@ This was fixed inline because cache verification (T7) was the whole
 point of the test pass and was impossible to perform until this fix
 was in.
 
-### B-004 — `gpt-5.5-mini` is not a real model but is offered nowhere in code
+### B-004 — `gpt-5.5-mini` is not a real model but is offered nowhere in code ✅ FIXED 2026-05-10 (`next/post-test-hardening`)
 
 **Reproduction:** running with `--aimodel gpt-5.5-mini` raises
 `openai.BadRequestError: model 'gpt-5.5-mini' does not exist` (caught
@@ -176,7 +176,7 @@ grep + a single source of truth.
 
 ## Weaknesses / smaller suggestions
 
-### W-1 — `_sync_globals_from_ctx` is whitelist-only and silently undermirrored
+### W-1 — `_sync_globals_from_ctx` is whitelist-only and silently undermirrored ✅ DOCUMENTED 2026-05-10 (`next/post-test-hardening`)
 The function explicitly mirrors `dest_lang`, `src_lang`, `driver`,
 `oai_translator`, `oai_polisher` — and as of B-003's fix,
 `translation_log`. Any **other** module-level global that legacy
@@ -199,7 +199,7 @@ harmless; cosmetically confusing during debugging.
 Could explicitly add `os.environ["PYTHONUTF8"] = "1"` at process
 start so child subprocesses inherit it.
 
-### W-3 — `aimodel` default `"gpt-5.5"` is hardcoded in two places
+### W-3 — `aimodel` default `"gpt-5.5"` is hardcoded in two places ✅ FIXED 2026-05-10 (`next/post-test-hardening`)
 `src/runner.py:141` and `src/openai_tools/translator.py` /
 `polisher.py` constructor defaults. Drift risk.
 
@@ -275,19 +275,34 @@ cd _real_test && E:/Python311/python.exe ../src/machine_translate_docx.py \
 ## Acceptance for the follow-up hardening pass
 
 1. **B-001 fix landed + integration test for empty-source docx**
-   that asserts a non-zero exit code.
+   that asserts a non-zero exit code. ✅ DONE — empty-source run now
+   exits with code 20 and a `[FAIL] reason=empty_docx ...` line.
+   Engine-empty case (`reason=engine_empty`) covered too. Unit tests
+   in `tests/test_post_test_hardening.py`.
 2. **B-002 minimal slice landed:** `failures/<job_id>__<ts>/` folder
    exists and is populated for any run with `status == "error"`.
-   Alerting is optional behind an env flag.
+   Alerting is optional behind an env flag. ✅ DONE — folder layout
+   = `input.docx` + `stdout.log` + `meta.json` + `UNREVIEWED.txt`.
+   Two env-gated alerts: `MTD_FAILURE_EMAIL` (smtplib, no third-party
+   dep) and `MTD_FAILURE_WEBHOOK` (Discord/Slack/Mattermost shape).
 3. **B-004 fix landed:** unknown `aimodel` rejected at CLI parse
-   time with a clear error.
-4. **W-1 idea evaluated:** decide whether to expand
-   `_sync_globals_from_ctx` to walk every public ctx field. If yes,
-   land it; if no, add a comment in the function explaining why
-   the whitelist is intentional.
+   time with a clear error. ✅ DONE — `config.VALID_AI_MODELS`
+   whitelist + early validation; verified `--aimodel gpt-5.5-mini`
+   exits with code 1 and the message
+   `"--aimodel 'gpt-5.5-mini' is not a recognised OpenAI model
+   identifier. Allowed values: gpt-5.5, gpt-5.4-mini."`.
+4. **W-1 idea evaluated:** kept the whitelist for `ctx.flags`,
+   `ctx.language`, `ctx.openai`, `ctx.browser`, but added a
+   detailed coverage-policy block to the function's docstring that
+   spells out *why* (CLI booleans must not be overwritten by stale
+   ctx defaults; the dispatcher and a handful of session flags are
+   read via `ctx.*` paths anyway). New pattern: when adding a ctx
+   field that legacy helpers read by bare name, add it here AND a
+   unit test in `tests/test_runtime_threading.py`. ✅ DONE
 5. **W-3 fix landed:** `DEFAULT_AI_MODEL` constant in `config.py`,
-   imported everywhere.
+   imported everywhere. ✅ DONE — `runner.py`, `translator.py`,
+   `polisher.py` all read from the central constant.
 
-The remaining W-* items (W-2, W-4, W-5, W-6, W-7, W-8) are nice-to-
-have. Pick what fits the next session's budget; keep the rest in
-this doc until they are done.
+Remaining items (W-2, W-4, W-5, W-6, W-7, W-8) are still
+nice-to-have. Pick from the list when there is budget; keep the
+rest in this doc until they are done.

@@ -411,10 +411,8 @@ _atexit.register(_atexit_cleanup_driver)
 
 
 def _sync_globals_from_ctx(ctx: RuntimeContext) -> None:
-    """Mirror every populated attribute of ``ctx.docx`` (and selected
-    ``ctx.flags`` / ``ctx.language`` fields) onto this module's namespace
-    so legacy functions that still read by bare name see the populated
-    state.
+    """Mirror populated ctx attributes onto this module's namespace so
+    legacy helpers that still read by bare name see the populated state.
 
     Phase H bridge: rather than threading ~40 remaining functions one
     at a time, we re-export the same objects under their historical
@@ -427,6 +425,34 @@ def _sync_globals_from_ctx(ctx: RuntimeContext) -> None:
     Called from ``main()`` at pipeline boundaries: after
     ``read_and_parse_docx_document``, after ``translate_docx``, and
     after the polish/aligner step. Cheap (one ``setattr`` per attr).
+
+    Coverage policy (W-1, 2026-05-10)
+    ---------------------------------
+    The function operates as a *whitelist* per sub-context, **with one
+    exception**: every public field of ``ctx.docx`` is mirrored
+    automatically because the parallel arrays there are the canonical
+    place legacy helpers read from, and adding one means risking a
+    silent miss. For every other sub-context the mirror is explicit:
+
+      - The dispatcher and a few session flags on ``ctx.engine`` /
+        ``ctx.browser`` are *intentionally* not mirrored to module
+        scope because the legacy code already reads them via
+        ``ctx.*`` paths or via ``_get_ctx()``.
+      - CLI-derived booleans on ``ctx.flags`` (``silent``,
+        ``splitonly``, etc.) live as module-level globals from the
+        argparse step at the top of this file. They are *snapshotted*
+        into ``ctx.flags`` by ``_get_ctx()``; mirroring them back here
+        would risk overwriting a freshly-set CLI value with a stale
+        default. So we only mirror flags that ``main()`` itself
+        mutates (none today).
+
+    When a new ctx field is added that any legacy helper reads by
+    bare name, add an entry below — and ideally a unit test in
+    ``tests/test_runtime_threading.py``. This was the failure mode
+    that produced B-003 in ``docs/real-engine-test-findings.md``:
+    ``ctx.openai.translation_log`` was mutated by the runner but
+    ``write_translation_log()`` read the unmirrored module global,
+    so every JSON sidecar was empty.
     """
     import sys as _sys
     _mod = _sys.modules[__name__]
@@ -435,16 +461,18 @@ def _sync_globals_from_ctx(ctx: RuntimeContext) -> None:
         if _name.startswith("_"):
             continue
         setattr(_mod, _name, _value)
-    # A few non-docx ctx fields are also read by bare name in legacy code.
+    # ── ctx.language ─────────────────────────────────────────────────
     if getattr(ctx.language, "dest_lang", None) is not None:
         setattr(_mod, "dest_lang", ctx.language.dest_lang)
     if getattr(ctx.language, "src_lang", None) is not None:
         setattr(_mod, "src_lang", ctx.language.src_lang)
+    # ── ctx.browser ─────────────────────────────────────────────────
     # Browser handle: many helpers (download utilities, Perplexity login,
     # the recovery branches inside the Selenium engines) read `driver` as
     # a bare name. Mirror the active handle so they reach the live session.
     if getattr(ctx.browser, "driver", None) is not None:
         setattr(_mod, "driver", ctx.browser.driver)
+    # ── ctx.openai ──────────────────────────────────────────────────
     # OpenAI handles — read by bare name in legacy translate / polish helpers.
     if getattr(ctx.openai, "translator", None) is not None:
         setattr(_mod, "oai_translator", ctx.openai.translator)
@@ -697,6 +725,22 @@ if args.docxfile is None:
     parser.print_help()
     print("\nDeveloper: smtv.bot@gmail.com\n")
     print("Program version: %s\n" % (PROGRAM_VERSION))
+    if not silent:
+        input("\nEnter to close program")
+    sys.exit(1)
+
+# B-004 / W-3: reject unknown OpenAI model identifiers at CLI parse
+# time. Without this guard, `--aimodel gpt-5.5-mini` (a stale dropdown
+# value or typo) used to be accepted here and only surfaced as a 400
+# BadRequestError deep inside the API call, after the docx had been
+# parsed and Chrome had been launched. The whitelist lives in
+# `config.py` so the v2 frontend dropdown can pull from the same list.
+from config import VALID_AI_MODELS as _VALID_AI_MODELS, is_valid_ai_model as _is_valid_ai_model
+if args.aimodel is not None and not _is_valid_ai_model(args.aimodel):
+    print(
+        f"ERROR: --aimodel '{args.aimodel}' is not a recognised OpenAI "
+        f"model identifier. Allowed values: {', '.join(_VALID_AI_MODELS)}."
+    )
     if not silent:
         input("\nEnter to close program")
     else:
@@ -4083,6 +4127,17 @@ import psutil
 import platform
 import sys
 
+def _print_structured_failure(reason: str, message: str) -> None:
+    """Emit a structured ``[FAIL] reason=...`` line for the launcher to parse.
+
+    Added 2026-05-10 (B-001 fix). The launcher's stdout watcher will
+    pick up this line, set ``jobs[id].status = "error"`` with the
+    ``reason`` token, and (if B-002 alerting is wired up) trigger the
+    failure-archive hook.
+    """
+    print(f"[FAIL] reason={reason} message={message}", flush=True)
+
+
 def main() -> int:
     """Entry point. Builds the RuntimeContext from module-level state on
     first ``_get_ctx()`` call and threads it through every pipeline step.
@@ -4093,7 +4148,18 @@ def main() -> int:
     version_checker_sleep_seconds_on_update, xtm, exitonsuccess, silent,
     PROGRAM_VERSION — these are not threaded because they are owned by
     module-level setup outside ``main()``).
+
+    B-001 (2026-05-10): wraps the body in a ``try`` that catches
+    :class:`exceptions.TranslationFailure` so empty-source docx and
+    engine-empty runs produce a structured ``[FAIL] reason=...`` line
+    plus a non-zero exit instead of "Translation ended, file saved".
     """
+    from exceptions import TranslationFailure
+    from translation_health import (
+        assert_source_has_content,
+        assert_translation_present,
+    )
+
     ctx = _get_ctx()
     translation_succeded = False
 
@@ -4102,6 +4168,11 @@ def main() -> int:
 
     read_and_parse_docx_document(ctx)
     _sync_globals_from_ctx(ctx)  # Phase H bridge — see helper docstring
+
+    # B-001: fail fast on a docx with no translatable text. Without this
+    # guard, the pipeline finishes "successfully" with an empty output
+    # and the user thinks the run worked.
+    assert_source_has_content(ctx)
 
     create_webdriver(ctx)
     _sync_globals_from_ctx(ctx)  # mirror ctx.browser.driver to module-level so legacy helpers see it
@@ -4142,6 +4213,11 @@ def main() -> int:
 
     get_translation_and_replace_after(ctx)
     _sync_globals_from_ctx(ctx)  # to_text_by_phrase_separator_table fields just populated
+
+    # B-001: fail with a structured reason if the engine returned
+    # nothing usable. Catches the "all rows empty" + "single-row dump"
+    # failure modes the user reported pre-pass.
+    assert_translation_present(ctx)
 
     # Diagnostic snapshot — counts of populated phrases and translation
     # array shape. Helps diagnose 'output empty' regressions like the
@@ -4234,6 +4310,28 @@ def main() -> int:
     return 0
 
 if __name__ == '__main__':
-    main()  # next section explains the use of sys.exit
+    # B-001: catch structured pipeline failures (empty docx / engine
+    # returned empty) and exit with a non-zero status so the launcher
+    # flags the job as ``status=error`` instead of inheriting our
+    # default exit-zero "success".
+    try:
+        from exceptions import TranslationFailure as _TranslationFailure
+    except Exception:
+        _TranslationFailure = None
+    try:
+        main()
+    except Exception as _exc:
+        if _TranslationFailure is not None and isinstance(_exc, _TranslationFailure):
+            _print_structured_failure(_exc.reason, str(_exc))
+            try:
+                ctx_for_cleanup = _get_ctx()
+                if ctx_for_cleanup.browser.driver is not None:
+                    ctx_for_cleanup.browser.driver.quit()
+            except Exception:
+                pass
+            sys.exit(20)
+        # Anything else: propagate (existing global atexit hooks still
+        # run, traceback is preserved in stdout).
+        raise
     # Redirect all stderr output to null (silences destructor error messages)
     sys.exit(0)

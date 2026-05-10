@@ -26,6 +26,7 @@ from __future__ import annotations
 import datetime as _dt
 
 from runtime import RuntimeContext
+from config import DEFAULT_AI_MODEL
 
 from engines.chatgpt_api import run_openai_single_call
 from engines.google import (
@@ -138,7 +139,7 @@ def selenium_chrome_translate_maxchar_blocks(
 
     # ── ChatGPT API setup ───────────────────────────────────────────────────
     if ctx.engine.engine == "chatgpt" and ctx.engine.method == "api":
-        ai_model = ctx.flags.aimodel if ctx.flags.aimodel else "gpt-5.5"
+        ai_model = ctx.flags.aimodel if ctx.flags.aimodel else DEFAULT_AI_MODEL
         ctx.openai.translator = OpenAITranslator(model=ai_model)
         ctx.openai.translator.set_filename(ctx.flags.word_file_to_translate)
 

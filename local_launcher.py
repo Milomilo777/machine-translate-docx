@@ -1074,6 +1074,14 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
             self.state.job_procs[job_id] = proc
 
         saved_filename: str | None = None
+        # B-001 (2026-05-10): backend now emits a structured
+        # `[FAIL] reason=<token> message=<text>` line when it detects an
+        # empty docx or an empty engine return. Capture them here so we
+        # can attach a human-readable reason to the job error and so
+        # the B-002 archive hook can stamp the same tokens into the
+        # failure folder's meta.json.
+        captured_log_buf: list[str] = []
+        captured_fail: tuple[str, str] | None = None
         if proc.stdout is not None:
             for line in proc.stdout:
                 stripped = line.rstrip()
@@ -1089,14 +1097,53 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
                     continue
                 if stripped:
                     print(f"[job {job_id}] {stripped}")
+                    # Keep a bounded copy for B-002 archival.
+                    captured_log_buf.append(stripped)
+                    if len(captured_log_buf) > 5000:
+                        # Trim to most-recent 5000 lines so we cap memory
+                        # for runaway logs while preserving the tail.
+                        del captured_log_buf[:1000]
                 if "Saved file name:" in stripped:
                     _, _, part = stripped.partition("Saved file name:")
                     candidate = part.strip()
                     if candidate:
                         saved_filename = candidate
+                if stripped.startswith("[FAIL] reason="):
+                    # Format: [FAIL] reason=<token> message=<text>
+                    body = stripped[len("[FAIL] "):]
+                    reason_token = ""
+                    message = ""
+                    for kv in body.split(" message=", 1):
+                        if kv.startswith("reason="):
+                            reason_token = kv[len("reason="):].strip()
+                            break
+                    if " message=" in body:
+                        message = body.split(" message=", 1)[1].strip()
+                    captured_fail = (reason_token or "translation_failure", message or stripped)
 
         code = proc.wait()
+        if captured_fail is not None:
+            reason_token, message = captured_fail
+            self._archive_failed_job(
+                job_id=job_id,
+                source_file=source_file,
+                reason=reason_token,
+                message=message,
+                stdout_lines=captured_log_buf,
+                target_language=target_language,
+                translation_engine=translation_engine,
+            )
+            raise RuntimeError(f"{reason_token}: {message}")
         if code != 0:
+            self._archive_failed_job(
+                job_id=job_id,
+                source_file=source_file,
+                reason="backend_nonzero_exit",
+                message=f"Backend exited with code {code}",
+                stdout_lines=captured_log_buf,
+                target_language=target_language,
+                translation_engine=translation_engine,
+            )
             raise RuntimeError(f"Backend exited with code {code}")
 
         output_path = Path(saved_filename) if saved_filename else self._fallback_output_path(source_file, target_language, translation_engine)
@@ -1108,6 +1155,197 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
             time.sleep(0.5)
 
         raise FileNotFoundError(f"Output file not found: {output_path}")
+
+    # ── B-002 (2026-05-10) — failure archive + alerting ──────────────────────
+    #
+    # When a job ends in error we keep an on-disk post-mortem so the
+    # operator can triage what went wrong without scrolling stdout. The
+    # archive lives at:
+    #
+    #     runtime_dir/failures/<job_id>__<UTC iso ts>/
+    #         input.docx     — the original upload
+    #         stdout.log     — stdout / stderr captured during the run
+    #         meta.json      — job_id, lang, engine, model, reason, ts
+    #         UNREVIEWED.txt — sentinel (deleted when an operator opens
+    #                          the folder; lets `ls` show pending issues)
+    #
+    # Two optional alerting hooks fire if the corresponding env var is
+    # set; both are explicitly cheap-and-free:
+    #
+    #     MTD_FAILURE_EMAIL=op@example.com
+    #         Sends a plain-text email via smtplib using
+    #         MTD_SMTP_HOST / MTD_SMTP_PORT / MTD_SMTP_USER /
+    #         MTD_SMTP_PASS / MTD_SMTP_FROM. No third-party dep.
+    #
+    #     MTD_FAILURE_WEBHOOK=https://discord.com/api/webhooks/...
+    #         POSTs JSON to a Discord/Slack/Mattermost incoming
+    #         webhook. Works with any service that takes
+    #         {"content": "<text>"} (Discord shape) — others can map
+    #         in a tiny shim if they prefer different keys.
+    #
+    # Failures are *never* fatal — a flaky email server should never
+    # block the launcher from continuing to serve other jobs.
+
+    def _archive_failed_job(
+        self,
+        *,
+        job_id: str,
+        source_file: Path,
+        reason: str,
+        message: str,
+        stdout_lines: list[str],
+        target_language: str,
+        translation_engine: str,
+    ) -> None:
+        """Copy input + stdout + meta into runtime_dir/failures/<id>__<ts>/.
+
+        Best-effort. Errors are swallowed and printed so a misconfigured
+        runtime_dir cannot kill the launcher.
+        """
+        import datetime as _dt
+
+        try:
+            ts = _dt.datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+            base = self.state.runtime_dir / "failures" / f"{job_id}__{ts}"
+            base.mkdir(parents=True, exist_ok=True)
+
+            # Input file
+            try:
+                shutil.copy2(source_file, base / "input.docx")
+            except Exception as _e:
+                print(f"[B-002] failed to archive input.docx: {_e}")
+
+            # stdout/stderr capture
+            try:
+                (base / "stdout.log").write_text(
+                    "\n".join(stdout_lines), encoding="utf-8"
+                )
+            except Exception as _e:
+                print(f"[B-002] failed to write stdout.log: {_e}")
+
+            # meta.json
+            try:
+                meta = {
+                    "job_id":            job_id,
+                    "timestamp_utc":     ts,
+                    "reason":            reason,
+                    "message":           message,
+                    "target_language":   target_language,
+                    "translation_engine": translation_engine,
+                    "input_filename":    source_file.name,
+                }
+                (base / "meta.json").write_text(
+                    json.dumps(meta, ensure_ascii=False, indent=2),
+                    encoding="utf-8",
+                )
+            except Exception as _e:
+                print(f"[B-002] failed to write meta.json: {_e}")
+
+            # Sentinel — deletable by an operator after triage so `ls`
+            # shows what is still unreviewed.
+            try:
+                (base / "UNREVIEWED.txt").write_text(
+                    "Delete this file when the failure has been triaged.\n",
+                    encoding="utf-8",
+                )
+            except Exception:
+                pass
+
+            print(f"[B-002] archived failed job to {base}")
+
+            # Best-effort alerting.
+            self._alert_failure(
+                job_id=job_id,
+                reason=reason,
+                message=message,
+                meta=meta,
+                archive_dir=base,
+            )
+        except Exception as exc:
+            print(f"[B-002] archive skipped (unexpected error): {exc}")
+
+    def _alert_failure(
+        self,
+        *,
+        job_id: str,
+        reason: str,
+        message: str,
+        meta: dict,
+        archive_dir: Path,
+    ) -> None:
+        """Fire optional email + webhook alerts. Both are env-gated."""
+        # ── email (smtplib) ───────────────────────────────────────────
+        email_to = os.environ.get("MTD_FAILURE_EMAIL", "").strip()
+        if email_to:
+            try:
+                import smtplib
+                from email.message import EmailMessage
+
+                host = os.environ.get("MTD_SMTP_HOST", "localhost")
+                port = int(os.environ.get("MTD_SMTP_PORT", "25"))
+                user = os.environ.get("MTD_SMTP_USER", "")
+                pwd  = os.environ.get("MTD_SMTP_PASS", "")
+                sender = os.environ.get(
+                    "MTD_SMTP_FROM",
+                    f"machine-translate-docx@{host}",
+                )
+
+                em = EmailMessage()
+                em["From"] = sender
+                em["To"]   = email_to
+                em["Subject"] = (
+                    f"[machine-translate-docx] FAILED job {job_id} ({reason})"
+                )
+                body_lines = [
+                    f"Job:    {job_id}",
+                    f"Reason: {reason}",
+                    f"Lang:   {meta.get('target_language')}",
+                    f"Engine: {meta.get('translation_engine')}",
+                    f"Input:  {meta.get('input_filename')}",
+                    f"Folder: {archive_dir}",
+                    "",
+                    f"Message: {message}",
+                    "",
+                    "(See the archive folder for input.docx, stdout.log, meta.json.)",
+                ]
+                em.set_content("\n".join(body_lines))
+
+                with smtplib.SMTP(host, port, timeout=10) as smtp:
+                    if user and pwd:
+                        try:
+                            smtp.starttls()
+                        except Exception:
+                            pass
+                        smtp.login(user, pwd)
+                    smtp.send_message(em)
+                print(f"[B-002] alert email sent to {email_to}")
+            except Exception as exc:
+                print(f"[B-002] alert email skipped: {exc}")
+
+        # ── webhook (Discord/Slack/Mattermost shape) ──────────────────
+        webhook_url = os.environ.get("MTD_FAILURE_WEBHOOK", "").strip()
+        if webhook_url:
+            try:
+                import urllib.request
+                payload = {
+                    "content": (
+                        f":x: machine-translate-docx FAILED job `{job_id}` "
+                        f"({reason}) — engine `{meta.get('translation_engine')}` "
+                        f"lang `{meta.get('target_language')}` — "
+                        f"`{archive_dir}`"
+                    ),
+                }
+                req = urllib.request.Request(
+                    webhook_url,
+                    data=json.dumps(payload).encode("utf-8"),
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(req, timeout=10):
+                    pass
+                print("[B-002] alert webhook posted")
+            except Exception as exc:
+                print(f"[B-002] alert webhook skipped: {exc}")
 
     def _strip_timestamp(self, path: Path) -> Path:
         """Rename file to remove leading timestamp prefix (e.g. 1778036666789-)."""

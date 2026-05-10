@@ -10,6 +10,16 @@ import re
 
 from ._retry import call_with_retry, prompt_hash
 
+# Single source of truth for the default model id. Centralised in
+# `src/config.py` so a typo or rename only has to land in one place
+# (W-3 + B-004 in docs/real-engine-test-findings.md).
+try:
+    from config import DEFAULT_AI_MODEL as _DEFAULT_AI_MODEL
+except Exception:
+    # Fallback when openai_tools is imported without `src/` on sys.path —
+    # keeps the default in sync with config.py at the time of writing.
+    _DEFAULT_AI_MODEL = "gpt-5.5"
+
 # ── language-code normalisation ───────────────────────────────────────────────
 _LANG_CODE_MAP = {
     "persian": "fa",
@@ -63,7 +73,7 @@ def _find_prompts_dir(anchor: Path) -> Path:
 
 class OpenAITranslator:
     # model="gpt-5.4-mini"  ← mini (cheaper, faster, lower quality)
-    def __init__(self, model="gpt-5.5", filename=None):
+    def __init__(self, model=_DEFAULT_AI_MODEL, filename=None):
         self.model = model
         self.api_key = os.environ.get("OPENAI_API_KEY")
         if not self.api_key:

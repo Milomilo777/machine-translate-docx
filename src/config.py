@@ -31,7 +31,45 @@ __all__ = [
     "bol_array",
     "MAX_LINE_SIZE",
     "COUNTRY_QUERY_HTTP_TIMEOUT",
+    "DEFAULT_AI_MODEL",
+    "ALIGNER_MODEL",
+    "VALID_AI_MODELS",
+    "is_valid_ai_model",
 ]
+
+
+# ── OpenAI model whitelist ────────────────────────────────────────────────────
+#
+# Single source of truth for valid OpenAI model identifiers. Added in the
+# 2026-05-10 hardening pass after a real-engine test surfaced the fact
+# that `--aimodel gpt-5.5-mini` (a typo / stale dropdown value) was
+# accepted by the CLI and only failed deep inside the API call with a
+# 400 BadRequestError.
+#
+# Constraints (C1 in PROJECT_MEMORY.md):
+#   - Aligner is ALWAYS ``ALIGNER_MODEL`` and that contract must not be
+#     parameterised away. The constant exists so downstream code reads
+#     it from one place; it is not negotiable per-call.
+#   - Translator + polisher default to ``DEFAULT_AI_MODEL``. The user
+#     can override with ``--aimodel`` from the CLI (validated against
+#     ``VALID_AI_MODELS``) or via the v2 frontend dropdown (which must
+#     also pull from this list to stay in sync).
+
+DEFAULT_AI_MODEL: Final[str]      = "gpt-5.5"
+ALIGNER_MODEL:    Final[str]      = "gpt-5.4-mini"
+VALID_AI_MODELS:  Final[tuple[str, ...]] = ("gpt-5.5", "gpt-5.4-mini")
+
+
+def is_valid_ai_model(model: str | None) -> bool:
+    """Return True iff ``model`` is in :data:`VALID_AI_MODELS`.
+
+    ``None`` is considered valid (it means "use the default") so the
+    helper can be called from CLI parse code that hasn't applied the
+    default yet.
+    """
+    if model is None:
+        return True
+    return model in VALID_AI_MODELS
 
 
 # ── JSON helpers ──────────────────────────────────────────────────────────────

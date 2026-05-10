@@ -57,6 +57,63 @@ after 1800 ms to avoid the Chrome multi-download permission prompt.
 
 ## Sessions
 
+### 2026-05-10 — post-test hardening pass (branch `next/post-test-hardening`)
+
+Drained the queue of bugs and weaknesses surfaced during the
+real-engine pass. Five line-items closed in one focused commit:
+
+  - **B-001 — empty-source / engine-empty no longer reported as
+    success.** Two new modules: `src/exceptions.py` (a
+    `TranslationFailure` hierarchy with `EmptyDocxError` and
+    `EngineReturnedEmptyError`) and `src/translation_health.py`
+    (the post-parse + post-translate sanity checks). `main()` now
+    runs `assert_source_has_content(ctx)` after parse and
+    `assert_translation_present(ctx)` after the engine returns.
+    On either failure the `__main__` block catches the structured
+    exception, prints `[FAIL] reason=<token> message=<text>` for
+    the launcher to pick up, and exits with code 20. Verified live:
+    a 3-row docx with no source text exits 20 with the structured
+    line; the regression run of DeepL en→fr on `sample_hyperlink`
+    is unchanged at 18/40 phrase rows.
+  - **B-002 — failure archive + alerting.** The launcher's stdout
+    parser now picks up `[FAIL] reason=...` lines and copies the
+    input docx, captured stdout, and a `meta.json` to
+    `runtime_dir/failures/<job_id>__<UTC ts>/`. A `UNREVIEWED.txt`
+    sentinel makes pending issues visible at `ls`. Two env-gated
+    alerts ride on top: `MTD_FAILURE_EMAIL=op@example.com` (uses
+    `smtplib` + standard `MTD_SMTP_*` env vars; no third-party
+    dependency) and `MTD_FAILURE_WEBHOOK=https://...` (POSTs the
+    Discord/Slack/Mattermost `{"content": "..."}` shape). All
+    alerts are best-effort — a flaky email server cannot kill the
+    launcher.
+  - **B-004 + W-3 — single source of truth for OpenAI model IDs.**
+    `src/config.py` gains `DEFAULT_AI_MODEL`, `ALIGNER_MODEL`,
+    `VALID_AI_MODELS`, and `is_valid_ai_model()`. The CLI parse
+    layer rejects `--aimodel <unknown>` with a clear message
+    immediately (before parsing the docx, before launching Chrome).
+    `runner.py`, `translator.py`, `polisher.py` import the default
+    instead of hardcoding `"gpt-5.5"`. C1 (aligner = `gpt-5.4-mini`)
+    is preserved — the constant exists so the value is read from
+    one place; it is not parameterised away. Verified live:
+    `--aimodel gpt-5.5-mini` now exits 1 with
+    `ERROR: --aimodel 'gpt-5.5-mini' is not a recognised OpenAI
+    model identifier. Allowed values: gpt-5.5, gpt-5.4-mini.`
+  - **W-1 — `_sync_globals_from_ctx` coverage policy documented.**
+    Decided to keep the function as a whitelist (per-subcontext)
+    rather than walking every public field. The docstring now
+    spells out the reasoning (CLI booleans must not be overwritten
+    by stale ctx defaults; the dispatcher and session flags are
+    consumed via `ctx.*` paths) and the contract for new fields
+    (add the explicit mirror here AND a unit test).
+  - **14 new unit tests** in `tests/test_post_test_hardening.py`
+    cover the model whitelist, the two health-check functions, the
+    `MIN_NONEMPTY_RATIO` floor (kept strictly below the
+    phrase-grouped baseline 0.45 so normal DeepL/Google runs do
+    not get flagged), and the exception inheritance.
+
+Master tip going in: `0eff583`. Tests: 84 / 84 pass (70 prior + 14
+new). Smoke: DeepL en→fr in 27 s, 0 / 42 mismatches — unchanged.
+
 ### 2026-05-10 — real-engine test pass + findings (branch `next/real-engine-tests-and-findings`)
 
 End-to-end validation across DeepL, Google, and the ChatGPT API on
