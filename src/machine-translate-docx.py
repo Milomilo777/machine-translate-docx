@@ -902,23 +902,22 @@ elif translation_engine == 'deepl':
     else:
         engine_method = 'phrasesblock'
 elif translation_engine == 'chatgpt':
+    # chatgpt-web was removed in the 2026-05-10 cleanup; only the API
+    # path remains for chatgpt.
     if engine_method == 'api' or use_api == True:
         engine_method = 'api'
         showbrowser = False
-    elif engine_method == 'web':
-        # Phase 8 — chatgpt-web Selenium engine reactivated.
-        engine_method = 'web'
     else:
-        engine_method = 'phrasesblock'
+        engine_method = 'api'
+        showbrowser = False
 
 elif translation_engine == 'perplexity':
-    if engine_method  == 'webservice':
+    # perplexity-web was removed in the 2026-05-10 cleanup; only the
+    # webservice path remains.
+    if engine_method == 'webservice':
         engine_method = 'webservice'
-    elif engine_method == 'web':
-        # Phase 8 — perplexity-web Selenium engine reactivated.
-        engine_method = 'web'
     else:
-        engine_method = 'phrasesblock'
+        engine_method = 'webservice'
 else:
     engine_method = "web"
 
@@ -1948,29 +1947,15 @@ def set_translation_function(ctx: RuntimeContext):
             ctx.engine.dispatcher = selenium_chrome_translate_get_from_text_array
         else:
             ctx.engine.dispatcher = functools.partial(selenium_chrome_deepl_translate, ctx)
-    elif ctx.engine.engine == 'chatgpt' and ctx.engine.method == 'web':
-        # Phase 8 — restored chatgpt-web engine. Per-phrase web scraping
-        # of chatgpt.com via guest session; the wrapper sleeps 900 ms
-        # before each call and falls back to "" on any failure so the
-        # block-loop never hangs.
-        from engines import chatgpt_web as _cw
-        def _chatgpt_web_dispatch(text, *_args, _ctx=ctx, _mod=_cw):
-            ok, result = _mod.translate(_ctx, text)
-            return result if ok else ""
-        ctx.engine.dispatcher = _chatgpt_web_dispatch
-    elif ctx.engine.engine == 'perplexity' and ctx.engine.method == 'web':
-        # Phase 8 — restored perplexity-web engine. Mirrors the
-        # chatgpt-web adapter: 900 ms pre-sleep, graceful failure.
-        from engines import perplexity_web as _pw
-        def _perplexity_web_dispatch(text, *_args, _ctx=ctx, _mod=_pw):
-            ok, result = _mod.translate(_ctx, text)
-            return result if ok else ""
-        ctx.engine.dispatcher = _perplexity_web_dispatch
     elif ctx.engine.engine == 'chatgpt':
         # API path populates translation_array up front; dispatcher
-        # is just an array lookup by phrase index.
+        # is just an array lookup by phrase index. (chatgpt-web was
+        # removed in the 2026-05-10 cleanup pass — Cloudflare gating
+        # made it never-reaches-prod.)
         ctx.engine.dispatcher = selenium_chrome_translate_get_from_text_array
     else:
+        # google / perplexity-webservice paths.
+        # (perplexity-web was removed in the 2026-05-10 cleanup pass.)
         if ctx.engine.method == 'textfile':
             ctx.engine.dispatcher = selenium_chrome_translate_get_from_text_array
         elif ctx.engine.method == 'singlephrase':
@@ -3353,13 +3338,10 @@ def translate_docx(ctx: RuntimeContext):
         # Deepl: phrase-block only for the "phrasesblock" method
         use_phrasesblock = engine_method == "phrasesblock"
     elif translation_engine == "perplexity":
-        # Perplexity: phrase-block for HTTP webservice, classic
-        # phrasesblock, AND the live web-LLM (perplexity-web). The
-        # web variant was previously line-by-line because "web" was
-        # missing from this list — user-reported on 2026-05-10:
-        # "perplexity sends line-by-line but chatgpt-web sends
-        # block-by-block; align them."
-        use_phrasesblock = engine_method in ("phrasesblock", "webservice", "web")
+        # Perplexity: phrase-block for HTTP webservice and classic
+        # phrasesblock. (perplexity-web was removed in the 2026-05-10
+        # cleanup pass.)
+        use_phrasesblock = engine_method in ("phrasesblock", "webservice")
     elif translation_engine == "google":
         # Google: phrasesblock joins many phrases into one URL, then
         # splits on `\n`. Much faster than singlephrase (one round-trip

@@ -80,15 +80,8 @@ def selenium_chrome_translate_maxchar_blocks(
                     and len(translated.split("\n")) == len(text.split("\n"))
                 )
                 return success, translated
-            if method == "web":
-                # Phase 8 — chatgpt-web active again. The wrapper sleeps
-                # 0.9 s between phrases and falls back to (False, "") on
-                # any error so the block-loop continues.
-                from engines import chatgpt_web
-                return chatgpt_web.translate(ctx, text)
             raise ValueError(
-                f"chatgpt method '{method}' not supported "
-                f"(supported: api, web)"
+                f"chatgpt method '{method}' not supported (supported: api)"
             )
 
         if engine == "perplexity":
@@ -98,14 +91,8 @@ def selenium_chrome_translate_maxchar_blocks(
                         "perplexity webservice helper not provided to runner"
                     )
                 return selenium_webservice_perplexity_translate(ctx, text, attempt)
-            if method == "web":
-                # Phase 8 — perplexity-web active again. Same sleep +
-                # graceful-fail contract as chatgpt_web.
-                from engines import perplexity_web
-                return perplexity_web.translate(ctx, text)
             raise ValueError(
-                f"perplexity method '{method}' not supported "
-                f"(supported: webservice, web)"
+                f"perplexity method '{method}' not supported (supported: webservice)"
             )
 
         raise ValueError(f"Unknown translation engine: {engine}")
@@ -137,22 +124,14 @@ def selenium_chrome_translate_maxchar_blocks(
         if success and translated:
             return translated.strip()
 
-        # Google last-resort fallback. Skipped for the web-LLM engines:
-        # falling back to Google.com mid-translation contaminates the
-        # browser state, so the next chatgpt-web / perplexity-web call
-        # has to redo the cookie + Cloudflare dance — observed by user
-        # on 2026-05-10 as "switched to Google then looped". Only the
-        # genuine engines (deepl, perplexity webservice, etc.) benefit
-        # from a Google bridge here.
-        is_web_llm = (
-            (engine == "chatgpt"    and method == "web") or
-            (engine == "perplexity" and method == "web")
-        )
-        if not is_web_llm:
-            selenium_chrome_google_click_cookies_consent_button(ctx)
-            translated = selenium_chrome_google_translate(ctx, line)
-            if translated:
-                return translated.strip()
+        # Google last-resort fallback for genuine engines (deepl,
+        # perplexity webservice, chatgpt api). The web-LLM gate that
+        # existed here was removed when chatgpt-web / perplexity-web
+        # were deleted from the codebase.
+        selenium_chrome_google_click_cookies_consent_button(ctx)
+        translated = selenium_chrome_google_translate(ctx, line)
+        if translated:
+            return translated.strip()
 
         print(f"ERROR: Unable to translate line: {line}")
         return "Unable to get translation."

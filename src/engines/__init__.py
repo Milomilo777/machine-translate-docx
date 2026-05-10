@@ -23,8 +23,6 @@ from runtime import RuntimeContext
 from . import google
 from . import deepl
 from . import chatgpt_api
-from . import chatgpt_web
-from . import perplexity_web
 
 __all__ = [
     "EngineName",
@@ -39,14 +37,15 @@ class EngineName(StrEnum):
     Uses ``StrEnum`` (Python 3.11+) so that ``EngineName.GOOGLE == 'google'``
     is True without ``.value`` access — keeps the engine string compatible
     with the existing ``--engine`` CLI flag.
+
+    chatgpt-web and perplexity-web were removed in the 2026-05-10
+    cleanup pass — Cloudflare gating made them never-reaches-prod.
     """
 
     GOOGLE          = "google"
     DEEPL           = "deepl"
     CHATGPT         = "chatgpt"
     CHATGPT_POLISH  = "chatgpt-polish"
-    CHATGPT_WEB     = "chatgpt-web"      # phase 8 — guest session
-    PERPLEXITY_WEB  = "perplexity-web"   # phase 8 — guest session
 
 
 # Membership-test set for fast ``engine in ACTIVE_ENGINES`` checks.
@@ -59,8 +58,6 @@ ACTIVE_ENGINES: Final[frozenset[EngineName]] = frozenset(EngineName)
 DISPATCH_TABLE: Final[dict[EngineName, Callable[[RuntimeContext, str], tuple[bool, str]]]] = {
     EngineName.GOOGLE:         google.translate,
     EngineName.DEEPL:          deepl.translate,
-    EngineName.CHATGPT_WEB:    chatgpt_web.translate,
-    EngineName.PERPLEXITY_WEB: perplexity_web.translate,
     # EngineName.CHATGPT / CHATGPT_POLISH still flow through
     # run_openai_single_call in chatgpt_api.py and the legacy
     # block-loop dispatcher; a future phase will give them an
