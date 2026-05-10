@@ -9,6 +9,11 @@ from .translator import _normalize_lang, _find_prompts_dir, _prompt_lang_code
 from ._retry import call_with_retry, prompt_hash
 from .fa_postprocess import normalize_fa
 
+try:
+    from config import DEFAULT_AI_MODEL as _DEFAULT_AI_MODEL
+except Exception:
+    _DEFAULT_AI_MODEL = "gpt-5.5"
+
 
 class OpenAIPolisher:
     """
@@ -23,7 +28,7 @@ class OpenAIPolisher:
     """
 
     # model="gpt-5.4-mini"  ← mini (cheaper, faster, lower quality)
-    def __init__(self, model: str = "gpt-5.5", dest_lang: str = "fa",
+    def __init__(self, model: str = _DEFAULT_AI_MODEL, dest_lang: str = "fa",
                  prompt_path: str = None):
         self.model = model
         self.api_key = os.environ.get("OPENAI_API_KEY")
