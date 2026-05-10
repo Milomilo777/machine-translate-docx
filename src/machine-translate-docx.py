@@ -1927,8 +1927,27 @@ def set_translation_function(ctx: RuntimeContext):
             ctx.engine.dispatcher = selenium_chrome_translate_get_from_text_array
         else:
             ctx.engine.dispatcher = functools.partial(selenium_chrome_deepl_translate, ctx)
+    elif ctx.engine.engine == 'chatgpt' and ctx.engine.method == 'web':
+        # Phase 8 — restored chatgpt-web engine. Per-phrase web scraping
+        # of chatgpt.com via guest session; the wrapper sleeps 900 ms
+        # before each call and falls back to "" on any failure so the
+        # block-loop never hangs.
+        from engines import chatgpt_web as _cw
+        def _chatgpt_web_dispatch(text, *_args, _ctx=ctx, _mod=_cw):
+            ok, result = _mod.translate(_ctx, text)
+            return result if ok else ""
+        ctx.engine.dispatcher = _chatgpt_web_dispatch
+    elif ctx.engine.engine == 'perplexity' and ctx.engine.method == 'web':
+        # Phase 8 — restored perplexity-web engine. Mirrors the
+        # chatgpt-web adapter: 900 ms pre-sleep, graceful failure.
+        from engines import perplexity_web as _pw
+        def _perplexity_web_dispatch(text, *_args, _ctx=ctx, _mod=_pw):
+            ok, result = _mod.translate(_ctx, text)
+            return result if ok else ""
+        ctx.engine.dispatcher = _perplexity_web_dispatch
     elif ctx.engine.engine == 'chatgpt':
-        # Same for API and web scraping
+        # API path populates translation_array up front; dispatcher
+        # is just an array lookup by phrase index.
         ctx.engine.dispatcher = selenium_chrome_translate_get_from_text_array
     else:
         if ctx.engine.method == 'textfile':

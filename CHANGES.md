@@ -59,6 +59,37 @@ after 1800 ms to avoid the Chrome multi-download permission prompt.
 
 ### 2026-05-10 — Persian Double Lines as a splitter (agent run, branch `next/persian-double-lines-as-splitter`)
 
+**Phase 8 — chatgpt-web and perplexity-web engines reactivated.**
+The two Selenium guest-session engines are moved out of
+`src/engines/inactive/` into the active engines package. Each gets a
+thin :func:`translate(ctx, text)` adapter that sleeps 0.9 s before
+each call (within the documented 700-1200 ms range to stay under
+unauthenticated rate-limit thresholds), seeds the legacy module
+globals from `RuntimeContext`, delegates to the existing
+selenium-based body, and returns `(False, "")` on any exception so
+the launcher pipe never hangs.
+
+The dispatcher registry (`src/engines/__init__.py`) gains
+`EngineName.CHATGPT_WEB` and `EngineName.PERPLEXITY_WEB` plus
+matching `DISPATCH_TABLE` entries. `set_translation_function` in the
+entry script now special-cases method=`web` for both engines and
+binds the adapter as the per-phrase dispatcher. `local_launcher`'s
+`_map_engine` rejects nothing now: `chatgpt-web` →
+`--engine chatgpt --enginemethod web`; `perplexity-web` →
+`--engine perplexity --enginemethod web`. Both UIs gain the new
+options. The `_API_ENGINES` cache list is unchanged, so web engines
+do not cache (Selenium sessions are stateful and not idempotent).
+
+The legacy global-seeding bridge is intentionally minimal — the web
+bodies still reference helper names (`safe_click`,
+`set_chrome_window_2_3_screen`, `build_translation_prompt`,
+`get_nested_value_from_json_array`) that exist on the entry-script
+module and are reached via Python's regular import machinery once the
+adapter is invoked from inside the entry-script process. Any selector
+breakage on chatgpt.com / perplexity.ai surfaces as `(False, "")` so
+the block-loop continues with empty translations rather than crashing
+the job. Tests: 58 passing (3 new on `test_engines_registry`).
+
 **Phase 7 — Classic split path removed; one file per job.**
 The `_Classic` and `_Double` companion outputs are gone. The `Job`
 dataclass loses `filename2` and `filename3`; the `/status/:id`

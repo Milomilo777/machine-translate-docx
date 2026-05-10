@@ -1,11 +1,12 @@
-"""ChatGPT-web Selenium engine — INACTIVE.
+"""ChatGPT-web Selenium engine — restored in phase 8.
 
-Preserved as-is for future revival. This module is NOT imported by the active
-dispatcher (per refactor work-order R12). Function bodies reference module-
-level globals (driver, src_lang_name, dest_lang_name, …) that existed in the
-historical entry script; they are not defined here, so calling these
-functions from a fresh import will fail at attribute lookup. That is by
-design — Phase D's job is preservation, not testability.
+Per-phrase web scraping over chatgpt.com using a guest session (no
+login). A 900 ms sleep is inserted before each phrase so the host site
+does not rate-limit the launcher subprocess. The legacy global-based
+body is preserved verbatim; a thin :func:`translate` adapter binds the
+required names from :class:`RuntimeContext` and returns ``(False, "")``
+on any failure so the launcher pipe stays drained even when the
+upstream UI breaks.
 """
 from __future__ import annotations
 
@@ -25,14 +26,48 @@ from selenium.common.exceptions import (
 
 from bs4 import BeautifulSoup
 
+from runtime import RuntimeContext
 
-INACTIVE = True   # not in active dispatcher
+
+INACTIVE = False
+WEB_SLEEP_BETWEEN_PHRASES_SEC = 0.9   # 700-1200 ms range; midpoint chosen
 
 __all__ = [
     "INACTIVE",
+    "WEB_SLEEP_BETWEEN_PHRASES_SEC",
+    "translate",
     "selenium_chrome_chatgpt_translate",
     "click_verify_human_checkbox_if_present",
 ]
+
+
+def translate(ctx: RuntimeContext, text: str) -> tuple[bool, str]:
+    """Per-phrase translation entry point used by the active dispatcher.
+
+    Sleeps :data:`WEB_SLEEP_BETWEEN_PHRASES_SEC` first, seeds the module
+    globals the legacy body still reads, and delegates to
+    :func:`selenium_chrome_chatgpt_translate`. Any exception (broken
+    selector, captcha, network) collapses to ``(False, "")`` so the
+    block-loop continues with an empty translation rather than hanging.
+    """
+    time.sleep(WEB_SLEEP_BETWEEN_PHRASES_SEC)
+    try:
+        g = globals()
+        g["driver"]         = ctx.browser.driver
+        g["src_lang_name"]  = ctx.language.src_lang_name
+        g["dest_lang_name"] = ctx.language.dest_lang_name
+        g.setdefault("closed_cookies_accept_message_bool",  False)
+        g.setdefault("close_install_extension_message_bool", False)
+        g.setdefault("deepl_nb_clear_cached_times",          0)
+        g.setdefault("engine_method",                        "web")
+        g.setdefault("end_time",                             0.0)
+        g.setdefault("elapsed_time",                         0.0)
+        g.setdefault("json_configuration_array",             {})
+        g.setdefault("logged_into_chatgpt",                  False)
+        return selenium_chrome_chatgpt_translate(text, 2)
+    except Exception as exc:
+        print(f"[chatgpt_web] translate failed: {exc}")
+        return False, ""
 
 
 # Names referenced inside the function bodies that historically came from the

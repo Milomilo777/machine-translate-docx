@@ -927,7 +927,11 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
             engine = "chatgpt"
             extra.extend(["--enginemethod", "api", "--with-polish"])
         elif engine == "chatgpt-web":
-            raise ValueError("The current real backend does not support chatgpt-web in this launcher.")
+            engine = "chatgpt"
+            extra.extend(["--enginemethod", "web"])
+        elif engine == "perplexity-web":
+            engine = "perplexity"
+            extra.extend(["--enginemethod", "web"])
         elif engine == "perplexity":
             extra.extend(["--enginemethod", "webservice"])
         elif engine == "chatgpt":
