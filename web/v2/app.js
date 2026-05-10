@@ -24,9 +24,10 @@
   const MAX_FILE_BYTES   = 50 * 1024 * 1024; // 50 MB
 
   const LS = {
-    source: 'v2.savedSourceLang',
-    target: 'v2.savedTargetLang',
-    theme:  'v2.theme',
+    source:    'v2.savedSourceLang',
+    target:    'v2.savedTargetLang',
+    theme:     'v2.theme',
+    sessionCost: 'v2.sessionCostUsd',  // U-4 (2026-05-11 audit)
   };
 
   function lsGet(k, def) { try { return localStorage.getItem(k) ?? def; } catch (_) { return def; } }
@@ -38,6 +39,8 @@
     running: false,
     currentJobIndex: 0,
     progress: 0,
+    currentJobId: null,    // U-1 (2026-05-11 audit) — for /cancel/<id>
+    pricing: null,         // U-2 — populated from /pricing on boot
   };
 
   // ── DOM lookup helper — defers until the element actually exists.
@@ -54,10 +57,14 @@
     wireDropZone();
     wireFormControls();
     wireTranslateButton();
+    wireCancelButton();      // U-1
     wireNewsletter();
     wireThemeButton();
+    wireOfflineBanner();     // U-5
     paintFooterBuild();
+    paintFooterCost();       // U-4
     void loadAndRenderContent();
+    void loadPricing();      // U-2
   }
 
   if (document.readyState === 'loading') {
@@ -152,6 +159,7 @@
     if (!eng || !aim) return;
     const showModel = (eng.value === 'chatgpt' || eng.value === 'chatgpt-polish');
     aim.classList.toggle('hidden', !showModel);
+    paintCostEstimate();   // U-2: engine change can flip estimator on/off
   }
 
   // Hide the Persian Double Lines option whenever the target language is
@@ -230,6 +238,7 @@
     }
     renderFileList();
     updateActionRow();
+    paintCostEstimate();   // U-2
   }
 
   function renderFileList() {
@@ -273,7 +282,11 @@
   }
 
   // ── Form change persistence ─────────────────────────────────────────────
-  function wireFormControls() { /* persistence handled in syncTargetEngineCascade */ }
+  function wireFormControls() {
+    // U-2: re-paint the cost estimate whenever the AI model changes too.
+    const aim = $('aiModel');
+    if (aim) aim.addEventListener('change', paintCostEstimate);
+  }
 
   // ── Translate button ─────────────────────────────────────────────────────
   function wireTranslateButton() {
@@ -300,7 +313,8 @@
         await translateOne(state.files[i]);
       }
     } catch (e) {
-      showError((e && e.message) ? e.message : 'Unknown error');
+      // F-2: surface the structured reason token alongside the message.
+      showError((e && e.message) ? e.message : 'Unknown error', (e && e.reason) || '');
     } finally {
       state.running = false;
       showRunningButton(false);
@@ -335,6 +349,9 @@
     const upData = await upRes.json();
     if (!upData.ok) throw new Error(upData.comment || 'Upload rejected');
 
+    state.currentJobId = upData.jobId;     // U-1: needed by Cancel
+    showCancelButton(true);
+
     const wasCached    = !!upData.cacheHit;
     const splitterOnly = !!upData.splitterOnly;
     if (wasCached) {
@@ -346,8 +363,19 @@
         : 'Cached — instant download');
     }
 
-    const status = await pollStatus(upData.jobId);
+    let status;
+    try {
+      status = await pollStatus(upData.jobId);
+    } finally {
+      state.currentJobId = null;
+      showCancelButton(false);
+    }
     pushResults(status, wasCached, splitterOnly);
+
+    // U-4: pull the sidecar cost (chatgpt-polish only) and add to session total.
+    if (status && status.filename) {
+      void accumulateSidecarCost(status.filename);
+    }
   }
 
   async function pollStatus(jobId) {
@@ -360,8 +388,19 @@
       if (!res.ok) continue;
       const data = await res.json();
       if (typeof data.progress === 'number') setProgress(data.progress, bucketLabel(data.progress));
-      if (data.status === 'done')  return data;
-      if (data.status === 'error') throw new Error(data.error || 'Translation failed');
+      if (data.status === 'done')      return data;
+      if (data.status === 'cancelled') throw new Error('Cancelled by user');
+      if (data.status === 'error') {
+        // F-2 (2026-05-11 audit): backend's `error` field carries
+        // `<reason>: <message>` when the run hit a structured failure
+        // (B-001 / [FAIL] line). Split off the leading token so we can
+        // surface it as a category badge in the UI.
+        const raw = data.error || 'Translation failed';
+        const m = /^([a-z][a-z0-9_]+):\s+(.*)$/i.exec(raw);
+        const err = new Error(m ? m[2] : raw);
+        if (m) err.reason = m[1];
+        throw err;
+      }
     }
     throw new Error('Timed out waiting for the backend');
   }
@@ -414,16 +453,28 @@
     if (btn)  btn.disabled = on || state.files.length === 0;
   }
 
-  function showError(msg) {
-    const box = $('errorBox');
-    const txt = $('errorText');
-    if (txt) txt.textContent = msg;
+  function showError(msg, reason) {
+    const box    = $('errorBox');
+    const txt    = $('errorText');
+    const badge  = $('errorReason');
+    if (txt)   txt.textContent = msg;
+    if (badge) {
+      if (reason) {
+        badge.textContent = reason;
+        badge.classList.remove('hidden');
+      } else {
+        badge.textContent = '';
+        badge.classList.add('hidden');
+      }
+    }
     if (box) box.classList.remove('hidden');
   }
   function clearError() {
-    const box = $('errorBox');
-    const txt = $('errorText');
+    const box   = $('errorBox');
+    const txt   = $('errorText');
+    const badge = $('errorReason');
     if (txt) txt.textContent = '';
+    if (badge) { badge.textContent = ''; badge.classList.add('hidden'); }
     if (box) box.classList.add('hidden');
   }
 
@@ -445,23 +496,52 @@
       const display = stripPrefix(filename);
       const li = document.createElement('li');
       li.className = 'result-row';
-      li.innerHTML = `
-        <span class="result-icon">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path d="M14 3v5h5M6 3h8l5 5v13H6V3z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
-          </svg>
-        </span>
-        <span class="result-label"></span>
-        <a class="result-link"></a>
-      `;
-      li.querySelector('.result-label').textContent = `${display} — ${suffix}${tag}`;
-      const a = li.querySelector('.result-link');
+      const iconSpan = document.createElement('span');
+      iconSpan.className = 'result-icon';
+      iconSpan.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M14 3v5h5M6 3h8l5 5v13H6V3z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>';
+      const lbl = document.createElement('span');
+      lbl.className = 'result-label';
+      lbl.textContent = `${display} — ${suffix}${tag}`;
+      const a = document.createElement('a');
+      a.className = 'result-link';
       a.href = '/download/' + encodeURIComponent(filename);
       a.setAttribute('download', display);
       a.textContent = 'Download';
+      li.appendChild(iconSpan);
+      li.appendChild(lbl);
+      li.appendChild(a);
       ul.appendChild(li);
     };
     add(status.filename, 'translated');
+
+    // U-3 (2026-05-11 audit): chatgpt-polish runs always emit a JSON
+    // sidecar at <docx_stem>_log.json next to the .docx. Surface a
+    // download link for it whenever the pair travels together.
+    if (status && status.filename && /\.docx$/i.test(status.filename)) {
+      const sidecar = status.filename.replace(/\.docx$/i, '_log.json');
+      // We don't pre-flight HEAD it; if the sidecar doesn't exist the
+      // browser shows a 404 in the download dialog. This is cheaper
+      // than an extra round-trip and the link is visually muted to
+      // signal it's optional.
+      const li = document.createElement('li');
+      li.className = 'result-row result-row--secondary';
+      const iconSpan = document.createElement('span');
+      iconSpan.className = 'result-icon';
+      iconSpan.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9 8h6M9 12h6M9 16h4M14 3v5h5M6 3h8l5 5v13H6V3z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>';
+      const lbl = document.createElement('span');
+      lbl.className = 'result-label';
+      lbl.textContent = 'Run log (tokens + cost)';
+      const a = document.createElement('a');
+      a.className = 'result-link';
+      a.href = '/download/' + encodeURIComponent(sidecar);
+      a.setAttribute('download', stripPrefix(sidecar));
+      a.textContent = 'Download log JSON';
+      li.appendChild(iconSpan);
+      li.appendChild(lbl);
+      li.appendChild(a);
+      ul.appendChild(li);
+    }
+
     if (ul.children.length) ul.classList.remove('hidden');
   }
 
@@ -612,6 +692,109 @@
     const slug = (document.querySelector('meta[name="build-slug"]') || {}).content || '';
     const today = new Date().toISOString().slice(0, 10);
     el.textContent = slug ? `build ${slug}` : `build ${today}`;
+  }
+
+  // ── Cancel button (U-1 2026-05-11 audit) ────────────────────────────────
+  function wireCancelButton() {
+    const btn = $('cancelBtn');
+    if (!btn) return;
+    btn.addEventListener('click', async () => {
+      if (!state.currentJobId) return;
+      btn.disabled = true;
+      try {
+        await fetch('/cancel/' + encodeURIComponent(state.currentJobId), { method: 'POST' });
+      } catch (_) { /* the poll loop will surface the cancelled status */ }
+    });
+  }
+  function showCancelButton(on) {
+    const btn = $('cancelBtn');
+    if (!btn) return;
+    btn.classList.toggle('hidden', !on);
+    btn.disabled = !on;
+  }
+
+  // ── Offline banner (U-5 2026-05-11) ─────────────────────────────────────
+  function wireOfflineBanner() {
+    const update = () => {
+      const banner = $('offlineBanner');
+      if (!banner) return;
+      banner.classList.toggle('hidden', !!navigator.onLine);
+    };
+    update();
+    window.addEventListener('online',  update);
+    window.addEventListener('offline', update);
+  }
+
+  // ── Pricing fetch + cost estimate (U-2 2026-05-11) ──────────────────────
+  async function loadPricing() {
+    try {
+      const res = await fetch('/pricing', { cache: 'no-store' });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data && Array.isArray(data.models)) {
+        state.pricing = data.models;
+        paintCostEstimate();
+      }
+    } catch (_) { /* offline / endpoint missing — silent */ }
+  }
+
+  function paintCostEstimate() {
+    const el = $('costEstimate');
+    if (!el) return;
+    if (!state.pricing || !state.pricing.length) {
+      el.classList.add('hidden');
+      return;
+    }
+    const eng = $('engine');
+    const aim = $('aiModel');
+    if (!eng || !aim) return;
+    const usesOpenAI = (eng.value === 'chatgpt' || eng.value === 'chatgpt-polish');
+    if (!usesOpenAI || state.files.length === 0) {
+      el.classList.add('hidden');
+      return;
+    }
+    const model = state.pricing.find(m => m.id === aim.value);
+    if (!model) { el.classList.add('hidden'); return; }
+    // Rough cost estimate: 1 token ≈ 4 chars; size is in bytes. The
+    // chatgpt-polish path makes two calls (translate + polish) so the
+    // input is read twice. Output tokens are roughly source × 1.0 for
+    // most languages; ZWNJ-heavy Persian skews higher but we keep the
+    // estimate conservative by assuming output_tokens ≈ input_tokens.
+    const totalBytes = state.files.reduce((acc, f) => acc + f.size, 0);
+    const inputTokens = Math.round(totalBytes / 4);
+    const calls       = (eng.value === 'chatgpt-polish') ? 2 : 1;
+    const inputCost   = (inputTokens / 1_000_000) * model.input  * calls;
+    const outputCost  = (inputTokens / 1_000_000) * model.output * calls;
+    const total = inputCost + outputCost;
+    // Cache hits could cut the bill ~10× — note that on the badge.
+    el.textContent = `Estimated cost: ~$${total.toFixed(3)} (cache hits ≈ $${(total * 0.18).toFixed(3)})`;
+    el.classList.remove('hidden');
+  }
+
+  // ── Session-cost accumulator (U-4 2026-05-11) ───────────────────────────
+  async function accumulateSidecarCost(docxFilename) {
+    if (!docxFilename || !/\.docx$/i.test(docxFilename)) return;
+    const sidecar = docxFilename.replace(/\.docx$/i, '_log.json');
+    let log = null;
+    try {
+      const res = await fetch('/download/' + encodeURIComponent(sidecar), { cache: 'no-store' });
+      if (!res.ok) return;
+      log = await res.json();
+    } catch (_) { return; }
+    const dollars = log && log.summary && typeof log.summary.total_cost_usd === 'number'
+      ? log.summary.total_cost_usd : 0;
+    if (!dollars) return;
+    const prev = parseFloat(lsGet(LS.sessionCost, '0')) || 0;
+    const next = prev + dollars;
+    lsSet(LS.sessionCost, String(next));
+    paintFooterCost();
+  }
+
+  function paintFooterCost() {
+    const el = $('footerCost');
+    if (!el) return;
+    const total = parseFloat(lsGet(LS.sessionCost, '0')) || 0;
+    el.textContent = total > 0 ? `· session: $${total.toFixed(3)}` : '';
   }
 
   // ── Helpers ──────────────────────────────────────────────────────────────

@@ -65,53 +65,78 @@ class OpenAISubtitleSplitter:
 
     @staticmethod
     def calculate_openai_cost(response_json):
+        """Calculate per-call OpenAI spend, including the 90% prompt-cache
+        discount on cached tokens.
+
+        C-2 (2026-05-11 audit): the splitter's price table previously
+        had only ``input`` and ``output`` rates; on a cache hit the
+        full prompt was charged at the un-cached rate, overstating the
+        bill by ~10×. Added a ``cached`` column and split
+        ``prompt_tokens`` into ``prompt_tokens - cached_tokens`` (full
+        rate) + ``cached_tokens`` (10% rate). Also added ``gpt-5.5``
+        (the project default per ``config.DEFAULT_AI_MODEL``) so the
+        on-by-default model has a real number rather than the
+        ``[WARN] No known pricing`` zero.
+        """
         model = response_json.get("model", "")
         usage = response_json.get("usage", {})
         prompt_tokens = usage.get("prompt_tokens", 0)
         completion_tokens = usage.get("completion_tokens", 0)
-        
+        cached_tokens = (usage.get("prompt_tokens_details") or {}).get(
+            "cached_tokens", 0
+        )
+
+        # Per-1M-token rates. ``cached`` is the discounted rate for
+        # tokens that re-used the 24-h prompt cache.
         PRICES = {
-            "gpt-5.4": {"input": 2.50, "output": 15.00},
-            "gpt-5.4-mini": {"input": 0.75, "output": 4.50},
-            "gpt-5.4-nano": {"input": 0.20, "output": 1.25},
-            "gpt-5.2": {"input": 1.75, "output": 14.00},
-            "gpt-5.1": {"input": 1.25, "output": 10.00},
-            "gpt-5": {"input": 1.25, "output": 10.00},
-            "gpt-5-mini": {"input": 0.25, "output": 2.00},
-            "gpt-5-nano": {"input": 0.05, "output": 0.40},
-            "gpt-4o": {"input": 2.50, "output": 10.00},
-            "gpt-4o-mini": {"input": 0.15, "output": 0.60}
+            "gpt-5.5":       {"input": 5.00, "cached": 0.50,  "output": 30.00},
+            "gpt-5.4":       {"input": 2.50, "cached": 0.25,  "output": 15.00},
+            "gpt-5.4-mini":  {"input": 0.75, "cached": 0.075, "output": 4.50},
+            "gpt-5.4-nano":  {"input": 0.20, "cached": 0.02,  "output": 1.25},
+            "gpt-5.2":       {"input": 1.75, "cached": 0.175, "output": 14.00},
+            "gpt-5.1":       {"input": 1.25, "cached": 0.125, "output": 10.00},
+            "gpt-5":         {"input": 1.25, "cached": 0.125, "output": 10.00},
+            "gpt-5-mini":    {"input": 0.25, "cached": 0.025, "output": 2.00},
+            "gpt-5-nano":    {"input": 0.05, "cached": 0.005, "output": 0.40},
+            "gpt-4o":        {"input": 2.50, "cached": 0.25,  "output": 10.00},
+            "gpt-4o-mini":   {"input": 0.15, "cached": 0.015, "output": 0.60},
         }
-        
-        # Find matching model price tier (partial match supported)
+
+        # Find matching model price tier (partial match supported).
         price = next((v for k, v in PRICES.items() if k in model), None)
-        
+
         if price is None:
             print(f"[WARN] No known pricing for model '{model}'. Cost will be set to 0.")
             return {
-                "model": model,
-                "prompt_tokens": prompt_tokens,
+                "model":           model,
+                "prompt_tokens":   prompt_tokens,
+                "cached_tokens":   cached_tokens,
                 "completion_tokens": completion_tokens,
-                "total_tokens": prompt_tokens + completion_tokens,
-                "input_cost_usd": 0.0,
+                "total_tokens":    prompt_tokens + completion_tokens,
+                "input_cost_usd":  0.0,
                 "output_cost_usd": 0.0,
-                "total_cost_usd": 0.0
+                "total_cost_usd":  0.0,
             }
-        
-        input_cost = (prompt_tokens / 1_000_000) * price["input"]
+
+        non_cached = max(0, prompt_tokens - cached_tokens)
+        input_cost = (
+            (non_cached / 1_000_000) * price["input"]
+            + (cached_tokens / 1_000_000) * price.get("cached", price["input"])
+        )
         output_cost = (completion_tokens / 1_000_000) * price["output"]
         total_cost = input_cost + output_cost
-        
+
         print("Total cost in USD:", round(total_cost, 6))
-        
+
         return {
-            "model": model,
-            "prompt_tokens": prompt_tokens,
+            "model":             model,
+            "prompt_tokens":     prompt_tokens,
+            "cached_tokens":     cached_tokens,
             "completion_tokens": completion_tokens,
-            "total_tokens": prompt_tokens + completion_tokens,
-            "input_cost_usd": round(input_cost, 6),
-            "output_cost_usd": round(output_cost, 6),
-            "total_cost_usd": round(total_cost, 6)
+            "total_tokens":      prompt_tokens + completion_tokens,
+            "input_cost_usd":    round(input_cost, 6),
+            "output_cost_usd":   round(output_cost, 6),
+            "total_cost_usd":    round(total_cost, 6),
         }
 
     @staticmethod

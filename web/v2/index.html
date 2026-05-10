@@ -27,6 +27,12 @@
 </head>
 
 <body class="page-shell">
+  <!-- U-5 (2026-05-11 audit) — offline banner. Hidden by default; app.js
+       toggles its visibility on `online` / `offline` window events. -->
+  <div id="offlineBanner" class="offline-banner hidden" role="status" aria-live="polite">
+    You appear to be offline. Translations need an internet connection to reach DeepL / Google / OpenAI.
+  </div>
+
   <!-- ── Header ─────────────────────────────────────────────────────────── -->
   <header class="page-header">
     <div class="header-inner">
@@ -218,7 +224,15 @@
               <span id="btnRunningLabel">Working…</span>
             </span>
           </button>
+          <!-- U-1 (2026-05-11 audit) — cancel button shown only while a
+               run is in flight. POSTs to /cancel/<jobId>. -->
+          <button id="cancelBtn" type="button" class="btn-secondary cancel-btn hidden" aria-label="Cancel running job">
+            Cancel
+          </button>
           <span id="fileSelectedNote" class="action-note hidden"></span>
+          <!-- U-2 (2026-05-11 audit) — pre-flight estimated cost. Filled
+               by app.js once a file is chosen + the engine is OpenAI. -->
+          <span id="costEstimate" class="action-note hidden"></span>
         </div>
 
         <!-- Progress -->
@@ -235,7 +249,12 @@
 
         <!-- Error -->
         <div id="errorBox" class="error-box hidden" role="alert">
-          <strong>Translation failed:</strong>
+          <strong>Translation failed</strong>
+          <!-- F-2 (2026-05-11 audit) — show the structured `reason`
+               token (e.g. `empty_docx`, `engine_empty`) as a small
+               badge so the operator sees what category of failure
+               this is, not just a free-text message. -->
+          <span id="errorReason" class="error-reason hidden"></span>
           <span id="errorText"></span>
         </div>
 
@@ -295,6 +314,11 @@
   <footer class="page-footer">
     <div class="footer-inner">
       <span class="footer-text">SMTV Document Translator · plain JS, no framework</span>
+      <!-- U-4 (2026-05-11 audit) — running session-cost watermark.
+           Updated by app.js after every chatgpt-polish run from the
+           sidecar's summary.total_cost_usd; persists in localStorage so
+           the user sees the cumulative spend across reloads. -->
+      <span class="footer-text-muted" id="footerCost" title="Cumulative OpenAI cost this session"></span>
       <span class="footer-text-muted" id="footerBuild"></span>
     </div>
   </footer>

@@ -102,11 +102,29 @@ def _engine_suffix_for(translation_engine: str | None) -> str:
 
 
 def _sanitize_filename(name: str) -> str:
+    """Reduce a user-supplied filename to a safe basename.
+
+    R-5 (2026-05-11 audit): caps the result to 200 characters,
+    preserving the extension. Without the cap, a 1000-character UTF-8
+    filename hits Windows' 255-byte path limit and python-docx fails
+    when saving with a confusing OSError. The cap also bounds anything
+    we later splice into archive folder names.
+    """
     name = Path(name).name
     name = name.replace("\x00", "")
     name = name.replace("（", "(").replace("）", ")")
     name = name.replace("&", "")
-    return name.strip() or "upload.docx"
+    name = name.strip() or "upload.docx"
+    if len(name) > 200:
+        # Preserve the suffix (last `.ext`, max 10 chars) so MIME / docx
+        # detection still works on the truncated name.
+        suffix = ""
+        dot = name.rfind(".")
+        if 0 <= dot >= len(name) - 11:
+            suffix = name[dot:]
+        head_budget = 200 - len(suffix)
+        name = name[:head_budget] + suffix
+    return name
 
 
 # ── 36-hour cache for API-translated outputs ─────────────────────────────────
@@ -159,7 +177,18 @@ def _append_subscriber(email: str) -> tuple[bool, str]:
             f.write(email + "\n")
         return True, "subscribed"
     except Exception as exc:
-        return False, f"server error: {exc}"
+        # R-4 (2026-05-11 audit): do not echo the raw exception text into
+        # the user-visible JSON response — a PermissionError leaks the
+        # absolute filesystem path; a UnicodeDecodeError leaks the
+        # offending bytes. Log the full traceback to stderr for the
+        # operator and return a generic message.
+        import traceback as _tb
+        print(
+            f"[subscribe] server error: {exc!r}\n{_tb.format_exc()}",
+            file=sys.stderr,
+            flush=True,
+        )
+        return False, "server error"
 
 
 # Server-side upload limits
@@ -638,6 +667,55 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
 
         if path == "/count":
             self._send_json({"count": str(_read_int(self.state.count_file, 0))})
+            return
+
+        if path == "/pricing":
+            # U-2 (2026-05-11 audit): expose the OpenAI per-1M-token
+            # pricing table so the v2 frontend can show a pre-flight
+            # cost estimate. We surface only the models in
+            # ``config.VALID_AI_MODELS`` to avoid advertising stale ids.
+            #
+            # Schema:
+            #   {
+            #     "models": [
+            #       {"id": "gpt-5.5", "input": 5.00, "cached": 0.50, "output": 30.00},
+            #       ...
+            #     ],
+            #     "currency": "USD",
+            #     "unit": "per_1M_tokens"
+            #   }
+            #
+            # The numbers come from the polisher's PRICES dict (it's the
+            # most complete one and covers both whitelisted models). If
+            # the polisher import fails for any reason, the launcher
+            # falls back to an empty list — the frontend then degrades
+            # to "estimate unavailable".
+            try:
+                _src_dir = ROOT / "src"
+                if str(_src_dir) not in sys.path:
+                    sys.path.insert(0, str(_src_dir))
+                from config import VALID_AI_MODELS as _VALID
+                # Inline the same table the polisher uses — the polisher
+                # method is per-instance, so we duplicate it as a
+                # module-level constant here. If you bump the polisher
+                # numbers, mirror them in this dict.
+                _PRICES = {
+                    "gpt-5.5":      {"input": 5.00, "cached": 0.50,  "output": 30.00},
+                    "gpt-5.4-mini": {"input": 0.75, "cached": 0.075, "output": 4.50},
+                }
+                models = [
+                    {"id": m, **_PRICES[m]}
+                    for m in _VALID
+                    if m in _PRICES
+                ]
+            except Exception as _exc:
+                print(f"[/pricing] table unavailable: {_exc!r}", file=sys.stderr)
+                models = []
+            self._send_json({
+                "models":   models,
+                "currency": "USD",
+                "unit":     "per_1M_tokens",
+            })
             return
 
         if path == "/robotscount":
@@ -1211,13 +1289,44 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
 
         Best-effort. Errors are swallowed and printed so a misconfigured
         runtime_dir cannot kill the launcher.
+
+        R-3 (2026-05-11 audit): if the primary location is unwritable
+        (read-only volume, no permissions, disk full), fall back to a
+        temp dir under the OS-default tempdir so the operator at least
+        has SOMETHING to triage. The traceback is printed in both cases
+        so the failure is not invisible.
         """
         import datetime as _dt
+        import tempfile as _tf
+        import traceback as _tb
+
+        ts = _dt.datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+        primary = self.state.runtime_dir / "failures" / f"{job_id}__{ts}"
+        base = None
+        try:
+            primary.mkdir(parents=True, exist_ok=True)
+            base = primary
+        except Exception as _e:
+            print(
+                f"[B-002] primary failures dir {primary} unwritable "
+                f"({_e!r}); falling back to system tempdir",
+                file=sys.stderr,
+                flush=True,
+            )
+            try:
+                fallback_root = Path(_tf.mkdtemp(prefix="mtd-failure-"))
+                base = fallback_root / f"{job_id}__{ts}"
+                base.mkdir(parents=True, exist_ok=True)
+            except Exception as _e2:
+                print(
+                    f"[B-002] fallback tempdir also unwritable "
+                    f"({_e2!r}); archive skipped\n{_tb.format_exc()}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                return
 
         try:
-            ts = _dt.datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
-            base = self.state.runtime_dir / "failures" / f"{job_id}__{ts}"
-            base.mkdir(parents=True, exist_ok=True)
 
             # Input file
             try:
@@ -1272,7 +1381,18 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
                 archive_dir=base,
             )
         except Exception as exc:
-            print(f"[B-002] archive skipped (unexpected error): {exc}")
+            # R-3: surface the full traceback so the operator can see
+            # exactly which write step failed. The single-line print was
+            # too cryptic — a permission error inside meta.json's open()
+            # would surface as just `archive skipped: [Errno 13]` with
+            # no path or call site.
+            import traceback as _tb
+            print(
+                f"[B-002] archive skipped (unexpected error): {exc!r}\n"
+                f"{_tb.format_exc()}",
+                file=sys.stderr,
+                flush=True,
+            )
 
     def _alert_failure(
         self,
