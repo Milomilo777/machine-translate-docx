@@ -1992,22 +1992,10 @@ def get_run_shading_color(xml_run_str):
     return attrib_fill
 
 # Return cell_non_greyed_text (string), cell_is_gray (integer for boolean)
-def _iter_paragraph_runs(paragraph):
-    """Yield every ``<w:r>`` element below ``paragraph`` wrapped in a
-    ``Run`` object — including those nested inside ``<w:hyperlink>``,
-    ``<w:smartTag>``, ``<w:fldSimple>``, or any other container.
-
-    ``paragraph.runs`` only returns the runs that are direct children
-    of ``<w:p>``. Hyperlinked text lives inside ``<w:hyperlink>`` and
-    is therefore silently dropped, leading to translated cells that
-    are missing exactly the words readers most often want translated
-    (URLs aside, the visible link label is meaningful prose).
-
-    Using ``etree.iter`` walks the subtree in document order, which
-    is the only order that preserves the original sentence flow.
-    """
-    for r_elem in paragraph._p.iter(qn('w:r')):
-        yield _DocxRun(r_elem, paragraph)
+# _iter_paragraph_runs was extracted to src/docx_io/runs.py in the
+# 2026-05-10 docx_io extraction pass. Imported here so callers in
+# this file (the get_cell_data path) keep resolving the name.
+from docx_io import _iter_paragraph_runs
 
 
 def get_cell_data(ctx: RuntimeContext, cell,row_n):
