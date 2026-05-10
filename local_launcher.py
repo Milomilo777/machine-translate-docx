@@ -956,8 +956,8 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
             cmd.extend(["--srclang", source_language])
         if split_translate:
             cmd.append("--split")
-        if split_engine == "openai":
-            cmd.extend(["--splitengine", "openai"])
+        if split_engine in ("openai", "persian_double_lines"):
+            cmd.extend(["--splitengine", split_engine])
         if engine == "google":
             cmd.append("--showbrowser")
 

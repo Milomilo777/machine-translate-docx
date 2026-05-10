@@ -59,6 +59,21 @@ after 1800 ms to avoid the Chrome multi-download permission prompt.
 
 ### 2026-05-10 — Persian Double Lines as a splitter (agent run, branch `next/persian-double-lines-as-splitter`)
 
+**Phase 2 — Persian Double Lines exposed as a Split Method.**
+Both frontends now expose a `persian_double_lines` value on their
+`splitEngine` dropdown. Legacy `index.ejs` adds a third `<option>`. v2
+gains a 5th `form-field` ("Split method") with the same three choices
+(`basic` / `openai` / `persian_double_lines`); v2 `app.js` reads the new
+field and forwards it as `splitEngine` whenever the user picked
+something other than `basic`, and additionally sets `splitTranslate=true`
+when the value is `persian_double_lines` (so chatgpt-polish jobs can
+opt into the splitter even though v2 omits the legacy
+`splitTranslate` checkbox). `local_launcher.py` now passes the value
+straight through to `--splitengine`. CLI argparse validation accepts
+`persian_double_lines` alongside `openai`. Wiring of the actual splitter
+behaviour (re-runs the FA aligner against the cached translation) lands
+in phases 4-6. Tests: 51 passing.
+
 **Phase 1 — aligner detached from chatgpt-polish.**
 The post-translation block in `src/machine-translate-docx.py` that produced
 `_PER_Classic.docx` and `_PER_Double.docx` for every FA + chatgpt-polish run

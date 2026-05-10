@@ -271,8 +271,15 @@
     if (eng === 'chatgpt' || eng === 'chatgpt-polish') {
       fd.append('aiModel', $('aiModel').value);
     }
-    if (eng === 'google' || eng === 'deepl') {
+    const splitSelectEl = $('splitEngine');
+    const splitVal = splitSelectEl ? splitSelectEl.value : 'basic';
+    // Persian Double Lines is a post-translate step: it pairs with any
+    // engine, so toggling splitTranslate here covers chatgpt-polish too.
+    if (eng === 'google' || eng === 'deepl' || splitVal === 'persian_double_lines') {
       fd.append('splitTranslate', 'true');
+    }
+    if (splitVal && splitVal !== 'basic') {
+      fd.append('splitEngine', splitVal);
     }
 
     const upRes = await fetch('/upload', { method: 'POST', body: fd });

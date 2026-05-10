@@ -632,7 +632,7 @@ parser.add_argument('--xlsxreplacefile', '-x', required = False, help="Excel xls
 parser.add_argument('--destfont', '-f', required = False, help="Destination font name")
 parser.add_argument('--useapi', '-a', required = False, help="Use api to get translation, lower quality but faster", action='store_true')
 parser.add_argument('--split', '-s', required = False, help="Split web translation into cells", action='store_true')
-parser.add_argument('--splitengine', '-p', required = False, help="Specify AI split engine (openai)")
+parser.add_argument('--splitengine', '-p', required = False, help="Specify split engine (openai | persian_double_lines)")
 parser.add_argument('--splitonly', required = False, help="Split translation into lines only, do not translate.", action='store_true')
 parser.add_argument('--showbrowser', '-b', required = False, help="Show browser", action='store_true')
 parser.add_argument('--exitonsuccess', '-t', required = False, help="Exit progream on success", action='store_true')
@@ -718,8 +718,8 @@ split_translation = args.split
 split_engine = args.splitengine
 if split_engine is not None:
     split_engine = split_engine.lower()
-    if split_engine != 'openai':
-        print(f"Unknown split engine, accepted values : openai. Defaulting to non AI line splitting.")
+    if split_engine not in ('openai', 'persian_double_lines'):
+        print("Unknown split engine, accepted values : openai, persian_double_lines. Defaulting to non AI line splitting.")
         split_engine = None
 
 use_api = args.useapi
