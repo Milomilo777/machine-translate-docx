@@ -450,6 +450,14 @@ def _sync_globals_from_ctx(ctx: RuntimeContext) -> None:
         setattr(_mod, "oai_translator", ctx.openai.translator)
     if getattr(ctx.openai, "polisher", None) is not None:
         setattr(_mod, "oai_polisher", ctx.openai.polisher)
+    # Translation log is populated on ``ctx.openai.translation_log`` by
+    # the runner / chatgpt_api single-call paths, but ``write_translation_log``
+    # reads from the module-level ``translation_log`` global. Without this
+    # mirror the JSON sidecar is always empty (run_info has only output_file,
+    # blocks=[], summary all zeros) — observed during the 2026-05-10 real-engine
+    # test pass while trying to verify 24-h prompt-cache hits.
+    if isinstance(getattr(ctx.openai, "translation_log", None), dict):
+        setattr(_mod, "translation_log", ctx.openai.translation_log)
 
 
 # Track the child processes

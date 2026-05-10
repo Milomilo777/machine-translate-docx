@@ -57,6 +57,43 @@ after 1800 ms to avoid the Chrome multi-download permission prompt.
 
 ## Sessions
 
+### 2026-05-10 — real-engine test pass + findings (branch `next/real-engine-tests-and-findings`)
+
+End-to-end validation across DeepL, Google, and the ChatGPT API on
+the `sample_hyperlink.docx` fixture (42 rows, EN source, phrase-grouped
+subtitle template). Two random non-Persian languages (German, Spanish)
+covered alongside the canonical French and Persian runs.
+
+**Test outcomes** — all engines produced correct output: source column
+preserved 42/42; target rows non-empty 18/40 phrases (DeepL/Google
+non-split) or 37/40 rows (chatgpt + split-translation); diacritics +
+ZWNJ + RTL all correct in the saved docx. Live cache verification:
+chatgpt-polish second + third runs hit 91.7 % cached prompts on
+translation and ~76 % on polish — confirming the 24-h
+`prompt_cache_retention` flag is wired end-to-end.
+
+**Inline fix landed during the pass:** `_sync_globals_from_ctx` did
+not mirror `ctx.openai.translation_log` back to the module-level
+`translation_log` global, so `write_translation_log()` always wrote
+an empty JSON sidecar. Added a 2-line `setattr` mirror to the helper.
+Without this fix, cache verification (T7) was impossible because
+every sidecar reported zeros. Documented in `B-003` of the findings
+file. All 70 unit tests still pass.
+
+**`docs/real-engine-test-findings.md` — new file with:**
+
+  - The test matrix + per-test diagnostics.
+  - 4 bugs queued for the hardening session: B-001 silent-success on
+    empty-source docx, B-002 missing failed-job archive + alerting,
+    B-003 (the inline-fixed translation_log mirror), B-004 invalid
+    `gpt-5.5-mini` model offered nowhere but accepted at CLI.
+  - 8 weaknesses / smaller suggestions (W-1 through W-8) — each with
+    a fix sketch and a "why it matters" line.
+  - Acceptance criteria for the follow-up commit so the next session
+    knows when to stop.
+
+Master tip going in: `958e82b`. Tests: 70 / 70 pass. No regression.
+
 ### 2026-05-10 — thread docx globals to ctx (branch `next/thread-docx-globals-to-ctx`)
 
 Prerequisite phase for the upcoming `read_and_parse_docx_document` and
