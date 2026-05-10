@@ -57,6 +57,40 @@ after 1800 ms to avoid the Chrome multi-download permission prompt.
 
 ## Sessions
 
+### 2026-05-10 — Checkpoint 2: entry rename + dispatch extracted (branch `next/architecture-cleanup-after-audit`)
+
+**C2.1.** Renamed `src/machine-translate-docx.py` →
+`src/machine_translate_docx.py`. The hyphen made the entry script
+un-importable as a Python module — every helper that needed sharing
+had to be extracted to a sibling file and re-imported back into the
+entry script via a shim. Now the module is importable directly from
+anywhere in the codebase. Updated references in `local_launcher.py`,
+`run.bat`, `compile.bat`, `compile/windows/compile.bat`, `package.json`,
+`server.js`, and the integration test.
+
+**C2.2-3.** New file `src/dispatch.py`. Two pure functions plus an
+injection point:
+
+  * `use_phrasesblock(engine, method) -> bool` — the per-engine
+    "should we use the block-loop runner?" predicate. Was previously
+    inline in `translate_docx`.
+  * `set_translation_function(ctx)` — resolves
+    `ctx.engine.dispatcher` for the per-call wrapper. Was previously
+    a 45-line function in the entry script.
+  * `set_array_dispatcher(fn)` — registers the array-lookup helper
+    that still lives in the entry script. Used to avoid a circular
+    import; goes away when C3 extracts the helper too.
+
+The two functions share the same engine ↔ method matrix and cannot
+drift apart — they're literally next to each other now. The entry
+script's `translate_docx` body shrank from ~25 lines of `if/elif`
+chains to one call: `if _dispatch_use_phrasesblock(...)`.
+
+63/63 unit tests still pass.
+
+Next: Checkpoint 3 — extract the remaining ~80 functions still in
+the entry script to engine-specific modules.
+
 ### 2026-05-10 — Checkpoint 1: web engines deleted (branch `next/architecture-cleanup-after-audit`)
 
 First of four checkpoints in the post-audit architecture cleanup. The
