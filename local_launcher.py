@@ -274,10 +274,18 @@ class LocalState:
         self.lock = threading.Lock()
         self.jobs: dict[str, Job] = {}
         self.total_uploads = 0
-        # cache_key → (timestamp, [(file_kind, abs_path)])
-        # file_kind ∈ {"main","double","classic"} matches Job's
-        # filename / filename2 / filename3 fields.
-        self.cache: dict[str, tuple[float, list[tuple[str, Path]]]] = {}
+        # cache_key → (timestamp, payload_dict). The dict carries:
+        #   main_path:                Path  — engine output, no splitter
+        #   source_path:              Path  — original upload bytes
+        #   translation_array:        list[str] — for line-aware splitters
+        #   phrase_separator_table:   list[str]
+        #   engine, ai_model, src_lang, dest_lang: str | None
+        # The cache key intentionally excludes the splitter so a re-upload
+        # with a different Split Method reuses the cached translation and
+        # only re-runs the splitter (phase 4 of the persian-double-lines
+        # roadmap). Pre-phase-4 (timestamp, list-of-tuples) entries are
+        # evicted on access.
+        self.cache: dict[str, tuple[float, dict]] = {}
 
     def boot(self) -> None:
         for directory in [
@@ -339,49 +347,77 @@ class LocalState:
 
     # ── 36-hour cache ────────────────────────────────────────────────────────
 
-    def cache_lookup(self, key: str) -> list[tuple[str, Path]] | None:
-        """Return [(kind, path), ...] if a fresh entry exists, else None.
+    def cache_lookup(self, key: str) -> dict | None:
+        """Return the cache payload dict if a fresh entry exists, else None.
 
-        Stale entries (older than CACHE_TTL_SEC) are evicted on access.
-        Entries whose paths have disappeared from disk are also evicted.
+        Stale entries (older than CACHE_TTL_SEC) are evicted on access, as
+        are entries whose `main_path` has disappeared from disk. Pre-phase-4
+        entries (the legacy (timestamp, list-of-tuples) shape) are also
+        evicted on access so the next upload re-runs the engine cleanly.
         """
         with self.lock:
             entry = self.cache.get(key)
         if not entry:
             return None
-        ts, paths = entry
+        ts, data = entry
+        if not isinstance(data, dict):
+            self._evict(key)
+            return None
         if time.time() - ts > CACHE_TTL_SEC:
             self._evict(key)
             return None
-        for _, p in paths:
-            if not p.exists():
-                self._evict(key)
-                return None
-        return list(paths)
+        main_path = data.get("main_path")
+        if not main_path or not Path(main_path).exists():
+            self._evict(key)
+            return None
+        return data
 
-    def cache_store(self, key: str, paths: list[tuple[str, Path]]) -> None:
-        """Copy `paths` into runtime/cache/<key>/ and remember them.
+    def cache_store(
+        self,
+        key: str,
+        *,
+        main_path: Path,
+        source_file: Path | None = None,
+        translation_array: list[str] | None = None,
+        phrase_separator_table: list[str] | None = None,
+        engine: str | None = None,
+        ai_model: str | None = None,
+        src_lang: str | None = None,
+        dest_lang: str | None = None,
+    ) -> None:
+        """Persist a cached translation under `runtime/cache/<key>/`.
 
-        We copy (not move) so the live job's outputs remain in the uploads
-        directory — the launcher's existing /download/<name> route still
-        serves them. The cache copy is a backup that survives upload-dir
-        cleanup.
+        Stores the engine's main output docx and a copy of the source
+        upload (so a future request with a different splitter can apply
+        it without needing the original upload to still be on disk).
+        Optional translation arrays are kept for line-aware splitters and
+        the line-count reconciler; either may be empty in early phases.
         """
-        if not paths:
+        if not main_path.exists():
             return
         try:
             entry_dir = self.cache_dir / key
             entry_dir.mkdir(parents=True, exist_ok=True)
-            stored: list[tuple[str, Path]] = []
-            for kind, src in paths:
-                if not src.exists():
-                    continue
-                dst = entry_dir / src.name
-                if not dst.exists() or dst.stat().st_size != src.stat().st_size:
-                    shutil.copy2(src, dst)
-                stored.append((kind, dst))
+            dst_main = entry_dir / main_path.name
+            if not dst_main.exists() or dst_main.stat().st_size != main_path.stat().st_size:
+                shutil.copy2(main_path, dst_main)
+            dst_src: Path | None = None
+            if source_file and source_file.exists():
+                dst_src = entry_dir / "_source.docx"
+                if not dst_src.exists() or dst_src.stat().st_size != source_file.stat().st_size:
+                    shutil.copy2(source_file, dst_src)
+            data: dict = {
+                "main_path": dst_main,
+                "source_path": dst_src,
+                "translation_array": list(translation_array or []),
+                "phrase_separator_table": list(phrase_separator_table or []),
+                "engine": engine,
+                "ai_model": ai_model,
+                "src_lang": src_lang,
+                "dest_lang": dest_lang,
+            }
             with self.lock:
-                self.cache[key] = (time.time(), stored)
+                self.cache[key] = (time.time(), data)
         except Exception as exc:
             print(f"[cache] store failed for {key[:12]}…: {exc}")
 
@@ -741,30 +777,30 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
             cache_key = _cache_key(payload, target_language, translation_engine, ai_model)
             cached = self.state.cache_lookup(cache_key)
             if cached:
-                # Materialise the cached files back into the uploads dir
-                # under the new job's expected names so the existing
-                # /download/<name> route serves them unchanged.
-                fname = fname2 = fname3 = None
-                for kind, src in cached:
-                    dst = self.state.uploads_dir / src.name
-                    if not dst.exists():
-                        try:
-                            shutil.copy2(src, dst)
-                        except Exception as exc:
-                            print(f"[cache] copy-back failed: {exc}")
-                            cached = None
-                            break
-                    if kind == "main":   fname  = src.name
-                    if kind == "double": fname2 = src.name
-                    if kind == "classic": fname3 = src.name
-                if cached and fname:
+                # Materialise the cached engine output back into uploads/
+                # and apply the requested Split Method on top. A different
+                # splitter than was used last time is the whole point of
+                # the phase-4 dict-shape cache.
+                served = self._materialise_cached_output(
+                    cached,
+                    split_engine=split_engine,
+                    target_language=target_language,
+                )
+                if served:
+                    splitter_only = served.name.endswith("_Double_Lines.docx")
                     self.state.update_job(
                         job_id, status="done",
-                        filename=fname, filename2=fname2, filename3=fname3,
+                        filename=served.name, filename2=None, filename3=None,
                         progress=100, error=None,
                     )
-                    print(f"[cache hit] {cache_key[:12]}… reused {len(cached)} file(s) for job {job_id}")
-                    self._send_json({"ok": True, "jobId": job_id, "cacheHit": True})
+                    print(
+                        f"[cache hit] {cache_key[:12]}… reused; "
+                        f"split={split_engine or 'none'} splitter_only={splitter_only}"
+                    )
+                    self._send_json({
+                        "ok": True, "jobId": job_id,
+                        "cacheHit": True, "splitterOnly": splitter_only,
+                    })
                     return
 
         print(f"[job {job_id}] upload={saved_name}")
@@ -860,37 +896,42 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
             count = _read_int(self.state.count_file, 0) + 1
             _write_int(self.state.count_file, count)
 
-            # Companion split output files (fa + chatgpt-polish only)
-            double_path = self._find_double_file(output_path)
-            if double_path:
-                double_path = self._strip_timestamp(double_path)
-                print(f"[job {job_id}] double file found -> {double_path.name}")
-
-            classic_path = self._find_classic_file(output_path)
-            if classic_path:
-                classic_path = self._strip_timestamp(classic_path)
-                print(f"[job {job_id}] classic file found -> {classic_path.name}")
+            # Apply the requested Split Method on top of the engine's
+            # raw translated output. For Persian Double Lines this runs
+            # the FA mechanical aligner in-process; for any other splitter
+            # (or none) the engine output is served unchanged.
+            served_path = self._apply_splitter(
+                output_path,
+                split_engine=split_engine,
+                target_language=target_language,
+            )
 
             self.state.update_job(
                 job_id,
                 status="done",
-                filename=output_path.name,
-                filename2=double_path.name if double_path else None,
-                filename3=classic_path.name if classic_path else None,
+                filename=served_path.name,
+                filename2=None,
+                filename3=None,
                 error=None,
             )
 
             # Cache outputs for 36 hours (API engines only — `cache_key` is
-            # only set for them in do_POST). Cache hits at the next upload
-            # of byte-identical input + same lang + engine + model.
+            # only set for them in do_POST). The cache stores the engine's
+            # *raw* translated docx (no splitter applied) so a re-upload
+            # with a different Split Method can reuse it.
             if cache_key:
-                cache_paths: list[tuple[str, Path]] = [("main", output_path)]
-                if double_path:  cache_paths.append(("double", double_path))
-                if classic_path: cache_paths.append(("classic", classic_path))
-                self.state.cache_store(cache_key, cache_paths)
+                self.state.cache_store(
+                    cache_key,
+                    main_path=output_path,
+                    source_file=source_file,
+                    engine=translation_engine,
+                    ai_model=ai_model,
+                    src_lang=source_language,
+                    dest_lang=target_language,
+                )
 
             _job_elapsed = time.time() - _job_t0
-            print(f"[job {job_id}] ✓ done in {_job_elapsed:.0f}s -> {output_path.name}")
+            print(f"[job {job_id}] ✓ done in {_job_elapsed:.0f}s -> {served_path.name}")
         except Exception as exc:
             _job_elapsed = time.time() - _job_t0
             self.state.update_job(job_id, status="error", filename=None, error=str(exc))
@@ -1045,6 +1086,80 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
             return clean_path
         path.unlink()  # duplicate — remove timestamped copy, clean already exists
         return clean_path
+
+    def _apply_splitter(
+        self,
+        base_path: Path,
+        *,
+        split_engine: str | None,
+        target_language: str,
+    ) -> Path:
+        """Apply the requested Split Method to a translated docx.
+
+        For ``persian_double_lines`` (FA target only): run the FA mechanical
+        aligner in-process — no API call, no extra subprocess — and emit
+        ``{stem}_Double_Lines.docx`` next to the input. For any other
+        splitter or target language, return ``base_path`` unchanged.
+
+        Falls back to the input path on any aligner error so the user
+        always receives at least the engine's translated docx.
+        """
+        if split_engine != "persian_double_lines":
+            return base_path
+        if not (target_language or "").lower().startswith("fa"):
+            return base_path
+        try:
+            stem = _re.sub(r"(?i)\.docx$", "", base_path.name)
+            out_path = base_path.with_name(f"{stem}_Double_Lines.docx")
+            if out_path.exists():
+                return out_path
+            src_dir = str(ROOT / "src")
+            if src_dir not in sys.path:
+                sys.path.insert(0, src_dir)
+            # Lazy import — keeps the launcher's start-up cheap and avoids
+            # loading python-docx until a Persian Double Lines job arrives.
+            from openai_tools.aligner_per import FASubtitleAligner
+            aligner = FASubtitleAligner(
+                model="gpt-5.4-mini",   # aligner is hardcoded mini (C1)
+                llm_threshold=0,        # purely mechanical; no LLM call
+                token_budget=0,
+            )
+            aligner.align(str(base_path), str(out_path))
+            return out_path
+        except Exception as exc:
+            print(f"[splitter] persian_double_lines failed: {exc}")
+            return base_path
+
+    def _materialise_cached_output(
+        self,
+        cached: dict,
+        *,
+        split_engine: str | None,
+        target_language: str,
+    ) -> Path | None:
+        """Copy the cached engine output back into uploads/, applying the
+        requested splitter (Phase 4: Persian Double Lines re-runs the FA
+        aligner against the cached translation in <2 s — no engine call).
+        """
+        main_src = cached.get("main_path")
+        if not main_src:
+            return None
+        main_src = Path(main_src)
+        if not main_src.exists():
+            return None
+        uploads_dir = self.state.uploads_dir
+        base_dst = uploads_dir / main_src.name
+        if not base_dst.exists():
+            try:
+                shutil.copy2(main_src, base_dst)
+            except Exception as exc:
+                print(f"[cache] copy-back failed: {exc}")
+                return None
+        return self._apply_splitter(
+            base_dst,
+            split_engine=split_engine,
+            target_language=target_language,
+        )
 
     def _fallback_output_path(self, source_file: Path, target_language: str) -> Path:
         suffix = _lang_suffix(target_language) or "OUT"

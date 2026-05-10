@@ -93,13 +93,13 @@ def test_cache_lookup_returns_none_when_missing(tmp_path):
 
 def test_cache_lookup_evicts_stale_entry(tmp_path, monkeypatch):
     state = _make_state(tmp_path)
-    src = _write_dummy(state.uploads_dir / "main.docx", b"main")
-    state.cache_store("k1", [("main", src)])
+    main = _write_dummy(state.uploads_dir / "main.docx", b"main")
+    state.cache_store("k1", main_path=main)
     assert "k1" in state.cache
 
     # Rewind the entry's timestamp past the TTL.
-    ts, paths = state.cache["k1"]
-    state.cache["k1"] = (ts - CACHE_TTL_SEC - 60, paths)
+    ts, data = state.cache["k1"]
+    state.cache["k1"] = (ts - CACHE_TTL_SEC - 60, data)
 
     assert state.cache_lookup("k1") is None
     assert "k1" not in state.cache  # purged on access
@@ -107,11 +107,11 @@ def test_cache_lookup_evicts_stale_entry(tmp_path, monkeypatch):
 
 def test_cache_lookup_evicts_when_paths_disappeared(tmp_path):
     state = _make_state(tmp_path)
-    src = _write_dummy(state.uploads_dir / "main.docx", b"main")
-    state.cache_store("k2", [("main", src)])
+    main = _write_dummy(state.uploads_dir / "main.docx", b"main")
+    state.cache_store("k2", main_path=main)
     assert "k2" in state.cache
 
-    # Simulate disk loss — delete the cached copy.
+    # Simulate disk loss — delete the cached main copy.
     cached_copy = state.cache_dir / "k2" / "main.docx"
     assert cached_copy.exists()
     cached_copy.unlink()
@@ -120,46 +120,82 @@ def test_cache_lookup_evicts_when_paths_disappeared(tmp_path):
     assert "k2" not in state.cache
 
 
+def test_cache_lookup_evicts_pre_phase4_tuple_shape(tmp_path):
+    """Old (timestamp, list-of-tuples) entries from a previous launcher
+    must not crash the new lookup; they get evicted on access."""
+    state = _make_state(tmp_path)
+    legacy_path = _write_dummy(state.uploads_dir / "legacy.docx", b"x")
+    # Inject a legacy-shape entry directly to simulate a stale cache from
+    # a prior launcher version.
+    state.cache["legacy-key"] = (time.time(), [("main", legacy_path)])
+
+    assert state.cache_lookup("legacy-key") is None
+    assert "legacy-key" not in state.cache
+
+
 def test_cache_store_copies_files_into_cache_dir(tmp_path):
     state = _make_state(tmp_path)
-    main = _write_dummy(state.uploads_dir / "alpha_PER_TranslatePolish.docx", b"main-bytes")
-    dbl  = _write_dummy(state.uploads_dir / "alpha_PER_Double.docx", b"double-bytes")
+    main   = _write_dummy(state.uploads_dir / "alpha_PER_TranslatePolish.docx", b"main-bytes")
+    source = _write_dummy(state.uploads_dir / "alpha.docx",                     b"source-bytes")
 
-    state.cache_store("k3", [("main", main), ("double", dbl)])
+    state.cache_store(
+        "k3",
+        main_path=main,
+        source_file=source,
+        engine="chatgpt-polish",
+        ai_model="gpt-5.4-mini",
+        src_lang="en",
+        dest_lang="fa",
+    )
 
     entry_dir = state.cache_dir / "k3"
     assert entry_dir.is_dir()
     assert (entry_dir / "alpha_PER_TranslatePolish.docx").read_bytes() == b"main-bytes"
-    assert (entry_dir / "alpha_PER_Double.docx").read_bytes() == b"double-bytes"
+    assert (entry_dir / "_source.docx").read_bytes() == b"source-bytes"
 
-    # The in-memory entry stores the cache_dir paths, not the upload paths.
-    _, stored = state.cache["k3"]
-    for kind, p in stored:
-        assert p.parent == entry_dir
-        assert kind in {"main", "double"}
+    _, data = state.cache["k3"]
+    assert data["main_path"] == entry_dir / "alpha_PER_TranslatePolish.docx"
+    assert data["source_path"] == entry_dir / "_source.docx"
+    assert data["engine"] == "chatgpt-polish"
+    assert data["dest_lang"] == "fa"
 
 
-def test_cache_store_skips_missing_source(tmp_path):
+def test_cache_store_skips_when_main_missing(tmp_path):
+    """If main_path does not exist on disk, cache_store is a no-op."""
     state = _make_state(tmp_path)
-    real    = _write_dummy(state.uploads_dir / "real.docx", b"r")
-    missing = state.uploads_dir / "ghost.docx"  # never created
-    state.cache_store("k4", [("main", real), ("double", missing)])
+    ghost = state.uploads_dir / "ghost.docx"  # never created
+    state.cache_store("k4", main_path=ghost)
+    assert "k4" not in state.cache
 
-    _, stored = state.cache["k4"]
-    kinds = [k for k, _ in stored]
-    assert kinds == ["main"]  # ghost silently skipped
+
+def test_cache_store_persists_translation_arrays(tmp_path):
+    """Phase 4: the cache value carries translation_array +
+    phrase_separator_table so a different splitter can be applied later."""
+    state = _make_state(tmp_path)
+    main = _write_dummy(state.uploads_dir / "main.docx", b"m")
+    state.cache_store(
+        "k-data",
+        main_path=main,
+        translation_array=["hello", "world"],
+        phrase_separator_table=["S1", "S2"],
+        engine="chatgpt",
+    )
+    data = state.cache_lookup("k-data")
+    assert data is not None
+    assert data["translation_array"] == ["hello", "world"]
+    assert data["phrase_separator_table"] == ["S1", "S2"]
 
 
 def test_cleanup_stale_cache_evicts_old_entries(tmp_path):
     state = _make_state(tmp_path)
     fresh = _write_dummy(state.uploads_dir / "fresh.docx", b"f")
     stale = _write_dummy(state.uploads_dir / "stale.docx", b"s")
-    state.cache_store("fresh-key", [("main", fresh)])
-    state.cache_store("stale-key", [("main", stale)])
+    state.cache_store("fresh-key", main_path=fresh)
+    state.cache_store("stale-key", main_path=stale)
 
     # Age out only stale-key.
-    ts, paths = state.cache["stale-key"]
-    state.cache["stale-key"] = (ts - CACHE_TTL_SEC - 1, paths)
+    ts, data = state.cache["stale-key"]
+    state.cache["stale-key"] = (ts - CACHE_TTL_SEC - 1, data)
 
     evicted = state.cleanup_stale_cache()
     assert evicted == 1

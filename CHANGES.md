@@ -59,6 +59,24 @@ after 1800 ms to avoid the Chrome multi-download permission prompt.
 
 ### 2026-05-10 — Persian Double Lines as a splitter (agent run, branch `next/persian-double-lines-as-splitter`)
 
+**Phase 4 — cache stores the engine output (not the splitter result).**
+`LocalState.cache` switched from `(timestamp, [(kind, path), ...])` to
+`(timestamp, dict)` carrying `main_path`, `source_path`,
+`translation_array`, `phrase_separator_table`, and the
+engine/model/language tuple. The cache key is unchanged, so a re-upload
+with a different Split Method now reuses the cached translation and
+applies the splitter on top — Persian Double Lines, in particular,
+re-runs the FA mechanical aligner in-process (no API call) for a
+sub-2 s response. Pre-phase-4 (legacy) cache entries are detected by
+their list shape and evicted on access. Two new launcher methods carry
+the splitter logic: `_apply_splitter` (post-translate path) and
+`_materialise_cached_output` (cache-hit path); both fall back to the
+unsplit engine output on any aligner error. `_find_double_file` and
+`_find_classic_file` callsites are dropped in `_process_job`; the
+helpers themselves remain for now and get removed in phase 7.
+Tests: 53 passing (5 cache tests adapted to the new keyword-only
+signature, 2 new tests cover the dict shape and pre-phase-4 eviction).
+
 **Phase 3 — conditional UI for Persian Double Lines.**
 The `persian_double_lines` `<option>` is now visible only when the
 target language is `fa`; switching to any other target hides it and
