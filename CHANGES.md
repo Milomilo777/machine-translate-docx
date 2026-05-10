@@ -57,6 +57,77 @@ after 1800 ms to avoid the Chrome multi-download permission prompt.
 
 ## Sessions
 
+### 2026-05-10 — thread docx globals to ctx (branch `next/thread-docx-globals-to-ctx`)
+
+Prerequisite phase for the upcoming `read_and_parse_docx_document` and
+`get_cell_data` extractions. Both functions read the same module-level
+globals (`docxdoc`, `use_html`, `silent`, `E_mail_str`,
+`PROGRAM_VERSION`); without threading them through `ctx` first the
+extracted modules would need a global-passthrough shim ~5x heavier than
+the cells.py / save.py shims.
+
+  - **G1 — `docxdoc` + `use_html` on `DocxCtx`.** Two new fields added
+    to `runtime.py:DocxCtx`. Entry script line 1050 now mirrors
+    `docxdoc` and `use_html` onto `_get_ctx().docx.*` immediately after
+    the `docx.Document(...)` call, and `_get_ctx()` itself snapshots
+    them on first call so threaded callees that arrive before line 1050
+    still see the right state. `_sync_globals_from_ctx` already mirrors
+    every public `ctx.docx.*` attribute back to module scope, so legacy
+    bare-name reads keep working.
+  - **G2 — `get_cell_data` extracted to `docx_io/cells.py`.** The
+    per-cell reader (~120 lines in the entry script, plus the two
+    shading-detection helpers `get_paragraph_shading_color` /
+    `get_run_shading_color`) now lives in `src/docx_io/cells.py`. The
+    function reads the colour-ignore list from
+    `ctx.config.shading_color_ignore_text` (new field on `ConfigCtx`,
+    populated in the entry script via `_get_ctx()`'s lazy snapshot).
+    The two shading helpers are private (`_paragraph_shading_color`,
+    `_run_shading_color`) and share a `_shading_fill_color` core that
+    drops the dead `attrib_val` / `attrib_color` reads from the
+    original. The fall-through `for run in paragraph_runs:` body is
+    untouched — same flag semantics, same skip rules, same return
+    shape. Added `tests/test_docx_io_cells.py` with seven unit tests:
+    four for the shading helpers (raw XML strings) and three for
+    `get_cell_data` against an in-memory python-docx document
+    (plain text / `<pause>` + `<enter>` markers / whitespace
+    collapse). All 70 unit tests pass after the move.
+  - **G3 — `read_and_parse_docx_document` extracted to
+    `docx_io/parse.py`.** The ~330-line parser now lives next to the
+    other docx-IO helpers. The function reads `docxdoc` and `use_html`
+    from `ctx.docx`, `silent` / `splitonly` /
+    `word_file_to_translate` from `ctx.flags`, and lazy-imports the
+    four `is_*_line` predicates plus `prepare_and_clear_cell_for_writing`
+    and `split_phrases` from the entry script (avoids an import cycle
+    — those helpers still own state that is not yet on ctx).
+    `E_MAIL_STR` and `PROGRAM_VERSION` are module constants in the new
+    file, used only by the error-exit branches; if the entry-script
+    values drift, this banner drifts too — accepted duplication, not
+    a behaviour bug. **Bug fix in the same pass:** the original
+    "document does not have a table" branch referenced an undefined
+    name `docxfile`; replaced with `ctx.flags.word_file_to_translate`.
+    The entry script keeps a re-export shim (`from docx_io.parse
+    import read_and_parse_docx_document`) so `main()` is unchanged.
+  - **G3 ordering follow-up — explicit ctx mirrors at the source.**
+    Threading G1's `_get_ctx().docx.docxdoc = ...` mirror onto line
+    1091 made that the *first* `_get_ctx()` call site, which forced
+    the lazy snapshot to fire before `chrome_options` (line 1243) had
+    been built — leaving `ctx.browser.chrome_options` empty so
+    `create_webdriver(ctx)` raised `'NoneType' object has no
+    attribute Chrome'`. Fix: removed the eager `_get_ctx()` call at
+    line ~570 (G2 mirror — it fired even earlier, before
+    `translation_engine` was parsed) so the snapshot now lands
+    after both globals exist; added an explicit
+    `_get_ctx().browser.webdriver_module = webdriver` mirror right
+    after the conditional `import webdriver` (since the snapshot
+    might still pre-date this branch in some call paths) and an
+    explicit `_get_ctx().browser.chrome_options = chrome_options`
+    mirror right after `chrome_options = Options()` for the same
+    reason. Smoke test back to ~27 s / 0 of 42 source-column
+    mismatches.
+
+Master tip going in: `0f07c14`. Tests: 70 / 70 pass. Smoke:
+DeepL en→fr in 27 s, 0 / 42 mismatches.
+
 ### 2026-05-10 — session-close: branch cleanup + next-session handoff
 
 End-of-session bookkeeping after the docx_io extraction was merged.

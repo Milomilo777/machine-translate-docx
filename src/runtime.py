@@ -183,6 +183,13 @@ class DocxCtx:
     numcols:                     int = 0
     word_translation_table_length: int = 0
 
+    # ── document handle + output mode ───────────────────────────────────────
+    # Threaded in G1 (2026-05-10) so read_and_parse_docx_document and
+    # get_cell_data can be extracted into src/docx_io/ without re-reading
+    # module globals.
+    docxdoc:                     Any  = None      # python-docx Document
+    use_html:                    bool = False     # CGI-style HTML output flag
+
     docxfile_table_number_of_phrases:    int = 0
     docxfile_table_number_of_characters: int = 0
     docxfile_table_number_of_words:      int = 0
@@ -256,6 +263,10 @@ class ConfigCtx:
 
     json_configuration_array:    list = field(default_factory=list)
     max_translation_block_size:  int  = 1500
+    # 2026-05-10 G2 — colour list looked up by `get_cell_data` to decide
+    # whether a shaded paragraph / run should be ignored. Populated from
+    # the merged JSON configuration in the entry script after parsing.
+    shading_color_ignore_text:   list[str] = field(default_factory=list)
 
 
 # ── top-level container ───────────────────────────────────────────────────────
