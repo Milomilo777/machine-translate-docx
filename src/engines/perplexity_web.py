@@ -1,12 +1,29 @@
 """Perplexity-web Selenium engine — restored in phase 8.
 
-Per-phrase web scraping over perplexity.ai using a guest session (no
-login). A 900 ms sleep is inserted before each phrase so the host site
-does not rate-limit the launcher subprocess. The legacy global-based
-body is preserved verbatim; a thin :func:`translate` adapter binds the
+Block-mode web scraping over perplexity.ai using a guest session (no
+login). The anti-bot dance starts at google.com → searches for
+"perplexity ai" → clicks the link, then falls back to a direct
+``.get()`` if the link is missing. The legacy global-based body is
+preserved verbatim; a thin :func:`translate` adapter binds the
 required names from :class:`RuntimeContext` and returns ``(False, "")``
 on any failure so the launcher pipe stays drained even when the
 upstream UI breaks.
+
+Timing
+------
+The 0.9 s pre-sleep introduced in phase 8 was a defensive guard added
+before we ran a real-traffic test; the legacy code has no such sleep
+because the google → search → click dance + page-load times alone are
+enough throttle. The sleep is now ``0.0`` (legacy parity) —
+:data:`engines._timing.PERPLEXITY_WEB_PRE_SLEEP`.
+
+Signature note
+--------------
+The legacy body is ``selenium_chrome_perplexity_translate(to_translate,
+retry_count, max_try_count)`` — three positional args. The phase 8
+adapter accidentally passed only two; the bug was masked because the
+function rarely runs and ``max_try_count`` is only read in a debug
+``print``. Fixed in the 2026-05-10 alignment pass.
 """
 from __future__ import annotations
 
@@ -29,10 +46,12 @@ from selenium.common.exceptions import (
 from bs4 import BeautifulSoup
 
 from runtime import RuntimeContext
+from engines._timing import PERPLEXITY_WEB_PRE_SLEEP
 
 
 INACTIVE = False
-WEB_SLEEP_BETWEEN_PHRASES_SEC = 0.9   # 700-1200 ms range; midpoint chosen
+# Legacy parity: zero pre-sleep. See ``engines._timing`` for the reasoning.
+WEB_SLEEP_BETWEEN_PHRASES_SEC = PERPLEXITY_WEB_PRE_SLEEP
 
 __all__ = [
     "INACTIVE",
@@ -44,15 +63,21 @@ __all__ = [
 
 
 def translate(ctx: RuntimeContext, text: str) -> tuple[bool, str]:
-    """Per-phrase translation entry point used by the active dispatcher.
+    """Block-mode translation entry point used by the active dispatcher.
 
-    Sleeps :data:`WEB_SLEEP_BETWEEN_PHRASES_SEC` first, seeds the module
-    globals the legacy body still reads, and delegates to
-    :func:`selenium_chrome_perplexity_translate`. Any exception
-    collapses to ``(False, "")`` so the block-loop continues with an
-    empty translation rather than hanging.
+    Honours :data:`WEB_SLEEP_BETWEEN_PHRASES_SEC` (0.0 by default —
+    legacy parity), seeds the module globals the legacy body still
+    reads, and delegates to :func:`selenium_chrome_perplexity_translate`.
+    Any exception collapses to ``(False, "")`` so the block-loop
+    continues with an empty translation rather than hanging.
+
+    The legacy signature takes ``(to_translate, retry_count,
+    max_try_count)`` — three args. Phase 8 passed only two, which
+    masked a ``TypeError`` because the function rarely ran and
+    ``max_try_count`` is only used in a debug ``print``. Fixed.
     """
-    time.sleep(WEB_SLEEP_BETWEEN_PHRASES_SEC)
+    if WEB_SLEEP_BETWEEN_PHRASES_SEC > 0:
+        time.sleep(WEB_SLEEP_BETWEEN_PHRASES_SEC)
     try:
         g = globals()
         g["driver"]         = ctx.browser.driver
@@ -69,7 +94,10 @@ def translate(ctx: RuntimeContext, text: str) -> tuple[bool, str]:
         g.setdefault("bloc_number",                          1)
         g.setdefault("chrome_options",                       None)
         g.setdefault("service",                              None)
-        return selenium_chrome_perplexity_translate(text, 2)
+        # Three positional args — the third is ``max_try_count``,
+        # used only in a debug ``print`` inside the legacy body. We
+        # pass ``3`` (matches the runner's max_try_count default).
+        return selenium_chrome_perplexity_translate(text, 2, 3)
     except Exception as exc:
         print(f"[perplexity_web] translate failed: {exc}")
         return False, ""

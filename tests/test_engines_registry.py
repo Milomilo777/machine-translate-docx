@@ -55,9 +55,16 @@ def test_web_engines_marked_active():
     from engines import chatgpt_web, perplexity_web
     assert chatgpt_web.INACTIVE    is False
     assert perplexity_web.INACTIVE is False
-    # Sleep is in the documented 700-1200 ms range.
-    for mod in (chatgpt_web, perplexity_web):
-        assert 0.7 <= mod.WEB_SLEEP_BETWEEN_PHRASES_SEC <= 1.2
+    # Pre-sleep aligned with legacy parity in the 2026-05-10 timing pass.
+    # The legacy translation-robot/main has no inter-call sleep on either
+    # web engine — page reload acts as the de-facto throttle. The phase 8
+    # 0.9 s defensive guard was unjustified additive cost; now 0.0.
+    # Source of truth: ``engines._timing`` constants.
+    from engines._timing import CHATGPT_WEB_PRE_SLEEP, PERPLEXITY_WEB_PRE_SLEEP
+    assert chatgpt_web.WEB_SLEEP_BETWEEN_PHRASES_SEC    == CHATGPT_WEB_PRE_SLEEP
+    assert perplexity_web.WEB_SLEEP_BETWEEN_PHRASES_SEC == PERPLEXITY_WEB_PRE_SLEEP
+    assert CHATGPT_WEB_PRE_SLEEP    == 0.0
+    assert PERPLEXITY_WEB_PRE_SLEEP == 0.0
 
 
 def test_google_translate_signature():

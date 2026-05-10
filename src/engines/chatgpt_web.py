@@ -1,12 +1,18 @@
 """ChatGPT-web Selenium engine — restored in phase 8.
 
-Per-phrase web scraping over chatgpt.com using a guest session (no
-login). A 900 ms sleep is inserted before each phrase so the host site
-does not rate-limit the launcher subprocess. The legacy global-based
-body is preserved verbatim; a thin :func:`translate` adapter binds the
-required names from :class:`RuntimeContext` and returns ``(False, "")``
-on any failure so the launcher pipe stays drained even when the
-upstream UI breaks.
+Block-mode web scraping over chatgpt.com using a guest session (no
+login). The legacy global-based body is preserved verbatim; a thin
+:func:`translate` adapter binds the required names from
+:class:`RuntimeContext` and returns ``(False, "")`` on any failure so
+the launcher pipe stays drained even when the upstream UI breaks.
+
+Timing
+------
+The 0.9 s pre-sleep introduced in phase 8 was a defensive guard added
+before we ran a real-traffic test; the legacy code has no such sleep
+because each call's ``delete_all_cookies()`` + ``driver.get()`` is
+the de-facto throttle. The sleep is now ``0.0`` (legacy parity) —
+:data:`engines._timing.CHATGPT_WEB_PRE_SLEEP`.
 """
 from __future__ import annotations
 
@@ -27,10 +33,14 @@ from selenium.common.exceptions import (
 from bs4 import BeautifulSoup
 
 from runtime import RuntimeContext
+from engines._timing import CHATGPT_WEB_PRE_SLEEP
 
 
 INACTIVE = False
-WEB_SLEEP_BETWEEN_PHRASES_SEC = 0.9   # 700-1200 ms range; midpoint chosen
+# Legacy parity: zero pre-sleep. See ``engines._timing`` for the reasoning
+# trail. Kept as a module-level alias so external code that imported it
+# during phase 8 keeps working — but the value is now 0.0.
+WEB_SLEEP_BETWEEN_PHRASES_SEC = CHATGPT_WEB_PRE_SLEEP
 
 __all__ = [
     "INACTIVE",
@@ -42,15 +52,17 @@ __all__ = [
 
 
 def translate(ctx: RuntimeContext, text: str) -> tuple[bool, str]:
-    """Per-phrase translation entry point used by the active dispatcher.
+    """Block-mode translation entry point used by the active dispatcher.
 
-    Sleeps :data:`WEB_SLEEP_BETWEEN_PHRASES_SEC` first, seeds the module
-    globals the legacy body still reads, and delegates to
-    :func:`selenium_chrome_chatgpt_translate`. Any exception (broken
-    selector, captcha, network) collapses to ``(False, "")`` so the
-    block-loop continues with an empty translation rather than hanging.
+    Honours :data:`WEB_SLEEP_BETWEEN_PHRASES_SEC` (0.0 by default —
+    legacy parity), seeds the module globals the legacy body still
+    reads, and delegates to :func:`selenium_chrome_chatgpt_translate`.
+    Any exception (broken selector, captcha, network) collapses to
+    ``(False, "")`` so the block-loop continues with an empty
+    translation rather than hanging.
     """
-    time.sleep(WEB_SLEEP_BETWEEN_PHRASES_SEC)
+    if WEB_SLEEP_BETWEEN_PHRASES_SEC > 0:
+        time.sleep(WEB_SLEEP_BETWEEN_PHRASES_SEC)
     try:
         g = globals()
         g["driver"]         = ctx.browser.driver

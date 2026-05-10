@@ -57,6 +57,46 @@ after 1800 ms to avoid the Chrome multi-download permission prompt.
 
 ## Sessions
 
+### 2026-05-10 — engine timing alignment + reference module (branch `next/persian-double-lines-as-splitter`)
+
+User flagged the engines as "feeling slower than the legacy
+translation-robot/main repo" and asked for a one-time timing audit so
+we don't have to re-clone the legacy on every regression. Outcome: a
+new `src/engines/_timing.py` module that documents every wait /
+sleep / poll-interval used by all four Selenium engines, with
+``LEGACY``/``OURS`` citations and reasoning for each divergence. The
+module IS the source of truth — `chatgpt_web.py` and `perplexity_web.py`
+import the constants and the registry test asserts equality.
+
+**Findings.** Legacy has **no inter-request sleep on any engine**. The
+de-facto throttle is page-load time (Google, DeepL) or `delete_all_cookies()`
++ `.get()` reload (chatgpt-web, perplexity-web). Phase 8 added a 0.9 s
+defensive pre-sleep to both web engines as a guard against rate-limiting,
+without verification — pure additive cost. Aligned to legacy parity:
+
+  - `CHATGPT_WEB_PRE_SLEEP    = 0.0`  (was 0.9)
+  - `PERPLEXITY_WEB_PRE_SLEEP = 0.0`  (was 0.9)
+
+`WEB_SLEEP_BETWEEN_PHRASES_SEC` on each module now aliases the timing
+constant; external imports still resolve to the value. The pre-sleep
+is only triggered when `> 0`, so a future bump is one-line.
+
+**Bonus bug.** The phase 8 perplexity-web wrapper called the legacy
+body with **two positional args** (`text, 2`); the legacy signature is
+`(to_translate, retry_count, max_try_count)` — three. Masked because
+`max_try_count` is only used in a debug `print`. Fixed: pass `(text, 2, 3)`.
+
+**DeepL + Google verified unchanged.** Real-file re-run on
+`tests/fixtures/sample_hyperlink.docx`:
+
+| engine + method            | wall time | source mismatches | hyperlink |
+|----------------------------|-----------|-------------------|-----------|
+| deepl phrasesblock en→fr   | 29 s      | 0 / 42            | yes       |
+| google phrasesblock en→fr  | 11 s      | 0 / 42            | yes       |
+
+64 / 64 unit tests pass (the registry test was updated to assert
+legacy parity instead of "0.7 ≤ sleep ≤ 1.2").
+
 ### 2026-05-10 — Google engine repaired + 4 fixes (branch `next/persian-double-lines-as-splitter`)
 
 After DeepL was unblocked, the Google engine was the next stop on the
