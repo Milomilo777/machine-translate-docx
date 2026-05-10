@@ -33,6 +33,16 @@ try:
 except (AttributeError, OSError):
     pass
 
+# W-2 (2026-05-11): also export PYTHONUTF8 / PYTHONIOENCODING into the
+# parent process environment so anything we shell out to that does NOT
+# go through `subprocess.Popen(env=...)` (e.g. an aligner helper that
+# spawns its own subprocess, a developer running scripts from the
+# launcher's REPL) inherits a UTF-8 IO mode by default. Subprocess.Popen
+# calls below override the env explicitly anyway — this is a
+# belt-and-suspenders default.
+os.environ.setdefault("PYTHONUTF8", "1")
+os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+
 ROOT = Path(__file__).resolve().parent
 INDEX_FILE = ROOT / "index.ejs"
 WEB_V2_DIR = ROOT / "web" / "v2"
@@ -1348,15 +1358,44 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
                 print(f"[B-002] alert webhook skipped: {exc}")
 
     def _strip_timestamp(self, path: Path) -> Path:
-        """Rename file to remove leading timestamp prefix (e.g. 1778036666789-)."""
+        """Rename file to remove leading timestamp prefix (e.g. 1778036666789-).
+
+        W-8 (2026-05-11): if a `_log.json` sidecar exists next to the
+        docx, rename it the same way and rewrite its
+        ``run_info.output_file`` field to the post-rename name. Without
+        this, the sidecar survives under the old timestamped name and
+        its ``output_file`` points at a docx that no longer exists.
+        """
         clean = _re.sub(r'^\d{10,}-', '', path.name)
         if clean == path.name:
             return path
         clean_path = path.with_name(clean)
         if not clean_path.exists():
             path.rename(clean_path)
-            return clean_path
-        path.unlink()  # duplicate — remove timestamped copy, clean already exists
+        else:
+            path.unlink()  # duplicate — remove timestamped copy
+
+        # Mirror the rename onto the JSON sidecar if one exists.
+        sidecar_old = path.with_name(_re.sub(r"(?i)\.docx$", "_log.json", path.name))
+        sidecar_new = clean_path.with_name(_re.sub(r"(?i)\.docx$", "_log.json", clean_path.name))
+        if sidecar_old.exists() and sidecar_old != sidecar_new:
+            try:
+                if sidecar_new.exists():
+                    sidecar_new.unlink()
+                sidecar_old.rename(sidecar_new)
+                # Rewrite output_file inside the sidecar to match.
+                try:
+                    data = json.loads(sidecar_new.read_text(encoding="utf-8"))
+                    if isinstance(data.get("run_info"), dict):
+                        data["run_info"]["output_file"] = clean_path.name
+                        sidecar_new.write_text(
+                            json.dumps(data, ensure_ascii=False, indent=2),
+                            encoding="utf-8",
+                        )
+                except Exception as _e:
+                    print(f"[W-8] sidecar payload rewrite skipped: {_e}")
+            except Exception as _e:
+                print(f"[W-8] sidecar rename skipped: {_e}")
         return clean_path
 
     def _apply_splitter(
