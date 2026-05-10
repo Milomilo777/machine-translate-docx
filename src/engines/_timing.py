@@ -160,34 +160,64 @@ legacy code has no pre-sleep — each call's ``delete_all_cookies()`` +
 on guest sessions the host's page-load time alone is enough to keep
 us under any rate-limit threshold."""
 
-CHATGPT_WEB_ACCEPT_BUTTON_WAIT: Final[float] = 0.2
-"""LEGACY: ``WebDriverWait(0.2)`` for the Accept-all button after page
-load."""
+CHATGPT_WEB_ACCEPT_BUTTON_WAIT: Final[float] = 0.6
+"""OURS: ``WebDriverWait(0.6)`` for the Accept-all button after page
+load (legacy was 0.2; user-tripled 2026-05-10 in the "give the
+server time" pass)."""
 
-CHATGPT_WEB_LOGGED_OUT_LINK_WAIT: Final[float] = 2.5
-"""OURS: ``WebDriverWait(2.5)`` (legacy was 1.2). chatgpt.com guest
-sessions in 2026 take longer to render the modal than they did during
-phase 8; 1.2 s often missed it and the modal blocked the textarea
-click that follows. Called twice in sequence — the second is the
-re-attempt after the first close shifts the layout."""
+CHATGPT_WEB_LOGGED_OUT_LINK_WAIT: Final[float] = 7.5
+"""OURS: ``WebDriverWait(7.5)`` (legacy was 1.2; intermediate 2.5
+on 2026-05-10 still raced; tripled per user direction). chatgpt.com
+guest sessions in 2026 take significantly longer to render the
+modal than during phase 8; the modal blocks the textarea click that
+follows, so missing it makes the whole call fail. Called twice in
+sequence — the second is the re-attempt after the first close
+shifts the layout."""
 
-CHATGPT_WEB_STAY_LOGGED_OUT_WAIT: Final[float] = 0.5
-"""OURS: ``WebDriverWait(0.5)`` (legacy was 0.3). Same reasoning as
+CHATGPT_WEB_STAY_LOGGED_OUT_WAIT: Final[float] = 1.5
+"""OURS: ``WebDriverWait(1.5)`` (legacy 0.3; intermediate 0.5 still
+raced; tripled). Same reasoning as
 ``CHATGPT_WEB_LOGGED_OUT_LINK_WAIT``."""
 
-CHATGPT_WEB_AFTER_INJECT_SLEEP: Final[float] = 2.0
-"""OURS: ``sleep(2)`` after the JS textarea injection, before clicking
-submit (legacy was 1.0). The composer needs a tick to register the
-injected text before submit becomes clickable; 1 s sometimes raced."""
+CHATGPT_WEB_AFTER_INJECT_SLEEP: Final[float] = 6.0
+"""OURS: ``sleep(6)`` after the JS textarea injection, before
+clicking submit (legacy was 1.0; tripled per user direction
+2026-05-10). The composer needs a tick to register the injected
+text before submit becomes clickable; on slower guest sessions a
+2 s wait still raced. The user-visible symptom was "ChatGPT
+doesn't get time to translate, page reopens"."""
 
-CHATGPT_WEB_STREAMING_POLL: Final[float] = 0.25
-"""LEGACY: ``time.sleep(0.25)`` per iteration of the Stop-streaming
-poll loop."""
+CHATGPT_WEB_AFTER_SUBMIT_SLEEP: Final[float] = 5.0
+"""NEW (2026-05-10): ``sleep(5)`` AFTER the submit click and
+BEFORE we start polling for the Stop-streaming button. The legacy
+body went straight from ``safe_click(submit)`` into
+``WebDriverWait(1).until(stop_streaming)`` — if ChatGPT takes more
+than 1 s to begin streaming (which is normal in 2026), the
+WebDriverWait raised TimeoutException, the loop ``break``-ed, and
+the body tried to read a response that wasn't there yet. Five
+seconds is a generous floor before polling starts."""
 
-CHATGPT_WEB_MAX_STREAMING_WAIT: Final[float] = 60.0
-"""OURS: ``max_wait_time = 60`` (legacy was 40). Longer subtitle
-blocks need more streaming time; the loop exits early as soon as the
-Stop button disappears, so a higher cap doesn't slow the happy path."""
+CHATGPT_WEB_STOP_BUTTON_FIND_WAIT: Final[float] = 3.0
+"""NEW (2026-05-10): per-iteration ``WebDriverWait`` timeout used
+inside the Stop-streaming poll loop (legacy hardcoded ``timeout =
+1`` inside the function body). Three seconds gives the server
+time to render the streaming UI without hanging too long if the
+button is genuinely gone (i.e. streaming finished). The polling
+naturally exits as soon as the button disappears, so a longer
+floor doesn't slow the happy path."""
+
+CHATGPT_WEB_STREAMING_POLL: Final[float] = 0.75
+"""OURS: ``time.sleep(0.75)`` per iteration of the Stop-streaming
+poll loop (legacy 0.25; tripled). The fast cadence wasn't useful —
+ChatGPT streams for seconds at minimum, so 0.75 s halves the CPU
+spin without delaying the exit."""
+
+CHATGPT_WEB_MAX_STREAMING_WAIT: Final[float] = 180.0
+"""OURS: ``max_wait_time = 180`` (legacy 40; intermediate 60;
+tripled per user direction). Longer subtitle blocks plus slower
+guest-session streaming need more headroom; the loop still exits
+early as soon as the Stop button disappears, so a higher cap
+doesn't slow the happy path."""
 
 
 # ── Perplexity-web (perplexity.ai via google.com search) ────────────────────
@@ -280,6 +310,8 @@ __all__ = [
     "CHATGPT_WEB_LOGGED_OUT_LINK_WAIT",
     "CHATGPT_WEB_STAY_LOGGED_OUT_WAIT",
     "CHATGPT_WEB_AFTER_INJECT_SLEEP",
+    "CHATGPT_WEB_AFTER_SUBMIT_SLEEP",
+    "CHATGPT_WEB_STOP_BUTTON_FIND_WAIT",
     "CHATGPT_WEB_STREAMING_POLL",
     "CHATGPT_WEB_MAX_STREAMING_WAIT",
     "PERPLEXITY_WEB_PRE_SLEEP",

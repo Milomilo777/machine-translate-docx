@@ -38,9 +38,12 @@ from config import get_nested_value_from_json_array
 from engines._prompts import build_translation_prompt
 from engines._timing import (
     CHATGPT_WEB_PRE_SLEEP,
+    CHATGPT_WEB_ACCEPT_BUTTON_WAIT,
     CHATGPT_WEB_LOGGED_OUT_LINK_WAIT,
     CHATGPT_WEB_STAY_LOGGED_OUT_WAIT,
     CHATGPT_WEB_AFTER_INJECT_SLEEP,
+    CHATGPT_WEB_AFTER_SUBMIT_SLEEP,
+    CHATGPT_WEB_STOP_BUTTON_FIND_WAIT,
     CHATGPT_WEB_STREAMING_POLL,
     CHATGPT_WEB_MAX_STREAMING_WAIT,
 )
@@ -156,8 +159,7 @@ def selenium_chrome_chatgpt_translate(to_translate, retry_count):
             translation_page_openeing_loop_count = translation_page_openeing_loop_count - 1
         
         try:
-            # Wait up to 1 second for the button to appear
-            button = WebDriverWait(driver, 0.2).until(
+            button = WebDriverWait(driver, CHATGPT_WEB_ACCEPT_BUTTON_WAIT).until(
                 EC.element_to_be_clickable((By.XPATH, "//button[contains(., 'Accept all')]"))
             )
             safe_click(driver, button)
@@ -272,11 +274,23 @@ def selenium_chrome_chatgpt_translate(to_translate, retry_count):
         # Click the button
         safe_click(driver, button_submit_prompt)
 
+        # Critical: give ChatGPT a few seconds to actually start
+        # streaming BEFORE we begin polling for the Stop button.
+        # The legacy body went from ``safe_click(submit)`` straight
+        # into ``WebDriverWait(1).until(stop_streaming)`` — if the
+        # server took >1 s to begin streaming (the norm in 2026),
+        # the WebDriverWait raised TimeoutException, the poll loop
+        # ``break``-ed, and the body tried to read a response that
+        # wasn't on the page yet. User-reported on 2026-05-10 as
+        # "doesn't give the server time to translate".
+        time.sleep(CHATGPT_WEB_AFTER_SUBMIT_SLEEP)
 
-        # Set a timeout value for waiting for the element
-        timeout = 1  # Timeout after 10 seconds if not found
+        # Per-iteration timeout for the Stop-streaming WebDriverWait.
+        # Was hardcoded ``timeout = 1`` in legacy — bumped via the
+        # new ``CHATGPT_WEB_STOP_BUTTON_FIND_WAIT`` constant.
+        timeout = CHATGPT_WEB_STOP_BUTTON_FIND_WAIT
         found_stop_streaming_button = False
-        
+
         max_wait_time = CHATGPT_WEB_MAX_STREAMING_WAIT  # seconds
         start_time = time.time()
         found_stop_streaming_button = False

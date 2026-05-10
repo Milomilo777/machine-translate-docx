@@ -57,6 +57,46 @@ after 1800 ms to avoid the Chrome multi-download permission prompt.
 
 ## Sessions
 
+### 2026-05-10 — chatgpt-web 3× timeout pass + missing post-submit wait (branch `next/persian-double-lines-as-splitter`)
+
+User confirmed the previous timing bump was still too aggressive on
+chatgpt-web — the page loaded, the prompt pasted, then the body
+declared the call dead before ChatGPT had even started streaming.
+Two fixes per user direction "تقریباً ۳ برابر کن":
+
+**P1. The real bug — no wait between submit and the polling loop.**
+The legacy body went straight from `safe_click(button_submit_prompt)`
+into `WebDriverWait(driver, timeout=1).until(stop_streaming_button)`.
+On a 2026 guest session, ChatGPT typically takes 2–5 s after submit
+before the Stop-streaming UI renders. The 1 s WebDriverWait raised
+TimeoutException, the `while` loop `break`-ed, the body fell through
+to BeautifulSoup parsing, and `articles[1]` either IndexError-ed
+(if user turn was the only article) or returned the user's own
+prompt as "translation".
+
+  - **New** `CHATGPT_WEB_AFTER_SUBMIT_SLEEP = 5.0 s` — explicit pause
+    between the submit click and the start of the polling loop.
+  - **New** `CHATGPT_WEB_STOP_BUTTON_FIND_WAIT = 3.0 s` — replaces
+    the hardcoded `timeout = 1` per WebDriverWait iteration.
+
+Together: ChatGPT now has at least 5 s to begin streaming before
+we look, and each look gives 3 s of grace before assuming "done".
+
+**P2. Triple all existing chatgpt-web timings.**
+
+  - `CHATGPT_WEB_ACCEPT_BUTTON_WAIT     0.2  → 0.6`
+  - `CHATGPT_WEB_LOGGED_OUT_LINK_WAIT   2.5  → 7.5`
+  - `CHATGPT_WEB_STAY_LOGGED_OUT_WAIT   0.5  → 1.5`
+  - `CHATGPT_WEB_AFTER_INJECT_SLEEP     2.0  → 6.0`
+  - `CHATGPT_WEB_STREAMING_POLL         0.25 → 0.75`
+  - `CHATGPT_WEB_MAX_STREAMING_WAIT     60   → 180`
+
+Every literal in the function body now resolves to one of these
+constants — `_timing.py` is the single source of truth.
+
+64 / 64 unit tests still pass. The body NameError / IndexError
+diagnostics from the previous pass are unchanged; only timings moved.
+
 ### 2026-05-10 — web-engine timing bumps + Google fallback gated (branch `next/persian-double-lines-as-splitter`)
 
 User-observed runtime issues, two of them:
