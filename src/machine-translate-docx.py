@@ -3349,9 +3349,17 @@ def translate_docx(ctx: RuntimeContext):
     if translation_engine == "chatgpt":
         # ChatGPT always uses phrase-block logic
         use_phrasesblock = True
-    elif translation_engine in ("deepl", "perplexity"):
-        # Deepl & Perplexity only for these methods
-        use_phrasesblock = engine_method in ("phrasesblock", "webservice")
+    elif translation_engine == "deepl":
+        # Deepl: phrase-block only for the "phrasesblock" method
+        use_phrasesblock = engine_method == "phrasesblock"
+    elif translation_engine == "perplexity":
+        # Perplexity: phrase-block for HTTP webservice, classic
+        # phrasesblock, AND the live web-LLM (perplexity-web). The
+        # web variant was previously line-by-line because "web" was
+        # missing from this list — user-reported on 2026-05-10:
+        # "perplexity sends line-by-line but chatgpt-web sends
+        # block-by-block; align them."
+        use_phrasesblock = engine_method in ("phrasesblock", "webservice", "web")
     elif translation_engine == "google":
         # Google: phrasesblock joins many phrases into one URL, then
         # splits on `\n`. Much faster than singlephrase (one round-trip

@@ -57,6 +57,46 @@ after 1800 ms to avoid the Chrome multi-download permission prompt.
 
 ## Sessions
 
+### 2026-05-10 — perplexity-web block-mode + chatgpt-web inter-block revert (branch `next/persian-double-lines-as-splitter`)
+
+User-observed runtime asymmetry: chatgpt-web was sending block-by-block
+(many phrases per call) but perplexity-web was sending line-by-line
+(one phrase per call) — much slower and against design intent. Plus
+the previous 3× timeout pass over-bumped the *between-blocks* setup
+waits in chatgpt-web; only the post-submit translation waits were
+supposed to grow.
+
+**A1. perplexity-web routing fix.** `translate_docx` in the entry
+script gated `use_phrasesblock` on `engine_method in ("phrasesblock",
+"webservice")` for perplexity — `"web"` was missing, so the
+phrase-block runner was skipped and the dispatcher fell back to a
+per-phrase loop. Added `"web"` to the list. Now perplexity-web
+behaves exactly like chatgpt-web: one engine call per ~1500-char
+block, regardless of how many lines that contains.
+
+**A2. Reverted *between-blocks* chatgpt-web timings to pre-3× values.**
+
+  - `CHATGPT_WEB_ACCEPT_BUTTON_WAIT     0.6 → 0.2`
+  - `CHATGPT_WEB_LOGGED_OUT_LINK_WAIT   7.5 → 2.5`
+  - `CHATGPT_WEB_STAY_LOGGED_OUT_WAIT   1.5 → 0.5`
+  - `CHATGPT_WEB_AFTER_INJECT_SLEEP     6   → 2`
+
+These are the modal/cookie/inject waits — page-setup overhead. They
+fire BEFORE submit and contribute to "between blocks" wall time.
+Tripling them was unhelpful; reverted.
+
+**A3. Kept *post-submit* timings elevated.** The waits that gave
+ChatGPT room to actually translate stay at the higher values from
+the previous pass:
+
+  - `CHATGPT_WEB_AFTER_SUBMIT_SLEEP     5.0` s (added new)
+  - `CHATGPT_WEB_STOP_BUTTON_FIND_WAIT  3.0` s (added new — replaces
+                                                hardcoded `timeout = 1`)
+  - `CHATGPT_WEB_STREAMING_POLL         0.75` s (was 0.25 before)
+  - `CHATGPT_WEB_MAX_STREAMING_WAIT     180` s (was 60 before)
+
+64/64 unit tests still pass.
+
 ### 2026-05-10 — chatgpt-web 3× timeout pass + missing post-submit wait (branch `next/persian-double-lines-as-splitter`)
 
 User confirmed the previous timing bump was still too aggressive on

@@ -160,32 +160,31 @@ legacy code has no pre-sleep — each call's ``delete_all_cookies()`` +
 on guest sessions the host's page-load time alone is enough to keep
 us under any rate-limit threshold."""
 
-CHATGPT_WEB_ACCEPT_BUTTON_WAIT: Final[float] = 0.6
-"""OURS: ``WebDriverWait(0.6)`` for the Accept-all button after page
-load (legacy was 0.2; user-tripled 2026-05-10 in the "give the
-server time" pass)."""
+CHATGPT_WEB_ACCEPT_BUTTON_WAIT: Final[float] = 0.2
+"""LEGACY: ``WebDriverWait(0.2)`` for the Accept-all button after
+page load. User-reverted 2026-05-10 from 0.6 — the page-setup
+overhead between blocks was too long; only post-submit waits stay
+elevated."""
 
-CHATGPT_WEB_LOGGED_OUT_LINK_WAIT: Final[float] = 7.5
-"""OURS: ``WebDriverWait(7.5)`` (legacy was 1.2; intermediate 2.5
-on 2026-05-10 still raced; tripled per user direction). chatgpt.com
-guest sessions in 2026 take significantly longer to render the
-modal than during phase 8; the modal blocks the textarea click that
-follows, so missing it makes the whole call fail. Called twice in
-sequence — the second is the re-attempt after the first close
-shifts the layout."""
+CHATGPT_WEB_LOGGED_OUT_LINK_WAIT: Final[float] = 2.5
+"""OURS: ``WebDriverWait(2.5)`` (legacy was 1.2). chatgpt.com guest
+sessions in 2026 take longer to render the modal than they did in
+phase 8; 1.2 s often missed it and the modal blocked the textarea
+click that follows. User-reverted 2026-05-10 from 7.5 — the
+between-blocks overhead was too high; only post-submit timings
+stay elevated."""
 
-CHATGPT_WEB_STAY_LOGGED_OUT_WAIT: Final[float] = 1.5
-"""OURS: ``WebDriverWait(1.5)`` (legacy 0.3; intermediate 0.5 still
-raced; tripled). Same reasoning as
-``CHATGPT_WEB_LOGGED_OUT_LINK_WAIT``."""
+CHATGPT_WEB_STAY_LOGGED_OUT_WAIT: Final[float] = 0.5
+"""OURS: ``WebDriverWait(0.5)`` (legacy 0.3). User-reverted
+2026-05-10 from 1.5 — page-setup is fast, only post-submit needs
+the long waits."""
 
-CHATGPT_WEB_AFTER_INJECT_SLEEP: Final[float] = 6.0
-"""OURS: ``sleep(6)`` after the JS textarea injection, before
-clicking submit (legacy was 1.0; tripled per user direction
-2026-05-10). The composer needs a tick to register the injected
-text before submit becomes clickable; on slower guest sessions a
-2 s wait still raced. The user-visible symptom was "ChatGPT
-doesn't get time to translate, page reopens"."""
+CHATGPT_WEB_AFTER_INJECT_SLEEP: Final[float] = 2.0
+"""OURS: ``sleep(2)`` after the JS textarea injection, before
+clicking submit (legacy was 1.0). User-reverted 2026-05-10 from
+6 — 2 s is enough for the composer to register the pasted text;
+the real bottleneck was the missing post-submit wait, not this
+pre-submit one."""
 
 CHATGPT_WEB_AFTER_SUBMIT_SLEEP: Final[float] = 5.0
 """NEW (2026-05-10): ``sleep(5)`` AFTER the submit click and

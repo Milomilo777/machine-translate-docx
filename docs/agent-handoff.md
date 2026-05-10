@@ -9,15 +9,20 @@
 
 ```
 date          2026-05-10
-branch        next/persian-double-lines-as-splitter
-base          master @ c8f284c
+branch        next/persian-double-lines-as-splitter (post-merge: archive tag)
+base          master @ c8f284c (pre-merge)
 phases done   15 of 15
-status        complete; awaiting user PR review
+post-phases   DeepL fixes, Google fixes, web-engine audit, timing alignment,
+              perplexity block-mode, chatgpt-web pre/post submit split
+status        merged to master 2026-05-10; branch tagged archive/*
 ```
 
 Run report: [`docs/agent-run-report.md`](agent-run-report.md). Live
-integration matrix: 5 of 8 scenarios pass; DeepL hang and the two
-web-engine guest-session UIs are recorded as recommended follow-ups.
+integration matrix after the post-phase fixes: 5 of 5 production
+scenarios pass (all four engines real-file verified except the two
+web-engine guest sessions — chatgpt.com Cloudflare gate and
+perplexity.ai selector drift — which are recorded as recommended
+follow-ups).
 
 The `gh` CLI is not installed in the agent environment, so phase 15's
 PR was not opened automatically. The PR title + body are pre-composed
