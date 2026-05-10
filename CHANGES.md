@@ -57,6 +57,56 @@ after 1800 ms to avoid the Chrome multi-download permission prompt.
 
 ## Sessions
 
+### 2026-05-10 — Checkpoint 3 + 4: prompt cleanup + Makefile (branch `next/architecture-cleanup-after-audit`)
+
+**C3 (limited scope).** Initial plan was to move ~80 helpers out of
+the entry script. Decision after a survey: most of the candidates
+(file-mode helpers, statistics, docx parse) are too entangled with
+module globals — extracting them now risks regression for limited
+maintenance benefit. Did the high-value low-risk subset:
+
+  - `selenium_webservice_perplexity_translate` extracted to
+    `src/engines/perplexity_webservice.py`. The entry script imports
+    it back; future C3.x cycles can drop the back-import once all
+    runner-injection sites are updated.
+  - `build_translation_prompt` and the `engines._prompts` shim
+    deleted entirely — they were only consumed by the chatgpt-web /
+    perplexity-web engines that were removed in C1.
+
+Entry script line count down by ~80 lines net.
+
+**C4. Local task runner.** Two new files:
+
+  - `Makefile` — GNU make for unix / macOS / git-bash.
+  - `tasks.bat` — Windows command-prompt shim with the same target
+    names.
+
+Targets:
+
+  - `test`        — pytest unit tests (63/63 pass)
+  - `smoke`       — DeepL en→fr quick run on the fixture
+  - `live-deepl`  — DeepL en→fr + en→fa real-file runs
+  - `live-google` — Google en→fr + en→fa real-file runs
+  - `live-all`    — both engines, all targets
+  - `clean`       — wipe `_real_test/` and stale `__pycache__/`
+
+Override the Python interpreter with the `PYTHON` env var:
+
+```
+PYTHON=E:/Python311/python.exe make test
+```
+
+CI hosted on GitHub Actions was discussed and explicitly skipped —
+zero ongoing cost, no external dependencies, no GitHub minutes.
+
+**Smoke verified.** `tasks.bat smoke` produced
+`smoke_FRE_Deepl.docx` in 25 s. `tasks.bat test` runs 63/63 unit
+tests in ~2 s.
+
+Net result of the four checkpoints: web engines deleted, entry
+script renamed + importable, dispatch logic in one place, local
+task runner. Architecture is materially cleaner; nothing regressed.
+
 ### 2026-05-10 — Checkpoint 2: entry rename + dispatch extracted (branch `next/architecture-cleanup-after-audit`)
 
 **C2.1.** Renamed `src/machine-translate-docx.py` →
