@@ -24,7 +24,15 @@ instead of caring which sub-module owns the helper.
 from __future__ import annotations
 
 from docx_io.runs import _iter_paragraph_runs
+from docx_io.cells import (
+    add_paragraph as _cell_add_paragraph_impl,
+    change_cell_font as _change_cell_font_impl,
+    set_first_paragraph as _cell_set_first_paragraph_impl,
+)
 
 __all__ = [
     "_iter_paragraph_runs",
+    "_cell_add_paragraph_impl",
+    "_change_cell_font_impl",
+    "_cell_set_first_paragraph_impl",
 ]

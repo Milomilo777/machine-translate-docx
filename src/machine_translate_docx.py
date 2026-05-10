@@ -1992,10 +1992,15 @@ def get_run_shading_color(xml_run_str):
     return attrib_fill
 
 # Return cell_non_greyed_text (string), cell_is_gray (integer for boolean)
-# _iter_paragraph_runs was extracted to src/docx_io/runs.py in the
-# 2026-05-10 docx_io extraction pass. Imported here so callers in
-# this file (the get_cell_data path) keep resolving the name.
-from docx_io import _iter_paragraph_runs
+# Docx_io extracted helpers (2026-05-10). The shim wrappers below
+# (change_cell_font, cell_set_1st_paragraph, cell_add_paragraph) read
+# the entry-script globals and delegate to these implementations.
+from docx_io import (
+    _iter_paragraph_runs,
+    _cell_add_paragraph_impl,
+    _change_cell_font_impl,
+    _cell_set_first_paragraph_impl,
+)
 
 
 def get_cell_data(ctx: RuntimeContext, cell,row_n):
@@ -2122,13 +2127,11 @@ def get_cell_data(ctx: RuntimeContext, cell,row_n):
 
 
 
+# change_cell_font was extracted to ``src/docx_io/cells.py`` in the
+# 2026-05-10 docx_io extraction pass. Thin shim — reads the entry-script
+# global ``dest_font`` and delegates to the new implementation.
 def change_cell_font(cell):
-
-    #print("cell has %d runs," % (len(paragraph[0].runs) ))
-    for paragraph in cell.paragraphs:
-        for run in paragraph.runs:
-            run.font.name = dest_font
-    return
+    _change_cell_font_impl(cell, dest_font)
 
 def join_from_lines(line_start, line_end, separator_str):
     joined_str = ""
@@ -2423,71 +2426,32 @@ def prepare_and_clear_cell_for_writing(ctx: RuntimeContext, row_n, translation_c
     ctx.docx.table_cells[row_n][2] = current_cell
 
 
+# cell_set_1st_paragraph and cell_add_paragraph were extracted to
+# ``src/docx_io/cells.py`` in the 2026-05-10 docx_io extraction pass.
+# Thin shims here — read the entry-script globals and delegate. The
+# new implementations take their dependencies as explicit kwargs so
+# they can be unit-tested without RuntimeContext.
 def cell_set_1st_paragraph(ctx: RuntimeContext, row_n, paragraph_text):
-    paragraph_no = 0
     current_cell = ctx.docx.table_cells[row_n][2]
-    
-    #print("cell_add_paragraph")
-    #print("paragraph[%d]: %s" % (row_n,paragraph_text))
-    cell_paragraph = cell_paragraph = current_cell.paragraphs[0]
-
-    # Add orientation from Right To Left (RTL) for specific languages
-    if dest_lang in right_to_left_languages_list.keys():
-        run = cell_paragraph.add_run(paragraph_text,style = "rtlstyle")
-        run.style = rtlstyle
-        font = run.font
-        font.rtl = True
-        cell_paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    else:
-        cell_paragraph.text = paragraph_text
-        try:
-            cell_paragraph.style = 'Normal'
-        except KeyError:
-            #print("Warning: 'Normal' style not found. Falling back to 'Default Paragraph Font'.")
-            try:
-                cell_paragraph.style = 'Default Paragraph Font'
-            except KeyError:
-                #print("Error: No usable default style found. Proceeding without style assignment.")
-                pass
-        cell_paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
-
-    if dest_font != "":
-        change_cell_font (current_cell)
-
+    _cell_set_first_paragraph_impl(
+        current_cell,
+        paragraph_text,
+        dest_lang=dest_lang,
+        dest_font=dest_font,
+        rtlstyle=rtlstyle,
+    )
     ctx.docx.table_cells[row_n][2] = current_cell
 
 
 def cell_add_paragraph(ctx: RuntimeContext, row_n, paragraph_text):
-    paragraph_no = 0
     current_cell = ctx.docx.table_cells[row_n][2]
-    
-    #print("cell_add_paragraph")
-    #print("paragraph[%d]: %s" % (row_n,paragraph_text))
-    cell_paragraph = current_cell.add_paragraph("")
-
-    # Add orientation from Right To Left (RTL) for specific languages
-    if dest_lang in right_to_left_languages_list.keys():
-        run = cell_paragraph.add_run(paragraph_text,style = "rtlstyle")
-        run.style = rtlstyle
-        font = run.font
-        font.rtl = True
-        cell_paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    else:
-        cell_paragraph.text = paragraph_text
-        try:
-            cell_paragraph.style = 'Normal'
-        except KeyError:
-            #print("Warning: 'Normal' style not found. Falling back to 'Default Paragraph Font'.")
-            try:
-                cell_paragraph.style = 'Default Paragraph Font'
-            except KeyError:
-                #print("Error: No usable default style found. Proceeding without style assignment.")
-                pass
-        cell_paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
-
-    if dest_font != "":
-        change_cell_font (current_cell)
-
+    _cell_add_paragraph_impl(
+        current_cell,
+        paragraph_text,
+        dest_lang=dest_lang,
+        dest_font=dest_font,
+        rtlstyle=rtlstyle,
+    )
     ctx.docx.table_cells[row_n][2] = current_cell
 
 
