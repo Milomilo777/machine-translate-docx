@@ -57,6 +57,70 @@ after 1800 ms to avoid the Chrome multi-download permission prompt.
 
 ## Sessions
 
+### 2026-05-10 — DeepL engine real-file run + NameError fixes (branch `next/persian-double-lines-as-splitter`)
+
+The agent's run report flagged DeepL as deferred — "translation step
+hangs". A direct read of `src/engines/deepl.py` against the legacy
+`translation-robot/main` revealed the hang was actually a fast-failing
+NameError that the outer try/except swallowed silently. Five concrete
+bugs:
+
+**D1. `src_lang` / `dest_lang` / `dest_lang_name` not pulled from ctx.**
+Lines 512 / 522 of the previous file referenced bare module-level names
+that existed in the legacy globals world but never made it into the
+Phase F refactor. Added an explicit triple at the top of the function:
+
+```
+src_lang       = ctx.language.src_lang or "en"
+dest_lang      = ctx.language.dest_lang or "en"
+dest_lang_name = ctx.language.dest_lang_name or dest_lang
+```
+
+Without this, the URL-build line raised NameError on the very first
+iteration of the page-open loop and the function fell through to
+`except Exception: print(traceback)` → returned `(False, "")`.
+
+**D2. `copy_translation_button` referenced before definition.** A
+visibility-check block read `copy_translation_button` inside a
+`getBoundingClientRect` JS call BEFORE the variable was even
+declared (it gets assigned ~50 lines later when the copy button is
+located). Wrapped the block in `if copy_translation_button is not
+None`, and pre-initialized the var to `None` outside the loop.
+
+**D3. `remove_span_tag` not imported.** The legacy code used a
+module-global helper that was never re-exported when the engine moved
+into `src/engines/deepl.py`. Inlined a local `_remove_span_tag()` that
+does the same regex pass.
+
+**D4. `clipboard` package not imported.** The clipboard fallback path
+called `clipboard.copy('')` and `clipboard.paste()` without an import.
+Added a defensive `try: import clipboard / except ImportError: clipboard
+= None` and gated the fallback on `clipboard is not None`.
+
+**D5. `translated_phrases_array` could be undefined at function exit.**
+The variable was only set inside the inner-loop try block. If every
+iteration raised, the outer `translation = "\n".join(translated_phrases_array)`
+NameError'd. Pre-initialized to `[]` at the top of the loop scope.
+
+**Bonus.** Replaced the brittle full-class-string completion-detection
+literal with a stable substring (`lmt__progress_popup
+lmt__progress_popup--visible`) — DeepL has rotated the surrounding
+class names twice in the last year; the shorter anchor matches both
+the legacy and current popup builds.
+
+**Real-file verification (not smoke).**
+Ran `tests/fixtures/sample_hyperlink.docx` (41 rows, hyperlinks +
+shaded cells) through the actual DeepL site with `--showbrowser`:
+
+| target | wall time | rows translated | source-column mismatches | hyperlink row populated |
+|--------|-----------|-----------------|--------------------------|-------------------------|
+| French | 21 s      | all visible rows | 0 / 42                   | yes                     |
+| Persian| 26 s      | 18 (rest are shaded/empty) | 0 / 42      | yes                     |
+
+The agent's "DeepL deferred" follow-up is closed by this entry.
+
+64 / 64 unit tests still pass.
+
 ### 2026-05-10 — post-agent UX fixes (branch `next/persian-double-lines-as-splitter`)
 
 User-reported regressions and a feature request after the agent's first
