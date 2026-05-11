@@ -460,23 +460,36 @@ class LocalState:
         the running stdout-reader thread observes the broken pipe, marks the
         job as ``status='cancelled'``, and exits. Idempotent — calling on an
         already-finished job returns (False, message).
+
+        R-6 (2026-05-11): the status check + status flip happen under the
+        same lock so two concurrent /cancel calls don't both observe
+        ``pending`` and both call ``proc.kill()``. We still release the
+        lock for the actual ``proc.kill()`` syscall because that can
+        block briefly on Windows (TerminateProcess + handle settle), and
+        we don't want to hold the launcher's only lock across a syscall.
         """
         with self.lock:
             job = self.jobs.get(job_id)
+            if job is None:
+                return False, "no such job"
+            if job.status != "pending":
+                return False, f"job already {job.status}"
             proc = self.job_procs.get(job_id)
-        if job is None:
-            return False, "no such job"
-        if job.status != "pending":
-            return False, f"job already {job.status}"
+            # Reserve the cancel by flipping status immediately, under
+            # the lock, so a second concurrent caller sees
+            # ``status == 'cancelled'`` and bails out at the line above.
+            job.status = "cancelled"
+            job.error  = "cancelled by user"
+
         if proc is None:
-            # Mock-backend or pre-subprocess; just flip status.
-            self.update_job(job_id, status="cancelled", error="cancelled by user")
+            # Mock-backend or pre-subprocess; status already flipped.
             return True, "cancelled (no subprocess to kill)"
         try:
             proc.kill()
         except Exception as exc:
+            # Status is already 'cancelled' — log but don't roll back;
+            # the subprocess may already have exited on its own.
             return False, f"kill failed: {exc}"
-        self.update_job(job_id, status="cancelled", error="cancelled by user")
         return True, "cancelled"
 
     def cleanup_old_jobs(self, max_age_sec: int = 3600) -> int:
@@ -1238,46 +1251,73 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
         # failure folder's meta.json.
         captured_log_buf: list[str] = []
         captured_fail: tuple[str, str] | None = None
-        if proc.stdout is not None:
-            for line in proc.stdout:
-                stripped = line.rstrip()
-                # Parse PROGRESS:N lines into job.progress without printing
-                # them as noise — they are tiny status pings, not log content.
-                if stripped.startswith("PROGRESS:"):
-                    try:
-                        pct = int(stripped.split(":", 1)[1].strip())
-                        pct = max(0, min(100, pct))
-                        self.state.update_job(job_id, progress=pct)
-                    except ValueError:
+        # R-2 (2026-05-11): wrap the reader in try/finally so that if an
+        # exception escapes the loop body (e.g. a sudden disk-full while
+        # appending to captured_log_buf), we still drain the rest of
+        # stdout and close the pipe — otherwise the child blocks on a
+        # full pipe and stays alive after the parent has moved on.
+        try:
+            if proc.stdout is not None:
+                for line in proc.stdout:
+                    stripped = line.rstrip()
+                    # Parse PROGRESS:N lines into job.progress without printing
+                    # them as noise — they are tiny status pings, not log content.
+                    if stripped.startswith("PROGRESS:"):
+                        try:
+                            pct = int(stripped.split(":", 1)[1].strip())
+                            pct = max(0, min(100, pct))
+                            self.state.update_job(job_id, progress=pct)
+                        except ValueError:
+                            pass
+                        continue
+                    if stripped:
+                        print(f"[job {job_id}] {stripped}")
+                        # Keep a bounded copy for B-002 archival.
+                        captured_log_buf.append(stripped)
+                        if len(captured_log_buf) > 5000:
+                            # Trim to most-recent 5000 lines so we cap memory
+                            # for runaway logs while preserving the tail.
+                            del captured_log_buf[:1000]
+                    if "Saved file name:" in stripped:
+                        _, _, part = stripped.partition("Saved file name:")
+                        candidate = part.strip()
+                        if candidate:
+                            saved_filename = candidate
+                    if stripped.startswith("[FAIL] reason="):
+                        # Format: [FAIL] reason=<token> message=<text>
+                        body = stripped[len("[FAIL] "):]
+                        reason_token = ""
+                        message = ""
+                        for kv in body.split(" message=", 1):
+                            if kv.startswith("reason="):
+                                reason_token = kv[len("reason="):].strip()
+                                break
+                        if " message=" in body:
+                            message = body.split(" message=", 1)[1].strip()
+                        captured_fail = (reason_token or "translation_failure", message or stripped)
+        finally:
+            # Drain anything left in the pipe so the child can exit, then
+            # close it. Without this, a parse exception mid-loop would
+            # leak the file descriptor + leave the child blocked.
+            if proc.stdout is not None:
+                try:
+                    for _ in proc.stdout:
                         pass
-                    continue
-                if stripped:
-                    print(f"[job {job_id}] {stripped}")
-                    # Keep a bounded copy for B-002 archival.
-                    captured_log_buf.append(stripped)
-                    if len(captured_log_buf) > 5000:
-                        # Trim to most-recent 5000 lines so we cap memory
-                        # for runaway logs while preserving the tail.
-                        del captured_log_buf[:1000]
-                if "Saved file name:" in stripped:
-                    _, _, part = stripped.partition("Saved file name:")
-                    candidate = part.strip()
-                    if candidate:
-                        saved_filename = candidate
-                if stripped.startswith("[FAIL] reason="):
-                    # Format: [FAIL] reason=<token> message=<text>
-                    body = stripped[len("[FAIL] "):]
-                    reason_token = ""
-                    message = ""
-                    for kv in body.split(" message=", 1):
-                        if kv.startswith("reason="):
-                            reason_token = kv[len("reason="):].strip()
-                            break
-                    if " message=" in body:
-                        message = body.split(" message=", 1)[1].strip()
-                    captured_fail = (reason_token or "translation_failure", message or stripped)
+                except Exception:
+                    pass
+                try:
+                    proc.stdout.close()
+                except Exception:
+                    pass
 
         code = proc.wait()
+        # R-1 (2026-05-11): subprocess is finished — drop the entry from
+        # `job_procs` so the dict doesn't grow unbounded across long
+        # sessions. The cleanup thread still prunes finished jobs at
+        # 1-hour granularity, but doing it here means the OS file handle
+        # held by the Popen object is freed immediately on completion.
+        with self.state.lock:
+            self.state.job_procs.pop(job_id, None)
         if captured_fail is not None:
             reason_token, message = captured_fail
             self._archive_failed_job(

@@ -57,6 +57,93 @@ after 1800 ms to avoid the Chrome multi-download permission prompt.
 
 ## Sessions
 
+### 2026-05-11 — Drain the parked-item queue (branch `next/clean-parked-list`)
+
+Clears every item that was parked in `docs/audit-2026-05-11.md` and
+the next-session handoff. No new constraints; pure resilience +
+cosmetic + cost-visibility improvements.
+
+**Launcher resilience**
+
+  - **R-1** — `job_procs[job_id]` is now `pop()`-ed under lock right
+    after `proc.wait()` returns, so OS handles held by the `Popen`
+    object are freed immediately instead of after the 1-h job-cleanup
+    sweep.
+  - **R-2** — the stdout reader loop is wrapped in `try/finally` that
+    drains remaining buffered lines + closes `proc.stdout` even when
+    the parser body raises. Without this, an exception mid-loop would
+    leak the pipe fd and leave the child blocked on a full pipe.
+  - **R-6** — `cancel_job()` now flips `job.status = "cancelled"` under
+    the same lock as the status check, so two concurrent cancels can
+    no longer both observe `pending` and both call `proc.kill()`. The
+    actual kill happens outside the lock (it can block on Windows
+    handle settle); the second caller short-circuits at the status
+    check.
+
+**Selenium error visibility (R-7, minimal)**
+
+  - New helper `engines/_base.py:_maybe_log_swallowed(label, exc)`.
+    No-op by default; when `MTD_SELENIUM_VERBOSE=1` is in the env it
+    prints a one-line summary + a 3-frame traceback to stderr for
+    every swallowed exception. Wired into 4 sites in
+    `engines/google.py` (page-load timeout x2, cookie-banner
+    re-attempt, browse-your-files sentinel). The full Selenium engine
+    rewrite stays parked; this is the smallest useful step.
+
+**Privacy (R-8)**
+
+  - `engines/deepl.py` masks the DeepL account email before printing
+    the login banner — `mo***@example.com` instead of the full
+    address. Sign-in itself still uses the unmasked value; only
+    stdout output is masked.
+
+**v2 frontend cosmetic**
+
+  - **F-6** — `renderFileList()` rebuilt without the
+    `innerHTML`/`textContent` mix. Every child is now a real DOM node
+    built via `createElement` + `createElementNS`. A new
+    `makeFileSvg(px)` helper builds the file icon SVG without going
+    through `innerHTML`. Defensive against XSS via a hostile
+    filename even if the upload-validation layer is bypassed.
+  - **F-8** — every `<label class="form-field">` in the v2 form now
+    carries an explicit `for="<select-id>"` attribute. Previously the
+    label wrapped the select (implicit linkage, valid HTML but
+    ambiguous for some assistive technologies).
+
+**Cost visibility (C-3)**
+
+  - `line_count_reconciler` now prints a `[reconciler-cost]` line
+    after each call: prompt + cached + completion tokens + cost in
+    USD. Run volume is low (only fires on line-count mismatch) but
+    the previous invisibility made the chatgpt-polish sidecar's
+    `total_cost_usd` look ~5–10 % too cheap on noisy days.
+
+**Hygiene**
+
+  - **H-2** — 24 commented-out dead imports removed from
+    `cli.py` (Yandex/Thai/Persian-NLP holdovers from Phase A).
+  - **H-5** — new `compile/README.md` explains the relationship
+    between `pyproject.toml` (direct deps with `>=` floors) and the
+    frozen `compile/requirements*.txt` files (transitive pins for
+    reproducible deploys), plus the refresh recipe.
+
+**Testing (T-2)**
+
+  - New `make test-integration` / `make test-all` targets in
+    `Makefile` (+ same in `tasks.bat`). The unit-only `make test`
+    target keeps its existing `--ignore=tests/integration` so
+    fast-loop dev stays fast; the new targets are opt-in for CI or
+    manual runs that want everything green.
+
+**Verification**
+
+  - `pytest`: 113 / 113 pass (no regressions, no test changes
+    needed).
+  - Live DeepL en→fr smoke via the `-m` form: exit 0, source 42/42
+    preserved, target 18/40 phrase — baseline unchanged.
+
+Master tip going in: `d8b3bbb`.
+
 ### 2026-05-11 — Full src/ layout migration (branch `next/src-layout-migration`)
 
 The biggest single refactor of the project lands. Every `.py` file

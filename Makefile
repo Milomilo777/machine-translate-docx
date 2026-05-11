@@ -15,23 +15,34 @@ PYTHON ?= python
 FIXTURE := tests/fixtures/sample_hyperlink.docx
 TMPDIR  := _real_test
 
-.PHONY: help test smoke live-deepl live-google live-all clean
+.PHONY: help test test-integration test-all smoke live-deepl live-google live-all clean
 
 help:
 	@echo "machine-translate-docx — local task runner"
 	@echo ""
-	@echo "  make test         pytest unit tests (excludes live + v2 e2e)"
-	@echo "  make smoke        DeepL en->fr quick run on the fixture"
-	@echo "  make live-deepl   DeepL en->fr + en->fa real-file runs"
-	@echo "  make live-google  Google en->fr + en->fa real-file runs"
-	@echo "  make live-all     all real-file runs (DeepL + Google, 4 outputs)"
-	@echo "  make clean        remove $(TMPDIR)/ and any *.pyc"
+	@echo "  make test              pytest unit tests (excludes live + integration + v2 e2e)"
+	@echo "  make test-integration  opt-in pytest of tests/integration/ (slower, no network)"
+	@echo "  make test-all          unit + integration tests in one shot"
+	@echo "  make smoke             DeepL en->fr quick run on the fixture"
+	@echo "  make live-deepl        DeepL en->fr + en->fa real-file runs"
+	@echo "  make live-google       Google en->fr + en->fa real-file runs"
+	@echo "  make live-all          all real-file runs (DeepL + Google, 4 outputs)"
+	@echo "  make clean             remove $(TMPDIR)/ and any *.pyc"
 	@echo ""
 	@echo "Override the interpreter:"
 	@echo "  PYTHON=E:/Python311/python.exe make test"
 
 test:
 	$(PYTHON) -m pytest tests/ --ignore=tests/test_v2_e2e.py --ignore=tests/integration
+
+# T-2 (2026-05-11): opt-in integration target. tests/integration/ is
+# kept out of the default `make test` because some files there spin
+# up subprocesses or expect a long runtime; this target is meant for
+# the CI matrix and manual runs.
+test-integration:
+	$(PYTHON) -m pytest tests/integration --ignore=tests/test_v2_e2e.py
+
+test-all: test test-integration
 
 smoke: $(TMPDIR)
 	cp $(FIXTURE) $(TMPDIR)/smoke.docx

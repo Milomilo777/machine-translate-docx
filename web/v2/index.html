@@ -112,7 +112,7 @@
 
         <!-- Form fields -->
         <div class="form-grid">
-          <label class="form-field">
+          <label class="form-field" for="sourceLanguage">
             <span class="form-label">Source</span>
             <select id="sourceLanguage" class="form-select">
               <option value="en">English</option>
@@ -146,7 +146,7 @@
             </select>
           </label>
 
-          <label class="form-field">
+          <label class="form-field" for="targetLanguage">
             <span class="form-label">Target</span>
             <select id="targetLanguage" class="form-select">
               <option value="fa">Persian</option>
@@ -180,7 +180,7 @@
             </select>
           </label>
 
-          <label class="form-field">
+          <label class="form-field" for="engine">
             <span class="form-label">Engine</span>
             <select id="engine" class="form-select">
               <option value="chatgpt-polish">OpenAI Translate + Polish (Persian)</option>
@@ -190,7 +190,7 @@
             </select>
           </label>
 
-          <label class="form-field" id="aiModelField">
+          <label class="form-field" id="aiModelField" for="aiModel">
             <span class="form-label">OpenAI model</span>
             <select id="aiModel" class="form-select">
               <!-- Values mirror config.VALID_AI_MODELS on the backend.
@@ -200,7 +200,7 @@
             </select>
           </label>
 
-          <label class="form-field" id="splitEngineField">
+          <label class="form-field" id="splitEngineField" for="splitEngine">
             <span class="form-label">Split method</span>
             <select id="splitEngine" class="form-select">
               <option value="basic">Basic with excel file</option>
