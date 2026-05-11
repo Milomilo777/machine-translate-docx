@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 460" role="img" aria-labelledby="title desc" font-family="Inter, system-ui, sans-serif">
+  <title id="title">Failure path — what happens when a translation job fails</title>
+  <desc id="desc">When the CLI detects a failure mode (empty docx, engine returned empty, line-count mismatch, or an uncaught exception) it emits a structured FAIL line with a reason token and exits with code 20. The launcher parses that line, archives the input docx plus stdout plus a meta.json under runtime_dir/failures, fans the alert out to any of three optional channels (email, Telegram, webhook), and surfaces the structured reason as a badge on the v2 error toast.</desc>
+
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#6E6C66"/>
+    </marker>
+    <marker id="arrow-fail" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#B5613E"/>
+    </marker>
+    <style>
+      .card      { fill:#FFFFFF; stroke:#E8E4D9; stroke-width:1.5; }
+      .fail-card { fill:#FBEFE9; stroke:#B5613E; stroke-width:1.5; }
+      .archive   { fill:#F4F2EC; stroke:#D8D3C5; stroke-width:1.5; }
+      .alert     { fill:#FFFFFF; stroke:#D97757; stroke-width:1.5; }
+      .h         { fill:#1F1E1B; font-size:13px; font-weight:600; }
+      .h-fail    { fill:#9F4D2D; font-size:13px; font-weight:600; }
+      .t         { fill:#3F3E3A; font-size:10.5px; }
+      .mono      { font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace; font-size:10px; fill:#3F3E3A; }
+      .label     { fill:#6E6C66; font-size:10px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; }
+      .link      { stroke:#6E6C66; stroke-width:1.5; fill:none; }
+      .link-fail { stroke:#B5613E; stroke-width:1.8; fill:none; }
+    </style>
+  </defs>
+
+  <rect width="880" height="460" fill="#FAF9F5"/>
+
+  <!-- ── FAILURE TRIGGERS ──────────────────────────────────────────── -->
+  <text class="label" x="20" y="22">Failure triggers</text>
+
+  <g transform="translate(20,32)">
+    <rect class="fail-card" width="180" height="55" rx="6"/>
+    <text class="h-fail" x="90" y="22" text-anchor="middle">Empty docx</text>
+    <text class="mono" x="90" y="42" text-anchor="middle">reason=empty_docx</text>
+  </g>
+  <g transform="translate(220,32)">
+    <rect class="fail-card" width="180" height="55" rx="6"/>
+    <text class="h-fail" x="90" y="22" text-anchor="middle">Engine returned empty</text>
+    <text class="mono" x="90" y="42" text-anchor="middle">reason=engine_empty</text>
+  </g>
+  <g transform="translate(420,32)">
+    <rect class="fail-card" width="180" height="55" rx="6"/>
+    <text class="h-fail" x="90" y="22" text-anchor="middle">Backend non-zero exit</text>
+    <text class="mono" x="90" y="42" text-anchor="middle">reason=backend_nonzero_exit</text>
+  </g>
+  <g transform="translate(620,32)">
+    <rect class="fail-card" width="180" height="55" rx="6"/>
+    <text class="h-fail" x="90" y="22" text-anchor="middle">Uncaught exception</text>
+    <text class="mono" x="90" y="42" text-anchor="middle">reason=translation_failure</text>
+  </g>
+
+  <!-- ── STRUCTURED LINE ──────────────────────────────────────────── -->
+  <text class="label" x="20" y="125">Structured FAIL line</text>
+  <g transform="translate(150,135)">
+    <rect class="card" width="580" height="58" rx="6"/>
+    <text class="mono" x="290" y="24" text-anchor="middle" font-size="11.5">print(f"[FAIL] reason=&lt;token&gt; message=&lt;text&gt;", flush=True)</text>
+    <text class="t" x="290" y="42" text-anchor="middle">CLI exits with code 20 · launcher's stdout parser picks the line up</text>
+  </g>
+
+  <!-- arrows from triggers down -->
+  <path class="link-fail" d="M110,87 L110,120 L155,120 L155,135" marker-end="url(#arrow-fail)"/>
+  <path class="link-fail" d="M310,87 L310,120 L300,120 L300,135" marker-end="url(#arrow-fail)"/>
+  <path class="link-fail" d="M510,87 L510,120 L500,120 L500,135" marker-end="url(#arrow-fail)"/>
+  <path class="link-fail" d="M710,87 L710,120 L660,120 L660,135" marker-end="url(#arrow-fail)"/>
+
+  <!-- ── ARCHIVE ──────────────────────────────────────────────────── -->
+  <text class="label" x="20" y="235">Failure archive (always)</text>
+  <g transform="translate(20,245)">
+    <rect class="archive" width="380" height="135" rx="6"/>
+    <text class="h" x="190" y="22" text-anchor="middle">runtime_dir/failures/&lt;job_id&gt;__&lt;UTC ts&gt;/</text>
+    <line x1="20" y1="35" x2="360" y2="35" stroke="#D8D3C5" stroke-width="1"/>
+    <text class="mono" x="20" y="55">input.docx        — copy of the user upload</text>
+    <text class="mono" x="20" y="72">stdout.log        — captured launcher stdout</text>
+    <text class="mono" x="20" y="89">meta.json         — job_id · reason · message · ts</text>
+    <text class="mono" x="20" y="106">UNREVIEWED.txt    — sentinel; delete to mark triaged</text>
+    <text class="t" x="20" y="125">Falls back to tempdir if runtime_dir is unwritable.</text>
+  </g>
+
+  <path class="link-fail" d="M440,193 L440,210 L210,210 L210,240" marker-end="url(#arrow-fail)"/>
+
+  <!-- ── ALERTS ─────────────────────────────────────────────────── -->
+  <text class="label" x="430" y="235">Alert fan-out (each env-gated)</text>
+  <g transform="translate(430,245)">
+    <rect class="alert" width="170" height="135" rx="6"/>
+    <text class="h" x="85" y="22" text-anchor="middle">Telegram bot</text>
+    <text class="t" x="85" y="40" text-anchor="middle">MTD_TELEGRAM_TOKEN</text>
+    <text class="t" x="85" y="55" text-anchor="middle">MTD_TELEGRAM_CHAT_ID</text>
+    <line x1="14" y1="65" x2="156" y2="65" stroke="#E8E4D9" stroke-width="1"/>
+    <text class="t" x="85" y="83" text-anchor="middle">Markdown text · always</text>
+    <text class="t" x="85" y="98" text-anchor="middle">+ input.docx (≤ 20 MB)</text>
+    <text class="t" x="85" y="113" text-anchor="middle">multi-recipient via</text>
+    <text class="t" x="85" y="127" text-anchor="middle">comma-separated ids</text>
+  </g>
+  <g transform="translate(610,245)">
+    <rect class="alert" width="120" height="135" rx="6"/>
+    <text class="h" x="60" y="22" text-anchor="middle">Email</text>
+    <text class="t" x="60" y="40" text-anchor="middle">MTD_FAILURE_EMAIL</text>
+    <text class="t" x="60" y="55" text-anchor="middle">MTD_SMTP_HOST</text>
+    <line x1="10" y1="65" x2="110" y2="65" stroke="#E8E4D9" stroke-width="1"/>
+    <text class="t" x="60" y="84" text-anchor="middle">smtplib · stdlib</text>
+    <text class="t" x="60" y="100" text-anchor="middle">plain text body</text>
+    <text class="t" x="60" y="118" text-anchor="middle">DKIM via relay</text>
+  </g>
+  <g transform="translate(740,245)">
+    <rect class="alert" width="120" height="135" rx="6"/>
+    <text class="h" x="60" y="22" text-anchor="middle">Webhook</text>
+    <text class="t" x="60" y="40" text-anchor="middle">MTD_FAILURE_WEBHOOK</text>
+    <line x1="10" y1="65" x2="110" y2="65" stroke="#E8E4D9" stroke-width="1"/>
+    <text class="t" x="60" y="84" text-anchor="middle">Discord · Slack</text>
+    <text class="t" x="60" y="100" text-anchor="middle">Mattermost shape</text>
+    <text class="t" x="60" y="118" text-anchor="middle">{"content": "…"}</text>
+  </g>
+
+  <path class="link-fail" d="M440,193 L440,210 L515,210 L515,240" marker-end="url(#arrow-fail)"/>
+  <path class="link-fail" d="M440,193 L440,210 L670,210 L670,240" marker-end="url(#arrow-fail)"/>
+  <path class="link-fail" d="M440,193 L440,210 L800,210 L800,240" marker-end="url(#arrow-fail)"/>
+
+  <!-- ── BROWSER ──────────────────────────────────────────────────── -->
+  <text class="label" x="20" y="410">User-visible</text>
+  <g transform="translate(20,420)">
+    <rect class="card" width="380" height="30" rx="6"/>
+    <text class="t" x="190" y="20" text-anchor="middle">v2 error toast: reason badge + message body · button to retry</text>
+  </g>
+  <g transform="translate(430,420)">
+    <rect class="card" width="430" height="30" rx="6"/>
+    <text class="t" x="215" y="20" text-anchor="middle">Stale tab? jobs[id].error survives until 1 h cleanup or restart.</text>
+  </g>
+</svg>

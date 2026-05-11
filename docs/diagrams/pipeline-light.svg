@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 380" role="img" aria-labelledby="title desc" font-family="Inter, system-ui, sans-serif">
+  <title id="title">Translation pipeline workflow</title>
+  <desc id="desc">User uploads a docx. The launcher validates it, sanitises the filename, then either returns a cache hit or forks a subprocess running machine_translate_docx.py. The CLI parses the docx into a parallel-array RuntimeContext, dispatches to the active engine, optionally runs a polish pass, applies a split method, then writes the output docx plus a JSON sidecar and triggers any configured alerts.</desc>
+
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#6E6C66"/>
+    </marker>
+    <marker id="arrow-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#D97757"/>
+    </marker>
+    <marker id="arrow-fail" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#B5613E"/>
+    </marker>
+    <style>
+      .step      { fill:#FFFFFF; stroke:#E8E4D9; stroke-width:1.5; }
+      .step-acc  { fill:#FBEFE9; stroke:#E4A382; stroke-width:1.5; }
+      .step-end  { fill:#F4F2EC; stroke:#D8D3C5; stroke-width:1.5; }
+      .fail      { fill:#FBEFE9; stroke:#B5613E; stroke-width:1.8; stroke-dasharray:5,3; }
+      .h         { fill:#1F1E1B; font-size:13px; font-weight:600; }
+      .t         { fill:#3F3E3A; font-size:10.5px; }
+      .stage     { fill:#6E6C66; font-size:9.5px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; }
+      .link      { stroke:#6E6C66; stroke-width:1.5; fill:none; }
+      .link-acc  { stroke:#D97757; stroke-width:1.8; fill:none; }
+      .link-fail { stroke:#B5613E; stroke-width:1.5; fill:none; stroke-dasharray:5,3; }
+    </style>
+  </defs>
+
+  <rect width="960" height="380" fill="#FAF9F5"/>
+
+  <!-- ROW 1 — INGEST -->
+  <text class="stage" x="30" y="22">1 · Ingest</text>
+  <g transform="translate(20,30)">
+    <rect class="step" width="140" height="60" rx="6"/>
+    <text class="h" x="70" y="24" text-anchor="middle">Upload</text>
+    <text class="t" x="70" y="42" text-anchor="middle">multipart .docx</text>
+  </g>
+  <path class="link" d="M160,60 L185,60" marker-end="url(#arrow)"/>
+  <g transform="translate(185,30)">
+    <rect class="step" width="160" height="60" rx="6"/>
+    <text class="h" x="80" y="22" text-anchor="middle">Validate + sanitize</text>
+    <text class="t" x="80" y="38" text-anchor="middle">PK header · 50 MB cap</text>
+    <text class="t" x="80" y="52" text-anchor="middle">_sanitize_filename · 200 ch</text>
+  </g>
+  <path class="link" d="M345,60 L370,60" marker-end="url(#arrow)"/>
+  <g transform="translate(370,30)">
+    <rect class="step" width="150" height="60" rx="6"/>
+    <text class="h" x="75" y="22" text-anchor="middle">Cache lookup</text>
+    <text class="t" x="75" y="38" text-anchor="middle">sha256(file+lang+</text>
+    <text class="t" x="75" y="52" text-anchor="middle">engine+model) · 36 h</text>
+  </g>
+  <path class="link" d="M520,60 L545,60" marker-end="url(#arrow)"/>
+  <g transform="translate(545,30)">
+    <rect class="step-acc" width="160" height="60" rx="6"/>
+    <text class="h" x="80" y="22" text-anchor="middle">Spawn subprocess</text>
+    <text class="t" x="80" y="38" text-anchor="middle">subprocess.Popen</text>
+    <text class="t" x="80" y="52" text-anchor="middle">PROGRESS:N parsed</text>
+  </g>
+
+  <!-- Cache hit shortcut to output -->
+  <path class="link" d="M445,90 L445,310" marker-end="url(#arrow)" stroke-dasharray="4,3"/>
+  <text class="t" x="455" y="200" fill="#3F3E3A">cache hit</text>
+
+  <!-- ROW 2 — PROCESS -->
+  <text class="stage" x="30" y="125">2 · Process</text>
+  <g transform="translate(20,135)">
+    <rect class="step-acc" width="140" height="60" rx="6"/>
+    <text class="h" x="70" y="22" text-anchor="middle">Parse</text>
+    <text class="t" x="70" y="38" text-anchor="middle">docx_io.parse</text>
+    <text class="t" x="70" y="52" text-anchor="middle">RuntimeContext arrays</text>
+  </g>
+  <path class="link-acc" d="M160,165 L185,165" marker-end="url(#arrow-accent)"/>
+  <g transform="translate(185,135)">
+    <rect class="step-acc" width="160" height="60" rx="6"/>
+    <text class="h" x="80" y="22" text-anchor="middle">Translate</text>
+    <text class="t" x="80" y="38" text-anchor="middle">DeepL · Google · OpenAI</text>
+    <text class="t" x="80" y="52" text-anchor="middle">block loop or single-call</text>
+  </g>
+  <path class="link-acc" d="M345,165 L370,165" marker-end="url(#arrow-accent)"/>
+  <g transform="translate(370,135)">
+    <rect class="step-acc" width="150" height="60" rx="6"/>
+    <text class="h" x="75" y="22" text-anchor="middle">Polish (FA only)</text>
+    <text class="t" x="75" y="38" text-anchor="middle">gpt-5.5 · second call</text>
+    <text class="t" x="75" y="52" text-anchor="middle">24h prompt cache</text>
+  </g>
+  <path class="link-acc" d="M520,165 L545,165" marker-end="url(#arrow-accent)"/>
+  <g transform="translate(545,135)">
+    <rect class="step-acc" width="160" height="60" rx="6"/>
+    <text class="h" x="80" y="22" text-anchor="middle">Split method</text>
+    <text class="t" x="80" y="38" text-anchor="middle">basic · OpenAI · FA</text>
+    <text class="t" x="80" y="52" text-anchor="middle">Double Lines aligner</text>
+  </g>
+
+  <!-- Failure branch -->
+  <path class="link-fail" d="M265,195 L265,235" marker-end="url(#arrow-fail)"/>
+  <g transform="translate(195,235)">
+    <rect class="fail" width="160" height="55" rx="6"/>
+    <text class="h" x="80" y="22" text-anchor="middle">Structured fail</text>
+    <text class="t" x="80" y="38" text-anchor="middle">[FAIL] reason=…</text>
+    <text class="t" x="80" y="50" text-anchor="middle">exit 20</text>
+  </g>
+  <path class="link-fail" d="M355,265 L420,265" marker-end="url(#arrow-fail)"/>
+  <g transform="translate(420,235)">
+    <rect class="fail" width="160" height="55" rx="6"/>
+    <text class="h" x="80" y="22" text-anchor="middle">Failure archive</text>
+    <text class="t" x="80" y="38" text-anchor="middle">runtime_dir/failures/</text>
+    <text class="t" x="80" y="50" text-anchor="middle">input · stdout · meta</text>
+  </g>
+  <path class="link-fail" d="M580,265 L645,265" marker-end="url(#arrow-fail)"/>
+  <g transform="translate(645,235)">
+    <rect class="fail" width="160" height="55" rx="6"/>
+    <text class="h" x="80" y="22" text-anchor="middle">Alert fan-out</text>
+    <text class="t" x="80" y="38" text-anchor="middle">Telegram · email</text>
+    <text class="t" x="80" y="50" text-anchor="middle">Discord/Slack webhook</text>
+  </g>
+
+  <!-- ROW 3 — DELIVER -->
+  <text class="stage" x="30" y="305">3 · Deliver</text>
+  <path class="link-acc" d="M615,195 L615,310" marker-end="url(#arrow-accent)"/>
+  <g transform="translate(20,310)">
+    <rect class="step-end" width="160" height="55" rx="6"/>
+    <text class="h" x="80" y="22" text-anchor="middle">Save .docx</text>
+    <text class="t" x="80" y="40" text-anchor="middle">source-column lock restored</text>
+  </g>
+  <path class="link" d="M180,338 L200,338" marker-end="url(#arrow)"/>
+  <g transform="translate(200,310)">
+    <rect class="step-end" width="160" height="55" rx="6"/>
+    <text class="h" x="80" y="22" text-anchor="middle">Write _log.json</text>
+    <text class="t" x="80" y="40" text-anchor="middle">tokens · cost · cached %</text>
+  </g>
+  <path class="link" d="M360,338 L380,338" marker-end="url(#arrow)"/>
+  <g transform="translate(380,310)">
+    <rect class="step-end" width="160" height="55" rx="6"/>
+    <text class="h" x="80" y="22" text-anchor="middle">Cache store</text>
+    <text class="t" x="80" y="40" text-anchor="middle">36 h · keyed by sha256</text>
+  </g>
+  <path class="link" d="M540,338 L560,338" marker-end="url(#arrow)"/>
+  <g transform="translate(560,310)">
+    <rect class="step-end" width="180" height="55" rx="6"/>
+    <text class="h" x="90" y="22" text-anchor="middle">Browser polls /status</text>
+    <text class="t" x="90" y="40" text-anchor="middle">→ /download/&lt;name&gt;</text>
+  </g>
+  <path class="link" d="M740,338 L760,338" marker-end="url(#arrow)"/>
+  <g transform="translate(760,310)">
+    <rect class="step-end" width="180" height="55" rx="6"/>
+    <text class="h" x="90" y="22" text-anchor="middle">Run summary card</text>
+    <text class="t" x="90" y="40" text-anchor="middle">v2: ETA · cache · warnings</text>
+  </g>
+</svg>
