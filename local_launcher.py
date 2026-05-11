@@ -622,6 +622,211 @@ class LocalState:
                     print(f"[cleanup] error: {exc}")
         threading.Thread(target=_loop, daemon=True, name="job-cleanup").start()
 
+    # ── Weekly newsletter export to Telegram (2026-05-11) ────────────────
+    #
+    # Every Saturday at 12:00 in the operator's chosen timezone (default
+    # `Europe/Paris`, overridable via MTD_SCHEDULER_TZ), the launcher
+    # uploads `subscribers.txt` as a Telegram document to the same chat
+    # ids configured for failure alerts (`MTD_TELEGRAM_CHAT_ID`,
+    # comma-separated). Empty file → silent skip. Failure → set a
+    # `pending_warning` flag in
+    # `runtime_dir/subscribers_report_state.json`; the next launcher
+    # boot reads that flag and emits a "[warn] subscribers report
+    # failed last week (N emails pending)" line, then clears the flag.
+    #
+    # No Telegram token configured? The whole scheduler stays dormant —
+    # the boot-time check just prints once and skips.
+
+    def boot_subscribers_report_check(self) -> None:
+        """Read the state file and print a warning if last week's report failed."""
+        state_path = self.runtime_dir / "subscribers_report_state.json"
+        try:
+            if not state_path.is_file():
+                return
+            data = json.loads(state_path.read_text(encoding="utf-8"))
+        except Exception:
+            return
+        if data.get("pending_warning"):
+            count = data.get("last_run_count", 0)
+            ts    = data.get("last_run_ts", "?")
+            print(
+                f"[subscribers] WARNING: last attempt at {ts} failed "
+                f"({count} email(s) pending). Reason: {data.get('last_run_reason', 'unknown')}",
+                file=sys.stderr, flush=True,
+            )
+            # Clear the flag so we don't nag every boot. The scheduler
+            # will re-set it if the next Saturday attempt also fails.
+            data["pending_warning"] = False
+            try:
+                state_path.write_text(
+                    json.dumps(data, indent=2), encoding="utf-8"
+                )
+            except Exception:
+                pass
+
+    def start_subscribers_report_thread(self) -> None:
+        """Daemon thread that fires `_run_subscribers_report` on the
+        Saturday-noon-Europe schedule. The poll interval is 60 s; the
+        thread sleeps 24 h after a successful (or empty-and-skipped)
+        run to avoid re-firing in the same Saturday window.
+        """
+        token = os.environ.get("MTD_TELEGRAM_TOKEN", "").strip()
+        if not token:
+            # No Telegram configured — scheduler is a no-op. (The boot
+            # check still runs if a state file exists from a previous
+            # session when Telegram WAS configured.)
+            print("[subscribers] Telegram not configured — weekly report disabled")
+            return
+
+        tz_name = os.environ.get("MTD_SCHEDULER_TZ", "Europe/Paris").strip() or "Europe/Paris"
+        # `zoneinfo` is stdlib on Python 3.9+. If for some reason the
+        # tz database is missing (very stripped-down installs), fall
+        # back to UTC + warn.
+        try:
+            from zoneinfo import ZoneInfo
+            tz = ZoneInfo(tz_name)
+        except Exception as exc:
+            print(f"[subscribers] zoneinfo({tz_name}) unavailable ({exc}); falling back to UTC")
+            tz = None
+
+        def _loop():
+            import datetime as _dt
+            last_fired_on: str = ""   # YYYY-MM-DD of last fire (in TZ)
+            while True:
+                try:
+                    now = _dt.datetime.now(tz) if tz else _dt.datetime.utcnow()
+                    # weekday: Mon=0 … Sat=5, Sun=6.
+                    is_window = (
+                        now.weekday() == 5 and
+                        now.hour == 12 and
+                        now.minute < 5   # 12:00..12:04 trigger window
+                    )
+                    today_key = now.strftime("%Y-%m-%d")
+                    if is_window and last_fired_on != today_key:
+                        last_fired_on = today_key
+                        self._run_subscribers_report(now_iso=now.isoformat(timespec="seconds"))
+                except Exception as exc:
+                    print(f"[subscribers] scheduler tick error: {exc!r}",
+                          file=sys.stderr, flush=True)
+                time.sleep(60)
+
+        threading.Thread(target=_loop, daemon=True, name="subscribers-report").start()
+        print(f"[subscribers] scheduler armed (Sat 12:00 {tz_name})")
+
+    def _run_subscribers_report(self, *, now_iso: str) -> None:
+        """One attempt at the weekly Telegram upload.
+
+        Empty `subscribers.txt` is treated as success-by-skipping (no
+        notification, no error). Non-empty + Telegram success → state
+        marked OK. Telegram failure → state.pending_warning = True so
+        the next launcher boot surfaces it.
+        """
+        state_path = self.runtime_dir / "subscribers_report_state.json"
+        # Read the subscribers file.
+        if not SUBSCRIBERS_FILE.is_file():
+            return
+        try:
+            content = SUBSCRIBERS_FILE.read_text(encoding="utf-8")
+        except Exception as exc:
+            print(f"[subscribers] could not read subscribers.txt: {exc!r}",
+                  file=sys.stderr, flush=True)
+            return
+        emails = [ln.strip() for ln in content.splitlines() if ln.strip()]
+        if not emails:
+            # Silent skip per user instruction — empty list never alerts.
+            return
+
+        token   = os.environ.get("MTD_TELEGRAM_TOKEN", "").strip()
+        chat_raw = os.environ.get("MTD_TELEGRAM_CHAT_ID", "").strip()
+        if not (token and chat_raw):
+            return
+        chat_ids = _parse_telegram_chat_ids(chat_raw)
+        if not chat_ids:
+            return
+
+        # Compose the message + send subscribers.txt as a document.
+        text = (
+            f"📬 *Newsletter snapshot*\n"
+            f"• subscribers: *{len(emails)}*\n"
+            f"• timestamp:   `{_telegram_escape(now_iso)}`\n"
+            f"\n(File attached.)"
+        )
+        # Reuse the existing helpers via a tiny per-recipient loop.
+        any_success = False
+        last_error: str | None = None
+        for chat_id in chat_ids:
+            try:
+                self._send_telegram_text(
+                    token=token,
+                    chat_id=chat_id,
+                    text=text,
+                )
+                # Send the file separately so a 50-MB cap or a flaky
+                # network on the attachment doesn't lose the text.
+                self._telegram_send_document(
+                    token=token,
+                    chat_id=chat_id,
+                    file_path=SUBSCRIBERS_FILE,
+                    caption=f"subscribers.txt ({len(emails)} addresses)",
+                )
+                any_success = True
+            except Exception as exc:
+                last_error = repr(exc)
+                print(f"[subscribers] send to {chat_id} failed: {exc!r}",
+                      file=sys.stderr, flush=True)
+
+        # Persist outcome to state file. The boot-time check reads
+        # `pending_warning` and surfaces it on next launch.
+        try:
+            state_data = {
+                "last_run_ts":     now_iso,
+                "last_run_count":  len(emails),
+                "last_run_result": "ok" if any_success else "failed",
+                "last_run_reason": "" if any_success else (last_error or "unknown"),
+                "pending_warning": not any_success,
+            }
+            state_path.write_text(
+                json.dumps(state_data, indent=2), encoding="utf-8"
+            )
+            if any_success:
+                print(f"[subscribers] weekly report sent ({len(emails)} email(s))")
+            else:
+                print(
+                    f"[subscribers] weekly report FAILED ({len(emails)} email(s) pending)",
+                    file=sys.stderr, flush=True,
+                )
+        except Exception as exc:
+            print(f"[subscribers] could not write state file: {exc!r}",
+                  file=sys.stderr, flush=True)
+
+    def _send_telegram_text(
+        self, *, token: str, chat_id: str, text: str,
+    ) -> None:
+        """Minimal text-only sendMessage helper used by the weekly
+        report. Raises on any non-OK response so the per-recipient
+        loop above can record `last_error`.
+        """
+        import urllib.request as _ur
+        url = f"https://api.telegram.org/bot{token}/sendMessage"
+        payload = {
+            "chat_id":    chat_id,
+            "text":       text,
+            "parse_mode": "Markdown",
+            "disable_web_page_preview": True,
+        }
+        req = _ur.Request(
+            url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with _ur.urlopen(req, timeout=10) as resp:
+            data = resp.read()
+            if b'"ok":true' not in data:
+                raise RuntimeError(
+                    f"telegram rejected sendMessage: {data[:200].decode(errors='replace')}"
+                )
+
 
 def _parse_multipart(headers, body: bytes) -> tuple[dict[str, str], dict[str, tuple[str, bytes]]]:
     content_type = headers.get("Content-Type", "")
@@ -1956,6 +2161,13 @@ def main() -> int:
     # Periodically prune finished jobs older than 1 h so the in-memory job
     # store does not grow unbounded across long-running sessions.
     state.start_cleanup_thread(interval_sec=600, max_age_sec=3600)
+
+    # Weekly Telegram export of subscribers.txt (Saturday noon Europe).
+    # Boot-time check first — if last attempt failed, log a one-line
+    # warning and clear the flag. Then arm the scheduler (no-op if
+    # Telegram env vars are not configured).
+    state.boot_subscribers_report_check()
+    state.start_subscribers_report_thread()
 
     port = _find_free_port(args.port)
     server = ThreadingHTTPServer((args.host, port), MockTranslatorHandler)

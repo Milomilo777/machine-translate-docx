@@ -79,8 +79,10 @@
           <div id="aiModelRow" style="display:none;">
             <label for="aiModel" class="block mb-2 text-sm text-gray-600">OpenAI Model:</label>
             <select id="aiModel" class="w-full mb-4 p-2 border rounded" name="aiModel">
+              <!-- F-1 (2026-05-11): values match config.VALID_AI_MODELS.
+                   The stale gpt-5.4 option was removed because the CLI
+                   rejects it at parse time (B-004). -->
               <option value="gpt-5.5" selected>GPT-5.5 — Recommended</option>
-              <option value="gpt-5.4">GPT-5.4</option>
               <option value="gpt-5.4-mini">GPT-5.4-mini — Faster, cheaper</option>
             </select>
           </div>

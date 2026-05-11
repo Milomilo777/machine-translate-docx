@@ -705,6 +705,209 @@ code {
 }
 .footer-text-muted { color: var(--color-ink-400); }
 
+/* ── Pinned banner (top-of-page, single slot) ─────────────────────────── */
+.pinned-banner {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 56px 10px 18px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: linear-gradient(
+    90deg,
+    var(--color-brand-50) 0%,
+    var(--color-cream-200) 60%,
+    var(--color-cream-100) 100%
+  );
+  color: var(--color-ink-900);
+  font-size: 13.5px;
+  z-index: 60;
+}
+.pinned-banner::before {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  width: 4px;
+  background: var(--color-brand-500);
+}
+.pinned-banner[data-kind="notice"]::before  { background: var(--color-ink-500);  }
+.pinned-banner[data-kind="warning"]::before { background: var(--color-brand-800); }
+.pinned-banner-icon {
+  font-size: 16px;
+  line-height: 1;
+  filter: saturate(120%);
+}
+.pinned-banner-text {
+  flex: 1;
+  min-width: 0;
+  font-weight: 500;
+}
+.pinned-banner-close {
+  position: absolute;
+  inset-inline-end: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: 0;
+  font-size: 14px;
+  color: var(--color-ink-500);
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.pinned-banner-close:hover {
+  color: var(--color-brand-700);
+  background: rgba(0, 0, 0, 0.04);
+}
+
+/* ── Welcome modal ────────────────────────────────────────────────────── */
+.welcome-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  animation: welcome-fade-in 240ms ease both;
+}
+.welcome-modal.hidden { display: none; }
+.welcome-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    ellipse at top,
+    rgba(31, 30, 27, 0.50) 0%,
+    rgba(31, 30, 27, 0.65) 100%
+  );
+  backdrop-filter: blur(2px);
+}
+.welcome-modal-card {
+  position: relative;
+  width: min(560px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  background: var(--color-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  box-shadow: 0 24px 64px rgba(31, 30, 27, 0.40),
+              0 0 0 1px rgba(217, 119, 87, 0.15) inset;
+  padding: 28px 28px 22px;
+  animation: welcome-rise 360ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.welcome-modal-glow {
+  position: absolute;
+  pointer-events: none;
+  inset: -40% -10% auto -10%;
+  height: 220px;
+  background: radial-gradient(
+    60% 100% at 50% 0%,
+    rgba(217, 119, 87, 0.35) 0%,
+    transparent 70%
+  );
+  filter: blur(20px);
+  z-index: 0;
+  animation: welcome-glow-pulse 5s ease-in-out infinite alternate;
+}
+.welcome-modal-card > *:not(.welcome-modal-glow) {
+  position: relative;
+  z-index: 1;
+}
+.welcome-modal-kind {
+  display: inline-block;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--color-brand-700);
+  background: var(--color-brand-50);
+  padding: 4px 10px;
+  border-radius: 999px;
+  margin-bottom: 14px;
+}
+.welcome-modal-title {
+  font-family: var(--font-serif);
+  font-size: 26px;
+  line-height: 1.2;
+  font-weight: 600;
+  margin: 0 0 12px 0;
+  color: var(--color-ink-900);
+  letter-spacing: -0.01em;
+}
+.welcome-modal-body {
+  margin: 0 0 22px 0;
+  font-size: 14.5px;
+  line-height: 1.6;
+  color: var(--color-ink-700);
+}
+.welcome-modal-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.welcome-modal-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--color-brand-500);
+  color: #fff;
+  font-weight: 600;
+  font-size: 14px;
+  padding: 9px 18px;
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+  transition: background 150ms ease, transform 150ms ease;
+}
+.welcome-modal-cta:hover {
+  background: var(--color-brand-600);
+  transform: translateY(-1px);
+}
+.welcome-modal-cta::after {
+  content: "→";
+  font-size: 14px;
+}
+.welcome-modal-close {
+  background: var(--color-cream-200);
+  color: var(--color-ink-700);
+  border: 1px solid var(--border-subtle);
+  font-weight: 500;
+  font-size: 13.5px;
+  padding: 9px 16px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+.welcome-modal-close:hover {
+  background: var(--color-cream-300);
+  color: var(--color-ink-900);
+}
+
+@keyframes welcome-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes welcome-rise {
+  from {
+    opacity: 0;
+    transform: translateY(28px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+@keyframes welcome-glow-pulse {
+  from { opacity: 0.55; transform: translateY(0) scale(1); }
+  to   { opacity: 0.85; transform: translateY(6px) scale(1.04); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .welcome-modal { animation: none; }
+  .welcome-modal-card { animation: none; }
+  .welcome-modal-glow { animation: none; }
+}
+
 /* ── Offline banner (U-5 2026-05-11) ──────────────────────────────────── */
 .offline-banner {
   background: var(--color-brand-50);
@@ -1002,6 +1205,23 @@ html[data-pref-show-warnings="0"] .run-warnings { display: none; }
   margin: 14px 0 0;
   font-size: 11.5px;
   color: var(--color-ink-400);
+}
+.prefs-row--sound {
+  padding: 10px 12px;
+  margin-top: 4px;
+  background: var(--color-brand-50);
+  border: 1px solid var(--color-brand-100);
+  border-radius: var(--radius-sm);
+}
+.prefs-row--sound .prefs-row-note {
+  margin-left: 24px;
+  color: var(--color-ink-700);
+}
+.prefs-row--sound .prefs-row-note code {
+  background: rgba(255, 255, 255, 0.6);
+  padding: 0 4px;
+  border-radius: 3px;
+  font-size: 11.5px;
 }
 
 /* ── ETA + throughput during run (toggleable) ─────────────────────────── */

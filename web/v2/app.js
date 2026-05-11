@@ -35,12 +35,15 @@
   // ── Display preferences ─────────────────────────────────────────────────
   // Defaults — `showCost` is OFF on purpose (per user request 2026-05-11).
   // Everything else is on by default; the modal lets the user toggle.
+  // `playSound` is OFF by default so a first-time visitor doesn't get
+  // a chime out of nowhere; once they tick it, the choice persists.
   const DEFAULT_PREFS = {
     showCost:         false,
     showCacheSavings: true,
     showCacheExpiry:  true,
     showWarnings:     true,
     showEta:          true,
+    playSound:        false,
   };
   function loadPrefs() {
     let raw;
@@ -105,6 +108,17 @@
     lastSidecar: null,
   };
 
+  // Sound + cross-tab signalling state. Declared up here (not next
+  // to its consumers) because boot() may fire synchronously on a
+  // `defer`-loaded script — having this initialised before the
+  // boot() call avoids a TDZ "Cannot access X before initialization"
+  // error when wireVisibilityWatcher first writes to it.
+  const SOUND_STATE = {
+    pendingTitle: null,    // string shown while document is hidden
+    pendingTimer: null,
+    originalTitle: '',
+  };
+
   // ── DOM lookup helper — defers until the element actually exists.
   function $(id) { return document.getElementById(id); }
 
@@ -127,6 +141,9 @@
     wireOfflineBanner();     // U-5
     wirePrefsModal();        // 2026-05-11 — display preferences
     wireHistoryTools();      // 2026-05-11 — history clear / CSV
+    wirePinnedBanner();      // 2026-05-11 — pinned banner dismiss
+    wireWelcomeModal();      // 2026-05-11 — welcome modal close
+    wireVisibilityWatcher(); // 2026-05-11 — cross-tab title swap
     paintFooterBuild();
     paintFooterCost();       // U-4
     renderHistory();         // initial paint of recent-runs list
@@ -478,6 +495,9 @@
     if (status && status.filename) {
       void renderSidecarSummary(status.filename, file, wasCached);
     }
+    // Fire the "translation done" signal — chime + (if hidden) title
+    // flash + system notification. Pref-gated; no-op when off.
+    maybeSignalDone(status && status.filename);
   }
 
   async function pollStatus(jobId) {
@@ -746,8 +766,196 @@
       if (res.ok) payload = await res.json();
     } catch (_) { /* offline / parse error — fall through to empty render */ }
     payload = payload && typeof payload === 'object' ? payload : {};
+    renderPinnedBanner(payload.pinned || null);
+    renderWelcomeModal(payload.modal || null);
     renderAnnouncements(Array.isArray(payload.announcements) ? payload.announcements : []);
     renderStories(Array.isArray(payload.stories) ? payload.stories : []);
+  }
+
+  // ── Pinned banner (top of page, single slot) ───────────────────────────
+  function renderPinnedBanner(p) {
+    const el = $('pinnedBanner');
+    if (!el) return;
+    if (!p || !p.id || !p.text) { el.classList.add('hidden'); return; }
+    // Skip if user already dismissed this id.
+    const dismissedKey = 'v2.pinned.dismissed.' + p.id;
+    if (lsGet(dismissedKey, '') === '1') { el.classList.add('hidden'); return; }
+    el.setAttribute('data-pinned-id', p.id);
+    el.setAttribute('data-kind', String(p.kind || 'release'));
+    const icon = el.querySelector('.pinned-banner-icon');
+    const text = el.querySelector('.pinned-banner-text');
+    if (icon) icon.textContent = p.icon ? String(p.icon) : '✨';
+    if (text) text.textContent = String(p.text || '');
+    el.classList.remove('hidden');
+  }
+  function wirePinnedBanner() {
+    const el = $('pinnedBanner');
+    if (!el) return;
+    const close = el.querySelector('.pinned-banner-close');
+    if (!close) return;
+    close.addEventListener('click', () => {
+      const id = el.getAttribute('data-pinned-id') || '';
+      if (id) lsSet('v2.pinned.dismissed.' + id, '1');
+      el.classList.add('hidden');
+    });
+  }
+
+  // ── Welcome modal (one-time per id) ────────────────────────────────────
+  function renderWelcomeModal(m) {
+    const el = $('welcomeModal');
+    if (!el) return;
+    if (!m || !m.id || !m.title) { el.classList.add('hidden'); return; }
+    if (lsGet('v2.modal.dismissed.' + m.id, '') === '1') {
+      el.classList.add('hidden');
+      return;
+    }
+    el.setAttribute('data-modal-id', m.id);
+    const kind  = el.querySelector('.welcome-modal-kind');
+    const title = el.querySelector('.welcome-modal-title');
+    const body  = el.querySelector('.welcome-modal-body');
+    const cta   = el.querySelector('.welcome-modal-cta');
+    if (kind)  kind.textContent  = String(m.kind || 'announcement');
+    if (title) title.textContent = String(m.title || '');
+    if (body)  body.textContent  = String(m.body  || '');
+    if (cta) {
+      if (m.cta && m.cta.label && m.cta.url) {
+        cta.textContent = String(m.cta.label);
+        cta.href        = String(m.cta.url);
+        cta.classList.remove('hidden');
+      } else {
+        cta.classList.add('hidden');
+      }
+    }
+    el.classList.remove('hidden');
+    // Move keyboard focus to the close button so Esc / Tab work
+    // immediately on first paint.
+    const closeBtn = el.querySelector('.welcome-modal-close');
+    if (closeBtn) setTimeout(() => closeBtn.focus(), 60);
+  }
+  function dismissWelcomeModal() {
+    const el = $('welcomeModal');
+    if (!el) return;
+    const id = el.getAttribute('data-modal-id') || '';
+    if (id) lsSet('v2.modal.dismissed.' + id, '1');
+    el.classList.add('hidden');
+  }
+  function wireWelcomeModal() {
+    const el = $('welcomeModal');
+    if (!el) return;
+    const close = el.querySelector('.welcome-modal-close');
+    const back  = el.querySelector('.welcome-modal-backdrop');
+    if (close) close.addEventListener('click', dismissWelcomeModal);
+    if (back)  back .addEventListener('click', dismissWelcomeModal);
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !el.classList.contains('hidden')) {
+        dismissWelcomeModal();
+      }
+    });
+  }
+
+  // ── Sound notification + cross-tab signalling ──────────────────────────
+  //
+  // Three layers of "translation done" signal, all toggled off when
+  // `prefs.playSound` is false:
+  //   1. Short Web Audio chime (no asset download).
+  //   2. Tab-title flash + favicon (handled by wireVisibilityWatcher
+  //      + maybeSignalDone). Activates only when the document is
+  //      hidden at completion time, AND keeps blinking until the user
+  //      switches back to this tab.
+  //   3. Optional Notifications API ping. We ask for permission
+  //      lazily — the first time the user enables `playSound`, then
+  //      whenever they trigger a run with the pref on. Denied =>
+  //      silent fallback to layers 1+2.
+  // (SOUND_STATE is declared near the top of the IIFE — see the
+  // mutable-state block. We must NOT redeclare it here, otherwise the
+  // `defer`-load path that runs boot() synchronously would hit TDZ
+  // before reaching this point.)
+
+  function playChime() {
+    // Two-note pleasant chime (C5 -> E5), ~120 ms total. Pure
+    // synthesis, no audio file. Wrapped in try so a missing
+    // AudioContext on a hostile browser stays silent.
+    try {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return;
+      const ctx = new Ctx();
+      const now = ctx.currentTime;
+      [ {f: 523.25, t: 0.00, d: 0.20}, {f: 659.25, t: 0.08, d: 0.22} ]
+        .forEach(({f, t, d}) => {
+          const o = ctx.createOscillator();
+          const g = ctx.createGain();
+          o.type = 'sine';
+          o.frequency.value = f;
+          g.gain.setValueAtTime(0.0001, now + t);
+          g.gain.exponentialRampToValueAtTime(0.18, now + t + 0.02);
+          g.gain.exponentialRampToValueAtTime(0.0001, now + t + d);
+          o.connect(g); g.connect(ctx.destination);
+          o.start(now + t);
+          o.stop(now + t + d + 0.05);
+        });
+      // Free the context after the chime completes so we don't pile
+      // up suspended audio graphs on long sessions.
+      setTimeout(() => { try { ctx.close(); } catch (_) {} }, 600);
+    } catch (_) { /* silent */ }
+  }
+
+  function wireVisibilityWatcher() {
+    SOUND_STATE.originalTitle = document.title;
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden && SOUND_STATE.pendingTitle !== null) {
+        clearPendingTitleFlash();
+      }
+    });
+  }
+  function clearPendingTitleFlash() {
+    if (SOUND_STATE.pendingTimer) {
+      clearInterval(SOUND_STATE.pendingTimer);
+      SOUND_STATE.pendingTimer = null;
+    }
+    SOUND_STATE.pendingTitle = null;
+    document.title = SOUND_STATE.originalTitle;
+  }
+  function startTitleFlash(message) {
+    if (!document.hidden) return; // tab is focused — no flash needed
+    SOUND_STATE.pendingTitle = message;
+    let alt = false;
+    SOUND_STATE.pendingTimer = setInterval(() => {
+      document.title = alt ? SOUND_STATE.originalTitle : message;
+      alt = !alt;
+    }, 1100);
+    document.title = message;
+  }
+  async function maybeRequestNotificationPermission() {
+    if (!('Notification' in window)) return false;
+    if (Notification.permission === 'granted') return true;
+    if (Notification.permission === 'denied')  return false;
+    try {
+      const result = await Notification.requestPermission();
+      return result === 'granted';
+    } catch (_) {
+      return false;
+    }
+  }
+  function maybeSignalDone(filename) {
+    if (!state.prefs || !state.prefs.playSound) return;
+    // Audio chime always plays when pref is on (it's the user's
+    // explicit ask). Layer 2 + 3 only fire when the tab is hidden.
+    playChime();
+    if (document.hidden) {
+      const shortName = stripPrefix(String(filename || 'docx'));
+      startTitleFlash(`(✓ Done) ${shortName}`);
+      // Best-effort system notification; never await.
+      if ('Notification' in window && Notification.permission === 'granted') {
+        try {
+          const n = new Notification('Translation finished', {
+            body: shortName,
+            silent: true, // chime above already announced it
+            tag:    'mtd-done',
+          });
+          n.onclick = () => { window.focus(); n.close(); };
+        } catch (_) { /* silent */ }
+      }
+    }
   }
 
   function renderAnnouncements(items) {
@@ -1201,6 +1409,13 @@
         if (state.lastSidecar) {
           paintRunSummary(state.lastSidecar);
           paintRunWarnings({ summary: state.lastSidecar.summary, file: state.lastSidecar.file });
+        }
+        // When the user turns sound on for the first time, lazily ask
+        // for Notification permission so a future tab-hidden run can
+        // surface a system ping. Denying is fine — chime + title
+        // flash still work.
+        if (key === 'playSound' && cb.checked) {
+          void maybeRequestNotificationPermission();
         }
       });
     });

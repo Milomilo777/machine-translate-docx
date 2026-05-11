@@ -27,10 +27,37 @@
 </head>
 
 <body class="page-shell">
+  <!-- Pinned banner (top of page) — single most-prominent slot.
+       Filled from content.json `pinned`. Hidden until app.js paints. -->
+  <div id="pinnedBanner" class="pinned-banner hidden" role="status" aria-live="polite">
+    <span class="pinned-banner-icon" aria-hidden="true"></span>
+    <span class="pinned-banner-text"></span>
+    <button type="button" class="pinned-banner-close" aria-label="Dismiss pinned announcement">✕</button>
+  </div>
+
   <!-- U-5 (2026-05-11 audit) — offline banner. Hidden by default; app.js
        toggles its visibility on `online` / `offline` window events. -->
   <div id="offlineBanner" class="offline-banner hidden" role="status" aria-live="polite">
     You appear to be offline. Translations need an internet connection to reach DeepL / Google / OpenAI.
+  </div>
+
+  <!-- Welcome modal — shows once per `content.json#modal.id`. The
+       backdrop fade + dialog rise-in animation runs the first time
+       the user lands on this id; dismissing it (or pressing Esc)
+       writes `v2.modal.dismissed.<id>` to localStorage so we don't
+       show the same dialog twice. -->
+  <div id="welcomeModal" class="welcome-modal hidden" role="dialog" aria-modal="true" aria-labelledby="welcomeModalTitle">
+    <div class="welcome-modal-backdrop"></div>
+    <div class="welcome-modal-card" role="document">
+      <div class="welcome-modal-glow" aria-hidden="true"></div>
+      <span class="welcome-modal-kind"></span>
+      <h2 id="welcomeModalTitle" class="welcome-modal-title">—</h2>
+      <p class="welcome-modal-body">—</p>
+      <div class="welcome-modal-actions">
+        <a class="welcome-modal-cta hidden" target="_blank" rel="noopener">—</a>
+        <button type="button" class="welcome-modal-close">Close</button>
+      </div>
+    </div>
   </div>
 
   <!-- ── Header ─────────────────────────────────────────────────────────── -->
@@ -421,6 +448,19 @@
             <span>Show ETA + throughput during run</span>
           </label>
           <p class="prefs-row-note">Live "~12 s left" and "~2,300 chars/s" derived from progress velocity.</p>
+        </li>
+        <li class="prefs-row prefs-row--sound">
+          <label>
+            <input type="checkbox" data-pref="playSound" />
+            <span>Play sound when a translation finishes</span>
+          </label>
+          <p class="prefs-row-note">
+            A soft two-note chime via Web Audio (no download, ~120 ms).
+            If you're on another tab, the title also flashes
+            <code>(✓ Done — &lt;name&gt;)</code> until you switch back,
+            and — if you grant permission once — a system notification
+            pings. Preference saved to your browser only.
+          </p>
         </li>
       </ul>
       <p class="prefs-footer-note">
