@@ -90,6 +90,35 @@ def test_send_document_constructs_multipart(tmp_path):
     assert b'PK\x03\x04 not a real docx but binary' in body
 
 
+def test_parse_chat_ids_single():
+    assert local_launcher._parse_telegram_chat_ids("987654321") == ["987654321"]
+
+
+def test_parse_chat_ids_comma_separated():
+    assert local_launcher._parse_telegram_chat_ids("123, 456, 789") == ["123", "456", "789"]
+
+
+def test_parse_chat_ids_mixed_separators():
+    assert local_launcher._parse_telegram_chat_ids("123;456 789,@chan") == [
+        "123", "456", "789", "@chan",
+    ]
+
+
+def test_parse_chat_ids_drops_empty_pieces():
+    assert local_launcher._parse_telegram_chat_ids(",, 123 ,, ,456,") == ["123", "456"]
+
+
+def test_parse_chat_ids_accepts_negative_group_ids():
+    assert local_launcher._parse_telegram_chat_ids("-987654321,@public_channel") == [
+        "-987654321", "@public_channel",
+    ]
+
+
+def test_parse_chat_ids_empty_input():
+    assert local_launcher._parse_telegram_chat_ids("") == []
+    assert local_launcher._parse_telegram_chat_ids("   ") == []
+
+
 def test_send_document_raises_on_telegram_rejection(tmp_path):
     docx = tmp_path / "x.docx"
     docx.write_bytes(b"PK")

@@ -152,6 +152,29 @@ def _cache_key(payload: bytes, target_lang: str, engine: str,
 # ── Telegram alert helpers ───────────────────────────────────────────────────
 
 
+def _parse_telegram_chat_ids(raw: str) -> list[str]:
+    """Split a comma- / semicolon- / whitespace-separated list of chat ids.
+
+    Each id is left as a string because Telegram accepts either a
+    numeric DM id (``987654321``), a numeric group id (``-987654321``),
+    or a public channel handle (``@my_channel``). Validating the shape
+    here would block the legitimate channel-handle case.
+
+    Empty / whitespace-only entries are dropped. Duplicates are
+    preserved on purpose — operators sometimes intentionally repeat a
+    chat id with a different separator while debugging.
+    """
+    if not raw:
+        return []
+    parts: list[str] = []
+    for piece in raw.replace(";", ",").split(","):
+        for sub in piece.split():        # collapse internal whitespace
+            sub = sub.strip()
+            if sub:
+                parts.append(sub)
+    return parts
+
+
 def _telegram_escape(s: str) -> str:
     """Escape Markdown-special chars inside Telegram alert strings.
 
@@ -1504,22 +1527,43 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
                 print(f"[B-002] alert webhook skipped: {exc}")
 
         # ── Telegram bot (env-gated) ──────────────────────────────────
-        # Two env vars required: MTD_TELEGRAM_TOKEN + MTD_TELEGRAM_CHAT_ID.
-        # See docs/telegram-alerts-setup.md for the @BotFather walkthrough.
-        # Best-effort: any exception is logged and swallowed so a flaky
-        # network or a revoked token cannot block the failure-archive path.
-        tg_token = os.environ.get("MTD_TELEGRAM_TOKEN", "").strip()
-        tg_chat  = os.environ.get("MTD_TELEGRAM_CHAT_ID", "").strip()
-        if tg_token and tg_chat:
-            self._send_telegram_alert(
-                token=tg_token,
-                chat_id=tg_chat,
-                job_id=job_id,
-                reason=reason,
-                message=message,
-                meta=meta,
-                archive_dir=archive_dir,
-            )
+        # Two env vars required:
+        #   MTD_TELEGRAM_TOKEN     — bot token from @BotFather
+        #   MTD_TELEGRAM_CHAT_ID   — one OR MORE chat ids, comma- /
+        #                            whitespace-separated. Each id can
+        #                            be a numeric DM id (e.g.
+        #                            `987654321`), a group id (e.g.
+        #                            `-987654321`), or a public channel
+        #                            handle (e.g. `@my_alerts_channel`).
+        #
+        # See docs/telegram-alerts-setup.md for the @BotFather walkthrough,
+        # the @userinfobot shortcut for chat_ids, and the multi-recipient
+        # options (multi-DM / private group / channel).
+        #
+        # Best-effort: any exception per recipient is logged and swallowed
+        # so a flaky network or one bad chat_id cannot block the rest of
+        # the alert fan-out or the failure-archive path.
+        tg_token     = os.environ.get("MTD_TELEGRAM_TOKEN", "").strip()
+        tg_chat_raw  = os.environ.get("MTD_TELEGRAM_CHAT_ID", "").strip()
+        if tg_token and tg_chat_raw:
+            chat_ids = _parse_telegram_chat_ids(tg_chat_raw)
+            for chat_id in chat_ids:
+                try:
+                    self._send_telegram_alert(
+                        token=tg_token,
+                        chat_id=chat_id,
+                        job_id=job_id,
+                        reason=reason,
+                        message=message,
+                        meta=meta,
+                        archive_dir=archive_dir,
+                    )
+                except Exception as exc:
+                    # Should not happen — _send_telegram_alert already
+                    # swallows internally. Belt-and-suspenders so a
+                    # malformed chat_id can't kill the loop.
+                    print(f"[telegram] recipient {chat_id} skipped: {exc!r}",
+                          file=sys.stderr, flush=True)
 
     def _send_telegram_alert(
         self,

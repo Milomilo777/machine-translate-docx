@@ -57,6 +57,55 @@ after 1800 ms to avoid the Chrome multi-download permission prompt.
 
 ## Sessions
 
+### 2026-05-11 — Telegram multi-recipient + docs expansion (branch `next/telegram-multi-recipient`)
+
+User encountered two friction points during the Telegram setup:
+(1) pasted the `getUpdates` URL *into* Telegram instead of a
+browser, then accidentally pasted the bot token in the chat (had
+to revoke immediately), and (2) wanted to know how to add more
+than one recipient.
+
+**Multi-recipient support**
+
+  `MTD_TELEGRAM_CHAT_ID` now accepts a list, separated by commas,
+  semicolons, or whitespace. New helper `_parse_telegram_chat_ids`
+  splits + drops empties + preserves duplicates. The launcher
+  iterates recipients and the per-recipient send is wrapped in a
+  defensive try/except, so one bad id (kicked from a group, etc.)
+  never blocks the rest of the fan-out.
+
+  Six new unit tests in `tests/test_telegram_alert.py` cover
+  single id, comma-separated, mixed separators
+  (`;` / `,` / whitespace), empty-piece dropping, negative group
+  ids + channel handles, and empty input.
+
+**Docs expansion** in `docs/telegram-alerts-setup.md`
+
+  - **Section 2a** — recommends `@userinfobot` as the easy way to
+    discover your chat id (no URL, no browser, takes 5 seconds).
+  - **Section 2b** — the original browser-URL method, now with a
+    bold ⚠ warning about the most common mistake (pasting the URL
+    *into Telegram* instead of a browser).
+  - **Section 4** — three multi-recipient patterns, each with
+    pros/cons:
+      * 4a multiple individual DMs
+      * 4b a private group
+      * 4c a public or private channel
+    Plus an explicit "mixing patterns" example.
+  - **New Troubleshooting section** covering the URL-as-message
+    mistake, the token-leak emergency response (`/revoke` to
+    `@BotFather`), empty `result` arrays, the "bots can't DM users
+    who haven't /start'd" gotcha, the Group Privacy default, and
+    how to detect a bot kicked from a recipient.
+
+  PROJECT_MEMORY C20 retains its current scope (the multi-recipient
+  feature is purely a parsing improvement; the env-var name is
+  unchanged so existing setups keep working).
+
+  Tests: 113 / 113 pass (107 prior + 6 new).
+
+Master tip going in: `b348e35`.
+
 ### 2026-05-11 — Cost-field UX tweak + Telegram failure alerts (branch `next/cost-field-and-telegram`)
 
 Two small changes the user asked for after the run-summary wave:

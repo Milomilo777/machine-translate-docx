@@ -64,19 +64,52 @@ your bot.
 
 The token alone is not enough — Telegram also needs to know **which
 chat** to deliver alerts to (your DM with the bot, a group you're in,
-or a channel).
+or a channel). There are two ways to discover the id; pick whichever
+is more convenient.
 
-The simplest case is a 1:1 DM with your bot:
+#### 2a. Easy way — `@userinfobot` (recommended)
 
-1. In Telegram, search for the username `@<your_bot_username>`
-   (the link `@BotFather` gave you).
-2. Click **Start** (or send `/start`).
-3. In a **browser**, open this URL — replace `<TOKEN>` with the token
-   from step 1:
+This is the path most people pick on the first try:
+
+1. In Telegram, in the search bar type **`@userinfobot`** (it's an
+   official utility bot — no token, no setup).
+2. Open it and click **Start**.
+3. The bot replies *instantly* with something like:
+
+   ```
+   You
+   Id: 987654321        ← this is your MTD_TELEGRAM_CHAT_ID
+   First: Mousa
+   Username: @…
+   ```
+
+4. Copy the `Id` number. Done.
+
+You do **not** need to do this for the alerts bot itself — `@userinfobot`
+just tells you your own user id, which is the same as your DM-with-any-bot
+chat id.
+
+#### 2b. Manual way — `getUpdates` URL in a browser
+
+This is the original method. It only works if you've already messaged
+your alerts bot at least once. Use it when `@userinfobot` is not
+available (rare).
+
+1. In Telegram, search for the username `@<your_bot_username>` of the
+   bot you created in step 1 (the link `@BotFather` gave you).
+2. Click **Start** (or send any message — the text doesn't matter).
+3. **Open a real web browser** (Chrome / Safari / Firefox / Edge —
+   *not* Telegram). Paste this URL and replace `<TOKEN>` with your
+   bot token:
 
    ```
    https://api.telegram.org/bot<TOKEN>/getUpdates
    ```
+
+   ⚠️ **Common mistake** — pasting this URL *into Telegram* does
+   nothing. Telegram displays it as a clickable link or a plain
+   message; it does not actually fetch the URL. The fetch must
+   happen from a browser, where the response is shown as JSON.
 
 4. You should see a JSON response. Look for `"chat":{"id":NNNNNNN,…}`.
    The number `NNNNNNN` is your `MTD_TELEGRAM_CHAT_ID`.
@@ -98,7 +131,7 @@ The simplest case is a 1:1 DM with your bot:
    → `MTD_TELEGRAM_CHAT_ID = 987654321`
 
 If the `result` list is empty, the bot hasn't received any message
-yet. Send `/start` to the bot once and re-fetch the URL.
+yet. Send any message to the bot, then refresh the URL.
 
 ### 3. Configure the launcher
 
@@ -130,7 +163,95 @@ E:\Python311\python.exe local_launcher.py
 That's it. Restart the launcher; the next time a job fails you'll
 get a Telegram message within ~1 second.
 
-### 4. Optional — disable the docx attachment
+### 4. Optional — multiple recipients
+
+`MTD_TELEGRAM_CHAT_ID` accepts **a list** of chat ids, separated by
+commas, semicolons, or whitespace. Every alert is fan-out'd to every
+id in the list. Three patterns work:
+
+#### 4a. Multiple individual people via DM
+
+Each person:
+
+1. Opens your bot and clicks **Start** (so the bot can DM them —
+   Telegram blocks bots from messaging users who haven't opted in).
+2. Finds their own chat id with `@userinfobot` (see step 2a).
+3. Tells you the number.
+
+You list them on the server:
+
+```bash
+MTD_TELEGRAM_CHAT_ID=987654321,123456789,555000111
+```
+
+✓ Pros: each person sees the alert in their own DM, on their own
+device. No one else in the list can see who else is listed.
+✗ Cons: if you have 10 people, you have 10 ids to maintain.
+
+#### 4b. A private Telegram group (best for small teams)
+
+1. In Telegram, **Create a new group**, give it a name (e.g.
+   "SMTV Alerts"), add your bot as a member alongside the people
+   who should receive alerts.
+2. In `@BotFather`: `/setprivacy` → pick your bot → **Disable**.
+   This lets the bot read every message in the group (needed only
+   so it can confirm the group's id; you can re-enable it later
+   without losing the id).
+3. In the group, send any message (e.g. "hi"). Then in a browser
+   open `https://api.telegram.org/bot<TOKEN>/getUpdates`. Look for
+   `"chat":{"id":-987654321,"type":"group", …}`. Group ids start
+   with a minus sign — that is part of the id, not a typo.
+4. Set:
+
+   ```bash
+   MTD_TELEGRAM_CHAT_ID=-987654321
+   ```
+
+5. (Optional) re-run `/setprivacy` → **Enable** so the bot stops
+   reading every group message; alerts continue to flow.
+
+✓ Pros: one id, everyone sees alerts together, can discuss inline.
+✗ Cons: any group member can see every alert. Don't add anyone you
+wouldn't show every failure to.
+
+#### 4c. A Telegram channel (best for one-way broadcast)
+
+1. In Telegram, **Create a new channel** (Public or Private — both
+   work), give it a name (e.g. "SMTV Alerts").
+2. Open the channel → **Manage Channel** → **Administrators** →
+   **Add Administrator** → search for your bot's username →
+   add it. Give it just the **Post Messages** permission.
+3. Find the channel id:
+   - For a **public** channel with a username (e.g. `@smtv_alerts`),
+     just use the handle: `MTD_TELEGRAM_CHAT_ID=@smtv_alerts`.
+   - For a **private** channel, post any message in the channel,
+     then in a browser open
+     `https://api.telegram.org/bot<TOKEN>/getUpdates`. Look for
+     `"chat":{"id":-1001234567890,"type":"channel", …}`. Channel
+     ids start with `-100` — that is part of the id.
+4. People who should receive alerts then **subscribe** to the
+   channel (one click). They cannot reply (channels are one-way
+   from admins to subscribers).
+
+✓ Pros: subscribers join / leave themselves; you don't manage a
+list. Subscribers can mute / unmute on their own.
+✗ Cons: one-way only — no one can reply or discuss in the channel.
+
+#### Mixing patterns
+
+Nothing stops you from combining all three. The launcher just walks
+the list and sends to every id. Example — your DM, the team group,
+and a public channel:
+
+```bash
+MTD_TELEGRAM_CHAT_ID=987654321,-987654321,@smtv_alerts
+```
+
+If one id fails (bot kicked from a group, channel deleted, etc.)
+the launcher logs `[telegram] recipient <id> skipped: …` and moves
+on to the next. The other recipients still receive their copy.
+
+### 5. Optional — disable the docx attachment
 
 The launcher tries to send the input docx as a Telegram document
 attachment too. If you want only the text alert (e.g. policy / size
@@ -142,6 +263,72 @@ MTD_TELEGRAM_NO_ATTACHMENT=1
 
 The text alert always carries the failure reason, the input filename,
 the job ID, and the path of the on-disk failure archive.
+
+---
+
+## Troubleshooting — common first-time mistakes
+
+### "I pasted the URL in the chat with the bot but nothing happened"
+
+Telegram does not fetch URLs — it just displays them. The
+`getUpdates` URL must be opened in a real **web browser** (Chrome,
+Safari, Firefox, Edge — desktop or mobile). When opened correctly,
+the page shows raw JSON. If the URL appears as a clickable link in
+your Telegram chat, that means it was sent as a message, not opened.
+
+**Fix:** copy the URL, paste it into your browser's address bar,
+press Enter. Or skip the URL entirely and use `@userinfobot` (step
+2a above).
+
+### "I leaked the token in a chat / screenshot / repo"
+
+The token is the *only* credential between the world and your bot.
+Anyone who has it can post as your bot to any chat where the bot
+is added. **Revoke it immediately** — do not wait:
+
+1. In Telegram, message **`@BotFather`**.
+2. Send `/revoke`.
+3. Pick the bot whose token leaked.
+4. `@BotFather` replies with a brand-new token. The old one stops
+   working at that exact moment, even if a copy is still in the
+   wild.
+5. Update `MTD_TELEGRAM_TOKEN` on the server with the new value
+   and restart the launcher.
+
+The new token never has to touch any chat — write it directly into
+the server's `.env` file (which is already in `.gitignore`).
+
+### "result is empty in the JSON response"
+
+The `getUpdates` API only returns updates the bot has received.
+First-time setup: send any message to the bot, then refresh the URL.
+If you used a private channel, post a message *in the channel*
+(the bot must be an admin first).
+
+### "bot can't initiate a conversation with a user"
+
+Telegram bots **cannot DM users who haven't messaged the bot first**.
+Each new recipient must open your bot and click **Start** at least
+once. After that, the bot can DM them at any time.
+
+### "The bot is in my group but I don't see a `chat.id` in `getUpdates`"
+
+`@BotFather` ships every bot with **Group Privacy enabled by
+default** — the bot only sees messages directed at it (replies,
+mentions, commands). To get the group's id from `getUpdates`:
+
+1. Mention the bot in the group ("@your_bot_username hi") OR
+2. Temporarily disable privacy via `@BotFather` → `/setprivacy`
+   → **Disable**, fetch the id, then re-enable for safety.
+
+You only need to do this once — the group id never changes.
+
+### "The bot was kicked / removed and I don't know"
+
+The launcher logs `[telegram] recipient <id> skipped: …` whenever
+a delivery fails. If you stop seeing that recipient receive alerts,
+check the launcher's stdout. To re-add: invite the bot back to the
+group / channel; no env change required.
 
 ---
 
