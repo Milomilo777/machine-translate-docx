@@ -57,6 +57,110 @@ after 1800 ms to avoid the Chrome multi-download permission prompt.
 
 ## Sessions
 
+### 2026-05-11 — Reserved announcement slots + sound + weekly subscriber report + legacy F-1 (branch `w`)
+
+Ships everything queued at end-of-day: two reserved announcement
+surfaces in the v2 SPA, a sound + cross-tab finish signal, a weekly
+Telegram export of the newsletter list, a legacy-dropdown trim, and
+a prioritised future-ideas backlog.
+
+**v2: pinned banner + welcome modal**
+
+  Two announcement surfaces driven by `content.json`:
+
+  - **Pinned banner** — single sticky row at the very top of the
+    page (above the announcements column). `data-kind` chooses the
+    accent stripe colour (`release` / `notice` / `warning`).
+    Dismissable, persists per `id` in
+    `localStorage('v2.pinned.dismissed.<id>')`. Change the id in
+    `content.json` to re-show.
+  - **Welcome modal** — cinematic full-screen dialog with a
+    fade-in backdrop + spring rise + soft clay glow that pulses
+    every 5 s. Shows once per `id`, dismissable via close button /
+    backdrop click / Esc. Optional `cta { label, url }` block. Both
+    surfaces silently no-op when their slot is missing or
+    malformed. Honours `prefers-reduced-motion`.
+
+  Both renderers live in `web/v2/app.js` and consume the new
+  reserved slots in `web/v2/content.json` (`pinned`, `modal`).
+
+**v2: sound + cross-tab finish signal**
+
+  New `playSound` toggle in the Display Preferences modal (default
+  OFF). When a translation finishes:
+
+  - **Always** (pref on): a two-note Web Audio chime (C5 → E5,
+    ~120 ms, pure synthesis — no asset download).
+  - **If the tab is hidden**: tab title flashes
+    `(✓ Done) <filename>` every 1.1 s; falls back to the original
+    title when the user switches back.
+  - **If the user granted Notification permission**: a system
+    `Notification('Translation finished', …)` with the filename.
+    Permission is requested lazily the first time the user enables
+    `playSound`; denying is fine — chime + title flash still work.
+
+  Closes the "user didn't notice the run finished while in another
+  tab" gap from the legacy UI.
+
+**Backend: weekly Telegram subscriber report**
+
+  New scheduler thread in `local_launcher.py`:
+
+  - Default schedule: **Saturday 12:00 Europe/Paris**. Override via
+    `MTD_SCHEDULER_TZ=<IANA tz>`.
+  - Reuses `MTD_TELEGRAM_TOKEN` + `MTD_TELEGRAM_CHAT_ID` (now also
+    used by the failure-archive alerter). If unset, the scheduler
+    is dormant and prints
+    `[subscribers] Telegram not configured — weekly report disabled`
+    once at boot.
+  - Empty `subscribers.txt` → silent skip. Non-empty → sends a
+    Markdown text snapshot + the file as a Telegram document.
+  - State persisted to
+    `runtime_dir/subscribers_report_state.json`. If the last
+    weekly attempt failed, the next launcher boot reads the
+    `pending_warning` flag and prints
+    `[subscribers] WARNING: last attempt at <ts> failed (N
+    email(s) pending). Reason: <repr(exc)>` to stderr, then clears
+    the flag so it doesn't nag every boot.
+
+**Legacy `index.ejs`: F-1 dropdown trim**
+
+  Stale `gpt-5.4` option removed from the AI-model dropdown — only
+  the two `config.VALID_AI_MODELS` entries (`gpt-5.5`,
+  `gpt-5.4-mini`) remain. F-5 / U-6 from the audit are N/A: the
+  legacy template has no theme toggle to persist (the audit
+  finding assumed one).
+
+**`docs/v2-future-ideas.md`**
+
+  New tier-1..4 backlog for the v2 SPA. Each idea scored against
+  three axes (server cost, client cost, build cost) so a future
+  reviewer can pick from the top quickly. Anti-patterns section
+  (no framework, no CDN-required fonts, no heavy chart libs) keeps
+  the dependency-light posture explicit.
+
+**Bug fix in this session**
+
+  Initial commit had a TDZ bug: `SOUND_STATE` was a `const` near
+  the bottom of the IIFE but `wireVisibilityWatcher()` reads it
+  from `boot()`, which fires synchronously on a `defer`-loaded
+  script (the `document.readyState !== 'loading'` path). Moved
+  the declaration up next to the rest of the IIFE-level state.
+  Caught by spinning the v2 page in the preview tool and watching
+  the renderers silently fail to paint.
+
+**Verification**
+
+  - `pytest`: 113 / 113 pass.
+  - Live DeepL en→fr smoke: exit 0, source 42/42 preserved,
+    target 18/40 phrase — baseline unchanged.
+  - v2 boot in the preview tool: 4 announcements rendered, 3
+    story cards rendered, pinned banner visible with the correct
+    text, welcome modal visible with the correct title + CTA,
+    `playSound` checkbox present with correct default (OFF).
+
+Master tip going in: `5e3314e`.
+
 ### 2026-05-11 — Drain the parked-item queue (branch `next/clean-parked-list`)
 
 Clears every item that was parked in `docs/audit-2026-05-11.md` and
