@@ -57,6 +57,66 @@ after 1800 ms to avoid the Chrome multi-download permission prompt.
 
 ## Sessions
 
+### 2026-05-11 — Cost-field UX tweak + Telegram failure alerts (branch `next/cost-field-and-telegram`)
+
+Two small changes the user asked for after the run-summary wave:
+
+**Cost field — keep the label, suppress only the value**
+
+  Previous behaviour: when the `showCost` preference was off, the
+  whole "Cost" metric vanished from the run-summary card. The user
+  wants the label to **stay** in the layout (so the slot is visible
+  and easily recognisable) and only the value to read `—`.
+
+  Changes:
+    - `web/v2/styles.css` — removed the rule that
+      `display:none`'d the whole `.metric[data-metric="cost"]`.
+    - `web/v2/app.js:paintRunSummary` — when `state.prefs.showCost`
+      is off, sets `#rsCost` to `—` directly; when on, shows the
+      `$X.XXX` figure.
+    - `state.lastSidecar` is cached so toggling the preference now
+      re-paints the summary card live (no second run required).
+
+**Telegram bot failure alerts — full implementation**
+
+  Adds Telegram as a third failure-alert channel alongside the
+  existing email + webhook plumbing. Two new env vars:
+
+    MTD_TELEGRAM_TOKEN      from @BotFather
+    MTD_TELEGRAM_CHAT_ID    your DM-with-bot chat id
+    MTD_TELEGRAM_NO_ATTACHMENT=1   (optional — text-only)
+
+  When a job fails, the launcher (a) writes the failure archive
+  exactly as before, (b) POSTs a Markdown text alert to Telegram
+  with reason / job id / engine / lang / file / first 500 chars of
+  the message, and (c) tries to upload `input.docx` from the
+  archive as a Telegram document attachment (capped at 20 MB so we
+  stay below all Telegram cloud-bot limits).
+
+  Implementation is pure stdlib — `urllib.request` for the JSON
+  POST and a hand-rolled multipart body for `sendDocument`. No new
+  dependency. Both calls are wrapped in try/except so a missing
+  network or a revoked token cannot block the failure-archive path.
+
+  Security:
+    - Token + chat_id come from environment only; never committed.
+    - The token is sent in the URL path (Telegram's standard) over
+      HTTPS only.
+    - The token is masked in launcher logs (`chat {first 6 chars}…`).
+    - All Markdown-special chars in user-supplied strings are
+      escaped via `_telegram_escape` so a filename like
+      `my_doc*name.docx` cannot break formatting.
+    - Full step-by-step setup + threat model in
+      `docs/telegram-alerts-setup.md`.
+
+  PROJECT_MEMORY C20 updated to mention the new env vars.
+
+  Tests: 107 / 107 pass (102 prior + 5 new in
+  `tests/test_telegram_alert.py` covering escape behaviour and
+  multipart construction with a stubbed `urllib.request.urlopen`).
+
+Master tip going in: `98f330d`.
+
 ### 2026-05-11 — Run-summary card + history + display preferences (branch `next/run-summary-and-history`)
 
 Implements backlog items #1 + #2 from yesterday's audit findings.
