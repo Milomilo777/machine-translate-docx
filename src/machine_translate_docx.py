@@ -1069,6 +1069,33 @@ def write_translation_log(log_path: str):
             total_elapsed    += call.get("elapsed_seconds", 0.0)
 
     translation_log["run_info"]["output_file"] = log_path.replace("_log.json", ".docx")
+
+    # 2026-05-11 (#1 backlog) — enrich the summary with row counts +
+    # polish-touched count so the v2 frontend's run-summary card and
+    # quality-warning system have everything they need without doing a
+    # second pass over the docx.
+    _ctx = _get_ctx()
+    _src_rows = _ctx.docx.from_text_table or []
+    _tgt_rows = _ctx.docx.to_text_by_phrase_separator_table or []
+    _src_n    = sum(1 for v in _src_rows if v and v.strip())
+    _tgt_n    = sum(1 for v in _tgt_rows if v and v.strip())
+
+    # Polish-touched lines: how many polish output lines differed from the
+    # raw translator output. Used by the "polish over-rewrote" warning.
+    _polish_touched_total = 0
+    _polish_input_total   = 0
+    for b in blocks:
+        polish = b.get("polish") or {}
+        before = (polish.get("input_fa_text") or "").split("\n")
+        after  = (polish.get("output_text")  or "").split("\n")
+        if not before or not after:
+            continue
+        n = min(len(before), len(after))
+        _polish_input_total += n
+        for i in range(n):
+            if before[i] != after[i]:
+                _polish_touched_total += 1
+
     translation_log["summary"] = {
         "total_blocks":        len(blocks),
         "total_tokens": {
@@ -1079,6 +1106,13 @@ def write_translation_log(log_path: str):
         },
         "total_cost_usd":      round(total_cost, 6),
         "elapsed_total_seconds": round(total_elapsed, 3),
+        # New (informational; the v2 card reads these for the
+        # quality-warning toggles and the "X / Y rows translated" line).
+        "row_count":              max(len(_src_rows), len(_tgt_rows)),
+        "source_rows_nonempty":   _src_n,
+        "target_rows_nonempty":   _tgt_n,
+        "polish_lines_touched":   _polish_touched_total,
+        "polish_lines_total":     _polish_input_total,
     }
 
     with open(log_path, "w", encoding="utf-8") as fh:

@@ -245,6 +245,11 @@
             <div id="progressFill" class="progress-fill"></div>
           </div>
           <div id="progressJob" class="progress-job"></div>
+          <!-- ETA + throughput. Toggleable via Display Preferences. -->
+          <div class="progress-meta-extra">
+            <span id="progressEta">—</span>
+            <span id="progressThroughput">—</span>
+          </div>
         </div>
 
         <!-- Error -->
@@ -260,6 +265,47 @@
 
         <!-- Results -->
         <ul id="resultsList" class="results-list hidden"></ul>
+
+        <!-- Run summary card. Rendered after a successful run from the
+             _log.json sidecar. Each row carries a `data-metric=…`
+             attribute so the Display Preferences panel can show / hide
+             individual lines without re-rendering. -->
+        <section id="runSummary" class="run-summary hidden" aria-label="Run summary">
+          <header class="run-summary-header">
+            <h3 class="run-summary-title">Run summary</h3>
+            <button id="prefsBtn" type="button" class="prefs-btn" title="Display preferences" aria-label="Display preferences">⚙</button>
+          </header>
+          <dl class="run-summary-grid">
+            <div class="metric" data-metric="model">
+              <dt>Model</dt><dd id="rsModel">—</dd>
+            </div>
+            <div class="metric" data-metric="elapsed">
+              <dt>Elapsed</dt><dd id="rsElapsed">—</dd>
+            </div>
+            <div class="metric" data-metric="tokens-total">
+              <dt>Tokens</dt><dd id="rsTokens">—</dd>
+            </div>
+            <div class="metric" data-metric="cache-hit">
+              <dt>Cache hit</dt><dd id="rsCacheHit">—</dd>
+            </div>
+            <div class="metric" data-metric="cost">
+              <dt>Cost</dt><dd id="rsCost">—</dd>
+            </div>
+            <div class="metric" data-metric="cache-savings">
+              <dt>Saved by cache</dt><dd id="rsSavings">—</dd>
+            </div>
+            <div class="metric" data-metric="cache-expiry">
+              <dt>Cache expires</dt><dd id="rsCacheExpiry">—</dd>
+            </div>
+            <div class="metric" data-metric="rows">
+              <dt>Rows translated</dt><dd id="rsRows">—</dd>
+            </div>
+            <div class="metric" data-metric="polish">
+              <dt>Polish touched</dt><dd id="rsPolish">—</dd>
+            </div>
+          </dl>
+          <ul id="runWarnings" class="run-warnings hidden" aria-live="polite"></ul>
+        </section>
       </section>
 
       <!-- Stories block, populated from content.json -->
@@ -297,6 +343,20 @@
         </ul>
       </div>
 
+      <!-- Run history (last 10 in localStorage). Each item is the
+           sidecar summary; click downloads the docx, the ⤓ button
+           exports the whole list as CSV. -->
+      <div class="info-card history-card" id="historyCard" hidden>
+        <h3 class="info-subtitle history-subtitle">
+          <span>Recent runs</span>
+          <span class="history-tools">
+            <button id="historyExportBtn" type="button" class="history-tool-btn" title="Export as CSV">⤓ CSV</button>
+            <button id="historyClearBtn"  type="button" class="history-tool-btn" title="Clear history">✕</button>
+          </span>
+        </h3>
+        <ol id="historyList" class="history-list"></ol>
+      </div>
+
       <div class="info-card newsletter-card">
         <h3 class="info-subtitle">Stay in the loop</h3>
         <form id="newsletterForm" class="newsletter-form">
@@ -309,6 +369,65 @@
     </aside>
 
   </main>
+
+  <!-- Display preferences modal. Hidden by default; opened by the ⚙
+       button on the run-summary card. Each toggle controls visibility
+       of either a metric in the summary card or one of the quality
+       warnings. State persists in localStorage. -->
+  <div id="prefsDialog" class="prefs-dialog hidden" role="dialog" aria-modal="true" aria-labelledby="prefsTitle">
+    <div class="prefs-backdrop" id="prefsBackdrop"></div>
+    <div class="prefs-panel">
+      <header class="prefs-header">
+        <h3 id="prefsTitle" class="prefs-title">Display preferences</h3>
+        <button id="prefsCloseBtn" type="button" class="prefs-close" aria-label="Close">✕</button>
+      </header>
+      <p class="prefs-note">
+        Toggle which fields the run-summary card shows. Disabled fields
+        are still computed and stored — you can turn them back on at
+        any time without re-running the translation.
+      </p>
+      <ul class="prefs-list">
+        <li class="prefs-row">
+          <label>
+            <input type="checkbox" data-pref="showCost" />
+            <span>Show cost ($)</span>
+          </label>
+          <p class="prefs-row-note">Off by default. The number is captured in the JSON sidecar regardless; you can flip this on at any time.</p>
+        </li>
+        <li class="prefs-row">
+          <label>
+            <input type="checkbox" data-pref="showCacheSavings" checked />
+            <span>Show cache savings</span>
+          </label>
+          <p class="prefs-row-note">"Saved $X by hitting the 24-h prompt cache" — only meaningful with chatgpt-polish.</p>
+        </li>
+        <li class="prefs-row">
+          <label>
+            <input type="checkbox" data-pref="showCacheExpiry" checked />
+            <span>Show cache expiry</span>
+          </label>
+          <p class="prefs-row-note">Hours until the 24-h OpenAI prompt cache for this document expires.</p>
+        </li>
+        <li class="prefs-row">
+          <label>
+            <input type="checkbox" data-pref="showWarnings" checked />
+            <span>Show quality warnings</span>
+          </label>
+          <p class="prefs-row-note">Polish over-rewrote, output suspiciously short, etc. Each warning is a soft heuristic, not a hard error.</p>
+        </li>
+        <li class="prefs-row">
+          <label>
+            <input type="checkbox" data-pref="showEta" checked />
+            <span>Show ETA + throughput during run</span>
+          </label>
+          <p class="prefs-row-note">Live "~12 s left" and "~2,300 chars/s" derived from progress velocity.</p>
+        </li>
+      </ul>
+      <p class="prefs-footer-note">
+        Settings live in your browser only (localStorage); they do not change anything on the server or in the saved docx files.
+      </p>
+    </div>
+  </div>
 
   <!-- ── Footer ─────────────────────────────────────────────────────────── -->
   <footer class="page-footer">

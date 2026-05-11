@@ -188,6 +188,78 @@ def _resolve_output_path(ctx: RuntimeContext) -> None:
         )
 
 
+def _write_minimal_sidecar(ctx: RuntimeContext) -> None:
+    """Emit a minimal `_log.json` next to a non-OpenAI run.
+
+    DeepL / Google / chatgpt-without-polish never populate
+    ``ctx.openai.translation_log['blocks']``, so the chatgpt-polish
+    sidecar branch above is skipped and historically nothing was
+    written. The v2 frontend's run-summary card needs *some* JSON to
+    render counts + elapsed; this minimal shape gives it that without
+    introducing new pipeline state.
+
+    Schema (mirrors the chatgpt-polish sidecar where it overlaps):
+      {
+        "run_info":  { timestamp, input_file, output_file,
+                       engine, src_lang, dest_lang },
+        "blocks":    [],
+        "summary":   { total_blocks: 0,
+                       total_tokens: null,
+                       total_cost_usd: null,
+                       elapsed_total_seconds: null,
+                       source_rows_nonempty: int,
+                       target_rows_nonempty: int,
+                       row_count: int }
+      }
+    """
+    import datetime as _dt
+    import json as _json
+
+    out_path = ctx.flags.word_file_to_translate_save_as_path
+    if not out_path:
+        return
+    log_path = re.sub(r"(?i)\.docx$", "_log.json", out_path)
+
+    src_rows = ctx.docx.from_text_table or []
+    tgt_rows = ctx.docx.to_text_by_phrase_separator_table or []
+    src_n = sum(1 for v in src_rows if v and v.strip())
+    tgt_n = sum(1 for v in tgt_rows if v and v.strip())
+
+    payload = {
+        "run_info": {
+            "timestamp":   _dt.datetime.utcnow().isoformat(timespec="seconds"),
+            "input_file":  ctx.flags.word_file_to_translate,
+            "output_file": out_path,
+            "engine":      ctx.engine.engine,
+            "method":      ctx.engine.method,
+            "src_lang":    ctx.language.src_lang,
+            "dest_lang":   ctx.language.dest_lang,
+            "with_polish": False,
+            # `model` is left absent rather than null so the v2
+            # frontend can use `'model' in run_info` to decide whether
+            # to render the model row.
+        },
+        "blocks": [],
+        "summary": {
+            "total_blocks":          0,
+            "total_tokens":          None,
+            "total_cost_usd":        None,
+            "elapsed_total_seconds": None,
+            "row_count":             max(len(src_rows), len(tgt_rows)),
+            "source_rows_nonempty":  src_n,
+            "target_rows_nonempty":  tgt_n,
+        },
+    }
+    try:
+        with open(log_path, "w", encoding="utf-8") as fh:
+            _json.dump(payload, fh, ensure_ascii=False, indent=2)
+        print(f"[INFO] Run sidecar saved → {log_path}")
+    except Exception as exc:
+        # Sidecar is informational; never let a write failure kill the
+        # save path. The docx itself is already on disk by this point.
+        print(f"[WARN] Could not write minimal sidecar at {log_path}: {exc!r}")
+
+
 def save_docx_file(
     ctx: RuntimeContext,
     docxdoc,
@@ -223,6 +295,14 @@ def save_docx_file(
                     ctx.flags.word_file_to_translate_save_as_path,
                 )
                 write_translation_log_fn(log_path)
+            else:
+                # 2026-05-11 (#2 backlog): emit a minimal sidecar for
+                # non-OpenAI engines too so the v2 frontend's run-summary
+                # card has something to render for DeepL / Google runs.
+                # No tokens / cost — only the engine + language pair +
+                # row counts + elapsed time. Rendered the same way the
+                # chatgpt-polish sidecar is, just with `tokens=null`.
+                _write_minimal_sidecar(ctx)
         except Exception:
             print(traceback.format_exc())
             if not silent:
