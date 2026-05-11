@@ -99,6 +99,10 @@
     // ETA + throughput tracking
     runStartTs:    null,
     progressFirst: { ts: null, pct: null },
+    // Last rendered sidecar — kept so toggling Display Preferences
+    // (e.g. flipping `showCost` on after a run) can re-paint the
+    // summary card without a fresh upload.
+    lastSidecar: null,
   };
 
   // ── DOM lookup helper — defers until the element actually exists.
@@ -910,6 +914,7 @@
       paintFooterCost();
     }
 
+    state.lastSidecar = { runInfo, summary, tokens, dollars, wasCached, file };
     paintRunSummary({ runInfo, summary, tokens, dollars, wasCached });
     paintRunWarnings({ summary, file });
 
@@ -962,8 +967,16 @@
       set('rsCacheHit', wasCached ? 'cached' : '—');
     }
 
-    // Cost — present in DOM but visually hidden by default per pref.
-    set('rsCost', dollars ? `$${dollars.toFixed(3)}` : '—');
+    // Cost field — the row label stays in the layout always (the
+    // metric block is not display:none'd). Only the value is suppressed
+    // to a dash when the `showCost` preference is off, so the user can
+    // see "Cost: —" and flip the toggle to reveal the actual number
+    // at any time without re-rendering. (2026-05-11 user request.)
+    if (state.prefs && state.prefs.showCost) {
+      set('rsCost', dollars ? `$${dollars.toFixed(3)}` : '—');
+    } else {
+      set('rsCost', '—');
+    }
 
     // Cache savings: what would we have paid without cache hits? If
     // we know cached tokens + the model price, multiply by (input -
@@ -1153,6 +1166,12 @@
         savePrefs(state.prefs);
         applyPrefsToDom(state.prefs);
         renderHistory();   // history line may show / hide cost
+        // Live re-paint of the summary card so toggling `showCost`
+        // (or future toggles) takes effect without re-running the job.
+        if (state.lastSidecar) {
+          paintRunSummary(state.lastSidecar);
+          paintRunWarnings({ summary: state.lastSidecar.summary, file: state.lastSidecar.file });
+        }
       });
     });
 

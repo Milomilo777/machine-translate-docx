@@ -149,6 +149,32 @@ def _cache_key(payload: bytes, target_lang: str, engine: str,
     return h.hexdigest()
 
 
+# ── Telegram alert helpers ───────────────────────────────────────────────────
+
+
+def _telegram_escape(s: str) -> str:
+    """Escape Markdown-special chars inside Telegram alert strings.
+
+    Telegram's `Markdown` parse mode (the legacy one we use, not
+    `MarkdownV2`) treats ``*``, ``_``, ``\\``` and ``[`` as formatting
+    characters. A user-supplied filename like ``my_doc.docx`` would
+    otherwise turn the next word italic. The helper neutralises the
+    five characters that can break a code span / italic / bold /
+    link, leaving everything else alone — Telegram silently passes
+    through anything Markdown does not recognise.
+    """
+    if s is None:
+        return ""
+    return (
+        str(s)
+        .replace("\\", "\\\\")
+        .replace("`",  "\\`")
+        .replace("*",  "\\*")
+        .replace("_",  "\\_")
+        .replace("[",  "\\[")
+    )
+
+
 # ── Newsletter subscriber list ───────────────────────────────────────────────
 
 _RE_EMAIL = _re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -1476,6 +1502,176 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
                 print("[B-002] alert webhook posted")
             except Exception as exc:
                 print(f"[B-002] alert webhook skipped: {exc}")
+
+        # ── Telegram bot (env-gated) ──────────────────────────────────
+        # Two env vars required: MTD_TELEGRAM_TOKEN + MTD_TELEGRAM_CHAT_ID.
+        # See docs/telegram-alerts-setup.md for the @BotFather walkthrough.
+        # Best-effort: any exception is logged and swallowed so a flaky
+        # network or a revoked token cannot block the failure-archive path.
+        tg_token = os.environ.get("MTD_TELEGRAM_TOKEN", "").strip()
+        tg_chat  = os.environ.get("MTD_TELEGRAM_CHAT_ID", "").strip()
+        if tg_token and tg_chat:
+            self._send_telegram_alert(
+                token=tg_token,
+                chat_id=tg_chat,
+                job_id=job_id,
+                reason=reason,
+                message=message,
+                meta=meta,
+                archive_dir=archive_dir,
+            )
+
+    def _send_telegram_alert(
+        self,
+        *,
+        token: str,
+        chat_id: str,
+        job_id: str,
+        reason: str,
+        message: str,
+        meta: dict,
+        archive_dir: Path,
+    ) -> None:
+        """POST a failure alert to Telegram (text + optional docx).
+
+        The text alert always fires. The docx attachment is sent
+        separately so a too-large or missing file does NOT prevent the
+        text from getting through. Set ``MTD_TELEGRAM_NO_ATTACHMENT=1``
+        to suppress the docx upload entirely (useful when the docs
+        contain sensitive content and you only want a heads-up).
+
+        Token + chat_id come from the caller, not from environment, so
+        the helper is unit-testable.
+        """
+        import urllib.request as _ur
+        import urllib.error   as _ue
+
+        text = (
+            "❌ *machine-translate-docx* — job failed\n"
+            f"• reason: `{_telegram_escape(reason)}`\n"
+            f"• job id: `{_telegram_escape(job_id)}`\n"
+            f"• engine: `{_telegram_escape(str(meta.get('translation_engine')))}`\n"
+            f"• lang:   `{_telegram_escape(str(meta.get('target_language')))}`\n"
+            f"• file:   `{_telegram_escape(str(meta.get('input_filename')))}`\n"
+            f"\n_{_telegram_escape(message)[:500]}_"
+        )
+
+        # ── 1. Text alert (always) ─────────────────────────────────────
+        try:
+            url = f"https://api.telegram.org/bot{token}/sendMessage"
+            payload = {
+                "chat_id":    chat_id,
+                "text":       text,
+                "parse_mode": "Markdown",
+                # Silently fail on link-preview attempts so Telegram does
+                # not try to expand any URL in the message.
+                "disable_web_page_preview": True,
+            }
+            req = _ur.Request(
+                url,
+                data=json.dumps(payload).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with _ur.urlopen(req, timeout=10) as resp:
+                body = resp.read()
+                if b'"ok":true' not in body:
+                    print(f"[telegram] message rejected: {body[:200].decode(errors='replace')}",
+                          file=sys.stderr, flush=True)
+                    return
+            print(f"[telegram] alert text sent to chat {chat_id[:6]}…")
+        except _ue.HTTPError as exc:
+            print(f"[telegram] message HTTP error: {exc.code} {exc.reason}",
+                  file=sys.stderr, flush=True)
+            return
+        except Exception as exc:
+            print(f"[telegram] message skipped: {exc!r}",
+                  file=sys.stderr, flush=True)
+            return
+
+        # ── 2. Optional input.docx attachment ─────────────────────────
+        if os.environ.get("MTD_TELEGRAM_NO_ATTACHMENT", "").strip():
+            return
+        archived_input = archive_dir / "input.docx"
+        if not archived_input.is_file():
+            return
+        size = archived_input.stat().st_size
+        # Telegram Bot API caps uploads at 50 MB on the cloud endpoint;
+        # we cap at 20 MB to stay comfortably below limits across
+        # mirrors and keep the alert path fast.
+        if size > 20 * 1024 * 1024:
+            print(f"[telegram] attachment skipped (size {size} B > 20 MB cap)")
+            return
+        try:
+            self._telegram_send_document(
+                token=token,
+                chat_id=chat_id,
+                file_path=archived_input,
+                caption=f"input.docx for failed job {job_id} ({reason})",
+            )
+            print(f"[telegram] attachment sent ({size} B)")
+        except Exception as exc:
+            print(f"[telegram] attachment skipped: {exc!r}",
+                  file=sys.stderr, flush=True)
+
+    @staticmethod
+    def _telegram_send_document(
+        *,
+        token: str,
+        chat_id: str,
+        file_path: Path,
+        caption: str,
+    ) -> None:
+        """Upload a single file via Telegram's ``sendDocument`` endpoint.
+
+        Pure stdlib multipart construction — no third-party SDK. The
+        boundary is randomised so the same payload cannot collide
+        with file content. The full body is sent in one POST; for a
+        20 MB cap this fits comfortably in memory.
+        """
+        import urllib.request as _ur
+        import uuid as _uuid
+
+        url      = f"https://api.telegram.org/bot{token}/sendDocument"
+        boundary = "----mtd-" + _uuid.uuid4().hex
+        crlf     = b"\r\n"
+
+        # multipart/form-data body
+        def _field(name: str, value: str) -> bytes:
+            return (
+                b'--' + boundary.encode() + crlf +
+                f'Content-Disposition: form-data; name="{name}"'.encode() +
+                crlf + crlf +
+                value.encode("utf-8") + crlf
+            )
+
+        with open(file_path, "rb") as fh:
+            file_bytes = fh.read()
+
+        body = b"".join([
+            _field("chat_id", chat_id),
+            _field("caption", caption),
+            b'--' + boundary.encode() + crlf,
+            (f'Content-Disposition: form-data; name="document"; '
+             f'filename="{file_path.name}"').encode() + crlf,
+            b'Content-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            + crlf + crlf,
+            file_bytes, crlf,
+            b'--' + boundary.encode() + b'--' + crlf,
+        ])
+
+        req = _ur.Request(
+            url,
+            data=body,
+            headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+            method="POST",
+        )
+        with _ur.urlopen(req, timeout=30) as resp:
+            data = resp.read()
+            if b'"ok":true' not in data:
+                raise RuntimeError(
+                    f"telegram rejected sendDocument: {data[:200].decode(errors='replace')}"
+                )
 
     def _strip_timestamp(self, path: Path) -> Path:
         """Rename file to remove leading timestamp prefix (e.g. 1778036666789-).

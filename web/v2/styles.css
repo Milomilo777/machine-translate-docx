@@ -810,8 +810,14 @@ code {
 }
 
 /* Per-metric visibility — driven by Display Preferences toggles
-   pinned to <html data-pref-*="0|1">. Default off only for cost. */
-html:not([data-pref-show-cost="1"]) .run-summary-grid .metric[data-metric="cost"] { display: none; }
+   pinned to <html data-pref-*="0|1">.
+
+   2026-05-11 update: the *Cost* row stays in the layout always
+   (so the field name keeps its slot); only the value is suppressed
+   to a dash. JS handles that switch in `paintRunSummary` by
+   reading the same preference. The cache-savings and cache-expiry
+   rows still hide their whole metric when off — they only make
+   sense alongside an actual number. */
 html[data-pref-show-cache-savings="0"] .run-summary-grid .metric[data-metric="cache-savings"] { display: none; }
 html[data-pref-show-cache-expiry="0"]  .run-summary-grid .metric[data-metric="cache-expiry"]  { display: none; }
 
