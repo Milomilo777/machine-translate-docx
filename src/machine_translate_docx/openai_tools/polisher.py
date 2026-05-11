@@ -206,6 +206,14 @@ class OpenAIPolisher:
         # reasoning_effort is a chat.completions extra — omit it for Responses API
         # (Responses API accepts reasoning via the `reasoning` parameter, not extra_body).
         _extra_responses = {"prompt_cache_retention": "24h"}
+        # Responses API on gpt-5.x defaults to reasoning.effort=medium,
+        # which on gpt-5.5 caused a 64-minute polish run. Set it
+        # explicitly: "high" for mini (cheap, useful), "minimal" for the
+        # larger models (avoids runaway reasoning latency).
+        _reasoning_param = (
+            {"effort": "high"} if "mini" in self.model.lower()
+            else {"effort": "none"}
+        )
 
         _messages_list = [
             {"role": "system", "content": system},
@@ -220,6 +228,7 @@ class OpenAIPolisher:
                         model=self.model,
                         input=_messages_list,
                         extra_body=_extra_responses,
+                        reasoning=_reasoning_param,
                         timeout=1800,
                     ),
                     label="polisher.responses.create",

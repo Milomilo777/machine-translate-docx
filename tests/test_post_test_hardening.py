@@ -85,6 +85,7 @@ def _make_ctx_with_source(source_rows, target_rows=None):
     ctx = RuntimeContext.empty()
     ctx.docx.numrows = len(source_rows)
     ctx.docx.from_text_table = list(source_rows)
+    ctx.docx.from_text_by_phrase_separator_table = list(source_rows)
     ctx.docx.to_text_by_phrase_separator_table = (
         list(target_rows) if target_rows is not None else []
     )

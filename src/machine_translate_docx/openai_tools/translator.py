@@ -59,6 +59,7 @@ def _prompt_lang_code(dest_lang: str) -> str:
 def _find_prompts_dir(anchor: Path) -> Path:
     """Walk up from *anchor* to find the project-level prompts/ directory."""
     for candidate in [
+        anchor / "../../../prompts",
         anchor / "../../prompts",
         anchor / "../prompts",
         anchor / "prompts",
@@ -258,11 +259,18 @@ class OpenAITranslator:
         )
 
         if _use_responses_api:
+            # C2: never spend reasoning tokens on the translator. The
+            # Responses API defaults gpt-5.x to reasoning.effort=medium,
+            # which previously caused ~50% reasoning_token overhead and
+            # multi-minute latency. Force minimal here. (For gpt-5.4-mini
+            # the polisher uses reasoning="high" elsewhere — translator
+            # stays minimal in both cases.)
             response = call_with_retry(
                 lambda: self.client.responses.create(
                     model=self.model,
                     input=_messages,
                     extra_body=_extra,
+                    reasoning={"effort": "none"},
                     timeout=1800,
                 ),
                 label="translator.responses.create",
