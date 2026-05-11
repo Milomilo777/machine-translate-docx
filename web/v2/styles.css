@@ -743,6 +743,273 @@ code {
   vertical-align: middle;
 }
 
+/* ── Run summary card (2026-05-11 #1+#2 backlog) ──────────────────────── */
+.run-summary {
+  margin-top: 6px;
+  padding: 16px 18px 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  background: var(--color-surface-2);
+  box-shadow: var(--shadow-soft);
+}
+.run-summary-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.run-summary-title {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-ink-900);
+  letter-spacing: 0.02em;
+}
+.prefs-btn {
+  background: transparent;
+  border: 0;
+  font-size: 16px;
+  color: var(--color-ink-500);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  line-height: 1;
+}
+.prefs-btn:hover { background: var(--color-cream-200); color: var(--color-ink-900); }
+
+.run-summary-grid {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px 16px;
+}
+.run-summary-grid .metric {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.run-summary-grid dt {
+  margin: 0;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-ink-500);
+  font-weight: 600;
+}
+.run-summary-grid dd {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-ink-900);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Per-metric visibility — driven by Display Preferences toggles
+   pinned to <html data-pref-*="0|1">. Default off only for cost. */
+html:not([data-pref-show-cost="1"]) .run-summary-grid .metric[data-metric="cost"] { display: none; }
+html[data-pref-show-cache-savings="0"] .run-summary-grid .metric[data-metric="cache-savings"] { display: none; }
+html[data-pref-show-cache-expiry="0"]  .run-summary-grid .metric[data-metric="cache-expiry"]  { display: none; }
+
+.run-warnings {
+  margin: 12px 0 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.run-warning {
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--color-brand-50);
+  border-left: 3px solid var(--color-brand-500);
+  font-size: 12.5px;
+  color: var(--color-ink-900);
+}
+[dir="rtl"] .run-warning {
+  border-left: 0;
+  border-right: 3px solid var(--color-brand-500);
+}
+.run-warning-key {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 11px;
+  margin-inline-end: 6px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: var(--color-brand-700);
+  color: #fff;
+  font-weight: 600;
+}
+html[data-pref-show-warnings="0"] .run-warnings { display: none; }
+
+/* ── Run history sidebar (2026-05-11 #1) ──────────────────────────────── */
+.history-card { padding-bottom: 8px; }
+.history-subtitle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.history-tools { display: inline-flex; gap: 4px; }
+.history-tool-btn {
+  background: transparent;
+  border: 0;
+  font-size: 11px;
+  color: var(--color-ink-500);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+}
+.history-tool-btn:hover { background: var(--color-cream-200); color: var(--color-ink-900); }
+.history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 300px;
+  overflow: auto;
+}
+.history-item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: 4px 10px;
+  padding: 7px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-2);
+  font-size: 12px;
+}
+.history-item-name {
+  grid-column: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-ink-900);
+  font-weight: 500;
+}
+.history-item-meta {
+  grid-column: 1 / -1;
+  color: var(--color-ink-500);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.history-item-status {
+  grid-column: 2;
+  grid-row: 1;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-brand-700);
+  font-weight: 600;
+}
+.history-item-status.history-status-error  { color: var(--color-brand-800); }
+
+/* ── Display Preferences modal ────────────────────────────────────────── */
+.prefs-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.prefs-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(31,30,27,0.45);
+}
+.prefs-panel {
+  position: relative;
+  background: var(--color-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+  max-width: 460px;
+  width: calc(100vw - 32px);
+  max-height: 80vh;
+  overflow: auto;
+  padding: 18px 20px;
+}
+.prefs-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 0 8px;
+}
+.prefs-title {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--color-ink-900);
+}
+.prefs-close {
+  background: transparent;
+  border: 0;
+  color: var(--color-ink-500);
+  font-size: 16px;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+}
+.prefs-close:hover { background: var(--color-cream-200); color: var(--color-ink-900); }
+.prefs-note {
+  margin: 0 0 14px;
+  font-size: 12.5px;
+  color: var(--color-ink-500);
+}
+.prefs-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.prefs-row label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--color-ink-900);
+  font-weight: 500;
+  cursor: pointer;
+}
+.prefs-row input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-brand-500);
+}
+.prefs-row-note {
+  margin: 4px 0 0 24px;
+  font-size: 12px;
+  color: var(--color-ink-500);
+  line-height: 1.45;
+}
+.prefs-footer-note {
+  margin: 14px 0 0;
+  font-size: 11.5px;
+  color: var(--color-ink-400);
+}
+
+/* ── ETA + throughput during run (toggleable) ─────────────────────────── */
+.progress-meta-extra {
+  margin-top: 4px;
+  font-size: 11.5px;
+  color: var(--color-ink-500);
+  font-variant-numeric: tabular-nums;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+html[data-pref-show-eta="0"] .progress-meta-extra { display: none; }
+
 /* ── RTL fixes (F-3 + F-4 2026-05-11) ─────────────────────────────────── */
 /* The select-arrow chevron above is built from two CSS gradients angled
    45° / 135°. In RTL we already shift its background-position to the

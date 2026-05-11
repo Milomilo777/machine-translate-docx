@@ -24,11 +24,65 @@
   const MAX_FILE_BYTES   = 50 * 1024 * 1024; // 50 MB
 
   const LS = {
-    source:    'v2.savedSourceLang',
-    target:    'v2.savedTargetLang',
-    theme:     'v2.theme',
+    source:      'v2.savedSourceLang',
+    target:      'v2.savedTargetLang',
+    theme:       'v2.theme',
     sessionCost: 'v2.sessionCostUsd',  // U-4 (2026-05-11 audit)
+    history:     'v2.history.v1',      // run history (last N)
+    prefs:       'v2.prefs.v1',        // display-preferences toggles
   };
+
+  // ── Display preferences ─────────────────────────────────────────────────
+  // Defaults — `showCost` is OFF on purpose (per user request 2026-05-11).
+  // Everything else is on by default; the modal lets the user toggle.
+  const DEFAULT_PREFS = {
+    showCost:         false,
+    showCacheSavings: true,
+    showCacheExpiry:  true,
+    showWarnings:     true,
+    showEta:          true,
+  };
+  function loadPrefs() {
+    let raw;
+    try { raw = JSON.parse(lsGet(LS.prefs, 'null')); } catch (_) { raw = null; }
+    const out = Object.assign({}, DEFAULT_PREFS);
+    if (raw && typeof raw === 'object') {
+      for (const k of Object.keys(DEFAULT_PREFS)) {
+        if (typeof raw[k] === 'boolean') out[k] = raw[k];
+      }
+    }
+    return out;
+  }
+  function savePrefs(prefs) { lsSet(LS.prefs, JSON.stringify(prefs)); }
+  function applyPrefsToDom(prefs) {
+    // Drive CSS via `data-pref-*` attrs on <html> so individual cards
+    // can hide / show without JS round-trips.
+    const html = document.documentElement;
+    html.setAttribute('data-pref-show-cost',          prefs.showCost          ? '1' : '0');
+    html.setAttribute('data-pref-show-cache-savings', prefs.showCacheSavings  ? '1' : '0');
+    html.setAttribute('data-pref-show-cache-expiry',  prefs.showCacheExpiry   ? '1' : '0');
+    html.setAttribute('data-pref-show-warnings',      prefs.showWarnings      ? '1' : '0');
+    html.setAttribute('data-pref-show-eta',           prefs.showEta           ? '1' : '0');
+  }
+
+  // History — last 10 runs in localStorage. Keyed by jobId; each item
+  // is the sidecar's run_info + summary, pruned of any large fields.
+  const HISTORY_MAX = 10;
+  function loadHistory() {
+    try {
+      const raw = JSON.parse(lsGet(LS.history, '[]'));
+      return Array.isArray(raw) ? raw : [];
+    } catch (_) { return []; }
+  }
+  function saveHistory(items) {
+    lsSet(LS.history, JSON.stringify(items.slice(0, HISTORY_MAX)));
+  }
+  function pushHistory(item) {
+    const items = loadHistory();
+    items.unshift(item);
+    saveHistory(items);
+    renderHistory();
+  }
 
   function lsGet(k, def) { try { return localStorage.getItem(k) ?? def; } catch (_) { return def; } }
   function lsSet(k, v)   { try { localStorage.setItem(k, v); } catch (_) {} }
@@ -41,6 +95,10 @@
     progress: 0,
     currentJobId: null,    // U-1 (2026-05-11 audit) — for /cancel/<id>
     pricing: null,         // U-2 — populated from /pricing on boot
+    prefs:   null,         // 2026-05-11 — display preferences
+    // ETA + throughput tracking
+    runStartTs:    null,
+    progressFirst: { ts: null, pct: null },
   };
 
   // ── DOM lookup helper — defers until the element actually exists.
@@ -48,6 +106,8 @@
 
   // ── Boot ──────────────────────────────────────────────────────────────────
   function boot() {
+    state.prefs = loadPrefs();
+    applyPrefsToDom(state.prefs);
     restoreTheme();
     restoreLanguages();
     syncEngineUI();
@@ -61,8 +121,11 @@
     wireNewsletter();
     wireThemeButton();
     wireOfflineBanner();     // U-5
+    wirePrefsModal();        // 2026-05-11 — display preferences
+    wireHistoryTools();      // 2026-05-11 — history clear / CSV
     paintFooterBuild();
     paintFooterCost();       // U-4
+    renderHistory();         // initial paint of recent-runs list
     void loadAndRenderContent();
     void loadPricing();      // U-2
   }
@@ -299,9 +362,12 @@
   async function runTranslation() {
     if (!state.files.length || state.running) return;
     state.running = true;
+    state.runStartTs = Date.now();
+    state.progressFirst = { ts: null, pct: null };
     showRunningButton(true);
     clearError();
     clearResults();
+    clearRunSummary();
     setProgress(0, 'Starting…');
     showProgress(true);
 
@@ -372,9 +438,11 @@
     }
     pushResults(status, wasCached, splitterOnly);
 
-    // U-4: pull the sidecar cost (chatgpt-polish only) and add to session total.
+    // 2026-05-11 — fetch the sidecar (chatgpt-polish full or
+    // DeepL/Google minimal) and: (a) accumulate session cost, (b)
+    // render the run-summary card, (c) push to history.
     if (status && status.filename) {
-      void accumulateSidecarCost(status.filename);
+      void renderSidecarSummary(status.filename, file, wasCached);
     }
   }
 
@@ -428,6 +496,51 @@
     if (pctEl) pctEl.textContent = pct + '%';
     if (lbl)   lbl.textContent   = label;
     if (blbl)  blbl.textContent  = label;
+    // ETA + throughput live (toggleable via pref `showEta`)
+    paintEtaAndThroughput(pct);
+  }
+
+  function paintEtaAndThroughput(pct) {
+    const etaEl  = $('progressEta');
+    const thrEl  = $('progressThroughput');
+    if (!etaEl || !thrEl) return;
+    const now = Date.now();
+    // Anchor on the first non-zero progress reading rather than the
+    // very first PROGRESS:0 ping; the launcher emits 5 → 10 → 15 → 30 …
+    // and the ETA is much more accurate once we have at least 15.
+    if (pct >= 15 && state.progressFirst.ts === null) {
+      state.progressFirst = { ts: now, pct };
+    }
+    if (state.progressFirst.ts === null || pct >= 100) {
+      etaEl.textContent = '—';
+      thrEl.textContent = '';
+      return;
+    }
+    const dt    = (now - state.progressFirst.ts) / 1000;       // seconds elapsed
+    const dPct  = Math.max(0, pct - state.progressFirst.pct);  // %
+    if (dt < 1 || dPct < 1) {
+      etaEl.textContent = 'estimating…';
+      thrEl.textContent = '';
+      return;
+    }
+    const remainingPct = 100 - pct;
+    const etaSec = Math.max(0, Math.round(remainingPct * dt / dPct));
+    etaEl.textContent = `~${formatDuration(etaSec)} left`;
+
+    // Throughput in chars/s (size of the current file is known).
+    const f = state.files[state.currentJobIndex];
+    if (f && pct > 0) {
+      const completedBytes = (pct / 100) * f.size;
+      const cps = Math.max(1, Math.round(completedBytes / Math.max(0.5, (now - state.runStartTs) / 1000)));
+      thrEl.textContent = `≈ ${cps.toLocaleString()} chars/s`;
+    }
+  }
+
+  function formatDuration(sec) {
+    if (sec < 60) return `${sec}s`;
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return `${m}m ${s}s`;
   }
 
   function showProgress(on) {
@@ -772,22 +885,48 @@
   }
 
   // ── Session-cost accumulator (U-4 2026-05-11) ───────────────────────────
-  async function accumulateSidecarCost(docxFilename) {
-    if (!docxFilename || !/\.docx$/i.test(docxFilename)) return;
+  async function fetchSidecar(docxFilename) {
+    if (!docxFilename || !/\.docx$/i.test(docxFilename)) return null;
     const sidecar = docxFilename.replace(/\.docx$/i, '_log.json');
-    let log = null;
     try {
       const res = await fetch('/download/' + encodeURIComponent(sidecar), { cache: 'no-store' });
-      if (!res.ok) return;
-      log = await res.json();
-    } catch (_) { return; }
-    const dollars = log && log.summary && typeof log.summary.total_cost_usd === 'number'
-      ? log.summary.total_cost_usd : 0;
-    if (!dollars) return;
-    const prev = parseFloat(lsGet(LS.sessionCost, '0')) || 0;
-    const next = prev + dollars;
-    lsSet(LS.sessionCost, String(next));
-    paintFooterCost();
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (_) { return null; }
+  }
+
+  async function renderSidecarSummary(docxFilename, file, wasCached) {
+    const log = await fetchSidecar(docxFilename);
+    if (!log) return;
+    const summary  = log.summary  || {};
+    const runInfo  = log.run_info || {};
+    const tokens   = summary.total_tokens || null;
+    const dollars  = typeof summary.total_cost_usd === 'number' ? summary.total_cost_usd : 0;
+
+    // Update session-cost watermark.
+    if (dollars) {
+      const prev = parseFloat(lsGet(LS.sessionCost, '0')) || 0;
+      lsSet(LS.sessionCost, String(prev + dollars));
+      paintFooterCost();
+    }
+
+    paintRunSummary({ runInfo, summary, tokens, dollars, wasCached });
+    paintRunWarnings({ summary, file });
+
+    // Push to history (small, prunable).
+    pushHistory({
+      ts:        new Date().toISOString(),
+      input:     (file && file.name) || runInfo.input_file || '',
+      output:    runInfo.output_file || docxFilename,
+      engine:    runInfo.engine     || (runInfo.with_polish ? 'chatgpt-polish' : ''),
+      model:     runInfo.model      || '',
+      dest_lang: runInfo.dest_lang  || '',
+      cost_usd:  dollars,
+      cached:    wasCached ? 1 : 0,
+      elapsed:   summary.elapsed_total_seconds || null,
+      rows_translated: summary.target_rows_nonempty != null ? summary.target_rows_nonempty : null,
+      rows_total:      summary.row_count            != null ? summary.row_count            : null,
+    });
   }
 
   function paintFooterCost() {
@@ -795,6 +934,237 @@
     if (!el) return;
     const total = parseFloat(lsGet(LS.sessionCost, '0')) || 0;
     el.textContent = total > 0 ? `· session: $${total.toFixed(3)}` : '';
+  }
+
+  // ── Run-summary card (2026-05-11) ───────────────────────────────────────
+  function clearRunSummary() {
+    const card = $('runSummary');
+    if (card) card.classList.add('hidden');
+    const wbox = $('runWarnings');
+    if (wbox) { wbox.innerHTML = ''; wbox.classList.add('hidden'); }
+  }
+
+  function paintRunSummary({ runInfo, summary, tokens, dollars, wasCached }) {
+    const card = $('runSummary');
+    if (!card) return;
+    const set = (id, txt) => { const el = $(id); if (el) el.textContent = txt; };
+
+    set('rsModel',   runInfo.model || `${runInfo.engine || '—'}${runInfo.method ? ' / ' + runInfo.method : ''}`);
+    set('rsElapsed', summary.elapsed_total_seconds != null ? `${summary.elapsed_total_seconds.toFixed(1)} s` : '—');
+
+    // Tokens / cache hit (only meaningful with OpenAI runs).
+    if (tokens && tokens.total) {
+      set('rsTokens', `${tokens.total.toLocaleString()} (prompt ${tokens.prompt.toLocaleString()}, out ${tokens.completion.toLocaleString()})`);
+      const ratio = tokens.prompt > 0 ? (tokens.cached / tokens.prompt) : 0;
+      set('rsCacheHit', `${(ratio * 100).toFixed(1)}% (${tokens.cached.toLocaleString()} / ${tokens.prompt.toLocaleString()})`);
+    } else {
+      set('rsTokens',   '—');
+      set('rsCacheHit', wasCached ? 'cached' : '—');
+    }
+
+    // Cost — present in DOM but visually hidden by default per pref.
+    set('rsCost', dollars ? `$${dollars.toFixed(3)}` : '—');
+
+    // Cache savings: what would we have paid without cache hits? If
+    // we know cached tokens + the model price, multiply by (input -
+    // cached_rate) / 1e6.
+    let savings = 0;
+    if (tokens && tokens.cached && state.pricing) {
+      const m = state.pricing.find(p => p.id === runInfo.model);
+      if (m) savings = (tokens.cached / 1_000_000) * (m.input - (m.cached || 0));
+    }
+    set('rsSavings', savings > 0 ? `$${savings.toFixed(3)}` : '—');
+
+    // Cache expiry — 24 h after the sidecar's run_info.timestamp.
+    if (runInfo.timestamp) {
+      const t0 = new Date(runInfo.timestamp + 'Z');
+      const exp = new Date(t0.getTime() + 24 * 3600 * 1000);
+      const left = Math.max(0, Math.round((exp - Date.now()) / 3600 / 1000));
+      set('rsCacheExpiry', left > 0 ? `in ~${left} h` : 'expired');
+    } else {
+      set('rsCacheExpiry', '—');
+    }
+
+    // Rows translated.
+    if (summary.target_rows_nonempty != null && summary.row_count != null) {
+      set('rsRows', `${summary.target_rows_nonempty} / ${summary.source_rows_nonempty != null ? summary.source_rows_nonempty : summary.row_count}`);
+    } else {
+      set('rsRows', '—');
+    }
+
+    // Polish touched.
+    if (summary.polish_lines_touched != null && summary.polish_lines_total != null && summary.polish_lines_total > 0) {
+      const ratio = summary.polish_lines_touched / summary.polish_lines_total;
+      set('rsPolish', `${summary.polish_lines_touched} / ${summary.polish_lines_total} lines (${(ratio * 100).toFixed(0)}%)`);
+    } else {
+      set('rsPolish', '—');
+    }
+
+    card.classList.remove('hidden');
+  }
+
+  function paintRunWarnings({ summary, file }) {
+    const box = $('runWarnings');
+    if (!box) return;
+    box.innerHTML = '';
+    const warnings = [];
+
+    // Polish over-rewrote (>80% of polish-input lines changed) — soft.
+    if (summary.polish_lines_total > 0 && summary.polish_lines_touched != null) {
+      const r = summary.polish_lines_touched / summary.polish_lines_total;
+      if (r > 0.8) {
+        warnings.push({
+          key: 'polish_over_rewrite',
+          text: `Polish pass changed ${Math.round(r * 100)}% of lines — review whether the meaning shifted.`,
+        });
+      }
+    }
+
+    // Suspiciously short output (target rows non-empty < 30% of source).
+    if (summary.source_rows_nonempty > 0 && summary.target_rows_nonempty != null) {
+      const r = summary.target_rows_nonempty / summary.source_rows_nonempty;
+      if (r < 0.3) {
+        warnings.push({
+          key: 'output_short',
+          text: `Only ${summary.target_rows_nonempty} of ${summary.source_rows_nonempty} source rows have a translation (${Math.round(r * 100)}%). The engine may have skipped content.`,
+        });
+      }
+    }
+
+    // Cache miss after a recent identical run (heuristic — same input
+    // filename in the last 5 minutes of history). Cheap, no backend.
+    try {
+      const recent = loadHistory().filter(h =>
+        h.input === ((file && file.name) || '') &&
+        (Date.now() - new Date(h.ts).getTime()) < 5 * 60 * 1000
+      );
+      if (recent.length >= 2 && summary.total_tokens && summary.total_tokens.cached / Math.max(1, summary.total_tokens.prompt) < 0.3) {
+        warnings.push({
+          key: 'cache_miss_unexpected',
+          text: 'Re-ran the same file recently but cache hit < 30%. The OpenAI prompt cache may have expired or the prompt changed.',
+        });
+      }
+    } catch (_) { /* history read failure: skip */ }
+
+    if (!warnings.length) {
+      box.classList.add('hidden');
+      return;
+    }
+    for (const w of warnings) {
+      const li = document.createElement('li');
+      li.className = 'run-warning';
+      const key = document.createElement('span');
+      key.className = 'run-warning-key';
+      key.textContent = w.key;
+      const text = document.createElement('span');
+      text.textContent = w.text;
+      li.appendChild(key);
+      li.appendChild(text);
+      box.appendChild(li);
+    }
+    box.classList.remove('hidden');
+  }
+
+  // ── Run history sidebar (2026-05-11) ────────────────────────────────────
+  function renderHistory() {
+    const card = $('historyCard');
+    const list = $('historyList');
+    if (!card || !list) return;
+    const items = loadHistory();
+    list.innerHTML = '';
+    if (!items.length) {
+      card.hidden = true;
+      return;
+    }
+    card.hidden = false;
+    for (const h of items) {
+      const li = document.createElement('li');
+      li.className = 'history-item';
+      const name = document.createElement('span');
+      name.className = 'history-item-name';
+      name.textContent = h.input || h.output || '(untitled)';
+      const status = document.createElement('span');
+      status.className = 'history-item-status' + (h.cached ? ' history-status-cached' : '');
+      status.textContent = h.cached ? 'cached' : 'fresh';
+      const meta = document.createElement('span');
+      meta.className = 'history-item-meta';
+      const bits = [];
+      if (h.engine)   bits.push(h.engine);
+      if (h.dest_lang) bits.push(`→ ${h.dest_lang}`);
+      if (h.elapsed != null)  bits.push(`${h.elapsed.toFixed(1)} s`);
+      // Cost suppressed unless prefs ask for it.
+      if (state.prefs && state.prefs.showCost && h.cost_usd) bits.push(`$${h.cost_usd.toFixed(3)}`);
+      bits.push(new Date(h.ts).toLocaleString());
+      meta.textContent = bits.join(' · ');
+      li.appendChild(name);
+      li.appendChild(status);
+      li.appendChild(meta);
+      list.appendChild(li);
+    }
+  }
+
+  function wireHistoryTools() {
+    const csvBtn   = $('historyExportBtn');
+    const clearBtn = $('historyClearBtn');
+    if (csvBtn) {
+      csvBtn.addEventListener('click', () => {
+        const items = loadHistory();
+        if (!items.length) return;
+        const cols = ['ts','input','output','engine','model','dest_lang','cost_usd','cached','elapsed','rows_translated','rows_total'];
+        const escape = (v) => {
+          const s = (v == null ? '' : String(v));
+          return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+        };
+        const lines = [cols.join(',')];
+        for (const it of items) lines.push(cols.map(c => escape(it[c])).join(','));
+        const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `smtv-history-${new Date().toISOString().slice(0,10)}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      });
+    }
+    if (clearBtn) {
+      clearBtn.addEventListener('click', () => {
+        if (confirm('Clear run history?')) {
+          saveHistory([]);
+          renderHistory();
+        }
+      });
+    }
+  }
+
+  // ── Display preferences modal (2026-05-11) ──────────────────────────────
+  function wirePrefsModal() {
+    const dlg     = $('prefsDialog');
+    const open    = $('prefsBtn');
+    const close   = $('prefsCloseBtn');
+    const back    = $('prefsBackdrop');
+    if (!dlg || !open) return;
+
+    // Reflect current prefs into the checkboxes.
+    document.querySelectorAll('input[type="checkbox"][data-pref]').forEach(cb => {
+      const key = cb.getAttribute('data-pref');
+      cb.checked = !!state.prefs[key];
+      cb.addEventListener('change', () => {
+        state.prefs[key] = !!cb.checked;
+        savePrefs(state.prefs);
+        applyPrefsToDom(state.prefs);
+        renderHistory();   // history line may show / hide cost
+      });
+    });
+
+    open.addEventListener('click',  () => dlg.classList.remove('hidden'));
+    if (close) close.addEventListener('click', () => dlg.classList.add('hidden'));
+    if (back)  back .addEventListener('click', () => dlg.classList.add('hidden'));
+    // Close on Escape.
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !dlg.classList.contains('hidden')) {
+        dlg.classList.add('hidden');
+      }
+    });
   }
 
   // ── Helpers ──────────────────────────────────────────────────────────────

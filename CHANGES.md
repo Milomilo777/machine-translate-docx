@@ -57,6 +57,80 @@ after 1800 ms to avoid the Chrome multi-download permission prompt.
 
 ## Sessions
 
+### 2026-05-11 — Run-summary card + history + display preferences (branch `next/run-summary-and-history`)
+
+Implements backlog items #1 + #2 from yesterday's audit findings.
+Cost is captured everywhere (sidecar, history rows, summary card)
+but **hidden by default** in the UI per user request — toggleable
+from a new Display Preferences modal so it can be flipped on later
+without any code change.
+
+**Backend (small, additive)**
+
+  - `src/docx_io/save.py` now writes a **minimal `_log.json`** sidecar
+    next to every non-OpenAI run (DeepL / Google / chatgpt-no-polish).
+    Schema overlaps the chatgpt-polish sidecar where possible:
+    `run_info` (timestamp, engine, method, langs, with_polish=false)
+    + empty `blocks` + `summary` with `row_count`,
+    `source_rows_nonempty`, `target_rows_nonempty`. Tokens / cost
+    fields are explicitly `null` so the v2 card can decide whether
+    to render the OpenAI-specific rows.
+  - `src/machine_translate_docx.py:write_translation_log` enriches
+    the chatgpt-polish summary with the same row-count fields plus
+    `polish_lines_touched` / `polish_lines_total` (used by the
+    "polish over-rewrote" warning).
+
+**Frontend wave** (all in `web/v2/`)
+
+  - **Run-summary card** under the results list: model, elapsed,
+    tokens (total/prompt/out), cache-hit %, cost, cache savings,
+    cache expiry (24 h after `run_info.timestamp`), rows translated,
+    polish lines touched. Each metric carries a `data-metric=…`
+    attr so the Display Preferences toggles can hide individual
+    rows without re-render.
+  - **ETA + throughput live** under the progress bar: "~12s left"
+    + "≈ 2,300 chars/s", anchored on the first ≥ 15% PROGRESS ping
+    so the early 0→5→10 jitter doesn't poison the estimate.
+  - **Cache savings** = `cached_tokens × (input_rate − cached_rate) /
+    1M`, computed against the `/pricing` table.
+  - **Cache expiry** badge counts hours-until-24h-rollover.
+  - **Run history sidebar** in the right column — last 10 runs in
+    `localStorage('v2.history.v1')`. Each row shows file +
+    engine/lang + elapsed + timestamp; cost only shown when the
+    `showCost` preference is on. Two tools: `⤓ CSV` exports the
+    history as a CSV blob (download via `Blob` URL); `✕` clears.
+  - **Quality warnings** under the summary card, rendered as
+    badge-prefixed bullets: `polish_over_rewrite` (>80% of polish
+    lines changed), `output_short` (target / source < 30%),
+    `cache_miss_unexpected` (same file in last 5 min but
+    cache hit < 30%). All toggleable as a group via the
+    `showWarnings` preference.
+  - **Display Preferences modal** opened by a small ⚙ button on
+    the summary card. Five toggles:
+      - `showCost` (default OFF)
+      - `showCacheSavings` (default ON)
+      - `showCacheExpiry` (default ON)
+      - `showWarnings` (default ON)
+      - `showEta` (default ON)
+    Each toggle has an inline note explaining what it controls.
+    State persists in `localStorage('v2.prefs.v1')`. Visibility is
+    driven by `data-pref-*` attrs on `<html>` so CSS does the work
+    — no re-renders required when toggling.
+
+**Verification**
+
+  - `pytest`: 102 / 102 pass (no test changes needed).
+  - DeepL en→fr smoke: sidecar `sidecar_smoke_FRE_Deepl_log.json`
+    written with `engine=deepl`, `method=phrasesblock`,
+    `row_count=43`, `source_rows_nonempty=37`,
+    `target_rows_nonempty=17`. Tokens / cost fields are null.
+  - v2 boot: `data-pref-show-cost="0"` (cost row hidden by default),
+    `data-pref-show-warnings="1"` (warnings shown by default), all
+    other elements present and wired.
+
+Master tip going in: `f62a1b9`. Cost field is **reserved but
+hidden** — flip the toggle in Display Preferences when ready.
+
 ### 2026-05-11 — comprehensive audit pass (branch `audit/comprehensive-2026-05-11`)
 
 A skeptical-eye, single-night audit pass over the whole project: backend
