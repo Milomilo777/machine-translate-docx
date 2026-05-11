@@ -1,5 +1,26 @@
 {
-  "_comment": "Single source of truth for the v2 frontend's editable content. Edit this file to update announcements / stories without touching index.html or app.js. Schema (informal): announcements[].{ date, title, body }; stories[].{ title, summary, link?, badge? }. Markdown is NOT parsed — `body` is plain text. The page falls back gracefully when this file is missing.",
+  "_comment": "Single source of truth for v2 frontend editable content. Edit this file to update what visitors see — no HTML/JS/CSS changes required. Five slots: `modal` (one-time welcome dialog, dismissable, replays only when id changes), `pinned` (single sticky banner at the top of the page above the announcements column), `announcements` (left-column list, date+title+body), `stories` (centre-column tile grid), and `_comment` (this line — ignored at runtime). Any slot that is null, missing, or empty is silently skipped. Markdown is NOT parsed — `body`/`text`/`summary` are plain text.",
+
+  "modal": {
+    "_comment": "Cinematic welcome dialog. Shows once per `id` and is suppressed from then on (localStorage key `v2.modal.dismissed.<id>`). Change the id to force every visitor to see it again. Set `modal: null` to remove the dialog entirely. The `cta` block is optional — when absent the dialog has only a Close button.",
+    "id":      "2026-05-11-rebuild",
+    "kind":    "release",
+    "title":   "Welcome to the rebuilt v2 UI",
+    "body":    "This page was rebuilt the week of 2026-05-11 with a smch.ir-style three-column layout, a Claude warm palette, run-summary card, history sidebar, Telegram failure alerts, and pre-flight cost estimates. The legacy UI at / is unchanged.",
+    "cta": {
+      "label": "Read the changelog",
+      "url":   "/v2/../CHANGELOG.md"
+    }
+  },
+
+  "pinned": {
+    "_comment": "Sticky banner above the page header (and above every other announcement). Shows until the user dismisses it OR until you change the id. `kind` controls the accent stripe: `release` (clay), `notice` (cream), `warning` (warm red). Set `pinned: null` to remove.",
+    "id":    "2026-05-11-release",
+    "kind":  "release",
+    "icon":  "✨",
+    "text":  "New: run-summary card with cost estimate, weekly newsletter export to Telegram, and the v2 SPA now ships a real PEP 621 package layout."
+  },
+
   "announcements": [
     {
       "date": "2026-05-11",
@@ -22,21 +43,22 @@
       "body": "Unknown OpenAI model names (e.g. a typoed gpt-5.5-mini) are rejected at upload time with a clear message instead of failing deep inside the API call. Allowed values: gpt-5.5, gpt-5.4-mini."
     }
   ],
+
   "stories": [
     {
-      "title": "How phrase-grouping works",
+      "title":   "How phrase-grouping works",
       "summary": "DeepL and Google write the translation onto the first row of every phrase group, leaving the rest of the phrase empty by design. ChatGPT with split-translation distributes per-row instead. The parse stage now prints a one-line summary so the layout never surprises a fresh reader.",
-      "badge": "Tip"
+      "badge":   "Tip"
     },
     {
-      "title": "Persian Double Lines",
+      "title":   "Persian Double Lines",
       "summary": "When the target language is Persian, the Split Method dropdown unlocks a second option that runs the FA mechanical aligner on top of the engine's translation and emits a bilingual two-line file ready for TV subtitles.",
-      "badge": "Persian"
+      "badge":   "Persian"
     },
     {
-      "title": "24-hour prompt cache",
+      "title":   "24-hour prompt cache",
       "summary": "Every OpenAI call sets prompt_cache_retention=24h. Re-running the same document in the same day cuts the prompt token bill by ~92%. The JSON sidecar logs the cached_tokens count per call so you can verify it is hitting.",
-      "badge": "OpenAI"
+      "badge":   "OpenAI"
     }
   ]
 }
