@@ -32,7 +32,7 @@ wall-clock down.
 | T8 | VE 3145 | google | basic | ✓ | 1:05 | clean |
 | T9 | sample_hyperlink.docx | deepl | basic | ✓ | 0:36 | clean |
 | T10 | AJAR 3145 | deepl | basic | ✓ | 1:44 | clean |
-| T11 | VE 3145 | deepl | basic | — | — | needs Selenium |
+| T11 | VE 3145 | deepl | basic | ✓ | 3:52 | clean |
 
 Findings, run outputs, and per-run notes get appended below as each test
 finishes.

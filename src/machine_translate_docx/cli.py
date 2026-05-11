@@ -356,6 +356,14 @@ def _get_ctx() -> RuntimeContext:
             _ctx.flags.with_polish = args.with_polish
         except (NameError, AttributeError):
             pass
+        # 2026-05-11 — split_engine snapshot. Module-level `split_engine`
+        # is normalised at line ~776 (lower-cased, whitelisted). Mirror it
+        # onto ctx.flags so engine_suffix() and the aligner-invocation
+        # branches read the same value.
+        try:
+            _ctx.flags.split_engine = split_engine
+        except (NameError, AttributeError):
+            pass
         # 2026-05-10 G1 — docxdoc + use_html snapshot for the upcoming
         # docx_io.parse / docx_io.cells extraction.
         try:
