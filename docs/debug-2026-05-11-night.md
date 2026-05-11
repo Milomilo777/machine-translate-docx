@@ -57,12 +57,24 @@ finishes.
 | `[engine_suffix]` | F7a: append `_Double_Lines` when `split_engine == 'persian_double_lines'` |
 | `01b3669` | F7b: snapshot `--splitengine` value onto `ctx.flags.split_engine` (was a no-op before) |
 
+### Fixes added after first summary (overnight, autonomous)
+
+| Commit | What |
+|--------|------|
+| `3be301c` / `ef3fc56` | F3 — translator now sends `reasoning.effort=none` to Responses API (was defaulting to `medium`, causing 64-min polish on gpt-5.5). Polisher uses `high` on mini, `none` on bigger models. |
+| `734562d` | F7c — `FASubtitleAligner` is invoked after save when `split=persian_double_lines`. Mechanical pass; rewrites FA column into ≤48-char chunks. |
+
+Verified end-to-end after F7c:
+- T4d (AJAR + chatgpt-polish-mini + persian_double_lines) → 1:52, aligner 25 groups / 51 doubles / 0 triples / 0 over-48.
+- T5d (VE   + chatgpt-polish-mini + persian_double_lines) → 5:09, aligner 105 groups / 163 doubles / 2 triples / 0 over-48.
+  - Polish step on VE is much longer (≈4 min) now that mini actually receives `reasoning.effort=high` instead of silently dropping it. Still 12× faster than the gpt-5.5 64-min run; trade-off is intentional per the CLAUDE.md rule.
+
 ### Still open — needs user review
 
-- **F3 — gpt-5.5 + Responses API spends huge reasoning tokens on translator+polisher.** First VE run with gpt-5.5: translate 286 s + polish 3888 s (64.8 min). The translator response showed `reasoning.effort=medium` and `reasoning_tokens=3624` (50 % of completion) even though the project invariant C2 says "no reasoning_effort on translator". The Responses API appears to enable reasoning by default on gpt-5.x; the explicit suppression that exists for chat.completions doesn't reach it. **Recommendation:** add `reasoning={"effort": "minimal"}` to the Responses API call in `translator.py` (and `polisher.py` when not the mini model). With gpt-5.4-mini the same files complete in 1:14 – 1:55, so the regression is gpt-5.5-specific.
+- **F3 — fixed (`3be301c` / `ef3fc56`)**, kept for reference: gpt-5.5 + Responses API spends huge reasoning tokens on translator+polisher. First VE run with gpt-5.5: translate 286 s + polish 3888 s (64.8 min). The translator response showed `reasoning.effort=medium` and `reasoning_tokens=3624` (50 % of completion) even though the project invariant C2 says "no reasoning_effort on translator". The Responses API appears to enable reasoning by default on gpt-5.x; the explicit suppression that exists for chat.completions doesn't reach it. **Recommendation:** add `reasoning={"effort": "minimal"}` to the Responses API call in `translator.py` (and `polisher.py` when not the mini model). With gpt-5.4-mini the same files complete in 1:14 – 1:55, so the regression is gpt-5.5-specific.
 - **F5 — reconciler doesn't converge on AJAR 3145.** Translator returned 90 lines for 51-line source; reconciler asked twice and got 90 both times, then padded/truncated. Output still saved, but means subtitle lines may be mis-aligned. Likely a prompt issue in the reconciler — it should split paragraphs back to one-line-per-row but mini is over-segmenting.
 - **F6 — gpt-5.4-mini polish very weak on VE (1/106 lines changed).** AJAR got 27/51 ≈ 53 %, VE got 1/106 ≈ 1 %. Different docs, very different rates — suggests the polish prompt is sensitive to input phrasing. Worth a prompt review.
-- **F7c — `FASubtitleAligner` is exported but never invoked.** `grep FASubtitleAligner src/machine_translate_docx/cli.py` returns one *comment* and the import is absent at run-time. The persian_double_lines pipeline today goes through the same `split_with_algorithm()` as basic split — only the filename suffix differs. The aligner module itself (mechanical v2.0) is intact; what's missing is the wire-up in cli.py: after translation but before save, when `ctx.flags.split_engine == 'persian_double_lines'`, call the aligner to expand each row into the bilingual double-line layout. Needs a careful re-read of the phase-9/15 roadmap to put the hook back in the right place.
+- **F7c — fixed (`734562d`)**, kept for reference: `FASubtitleAligner` is exported but never invoked. `grep FASubtitleAligner src/machine_translate_docx/cli.py` returns one *comment* and the import is absent at run-time. The persian_double_lines pipeline today goes through the same `split_with_algorithm()` as basic split — only the filename suffix differs. The aligner module itself (mechanical v2.0) is intact; what's missing is the wire-up in cli.py: after translation but before save, when `ctx.flags.split_engine == 'persian_double_lines'`, call the aligner to expand each row into the bilingual double-line layout. Needs a careful re-read of the phase-9/15 roadmap to put the hook back in the right place.
 - **F8 — polish reports "refined N lines" but file shows NO CHANGE.** Seen on T4 (51 lines reported refined, but `[DIAG] Polish: NO CHANGE (check for API error above)`). Suggests the polisher accepts the model output, then later the cell-write step doesn't pick it up — or the diff comparison itself is wrong (model returns identical-looking polished text that fails the `before == after` check because of an invisible character difference?). Worth a closer look at `chatgpt_api.py` around the `_before_polish == full_translated` check.
 
 ### Process / output issues (not bugs in production code)
