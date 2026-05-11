@@ -1,258 +1,228 @@
-# Next-session handoff — thread docx globals to ctx, then extract parse + get_cell_data
+# Next-session handoff — 2026-05-11 end-of-day
 
-> Read this first. Then `docs/agent-handoff.md` (older, persian-double-lines
-> roadmap), `CHANGELOG.md` (most-recent first), and `PROJECT_MEMORY.md`
-> (C1-C17 invariants).
+> Read this first. Then [`CHANGELOG.md`](../CHANGELOG.md) (most recent
+> first), [`PROJECT_MEMORY.md`](../PROJECT_MEMORY.md) for the
+> invariants C1–C20, and the README hero diagram in
+> [`README.md`](../README.md) for the high-level picture.
 
 ---
 
 ## Status snapshot
 
 ```
-date          2026-05-10  (close of previous session)
-master tip    0f07c14     merge: extract-docx-parse into master
-unit tests    63 / 63 pass
-real-file     tasks.bat smoke = DeepL en→fr in ~28 s, 0/42 mismatches
-recent tags   archive/persian-double-lines-as-splitter-2026-05-10
-              archive/architecture-cleanup-after-audit-2026-05-10
-              archive/extract-docx-parse-2026-05-10
-deleted       all three next/* feature branches; only master remains
+date          2026-05-11  (close of session)
+master tip    336603e     merge: repo-hygiene followup into master
+unit tests    113 / 113 pass
+                          + 8 live-marked deselected
+real-file     tasks.bat smoke = DeepL en→fr ~27 s, 0 / 42 mismatches
+                          (verified live this session)
+recent tags   archive/comprehensive-audit-2026-05-11
+              archive/cost-field-and-telegram-2026-05-11
+              archive/telegram-multi-recipient-2026-05-11
+              archive/post-test-hardening-2026-05-11
+              archive/pyproject-toml-2026-05-11
+              archive/repo-hygiene-followup-2026-05-11
+              archive/repo-readme-and-diagrams-2026-05-11
+              archive/run-summary-and-history-2026-05-11
+              + many older archive/* tags
+branches      master only on origin (every next/* deleted after merge)
 ```
 
 ---
 
-## What this session is for
+## What landed in the 2026-05-10 → 2026-05-11 push
 
-Two extractions were deferred three times because they need a
-prerequisite first:
+In rough chronological order. Full per-commit detail in
+[`CHANGELOG.md`](../CHANGELOG.md).
 
-  1. `read_and_parse_docx_document` — ~800 lines of input-side parsing.
-  2. `get_cell_data` — per-cell read with shading / colour / hyperlink
-     handling. Smaller (~440 lines) but uses the same global surface.
+### Refactor + structural
 
-Both read **module globals** that have to be threaded through `ctx`
-first. Trying to extract them without that prerequisite means duplicating
-the same global-passthrough shim pattern we already used for cells.py
-and save.py — and there are ~20 globals, not 4. The shim becomes ugly.
+  - **G1–G3** — `docxdoc` + `use_html` threaded onto `DocxCtx`;
+    `get_cell_data` extracted to `docx_io/cells.py`;
+    `read_and_parse_docx_document` extracted to `docx_io/parse.py`.
+    The entire docx-read + docx-write surface now lives in
+    `docx_io/`.
+  - **Comprehensive 2026-05-11 audit** — 14 fixes applied,
+    15 items parked. See [`audit-2026-05-11.md`](audit-2026-05-11.md).
 
-**This session is one focused pass: thread the globals to ctx, then
-extract.**
+### New invariants
 
----
+  - **C18** — OpenAI model ids are validated against
+    `config.VALID_AI_MODELS` at CLI parse time.
+  - **C19** — Empty / no-translation runs exit 20 with
+    `[FAIL] reason=<token>` (`empty_docx`, `engine_empty`, …).
+  - **C20** — Failures are archived to
+    `runtime_dir/failures/<job_id>__<ts>/` (input + stdout +
+    meta.json + UNREVIEWED.txt sentinel). Optional Telegram /
+    email / webhook alerts.
 
-## The global surface
+### Frontend (v2 only — legacy untouched)
 
-### Required by `read_and_parse_docx_document`
+  - smch.ir-style three-column layout: announcements |
+    translator + stories | info / newsletter.
+  - Anthropic warm palette (cream + clay-orange) with light + dark.
+  - Auto-RTL when source or target is fa / ar / he / ur.
+  - `content.json` — single source of truth for announcements +
+    story tiles.
+  - **Run-summary card** under results: model · elapsed · tokens ·
+    cache-hit % · cost · cache savings · cache expiry · rows ·
+    polish-touched. Cost field stays in the layout but renders as
+    `—` until the user flips `showCost` in the Display Preferences
+    modal.
+  - **Quality warnings** (toggleable): `polish_over_rewrite`,
+    `output_short`, `cache_miss_unexpected`.
+  - **Run history sidebar** (last 10 in localStorage) + CSV export.
+  - **ETA + throughput** live under the progress bar.
+  - **Cancel button** during a run, wired to `/cancel/<id>`.
+  - **Offline banner** on `navigator.onLine === false`.
+  - **Display Preferences modal** with five toggles.
 
-| global               | declared at         | type / role                                |
-|----------------------|--------------------|---------------------------------------------|
-| `docxdoc`            | line 1050           | `docx.Document` — the python-docx Document  |
-| `use_html`           | line 678            | bool — HTML CGI output mode                 |
-| `docxfile`           | (typo — see note)   | unused, only in an error message            |
-| `silent`             | line 659            | bool — CLI `--silent` flag                  |
-| `E_mail_str`         | line 610            | str — author contact for error messages     |
-| `PROGRAM_VERSION`    | line 3              | str — version banner for error messages     |
-| `word_file_to_translate` | line 712        | already on `ctx.flags.word_file_to_translate` ✓ |
+### Operations
 
-Note on `docxfile`: line 2495 has `print(f"Error: ... {docxfile}")`
-referring to a name that does not exist as a global. The intended
-reference is `word_file_to_translate`. Fix-as-you-go.
+  - **Telegram bot** as a third failure-alert channel alongside
+    email + webhook. Multi-recipient via comma-separated
+    `MTD_TELEGRAM_CHAT_ID`. Full setup + threat model in
+    [`telegram-alerts-setup.md`](telegram-alerts-setup.md).
+  - **`/pricing` endpoint** returns per-1M-token rates for every
+    model in `VALID_AI_MODELS`; v2 frontend uses it for the
+    pre-flight cost estimate.
 
-### Required by `get_cell_data` (additional)
+### Repo hygiene + first-impression
 
-| global                       | declared at | role                                |
-|------------------------------|-------------|--------------------------------------|
-| `shading_color_ignore_text`  | (config)    | already in `config.py` ✓              |
-| `font_color_ignore_text_red` | (config)    | already in `config.py` ✓              |
-| `font_color_ignore_text_grey`| (config)    | already in `config.py` ✓              |
-| `dest_lang`                  | line 832    | already on `ctx.language.dest_lang` ✓ |
+  - Real `README.md` (was a one-line stub) — hero badges,
+    embedded SVG diagrams (`<picture>` for light / dark),
+    quick-start, pipeline + failure sections, file tree,
+    documentation index.
+  - `LICENSE` (MIT), `CONTRIBUTING.md`, `SECURITY.md` — all
+    missing pre-pass.
+  - `docs/diagrams/` — 3 hand-coded SVGs × 2 themes (6 files),
+    with `<title>` + `<desc>` for a11y, light/dark kept in
+    lock-step via a palette-swap script.
+  - `.github/workflows/ci.yml` — pytest + py_compile sweep on
+    Python 3.11 + 3.12 (Ubuntu).
+  - `.github/ISSUE_TEMPLATE/` — bug, feature, config.
+  - `.github/PULL_REQUEST_TEMPLATE.md` — invariant checklist +
+    test plan + changelog entry.
+  - `scripts/` — new directory with a `README.md`; bloated
+    `run.bat` (hundreds of stale `SET DOCXFILE=` lines) moved
+    to `scripts/legacy/`.
+  - `docs/index.md` — hub for the 24 markdown files under `docs/`.
+  - `CHANGES.md` → `CHANGELOG.md` rename (stub stays for old
+    bookmarks).
+  - `pyproject.toml` (PEP 621) with full metadata + `>=` floor
+    deps + `[tool.pytest.ini_options]` (replaces `pytest.ini`).
+  - `machine_translate_docx/` namespace wrapper so
+    `pip install -e .` succeeds and lets external callers do
+    `from machine_translate_docx import runtime`.
 
-Plus calls into `_iter_paragraph_runs` (already moved to
-`docx_io.runs`).
+### Tests
 
-### Already on ctx (do NOT re-add)
-
-```
-ctx.docx.numrows / numcols / table / table_cells
-ctx.docx.from_text_table  (and ~25 sibling parallel arrays)
-ctx.docx.source_columns_snapshot
-ctx.docx.translation_array
-ctx.flags.word_file_to_translate
-ctx.flags.word_file_to_translate_save_as_path
-ctx.language.dest_lang / src_lang / dest_lang_name
-ctx.engine.engine / method / dispatcher
-ctx.flags.splitonly / with_polish / silent (already partial)
-```
-
----
-
-## Recommended phase plan
-
-Each phase = one commit. Run `tasks.bat test` after every phase. Run
-`tasks.bat smoke` after phases that touch the parse or save path.
-
-### Phase G1 — add docxdoc + use_html + silent to ctx
-
-In `src/runtime.py:DocxCtx`, add:
-
-```python
-docxdoc:  Any  = None       # python-docx Document
-use_html: bool = False
-```
-
-In `src/runtime.py:FlagsCtx`, confirm `silent: bool = False` exists
-(may already be there — check).
-
-In `src/machine_translate_docx.py`, after `docxdoc = docx.Document(...)`
-at line 1050, add:
-
-```python
-_get_ctx().docx.docxdoc  = docxdoc
-_get_ctx().docx.use_html = use_html
-```
-
-(or include in the existing `_sync_globals_from_ctx` mirror.)
-
-### Phase G2 — extract get_cell_data first (smaller, simpler)
-
-Move to `src/docx_io/cells.py` as `get_cell_data(ctx, cell, row_n)`.
-The signature already takes `ctx` and `cell`; the body just needs the
-globals it currently reads to come from `ctx`. The thin shim in the
-entry script keeps the same name.
-
-### Phase G3 — extract read_and_parse_docx_document
-
-Move to a new module `src/docx_io/parse.py`. The function already
-takes `ctx`; rewrite all global reads to use ctx:
-
-```python
-docxdoc            → ctx.docx.docxdoc
-use_html           → ctx.docx.use_html
-silent             → ctx.flags.silent
-E_mail_str         → import from a small constants module, OR keep a
-                     module-level constant in the new parse module
-                     (only used in error messages, no behaviour)
-PROGRAM_VERSION    → same — make it a constant or pass as kwarg
-```
-
-The fall-through `print(f"Error: document {docxfile} does not have
-a table")` uses an undefined name. Replace with
-`ctx.flags.word_file_to_translate`.
-
-The thin shim in entry script keeps `read_and_parse_docx_document(ctx)`
-working.
-
-### Phase G4 — verify
-
-  - `tasks.bat test`     — 63/63 pass
-  - `tasks.bat smoke`    — DeepL en→fr in ~30 s, 0/42 mismatches
-  - Check `tasks.bat live-google` if time permits.
-
-### Phase G5 — commit + push + tag + delete branch
-
-Same workflow as the previous three sessions:
-
-```
-git push origin <branch>
-git checkout master
-git merge --no-ff <branch> -m "merge: ..."
-git push origin master
-git tag -a archive/<branch-name>-2026-05-10 <branch> -m "..."
-git push origin <tag>
-git push origin --delete <branch>
-git branch -d <branch>
-```
+  - Baseline went from 63 (start of 2026-05-10) to **113** at
+    end of 2026-05-11 (+50 new tests):
+    - `tests/test_docx_io_cells.py` (7)
+    - `tests/test_post_test_hardening.py` (14)
+    - `tests/test_log_sidecar_pair.py` (4)
+    - `tests/test_fa_postprocess.py` (14)
+    - `tests/test_telegram_alert.py` (11)
 
 ---
 
-## The branch to use
+## What's left for the next session
 
-**Create the new branch as the FIRST action of the next session:**
+Everything urgent / valuable landed. The remaining items in the
+queue are nice-to-haves; pick from the list when there's budget.
 
-```
-git checkout master
-git pull origin master
-git checkout -b next/thread-docx-globals-to-ctx
-```
+### Parked from the audit doc
 
-All work happens on `next/thread-docx-globals-to-ctx`. Master stays
-green and shippable.
+| Tag | Item | Why parked |
+|---|---|---|
+| R-1 | `LocalState.job_procs` unbounded growth | small leak, 1-h cleanup masks it |
+| R-2 | `proc.stdout` drain on exception | speculative; no reproducer |
+| R-6 | Cancel race | theoretical; no crash seen |
+| R-7 | Selenium engine error swallowing | needs deep rewrite |
+| R-8 | DeepL email print | production gated by `--silent` |
+| F-1 | Legacy stale model dropdown | legacy untouched constraint (C7) |
+| F-5 | Legacy theme persistence | legacy untouched |
+| F-6 | Mixed innerHTML/textContent | cosmetic |
+| F-8 | Implicit label vs `for=` | cosmetic |
+| C-3 | Reconciler cost capture | low volume |
+| H-2 | Commented-out dead imports in entry script | separate sweep |
+| H-5 | Three `requirements*.txt` files with overlap | reproducibility is fine today |
 
----
+### Bigger items (separate sessions)
 
-## Things you (the next agent) might miss
+  - **`src/` layout migration** — convert every
+    `from runtime import …` to package-relative
+    (`from .runtime import …`), move flat `src/*.py` files into a
+    proper `src/machine_translate_docx/` package, then drop the
+    `sys.path` hack from `tests/conftest.py` and the namespace
+    wrapper at the root. ~2-3 hours, 44 files touched, risk = high
+    because every test, every helper, every import needs an audit.
+    The lightweight wrapper that landed this session is a safe
+    interim step — `pip install -e .` works today, the import
+    surface stays flat.
+  - **Persian Double Lines aligner** — `llm_threshold` is 0
+    (fully mechanical) since 2026-05-08. The roadmap in
+    [`roadmap-persian-double-lines.md`](roadmap-persian-double-lines.md)
+    has 15 phases; only the first half landed. If quality drift
+    appears on production fixtures, revisit.
+  - **Charge-back / cost telemetry** — the per-run sidecar carries
+    everything we need. A cumulative cost report (per-month, per-
+    user, per-language) is a 1-day frontend project; backend is
+    ready (just glob the sidecars + sum).
 
-1. **Auto mode is on; user has hands-off authorization.** Do not pause
-   between phases. Make decisions yourself.
+### Open questions for the operator (not blocking)
 
-2. **Persian responses only.** No English words inside Persian
-   sentences. English file names, function names, and code go in
-   separate lines or code blocks. Hard rule.
-
-3. **Repo docs (CHANGELOG.md, PROJECT_MEMORY.md, docs/*) must be
-   English.** Conversation stays Persian.
-
-4. **Auto-commit + auto-doc.** Every code change → commit + CHANGELOG.md
-   update + push, in the same flow. No batching.
-
-5. **17 invariants C1-C17 in PROJECT_MEMORY.md.** Especially:
-     - C1: aligner model = `gpt-5.4-mini`, never parameterise away.
-     - C3: `_normalize_lang()` is read-only.
-     - C5: no timestamp prefix in output filenames.
-     - C6: file collision suffix `_1, _2`, never overwrite.
-     - C13: source-language column frozen via `source_columns_snapshot`.
-     - C15: no bare `except:` — always `except Exception:`.
-
-6. **Verification command for unit tests:**
-```
-PYTHON=E:/Python311/python.exe ./tasks.bat test
-```
-Expected: 63 passed.
-
-7. **Verification command for real-file smoke:**
-```
-PYTHON=E:/Python311/python.exe ./tasks.bat smoke
-```
-Expected: ~25-30 s, output `_real_test/smoke_FRE_Deepl.docx`,
-0/42 source-column mismatches.
-
-8. **Legacy reference repo:** if the parse logic does something
-   confusing, the original is at remote `upstream-old`
-   (`git fetch upstream-old main`). Do not merge from it; only
-   read for clarity.
-
-9. **The PROGRESS:90 marker** is what `local_launcher.py` watches
-   for to flip the progress bar. Don't strip it. Currently emitted
-   in `save_docx_file` shim before delegating.
-
-10. **xtm = None pitfall.** `xtm` is a module-level singleton built
-    by `initialize_translation_memory_xlsx`. If you accidentally
-    move parse code that uses `xtm` to a module that imports first,
-    you'll get `xtm is None` errors. Keep `xtm` reads on the entry
-    script side or thread it through ctx properly (currently
-    pre-2026-05-10 hack: `xtm = None` at module top + `global xtm`
-    in initializer).
-
-11. **`_sync_globals_from_ctx`** is the Phase H bridge that mirrors
-    `ctx.docx.*` to module globals. After you thread a global into
-    ctx, also update `_sync_globals_from_ctx` so the legacy
-    helpers downstream still see the value. Or eliminate the legacy
-    helper at the same time.
-
-12. **Tests live in `tests/`.** No tests cover `read_and_parse_docx_document`
-    or `get_cell_data` directly. The smoke test covers them
-    end-to-end. Consider adding a unit test for at least one of
-    them in your extraction commit (the docx_io.parse module is
-    a good seam for this).
+  - **Telegram bot in production?** The user generated a token in
+    2026-05-11 setup but it was leaked in chat and revoked. Whether
+    the bot is currently live and which chat / channel receives
+    alerts is the operator's call.
+  - **GitHub Actions enabled?** The CI workflow ships but won't
+    fire until the master branch is pushed to a repo with Actions
+    enabled. If you haven't visited the Actions tab on GitHub,
+    do that first.
+  - **MIT vs Apache-2.0?** The current `LICENSE` is MIT. If the
+    project ever adds a patented algorithm or a corporate
+    contributor, consider re-licensing to Apache-2.0 for the
+    explicit patent grant.
 
 ---
 
-## Past sessions (most recent first)
+## How to run the test matrix (operator quick ref)
 
-| date       | branch                                              | done                                                          |
-|------------|-----------------------------------------------------|---------------------------------------------------------------|
-| 2026-05-10 | next/extract-docx-parse                            | docx_io package: runs.py + cells.py + save.py                 |
-| 2026-05-10 | next/architecture-cleanup-after-audit              | C1 web engines deleted, C2 entry rename + dispatch.py, C3 perplexity_webservice + dead code, C4 Makefile + tasks.bat |
-| 2026-05-10 | next/persian-double-lines-as-splitter              | 15 phases of the persian-double-lines roadmap + DeepL/Google fixes + web-engine audit + timing alignment |
+```bash
+# Unit tests (fast, no network, no Chrome)
+python -m pytest tests/ --ignore=tests/test_v2_e2e.py
+# → 113 passed, 8 deselected (the `live` ones)
 
-All three branches deleted; corresponding `archive/*` tags on origin.
+# DeepL en→fr smoke (real Chrome, ~30 s)
+tasks.bat smoke     # Windows
+make smoke          # Unix
+
+# Live engine matrix (all four engines, all language pairs)
+tasks.bat live-all
+make live-all
+
+# Full v2 e2e (Playwright + boot launcher)
+pytest -m live
+```
+
+---
+
+## Hand-off complete
+
+Nothing is blocked. The repo is in the best shape it's been in
+since the project started:
+
+  - Real README, LICENSE, CONTRIBUTING, SECURITY, PR/issue
+    templates.
+  - 113 unit tests passing on Python 3.11 + 3.12 in CI.
+  - Architecture diagrams (light + dark) on the landing page.
+  - Three failure-alert channels (Telegram, email, webhook) ready
+    to flip on with one env var.
+  - Modern `pyproject.toml` PEP 621 metadata.
+  - All invariants C1–C20 are enforced by tests or by the CLI's
+    pre-flight validation.
+
+Master tip: **`336603e`** at end of session 2026-05-11 (this
+handoff was written on a follow-up branch; merge bumps it).

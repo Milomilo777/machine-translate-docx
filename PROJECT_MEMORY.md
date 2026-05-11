@@ -3,7 +3,7 @@
 Committed team memory. Keep it concise — no raw logs, no long discussion.
 Summary + link to `docs/` for depth.
 
-Last updated: 2026-05-09 (Phase H bridge, progress UX, driver seeding, English docs, branch archive, lint sweep)
+Last updated: 2026-05-11 (G1-G3 docx_io extraction, comprehensive audit, run-summary card + history + display preferences, Telegram failure alerts w/ multi-recipient, README + LICENSE + SECURITY + CONTRIBUTING, 6 SVG architecture diagrams, pyproject.toml PEP 621, CI workflow + issue + PR templates, docs/index.md, CHANGES→CHANGELOG rename, namespace package wrapper. 50 new unit tests landed (63→113).
 
 ---
 

@@ -57,6 +57,37 @@ after 1800 ms to avoid the Chrome multi-download permission prompt.
 
 ## Sessions
 
+### 2026-05-11 — Final polish: package wrapper + PR template + handoff doc + memory date (branch `next/final-polish`)
+
+End-of-day polish landing the smallest remaining items so the next
+session opens to a clean state.
+
+  - **`machine_translate_docx/__init__.py`** — thin namespace
+    wrapper at the project root. Its only job is to inject the
+    repo's `src/` directory into `sys.path` on import so external
+    callers who ran `pip install -e .` can write
+    `from machine_translate_docx import runtime`. The flat-layout
+    caveat still applies — the full src-layout migration stays
+    parked. `pyproject.toml`'s `[tool.setuptools].packages` now
+    lists this single package; `pip install -e .` succeeds.
+  - **`.github/PULL_REQUEST_TEMPLATE.md`** — bullet list for what /
+    why / how + a test plan checklist + the seven invariant ticks
+    that matter most (C1, C2, C4, C7, C13, C15, C18) + a
+    CHANGELOG-entry reminder.
+  - **`docs/next-session-handoff.md`** — rewritten end-to-end. The
+    file had been stale since 2026-05-10 (it still pointed at
+    `0f07c14` and asked the next session to extract `parse +
+    get_cell_data`, which has long since landed). The new version
+    is a status snapshot at master tip `336603e`, a chronological
+    summary of everything that landed across the 2026-05-10 →
+    2026-05-11 push, the parked items list, three operator
+    questions, and an end-of-day "nothing is blocked" sign-off.
+  - **`PROJECT_MEMORY.md`** last-updated banner refreshed.
+
+Tests: 113 / 113 pass.
+
+Master tip going in: `336603e`.
+
 ### 2026-05-11 — Repo-hygiene follow-up: CI + issue templates + docs index + CHANGELOG rename (branch `next/repo-hygiene-followup`)
 
 Completes the repo-housekeeping queue parked in the 2026-05-11
