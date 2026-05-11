@@ -58,6 +58,25 @@ def _count_nonempty_rows(rows: list[str] | None) -> int:
     return sum(1 for r in rows if r and r.strip())
 
 
+def _count_translatable_source_rows(ctx: "RuntimeContext") -> int:
+    """Count source rows the engine would actually translate.
+
+    The health check must compare like-with-like: the target side uses
+    ``to_text_by_phrase_separator_table`` (one entry per phrase the
+    engine returned), so the source side has to use the matching
+    ``from_text_by_phrase_separator_table`` (one entry per phrase the
+    engine was asked to translate) — not ``from_text_table``, which
+    carries every raw cell including timestamps, line-break artefacts,
+    and other rows the pipeline filters out before calling the engine.
+    Using ``from_text_table`` here was the root cause of the spurious
+    "106/449 = 24%%" failure seen on real subtitle docx inputs.
+    """
+    rows = ctx.docx.from_text_by_phrase_separator_table or []
+    if not rows:
+        return 0
+    return sum(1 for r in rows if r and r.strip())
+
+
 def assert_source_has_content(ctx: "RuntimeContext") -> None:
     """Raise :class:`EmptyDocxError` if no row of the source column
     carries any translatable text.
@@ -91,7 +110,7 @@ def assert_translation_present(ctx: "RuntimeContext") -> None:
     Also fails when the engine produced *something* but the count is
     zero — a more obvious "engine returned empty body" symptom.
     """
-    src_nonempty = _count_nonempty_rows(ctx.docx.from_text_table)
+    src_nonempty = _count_translatable_source_rows(ctx)
     if src_nonempty == 0:
         # assert_source_has_content should have caught this already;
         # treat as engine-empty here so we still surface the failure
