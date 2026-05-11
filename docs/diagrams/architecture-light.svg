@@ -1,0 +1,165 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 480" role="img" aria-labelledby="title desc" font-family="Inter, system-ui, sans-serif">
+  <title id="title">machine-translate-docx — high-level architecture</title>
+  <desc id="desc">Two browser frontends (legacy EJS and v2 SPA) talk to a single Python launcher (or a Node express server) that spawns the machine_translate_docx.py CLI as a subprocess. The CLI fans out to four translation engines and writes a docx output plus a JSON log sidecar back through the launcher to the user's download.</desc>
+
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#6E6C66"/>
+    </marker>
+    <marker id="arrow-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#D97757"/>
+    </marker>
+    <style>
+      .card        { fill:#FFFFFF; stroke:#E8E4D9; stroke-width:1.5; }
+      .group-bg    { fill:#FAF9F5; stroke:#E8E4D9; stroke-width:1; stroke-dasharray:4,3; }
+      .accent      { fill:#D97757; }
+      .accent-card { fill:#FBEFE9; stroke:#E4A382; stroke-width:1.5; }
+      .h           { fill:#1F1E1B; font-size:14px; font-weight:600; }
+      .t           { fill:#3F3E3A; font-size:11.5px; }
+      .label       { fill:#6E6C66; font-size:10px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; }
+      .link        { stroke:#6E6C66; stroke-width:1.5; fill:none; }
+      .link-accent { stroke:#D97757; stroke-width:1.8; fill:none; }
+    </style>
+  </defs>
+
+  <!-- BACKGROUND -->
+  <rect width="920" height="480" fill="#FAF9F5"/>
+
+  <!-- ── BROWSER LANE ──────────────────────────────────────────────── -->
+  <g transform="translate(40,30)">
+    <text class="label" x="0" y="0">Browser (user)</text>
+    <rect class="group-bg" x="-6" y="10" width="280" height="160" rx="8"/>
+
+    <!-- Legacy frontend card -->
+    <g transform="translate(8,28)">
+      <rect class="card" width="125" height="60" rx="6"/>
+      <text class="h" x="62" y="24" text-anchor="middle">Legacy /</text>
+      <text class="t" x="62" y="42" text-anchor="middle">index.ejs</text>
+    </g>
+    <!-- v2 frontend card -->
+    <g transform="translate(143,28)">
+      <rect class="card" width="125" height="60" rx="6"/>
+      <text class="h" x="62" y="24" text-anchor="middle">v2 /v2/</text>
+      <text class="t" x="62" y="42" text-anchor="middle">plain JS SPA</text>
+    </g>
+
+    <text class="t" x="135" y="115" text-anchor="middle">multipart POST /upload</text>
+    <text class="t" x="135" y="130" text-anchor="middle">poll GET /status/&lt;id&gt;</text>
+    <text class="t" x="135" y="145" text-anchor="middle">GET /download/&lt;file&gt;</text>
+  </g>
+
+  <!-- ── LAUNCHER LANE ─────────────────────────────────────────────── -->
+  <g transform="translate(360,30)">
+    <text class="label" x="0" y="0">HTTP launcher</text>
+    <rect class="group-bg" x="-6" y="10" width="200" height="160" rx="8"/>
+
+    <g transform="translate(8,28)">
+      <rect class="card" width="183" height="60" rx="6"/>
+      <text class="h" x="91" y="22" text-anchor="middle">local_launcher.py</text>
+      <text class="t" x="91" y="40" text-anchor="middle">stdlib http.server</text>
+      <text class="t" x="91" y="54" text-anchor="middle">no Node required</text>
+    </g>
+    <g transform="translate(8,98)">
+      <rect class="card" width="183" height="50" rx="6"/>
+      <text class="h" x="91" y="22" text-anchor="middle">server.js</text>
+      <text class="t" x="91" y="38" text-anchor="middle">Express · production</text>
+    </g>
+  </g>
+
+  <!-- ── CLI / ORCHESTRATOR ────────────────────────────────────────── -->
+  <g transform="translate(620,30)">
+    <text class="label" x="0" y="0">Python CLI</text>
+    <rect class="accent-card" x="-6" y="10" width="270" height="160" rx="8"/>
+
+    <g transform="translate(8,28)">
+      <rect class="card" width="252" height="60" rx="6"/>
+      <text class="h" x="126" y="22" text-anchor="middle">src/machine_translate_docx.py</text>
+      <text class="t" x="126" y="40" text-anchor="middle">RuntimeContext threaded through</text>
+      <text class="t" x="126" y="54" text-anchor="middle">parse · translate · split · save</text>
+    </g>
+
+    <text class="t" x="126" y="120" text-anchor="middle">subprocess.Popen, stdin=DEVNULL,</text>
+    <text class="t" x="126" y="135" text-anchor="middle">stdout=line-buffered pipe</text>
+    <text class="t" x="126" y="150" text-anchor="middle">→ PROGRESS:N markers parsed</text>
+  </g>
+
+  <!-- ── ENGINES LANE ──────────────────────────────────────────────── -->
+  <g transform="translate(40,230)">
+    <text class="label" x="0" y="0">Translation engines</text>
+    <rect class="group-bg" x="-6" y="10" width="840" height="135" rx="8"/>
+
+    <!-- DeepL -->
+    <g transform="translate(20,28)">
+      <rect class="card" width="180" height="95" rx="6"/>
+      <text class="h" x="90" y="24" text-anchor="middle">DeepL</text>
+      <text class="t" x="90" y="44" text-anchor="middle">src/engines/deepl.py</text>
+      <text class="t" x="90" y="60" text-anchor="middle">Selenium · Chrome</text>
+      <text class="t" x="90" y="78" text-anchor="middle">phrasesblock / singlephrase</text>
+    </g>
+    <!-- Google -->
+    <g transform="translate(220,28)">
+      <rect class="card" width="180" height="95" rx="6"/>
+      <text class="h" x="90" y="24" text-anchor="middle">Google</text>
+      <text class="t" x="90" y="44" text-anchor="middle">src/engines/google.py</text>
+      <text class="t" x="90" y="60" text-anchor="middle">Selenium · Chrome</text>
+      <text class="t" x="90" y="78" text-anchor="middle">widest lang coverage</text>
+    </g>
+    <!-- OpenAI -->
+    <g transform="translate(420,28)">
+      <rect class="card" width="180" height="95" rx="6"/>
+      <text class="h" x="90" y="24" text-anchor="middle">OpenAI API</text>
+      <text class="t" x="90" y="44" text-anchor="middle">src/engines/chatgpt_api.py</text>
+      <text class="t" x="90" y="60" text-anchor="middle">gpt-5.5 / gpt-5.4-mini</text>
+      <text class="t" x="90" y="78" text-anchor="middle">24h prompt cache</text>
+    </g>
+    <!-- OpenAI + polish -->
+    <g transform="translate(620,28)">
+      <rect class="card" width="200" height="95" rx="6"/>
+      <text class="h" x="100" y="24" text-anchor="middle">OpenAI Translate + Polish</text>
+      <text class="t" x="100" y="44" text-anchor="middle">openai_tools/polisher.py</text>
+      <text class="t" x="100" y="60" text-anchor="middle">Persian only · sidecar w/</text>
+      <text class="t" x="100" y="78" text-anchor="middle">tokens · cost · cached</text>
+    </g>
+  </g>
+
+  <!-- ── OUTPUTS LANE ──────────────────────────────────────────────── -->
+  <g transform="translate(40,395)">
+    <text class="label" x="0" y="0">Outputs</text>
+    <rect class="group-bg" x="-6" y="10" width="840" height="60" rx="8"/>
+
+    <g transform="translate(20,20)">
+      <rect class="card" width="200" height="40" rx="6"/>
+      <text class="h" x="100" y="18" text-anchor="middle">translated.docx</text>
+      <text class="t" x="100" y="32" text-anchor="middle">served via /download/&lt;name&gt;</text>
+    </g>
+    <g transform="translate(240,20)">
+      <rect class="card" width="220" height="40" rx="6"/>
+      <text class="h" x="110" y="18" text-anchor="middle">*_log.json sidecar</text>
+      <text class="t" x="110" y="32" text-anchor="middle">tokens · cost · cache · rows</text>
+    </g>
+    <g transform="translate(480,20)">
+      <rect class="card" width="180" height="40" rx="6"/>
+      <text class="h" x="90" y="18" text-anchor="middle">runtime_dir/cache/</text>
+      <text class="t" x="90" y="32" text-anchor="middle">36-h server cache</text>
+    </g>
+    <g transform="translate(680,20)">
+      <rect class="card" width="160" height="40" rx="6"/>
+      <text class="h" x="80" y="18" text-anchor="middle">failures/&lt;ts&gt;/</text>
+      <text class="t" x="80" y="32" text-anchor="middle">on error · alerts fire</text>
+    </g>
+  </g>
+
+  <!-- ── ARROWS ────────────────────────────────────────────────────── -->
+  <!-- Browser → Launcher -->
+  <path class="link" d="M315,90 L355,90" marker-end="url(#arrow)"/>
+  <!-- Launcher → CLI -->
+  <path class="link-accent" d="M555,90 L615,90" marker-end="url(#arrow-accent)"/>
+  <!-- CLI → engines -->
+  <path class="link-accent" d="M755,170 L755,260 L130,260 L130,250" marker-end="url(#arrow-accent)"/>
+  <path class="link-accent" d="M755,170 L755,260 L330,260 L330,250" marker-end="url(#arrow-accent)"/>
+  <path class="link-accent" d="M755,170 L755,260 L530,260 L530,250" marker-end="url(#arrow-accent)"/>
+  <path class="link-accent" d="M755,170 L755,250" marker-end="url(#arrow-accent)"/>
+  <!-- Engines → outputs -->
+  <path class="link" d="M440,355 L440,415" marker-end="url(#arrow)"/>
+</svg>

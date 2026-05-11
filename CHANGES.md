@@ -57,6 +57,60 @@ after 1800 ms to avoid the Chrome multi-download permission prompt.
 
 ## Sessions
 
+### 2026-05-11 — Repo first-impression: README, LICENSE, architecture diagrams (branch `next/repo-readme-and-diagrams`)
+
+A repository-hygiene pass aimed at the visitor experience on GitHub.
+Before: the landing was a one-line `# machine-translate-docx`
+stub, no LICENSE, no diagrams, a `.bat` file with `-----------` in
+its filename, and three policy files (`CONTRIBUTING`, `SECURITY`,
+`LICENSE`) missing entirely. After: a polished landing page with
+embedded SVG architecture diagrams, all the standard OSS policy
+files, and three hand-coded diagram pairs (light + dark theme each)
+that render natively on GitHub.
+
+**Repo cleanup**
+
+  - Removed `"run_local_launcher     -----------.bat"` — a corrupt
+    filename from a copy-paste artefact, kept around for years.
+  - Added `LICENSE` (MIT, 2022-2026).
+  - Added `CONTRIBUTING.md` — dev setup, pre-commit checklist,
+    project rules (the C1-C20 invariants of `PROJECT_MEMORY.md`),
+    code-style highlights, bug-reporting template.
+  - Added `SECURITY.md` — coordinated-disclosure email, in-scope
+    vs out-of-scope, active security measures list.
+
+**SVG diagram set** — three diagrams × two themes = six files in
+`docs/diagrams/`, each ~9 KB, all hand-coded with the project's
+Anthropic-inspired warm palette and a `<title>` + `<desc>` block
+for screen-reader access:
+
+  1. `architecture-{light,dark}.svg` — frontends → launcher → CLI
+     → engines → outputs (the top of the README).
+  2. `pipeline-{light,dark}.svg` — 3-row workflow (Ingest /
+     Process / Deliver) with the failure-branch dotted off the
+     Process row.
+  3. `failure-path-{light,dark}.svg` — four failure-mode triggers
+     converging on the structured `[FAIL] reason=…` line, then
+     splitting into the failure archive + three alert channels.
+
+  Light → dark variants are produced by a mechanical palette swap
+  documented in `docs/diagrams/README.md` so editing one and
+  re-running the swap keeps the pair in lock-step.
+
+**New README.md** — replaces the one-line stub. Sections in the
+order that matches what a fresh visitor wants to know: hero +
+badges + hero diagram → "What it does" → quick start (clone,
+install, run unit tests, start the dev server) → translation
+pipeline (with the second SVG) → failure handling (with the third
+SVG) → architecture file tree → documentation index → status →
+acknowledgements → license. Uses `<picture>` blocks so the right
+SVG fires automatically on GitHub light vs dark.
+
+Tests: 113 / 113 pass. No code paths touched — pure documentation
+and asset additions.
+
+Master tip going in: `db174b2`.
+
 ### 2026-05-11 — Telegram multi-recipient + docs expansion (branch `next/telegram-multi-recipient`)
 
 User encountered two friction points during the Telegram setup:
