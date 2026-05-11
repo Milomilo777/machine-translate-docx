@@ -1,0 +1,77 @@
+# Continuous integration — pytest on every push to master and every PR
+# touching the master branch. The matrix runs on the three Python
+# versions in `pyproject.toml`'s classifiers. The `live`-marked tests
+# (Selenium / Chrome / Playwright e2e) are skipped because GitHub
+# runners don't have an interactive browser available.
+name: ci
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: pytest · py${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:     [ubuntu-latest]
+        python: ['3.11', '3.12']
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+
+      - name: Install runtime + test deps
+        run: |
+          python -m pip install --upgrade pip
+          # Project metadata + direct deps live in pyproject.toml; the
+          # frozen transitive set is in compile/requirements.txt. We
+          # install the frozen file so CI matches the production
+          # deployment byte-for-byte.
+          pip install -r compile/requirements.txt
+          pip install -r requirements-test.txt
+
+      - name: Run unit tests
+        # `-m "not live"` is implicit (default addopts in pyproject.toml)
+        # but we also pass --ignore=tests/test_v2_e2e.py because that
+        # file lives outside the default test discovery and is
+        # browser-dependent.
+        run: |
+          python -m pytest tests/ --ignore=tests/test_v2_e2e.py
+
+  syntax:
+    name: py_compile · all changed Python files
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Compile every .py file
+        # Doubles as a "no module imports a deleted file" check. The
+        # find pattern matches the source tree, tests, and the launcher
+        # but skips third-party caches.
+        run: |
+          find . -name "*.py" \
+            -not -path "./.git/*" \
+            -not -path "./.claude/*" \
+            -not -path "./_real_test/*" \
+            -not -path "./compile/*" \
+            -not -path "*/__pycache__/*" \
+            -print -exec python -m py_compile {} +

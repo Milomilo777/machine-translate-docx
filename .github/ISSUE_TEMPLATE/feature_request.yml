@@ -1,0 +1,49 @@
+name: Feature request
+description: Suggest an idea, improvement, or new capability
+labels: [enhancement, triage]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      description: |
+        A short paragraph describing the user-facing problem. Skip the
+        solution for now — just the "I'm trying to ___ and it doesn't
+        work / is awkward / costs too much / …".
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: |
+        Your idea. If you've sketched code, paste the relevant snippet.
+        If it's a UI change, screenshots / mockups help a lot.
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What did you try or rule out, and why?
+
+  - type: input
+    id: scope
+    attributes:
+      label: Scope
+      description: Tiny patch / weekend feature / new module / big refactor.
+      placeholder: weekend feature
+
+  - type: checkboxes
+    id: invariants
+    attributes:
+      label: Invariant check
+      description: |
+        Some changes are blocked by project invariants. Confirm your
+        idea does not violate any of these — see `PROJECT_MEMORY.md`
+        for the full list.
+      options:
+        - label: My change does NOT modify the legacy `index.ejs` UI (C-style invariant — both frontends must keep working side-by-side).
+        - label: My change does NOT alter the aligner model (must stay `gpt-5.4-mini`, C1).
+        - label: My change does NOT touch the source-language column of the docx (C13 lock).
+        - label: My change does NOT add `reasoning_effort` to the translator (C2 — caused 94 % token overhead in testing).

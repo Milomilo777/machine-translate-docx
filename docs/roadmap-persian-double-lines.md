@@ -50,7 +50,7 @@ Output filename pattern:
 ## Phases
 
 Each phase = one commit on the branch. Run pytest before committing.
-Update `CHANGES.md` and push after every commit.
+Update `CHANGELOG.md` and push after every commit.
 
 ### Phase 1 — Detach the aligner from `chatgpt-polish` engine flow
 
