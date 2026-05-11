@@ -54,7 +54,6 @@ import traceback
 import shlex
 import subprocess
 import os
-#from googletrans import Translator
 import re
 import time
 import codecs
@@ -78,7 +77,6 @@ from lxml import etree
 # This library automatically downloads chrome driver
 # pyderman was replaced with webdriver_manager
 # then selenium 4.11.2 managed downloading the drivers
-#import pyderman
 # For selenium 3
 
 # When translation engine is deepl or chatgpt : use undetected_chromedriver
@@ -100,15 +98,12 @@ from selenium.common.exceptions import StaleElementReferenceException, TimeoutEx
 from screeninfo import get_monitors
 
 
-#from selenium.webdriver import Firefox, FirefoxOptions
 from time import sleep
 import argparse
 import clipboard
-#import pyperclip
 
 import psutil
 
-#import winsound
 
 import docx
 from docx import Document
@@ -120,15 +115,8 @@ from docx.enum.style import WD_STYLE_TYPE
 from docx.enum.text import WD_TAB_ALIGNMENT,WD_PARAGRAPH_ALIGNMENT, WD_ALIGN_PARAGRAPH
 
 # For japanese
-#import tinysegmenter
 
-#from tinysegmenter import TinySegmenter
 # For Thai
-#from thai_tokenizer import Tokenizer as thai_tokenizer_tokenizer
-#from thai_tokenizer import data
-#from thai_tokenizer.data import bpe_merges
-#import thai_tokenizer 
-#import thai-segmenter
 
 import timeit
 import datetime
@@ -536,11 +524,8 @@ def handle_signal(signum, frame):
 signal.signal(signal.SIGINT, handle_signal)
 signal.signal(signal.SIGTERM, handle_signal)
 
-#from parsivar import Normalizer
 my_hazm_normalizer = None
 
-#from hazm import Normalizer
-#import hazm
 
 # validate_json_string + get_nested_value_from_json_array + DefaultJsonConfiguration
 # now live in src/config.py.
@@ -665,8 +650,6 @@ numcols = 0
 
 E_mail_str = 'sm' + 'tv' + '.' + 'bot' + '@g' + 'mail' + '.' + 'c' + 'o' + 'm'
 
-#import pandas as pd
-#import multiprocessing
 
 cf = currentframe()
 filename = getframeinfo(cf).filename
@@ -820,25 +803,18 @@ else:
 
 # cjk_segmenter = None 
 # if dest_lang == 'zh':
-# import jieba
 # jieba.enable_paddle()# 启动paddle模式。 0.40版之后开始支持，早期版本不支持
 # if dest_lang == 'zh-cn':
 # dest_lang = 'zh-CN'
-# import jieba
 # jieba.enable_paddle()# 启动paddle模式。 0.40版之后开始支持，早期版本不支持
 # if dest_lang == 'zh-tw':
 # dest_lang = 'zh-TW'
-# import jieba
 # jieba.enable_paddle()# 启动paddle模式。 0.40版之后开始支持，早期版本不支持
 # if dest_lang == 'th':
-# from newmm_tokenizer.tokenizer import word_tokenize
 # if dest_lang == 'ko':
-# from soynlp.word import WordExtractor
 # if dest_lang == 'ja':
-# from tinysegmenter import TinySegmenter
 # cjk_segmenter = TinySegmenter()
 # if dest_lang == 'fa':
-# from hazm import Normalizer
 # my_hazm_normalizer = Normalizer()
 
 

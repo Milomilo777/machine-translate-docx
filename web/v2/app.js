@@ -309,32 +309,62 @@
   }
 
   function renderFileList() {
+    // F-6 (2026-05-11): rebuilt without the innerHTML/textContent mix.
+    // Every child is a real DOM node so a malicious filename can't
+    // smuggle markup. The icon SVG is built once via a tiny helper.
     const ul = $('fileList');
     if (!ul) return;
-    ul.innerHTML = '';
+    ul.replaceChildren();
     state.files.forEach((f, idx) => {
       const li = document.createElement('li');
       li.className = 'file-row';
-      li.innerHTML = `
-        <span class="file-icon">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path d="M14 3v5h5M6 3h8l5 5v13H6V3z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
-          </svg>
-        </span>
-        <span class="file-name"></span>
-        <span class="file-size tabular"></span>
-        <button type="button" class="file-remove" aria-label="Remove file">✕</button>
-      `;
-      li.querySelector('.file-name').textContent = f.name;
-      li.querySelector('.file-size').textContent = formatBytes(f.size);
-      li.querySelector('.file-remove').addEventListener('click', () => {
+
+      const icon = document.createElement('span');
+      icon.className = 'file-icon';
+      icon.appendChild(makeFileSvg(14));
+
+      const name = document.createElement('span');
+      name.className = 'file-name';
+      name.textContent = f.name;
+
+      const size = document.createElement('span');
+      size.className = 'file-size tabular';
+      size.textContent = formatBytes(f.size);
+
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'file-remove';
+      remove.setAttribute('aria-label', 'Remove file');
+      remove.textContent = '✕';
+      remove.addEventListener('click', () => {
         state.files.splice(idx, 1);
         renderFileList();
         updateActionRow();
       });
+
+      li.append(icon, name, size, remove);
       ul.appendChild(li);
     });
     ul.classList.toggle('hidden', state.files.length === 0);
+  }
+
+  // Tiny helper — builds the "page" file icon used in result rows and
+  // file rows alike. Returns a fresh SVG element each call.
+  function makeFileSvg(px) {
+    const NS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('width',  String(px));
+    svg.setAttribute('height', String(px));
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('fill',  'none');
+    svg.setAttribute('aria-hidden', 'true');
+    const path = document.createElementNS(NS, 'path');
+    path.setAttribute('d', 'M14 3v5h5M6 3h8l5 5v13H6V3z');
+    path.setAttribute('stroke', 'currentColor');
+    path.setAttribute('stroke-width', '1.8');
+    path.setAttribute('stroke-linejoin', 'round');
+    svg.appendChild(path);
+    return svg;
   }
 
   function updateActionRow() {

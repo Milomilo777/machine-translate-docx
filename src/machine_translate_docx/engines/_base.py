@@ -7,14 +7,54 @@ to this protocol. ``DISPATCH_TABLE`` in :mod:`engines` is keyed by
 this signature.
 
 Use :class:`Engine` as the target shape when extracting a new engine.
+
+Also exports :func:`_maybe_log_swallowed` — a tiny helper that turns
+``except Exception:`` blocks into a debug-friendly logging point
+without changing the production swallow behaviour. Set
+``MTD_SELENIUM_VERBOSE=1`` in the environment to see what's being
+swallowed; otherwise the helper is a no-op.
 """
 from __future__ import annotations
 
+import os
+import sys
+import traceback as _tb
 from typing import Protocol, runtime_checkable
 
 from ..runtime import RuntimeContext
 
-__all__ = ["Engine"]
+__all__ = ["Engine", "_maybe_log_swallowed"]
+
+
+def _maybe_log_swallowed(label: str, exc: BaseException) -> None:
+    """Print a swallowed exception's type when verbose mode is on.
+
+    R-7 (2026-05-11): the Selenium engines have many ``except Exception:``
+    blocks where the swallow is intentional (optional cookie banner,
+    `Browse your files` sentinel, etc.). When a real-engine run misbehaves
+    in production the operator wants to know which of those swallows
+    actually fired. Set ``MTD_SELENIUM_VERBOSE=1`` and rerun the job;
+    each swallowed exception prints one line plus its short traceback to
+    stderr. Default behaviour (env unset / empty) is a no-op so live
+    runs stay quiet.
+    """
+    if not os.environ.get("MTD_SELENIUM_VERBOSE", "").strip():
+        return
+    try:
+        # Single-line summary first (so a screenful of these stays
+        # skim-friendly) followed by a 3-frame traceback.
+        print(
+            f"[selenium-swallowed] {label}: {type(exc).__name__}: {exc}",
+            file=sys.stderr,
+            flush=True,
+        )
+        frames = _tb.format_exception(type(exc), exc, exc.__traceback__, limit=3)
+        for line in frames:
+            for sub in line.rstrip().splitlines():
+                print(f"    {sub}", file=sys.stderr, flush=True)
+    except Exception:
+        # Logging is best-effort; never let it surface as a new exception.
+        pass
 
 
 @runtime_checkable

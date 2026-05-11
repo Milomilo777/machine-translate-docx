@@ -30,6 +30,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 
 from ..runtime import RuntimeContext
 from ..selenium_utils import safe_click
+from ._base import _maybe_log_swallowed
 
 __all__ = [
     "translate",
@@ -101,7 +102,12 @@ def selenium_chrome_google_translate(ctx: RuntimeContext, to_translate: str) -> 
             WebDriverWait(ctx.browser.driver, 15).until(
                 lambda d: d.execute_script('return document.readyState') == 'complete'
             )
-        except Exception:
+        except Exception as _exc:
+            # R-7 (2026-05-11): we log the type but keep the rest of the
+            # function running because Google occasionally returns partial
+            # HTML that's still translatable. Set
+            # `MTD_SELENIUM_VERBOSE=1` in the env to see the full traceback.
+            _maybe_log_swallowed("page-load timeout (initial)", _exc)
             print("ERROR: Page load timeout reached.")
 
         # Re-attempt cookie consent dismissal in case the banner came back.
@@ -118,7 +124,8 @@ def selenium_chrome_google_translate(ctx: RuntimeContext, to_translate: str) -> 
                 WebDriverWait(ctx.browser.driver, 15).until(
                     lambda d: d.execute_script('return document.readyState') == 'complete'
                 )
-            except Exception:
+            except Exception as _exc:
+                _maybe_log_swallowed("page-load timeout (post cookie banner)", _exc)
                 print("ERROR: Page load timeout reached.")
             button = WebDriverWait(ctx.browser.driver, 0.01).until(
                 EC.element_to_be_clickable(
@@ -126,16 +133,18 @@ def selenium_chrome_google_translate(ctx: RuntimeContext, to_translate: str) -> 
                 )
             )
             safe_click(ctx.browser.driver, button)
-        except Exception:
-            pass
+        except Exception as _exc:
+            # Expected when no cookie banner is present — silent unless
+            # the operator opts in via MTD_SELENIUM_VERBOSE=1.
+            _maybe_log_swallowed("cookie-banner accept (re-attempt)", _exc)
 
         # `Browse your files` button — historical sentinel; not actually used.
         try:
             ctx.browser.driver.find_element(
                 By.XPATH, "//button[.//span[text()='Browse your files']]"
             )
-        except Exception:
-            pass
+        except Exception as _exc:
+            _maybe_log_swallowed("browse-your-files sentinel (expected absent)", _exc)
 
         time.sleep(0.2)
         try:

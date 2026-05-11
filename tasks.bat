@@ -14,6 +14,8 @@ SET TMPDIR=_real_test
 IF "%1"=="" GOTO HELP
 IF /I "%1"=="help" GOTO HELP
 IF /I "%1"=="test" GOTO TEST
+IF /I "%1"=="test-integration" GOTO TEST_INTEGRATION
+IF /I "%1"=="test-all" GOTO TEST_ALL
 IF /I "%1"=="smoke" GOTO SMOKE
 IF /I "%1"=="live-deepl" GOTO LIVE_DEEPL
 IF /I "%1"=="live-google" GOTO LIVE_GOOGLE
@@ -26,12 +28,14 @@ GOTO HELP
 :HELP
 ECHO machine-translate-docx — local task runner (Windows)
 ECHO.
-ECHO   tasks.bat test         pytest unit tests
-ECHO   tasks.bat smoke        DeepL en-^>fr quick run on the fixture
-ECHO   tasks.bat live-deepl   DeepL en-^>fr + en-^>fa real-file runs
-ECHO   tasks.bat live-google  Google en-^>fr + en-^>fa real-file runs
-ECHO   tasks.bat live-all     all real-file runs
-ECHO   tasks.bat clean        remove %TMPDIR%\
+ECHO   tasks.bat test              pytest unit tests
+ECHO   tasks.bat test-integration  opt-in integration tests
+ECHO   tasks.bat test-all          unit + integration tests
+ECHO   tasks.bat smoke             DeepL en-^>fr quick run on the fixture
+ECHO   tasks.bat live-deepl        DeepL en-^>fr + en-^>fa real-file runs
+ECHO   tasks.bat live-google       Google en-^>fr + en-^>fa real-file runs
+ECHO   tasks.bat live-all          all real-file runs
+ECHO   tasks.bat clean             remove %TMPDIR%\
 ECHO.
 ECHO Override the interpreter:
 ECHO   SET PYTHON=E:\Python311\python.exe
@@ -40,6 +44,14 @@ GOTO END
 
 :TEST
 %PYTHON% -m pytest tests/ --ignore=tests/test_v2_e2e.py --ignore=tests/integration
+GOTO END
+
+:TEST_INTEGRATION
+%PYTHON% -m pytest tests/integration --ignore=tests/test_v2_e2e.py
+GOTO END
+
+:TEST_ALL
+%PYTHON% -m pytest tests/ --ignore=tests/test_v2_e2e.py
 GOTO END
 
 :SMOKE

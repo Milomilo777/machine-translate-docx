@@ -100,6 +100,15 @@ def selenium_chrome_deepl_log_in(ctx: RuntimeContext):
     """
     deepl_account_email_key = ['deepl', 'account', 'email']
     deepl_account_email = get_nested_value_from_json_array(ctx.config.json_configuration_array, deepl_account_email_key)
+    # R-8 (2026-05-11): for stdout printing only, mask everything but
+    # the first two chars + the domain so a screen-share / log capture
+    # cannot leak the full account. Sign-in itself uses the unmasked
+    # value below.
+    if isinstance(deepl_account_email, str) and "@" in deepl_account_email:
+        _local, _at, _domain = deepl_account_email.partition("@")
+        _deepl_email_masked = f"{_local[:2]}***@{_domain}"
+    else:
+        _deepl_email_masked = "<no-email>"
 
     deepl_account_password_key = ['deepl', 'account', 'password']
     deepl_account_password = get_nested_value_from_json_array(ctx.config.json_configuration_array, deepl_account_password_key)
@@ -245,7 +254,7 @@ def selenium_chrome_deepl_log_in(ctx: RuntimeContext):
             if isinstance(deepl_maximum_character_block, int):
                 if deepl_maximum_character_block > ctx.config.max_translation_block_size:
                     ctx.config.max_translation_block_size = deepl_maximum_character_block
-                    print("\nRobot is now logged in Deepl using %s account." % (deepl_account_email))
+                    print("\nRobot is now logged in Deepl using %s account." % (_deepl_email_masked))
                     print("Changing the value of maximum number of characters per block: %s\n" % (ctx.config.max_translation_block_size))
                 
             return True

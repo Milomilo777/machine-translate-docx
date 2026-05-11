@@ -35,6 +35,65 @@ __all__ = [
 ]
 
 
+# Per-1M-token rates for the reconciler model. Kept in this file
+# rather than reaching back into polisher / translator because the
+# reconciler is the only consumer; the constants are read-only.
+_RECONCILER_PRICES_PER_1M = {
+    "gpt-5.4-mini": {"input": 0.75, "cached": 0.075, "output": 4.50},
+}
+
+
+def _log_reconciler_cost(resp, attempt: int) -> None:
+    """Print a single ``[reconciler-cost]`` line summarising one call.
+
+    C-3 (2026-05-11): the reconciler runs only on line-count mismatch
+    so volume is naturally low, but its cost still belonged in the run
+    totals. We log it inline (the chatgpt-polish sidecar doesn't have
+    a slot for reconciler calls today — adding one would require a
+    schema bump). The launcher's stdout parser captures the printed
+    line, so it lands in the failure archive's `stdout.log` even on
+    error paths.
+    """
+    usage = getattr(resp, "usage", None)
+    if usage is None:
+        return
+    # SDK returns either an object with attributes or a dict; support both.
+    def _g(name: str, default: int = 0) -> int:
+        if isinstance(usage, dict):
+            return int(usage.get(name, default) or default)
+        return int(getattr(usage, name, default) or default)
+
+    prompt_tok     = _g("prompt_tokens")
+    completion_tok = _g("completion_tokens")
+    # cached_tokens nests under prompt_tokens_details
+    details = getattr(usage, "prompt_tokens_details", None) or (
+        usage.get("prompt_tokens_details") if isinstance(usage, dict) else None
+    )
+    cached_tok = 0
+    if details is not None:
+        if isinstance(details, dict):
+            cached_tok = int(details.get("cached_tokens", 0) or 0)
+        else:
+            cached_tok = int(getattr(details, "cached_tokens", 0) or 0)
+
+    price = _RECONCILER_PRICES_PER_1M.get(RECONCILER_MODEL)
+    if not price:
+        return
+    non_cached = max(0, prompt_tok - cached_tok)
+    cost = (
+        (non_cached  / 1_000_000) * price["input"]
+        + (cached_tok / 1_000_000) * price.get("cached", price["input"])
+        + (completion_tok / 1_000_000) * price["output"]
+    )
+    print(
+        f"[reconciler-cost] attempt {attempt}: "
+        f"prompt {prompt_tok} (cached {cached_tok}), "
+        f"completion {completion_tok}, "
+        f"cost ${cost:.5f}",
+        flush=True,
+    )
+
+
 def _pad_or_truncate(translated: list[str], target_len: int) -> list[str]:
     if target_len <= 0:
         return []
@@ -122,6 +181,17 @@ def reconcile_line_count(
                 ),
                 extra_body={"prompt_cache_retention": PROMPT_CACHE_RETENTION},
             )
+            # C-3 (2026-05-11): capture the cost of the reconciler call.
+            # Volume is small (only runs on line-count mismatch) but
+            # invisibility makes the chatgpt-polish sidecar's
+            # `total_cost_usd` look ~5–10 % too cheap on noisy days.
+            try:
+                _log_reconciler_cost(resp, attempt)
+            except Exception:
+                # Cost capture is decorative; never break the
+                # reconcile path on an unfamiliar response shape.
+                pass
+
             text = (resp.choices[0].message.content or "")
             lines = text.split("\n")
             if len(lines) == len(source_lines):
