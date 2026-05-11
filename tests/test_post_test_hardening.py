@@ -20,19 +20,19 @@ _SRC = Path(__file__).resolve().parents[1] / "src"
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
-from config import (  # noqa: E402  — sys.path tweak above
+from machine_translate_docx.config import (  # noqa: E402  — sys.path tweak above
     DEFAULT_AI_MODEL,
     ALIGNER_MODEL,
     VALID_AI_MODELS,
     is_valid_ai_model,
 )
-from exceptions import (  # noqa: E402
+from machine_translate_docx.exceptions import (  # noqa: E402
     EmptyDocxError,
     EngineReturnedEmptyError,
     TranslationFailure,
 )
-from runtime import RuntimeContext  # noqa: E402
-from translation_health import (  # noqa: E402
+from machine_translate_docx.runtime import RuntimeContext  # noqa: E402
+from machine_translate_docx.translation_health import (  # noqa: E402
     MIN_NONEMPTY_RATIO,
     assert_source_has_content,
     assert_translation_present,

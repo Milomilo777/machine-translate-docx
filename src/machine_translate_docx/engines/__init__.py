@@ -18,7 +18,7 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Callable, Final
 
-from runtime import RuntimeContext
+from ..runtime import RuntimeContext
 
 from . import google
 from . import deepl

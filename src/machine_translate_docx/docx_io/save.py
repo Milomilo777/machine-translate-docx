@@ -35,8 +35,8 @@ from typing import Callable
 
 from langcodes import Language
 
-from runtime import RuntimeContext
-from config import (
+from ..runtime import RuntimeContext
+from ..config import (
     google_translate_lang_codes,
     deepl_translate_lang_codes,
 )

@@ -94,7 +94,7 @@ def run_openai_single_call(
     _src_line_count = len(full_source.split("\n"))
     _tr_line_count  = len(full_translated.split("\n"))
     if _tr_line_count != _src_line_count:
-        from openai_tools.line_count_reconciler import reconcile_line_count
+        from ..openai_tools.line_count_reconciler import reconcile_line_count
         print(
             f"[reconciler] line count mismatch: src={_src_line_count} "
             f"tr={_tr_line_count} — reconciling via gpt-5.4-mini"

@@ -25,17 +25,17 @@ from __future__ import annotations
 
 import datetime as _dt
 
-from runtime import RuntimeContext
-from config import DEFAULT_AI_MODEL
+from .runtime import RuntimeContext
+from .config import DEFAULT_AI_MODEL
 
-from engines.chatgpt_api import run_openai_single_call
-from engines.google import (
+from .engines.chatgpt_api import run_openai_single_call
+from .engines.google import (
     selenium_chrome_google_click_cookies_consent_button,
     selenium_chrome_google_translate,
 )
-from engines.deepl import selenium_chrome_deepl_translate
+from .engines.deepl import selenium_chrome_deepl_translate
 
-from openai_tools import OpenAITranslator, OpenAIPolisher
+from .openai_tools import OpenAITranslator, OpenAIPolisher
 
 __all__ = ["selenium_chrome_translate_maxchar_blocks"]
 

@@ -37,7 +37,7 @@ for _p in (os.path.join(_PROJ_ROOT, 'src'), _PROJ_ROOT):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-from openai_tools.aligner_per import FASubtitleAligner   # noqa: E402
+from machine_translate_docx.openai_tools.aligner_per import FASubtitleAligner   # noqa: E402
 
 
 def _default_output(input_path: str) -> str:

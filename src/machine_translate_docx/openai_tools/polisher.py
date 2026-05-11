@@ -10,7 +10,7 @@ from ._retry import call_with_retry, prompt_hash
 from .fa_postprocess import normalize_fa
 
 try:
-    from config import DEFAULT_AI_MODEL as _DEFAULT_AI_MODEL
+    from ..config import DEFAULT_AI_MODEL as _DEFAULT_AI_MODEL
 except Exception:
     _DEFAULT_AI_MODEL = "gpt-5.5"
 

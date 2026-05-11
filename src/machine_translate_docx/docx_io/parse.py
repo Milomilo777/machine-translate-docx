@@ -44,10 +44,10 @@ import traceback
 from copy import deepcopy as _dc
 from typing import TYPE_CHECKING
 
-from docx_io.cells import get_cell_data
+from ..docx_io.cells import get_cell_data
 
 if TYPE_CHECKING:
-    from runtime import RuntimeContext
+    from ..runtime import RuntimeContext
 
 
 __all__ = [
@@ -80,10 +80,12 @@ def read_and_parse_docx_document(ctx: "RuntimeContext") -> None:
     :func:`docx_io.cells.get_cell_data`. Helpers that still live on
     the entry script are lazy-imported below.
     """
-    # Lazy imports avoid a module-load cycle: machine_translate_docx
+    # Lazy imports avoid a module-load cycle: machine_translate_docx.cli
     # imports docx_io at top, and these helpers live next to its
-    # global state.
-    from machine_translate_docx import (
+    # global state. The 2026-05-11 src-layout migration moved
+    # `machine_translate_docx.py` into `machine_translate_docx/cli.py`;
+    # before that, this import read `from machine_translate_docx import …`.
+    from machine_translate_docx.cli import (
         is_end_of_line,
         is_empty_line,
         is_beginning_of_line,

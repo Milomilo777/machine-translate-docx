@@ -140,7 +140,7 @@ from timeit import default_timer as timer
 import re
 import inspect
 
-from xlsx_translation_memory import xlsx_translation_memory
+from .xlsx_translation_memory import xlsx_translation_memory
 
 # Module-level translation-memory handle. Pre-refactor code assumed this
 # existed as a module-level global, but no top-level binding was ever
@@ -180,7 +180,7 @@ import atexit
 
 import random
 
-from config import (
+from .config import (
     DefaultJsonConfiguration,
     validate_json_string,
     get_nested_value_from_json_array,
@@ -195,8 +195,8 @@ from config import (
     COUNTRY_QUERY_HTTP_TIMEOUT,
 )
 
-from runtime import RuntimeContext
-from selenium_utils import (
+from .runtime import RuntimeContext
+from .selenium_utils import (
     safe_click,
     browser_fill_form_field_value,
     set_chrome_window_2_3_screen,
@@ -205,11 +205,11 @@ from selenium_utils import (
     clean_up_previous_chrome_selenium_drivers,
     cleanup_selenium_chrome_temp_folders,
 )
-from engines.google import (
+from .engines.google import (
     selenium_chrome_google_translate,
     selenium_chrome_google_click_cookies_consent_button,
 )
-from engines.deepl import (
+from .engines.deepl import (
     selenium_chrome_deepl_log_in,
     selenium_chrome_deepl_log_off,
     deepl_close_messages,
@@ -218,7 +218,7 @@ from engines.deepl import (
 # Stale ``engines._prompts`` shim was removed in C3 of the 2026-05-10
 # cleanup. The only callers of ``build_translation_prompt`` were the
 # now-deleted chatgpt-web / perplexity-web engines.
-from runner import selenium_chrome_translate_maxchar_blocks as _runner_translate_maxchar_blocks
+from .runner import selenium_chrome_translate_maxchar_blocks as _runner_translate_maxchar_blocks
 
 # Module-level RuntimeContext singleton — Phase F1 transition shim.
 # Lazily built by `_get_ctx()` on first call from any function that has
@@ -735,7 +735,7 @@ if args.docxfile is None:
 # BadRequestError deep inside the API call, after the docx had been
 # parsed and Chrome had been launched. The whitelist lives in
 # `config.py` so the v2 frontend dropdown can pull from the same list.
-from config import VALID_AI_MODELS as _VALID_AI_MODELS, is_valid_ai_model as _is_valid_ai_model
+from .config import VALID_AI_MODELS as _VALID_AI_MODELS, is_valid_ai_model as _is_valid_ai_model
 if args.aimodel is not None and not _is_valid_ai_model(args.aimodel):
     print(
         f"ERROR: --aimodel '{args.aimodel}' is not a recognised OpenAI "
@@ -993,7 +993,7 @@ if engine_method == 'webservice':
     showbrowser = False
 
 if translation_engine == 'chatgpt' and engine_method == 'api':
-    from openai_tools import OpenAITranslator, OpenAIPolisher
+    from .openai_tools import OpenAITranslator, OpenAIPolisher
     # FASubtitleAligner is no longer imported here (Phase 1): the aligner is
     # decoupled from chatgpt-polish and reached only via the Persian Double
     # Lines Split Method, which performs its own local import on demand.
@@ -1003,7 +1003,7 @@ else:
 chatgpt_maximum_character_block = get_nested_value_from_json_array(json_configuration_array, chatgpt_max_char_bloc_size_key)
 
 # Load openai line splitting package
-from openai_tools import OpenAISubtitleSplitter
+from .openai_tools import OpenAISubtitleSplitter
     
 if translation_engine == 'perplexity':
     MAX_TRANSLATION_BLOCK_SIZE = perplexity_maximum_character_block
@@ -1981,7 +1981,7 @@ def selenium_chrome_perplexity_wait_log_in():
 # ``src/engines/perplexity_webservice.py`` in C3.1 of the 2026-05-10
 # architecture cleanup. Imported here so the runner-injection call
 # site (and any historical caller) keeps resolving.
-from engines.perplexity_webservice import selenium_webservice_perplexity_translate
+from .engines.perplexity_webservice import selenium_webservice_perplexity_translate
 
 
 # set_translation_function was extracted to ``src/dispatch.py`` in the
@@ -1989,8 +1989,8 @@ from engines.perplexity_webservice import selenium_webservice_perplexity_transla
 # source of truth for engine routing — both ``set_translation_function``
 # AND the ``use_phrasesblock`` predicate live there, so future drift
 # between them is impossible.
-from dispatch import set_translation_function, use_phrasesblock as _dispatch_use_phrasesblock
-import dispatch as _dispatch_module
+from .dispatch import set_translation_function, use_phrasesblock as _dispatch_use_phrasesblock
+from . import dispatch as _dispatch_module
 _dispatch_module.set_array_dispatcher(selenium_chrome_translate_get_from_text_array)
 
 
@@ -2080,7 +2080,7 @@ def is_empty_line(line):
 # - The write shims (``change_cell_font``, ``cell_set_1st_paragraph``,
 #   ``cell_add_paragraph``) below thread the entry-script globals into
 #   the new explicit-kwarg implementations.
-from docx_io import (
+from .docx_io import (
     _iter_paragraph_runs,
     _cell_add_paragraph_impl,
     _change_cell_font_impl,
@@ -2426,7 +2426,7 @@ def cell_add_paragraph(ctx: RuntimeContext, row_n, paragraph_text):
 # `word_file_to_translate` from `ctx.flags`, and lazy-imports the four
 # `is_*_line` predicates plus `prepare_and_clear_cell_for_writing` and
 # `split_phrases` from this module to avoid an import cycle.
-from docx_io.parse import read_and_parse_docx_document  # noqa: E402,F401
+from .docx_io.parse import read_and_parse_docx_document  # noqa: E402,F401
 
 def reverse_string(s):
     return s[::-1]
@@ -4130,8 +4130,8 @@ def open_app_docx_file(ctx: RuntimeContext):
 # private name so any other call site keeps resolving. The
 # implementation save_docx_file is wrapped by the same-named shim
 # below this comment block.
-from docx_io.save import engine_suffix as _engine_suffix
-from docx_io.save import save_docx_file as _save_docx_file_impl
+from .docx_io.save import engine_suffix as _engine_suffix
+from .docx_io.save import save_docx_file as _save_docx_file_impl
 
 
 # save_docx_file was extracted to ``src/docx_io/save.py`` in the
@@ -4188,8 +4188,8 @@ def main() -> int:
     engine-empty runs produce a structured ``[FAIL] reason=...`` line
     plus a non-zero exit instead of "Translation ended, file saved".
     """
-    from exceptions import TranslationFailure
-    from translation_health import (
+    from .exceptions import TranslationFailure
+    from .translation_health import (
         assert_source_has_content,
         assert_translation_present,
     )
@@ -4349,7 +4349,7 @@ if __name__ == '__main__':
     # flags the job as ``status=error`` instead of inheriting our
     # default exit-zero "success".
     try:
-        from exceptions import TranslationFailure as _TranslationFailure
+        from .exceptions import TranslationFailure as _TranslationFailure
     except Exception:
         _TranslationFailure = None
     try:

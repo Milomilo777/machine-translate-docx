@@ -57,6 +57,105 @@ after 1800 ms to avoid the Chrome multi-download permission prompt.
 
 ## Sessions
 
+### 2026-05-11 — Full src/ layout migration (branch `next/src-layout-migration`)
+
+The biggest single refactor of the project lands. Every `.py` file
+under `src/` moves into a real Python package; every bare-name
+import (`from runtime import …`) becomes a proper package-relative
+or package-absolute import; the CLI becomes `python -m
+machine_translate_docx.cli`. `pip install -e .` now produces a
+working `mtd` console script via PEP 621 entry-point.
+
+**Files moved** (history preserved via `git mv`):
+
+```
+src/runtime.py                  → src/machine_translate_docx/runtime.py
+src/config.py                   → src/machine_translate_docx/config.py
+src/dispatch.py                 → src/machine_translate_docx/dispatch.py
+src/runner.py                   → src/machine_translate_docx/runner.py
+src/exceptions.py               → src/machine_translate_docx/exceptions.py
+src/translation_health.py       → src/machine_translate_docx/translation_health.py
+src/table.py                    → src/machine_translate_docx/table.py
+src/updtlnk.py                  → src/machine_translate_docx/updtlnk.py
+src/machine_translate_docx.py   → src/machine_translate_docx/cli.py
+src/docx_io/                    → src/machine_translate_docx/docx_io/
+src/engines/                    → src/machine_translate_docx/engines/
+src/openai_tools/               → src/machine_translate_docx/openai_tools/
+src/selenium_utils/             → src/machine_translate_docx/selenium_utils/
+src/xlsx_translation_memory/    → src/machine_translate_docx/xlsx_translation_memory/
+```
+
+`src/configuration/`, `src/installer/`, `src/chromedrivers/`, and
+`src/mac_service_template/` stay where they are — they're data /
+build / asset directories, not Python code.
+
+**Imports rewritten** (32 files, 83 import lines, automated via a
+one-shot Python script):
+
+  - Inside the new package: bare `from runtime import …` becomes
+    `from ..runtime import …` (or deeper `from ...runtime import …`
+    for sub-subpackages), so the package is self-contained.
+  - Inside `tests/` and `local_launcher.py`: same import becomes
+    `from machine_translate_docx.runtime import …` (absolute form).
+  - `unittest.mock.patch("runner.X")` strings rewritten to
+    `patch("machine_translate_docx.runner.X")` so monkey-patching
+    targets the new module path.
+
+**`pyproject.toml`** updated for the `src/` layout:
+
+```toml
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where   = ["src"]
+include = ["machine_translate_docx*"]
+
+[project.scripts]
+mtd = "machine_translate_docx.cli:main"
+```
+
+`pip install -e .` from a clone now ships a working `mtd` command.
+The old root-level `machine_translate_docx/__init__.py` namespace
+wrapper is removed — the real package replaces it.
+
+**Launcher subprocess** in `local_launcher.py` switched from running
+the script by path (`python src/machine_translate_docx.py …`) to
+running the module (`python -m machine_translate_docx.cli …`) with
+`PYTHONPATH=src` injected into the child env. Necessary because the
+new package uses relative imports and Python's script-mode loader
+gives them no package context. A legacy fallback path is kept so
+mid-migration checkouts keep working.
+
+**Makefile + tasks.bat** updated similarly. The `cd _real_test/`
+smoke target prefixes the command with `PYTHONPATH=../src` so the
+package is findable from the working directory.
+
+**`tests/conftest.py`** docstring updated (the `sys.path` shim
+itself is unchanged — adding `src/` to `sys.path` now exposes the
+package, just as it used to expose the flat modules).
+
+**`CLAUDE.md`** key-paths table fully refreshed to the new
+`src/machine_translate_docx/<module>.py` paths. CLI invocation
+example updated to the `-m` form.
+
+**Lazy import fix**: `docx_io/parse.py` had a `from
+machine_translate_docx import (is_end_of_line, …)` lazy-import
+referring to the old root-level entry script; rewritten to
+`from machine_translate_docx.cli import …`. Caught by the live
+smoke test, not pytest (the test mocks bypass the lazy import).
+
+**Verification**
+
+  - `pytest`: 113 / 113 pass.
+  - `PYTHONPATH=src python -m machine_translate_docx.cli --help` —
+    prints the program banner + argparse usage.
+  - Live DeepL en→fr smoke via the `-m` invocation: exit 0,
+    source 42/42 preserved, target 18/40 phrase — baseline
+    unchanged.
+
+Master tip going in: `74e755b`.
+
 ### 2026-05-11 — Final polish: package wrapper + PR template + handoff doc + memory date (branch `next/final-polish`)
 
 End-of-day polish landing the smallest remaining items so the next

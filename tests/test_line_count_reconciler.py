@@ -12,7 +12,7 @@ from typing import Iterator
 
 import pytest
 
-from openai_tools.line_count_reconciler import (
+from machine_translate_docx.openai_tools.line_count_reconciler import (
     RECONCILER_MODEL,
     reconcile_line_count,
 )

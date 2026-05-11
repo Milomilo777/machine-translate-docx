@@ -14,7 +14,7 @@ from ._retry import call_with_retry, prompt_hash
 # `src/config.py` so a typo or rename only has to land in one place
 # (W-3 + B-004 in docs/real-engine-test-findings.md).
 try:
-    from config import DEFAULT_AI_MODEL as _DEFAULT_AI_MODEL
+    from ..config import DEFAULT_AI_MODEL as _DEFAULT_AI_MODEL
 except Exception:
     # Fallback when openai_tools is imported without `src/` on sys.path —
     # keeps the default in sync with config.py at the time of writing.

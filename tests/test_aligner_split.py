@@ -3,7 +3,7 @@
 Covers the deterministic core of the v2.0 mechanical aligner. No network
 calls. No DOCX I/O. Module-level pure-function checks only.
 """
-from openai_tools.aligner_per import (
+from machine_translate_docx.openai_tools.aligner_per import (
     FASubtitleAligner,
     MAX_CHARS,
     PROTECTED_BIGRAMS,

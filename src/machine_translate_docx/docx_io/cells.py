@@ -32,11 +32,11 @@ from typing import TYPE_CHECKING
 from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_COLOR_INDEX
 from lxml import etree
 
-from config import right_to_left_languages_list
-from docx_io.runs import _iter_paragraph_runs
+from ..config import right_to_left_languages_list
+from ..docx_io.runs import _iter_paragraph_runs
 
 if TYPE_CHECKING:
-    from runtime import RuntimeContext
+    from ..runtime import RuntimeContext
 
 
 __all__ = [
