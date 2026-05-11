@@ -23,15 +23,15 @@ wall-clock down.
 | Run | File | Engine | Split | Status | Wall-clock | Notes |
 |-----|------|--------|-------|--------|------------|-------|
 | T1 | sample_hyperlink.docx (28 KB) | chatgpt-polish (gpt-5.5) | basic | ✓ | 1:25 | baseline, before the F2 fix |
-| T2 | AJAR 3145 (43 KB) | chatgpt-polish (gpt-5.4-mini) | basic | — | — | — |
-| T3 | VE 3145 (78 KB) | chatgpt-polish (gpt-5.4-mini) | basic | — | — | — |
-| T4 | AJAR 3145 | chatgpt-polish (gpt-5.4-mini) | persian_double_lines | — | — | — |
-| T5 | VE 3145 | chatgpt-polish (gpt-5.4-mini) | persian_double_lines | — | — | — |
-| T6 | sample_hyperlink.docx | google | basic | — | — | needs Selenium |
-| T7 | AJAR 3145 | google | basic | — | — | needs Selenium |
-| T8 | VE 3145 | google | basic | — | — | needs Selenium |
-| T9 | sample_hyperlink.docx | deepl | basic | — | — | needs Selenium |
-| T10 | AJAR 3145 | deepl | basic | — | — | needs Selenium |
+| T2 | AJAR 3145 (43 KB) | chatgpt-polish (gpt-5.4-mini) | basic | ✓ | 1:14 | translate 16.7s, polish 23.3s, reconciler gave up after 2 attempts (got 90 want 51) — F5 |
+| T3 | VE 3145 (78 KB) | chatgpt-polish (gpt-5.4-mini) | basic | ✓ | 1:32 | translate 28.1s, polish 32.7s, **only 1/106 lines changed** (vs 27/51 on T2) — F6: mini polish very weak on this file |
+| T4 | AJAR 3145 | chatgpt-polish (gpt-5.4-mini) | persian_double_lines | ⚠ | 0:46 | F7: missing `_Double_Lines` suffix (saved as `_Polish_1.docx`) — aligner not invoked. F8: polish "refined 51 lines" but DIAG NO CHANGE on file. |
+| T5 | VE 3145 | chatgpt-polish (gpt-5.4-mini) | persian_double_lines | ⚠ | 1:16 | translate 32.4s, polish 25.5s (1/106 changed). F7 repeats: saved `_Polish_1.docx`, no `_Double_Lines` suffix. |
+| T6 | sample_hyperlink.docx | google | basic | ✓ | 0:18 | Chrome headless OK |
+| T7 | AJAR 3145 | google | basic | ✓ | 0:35 | clean |
+| T8 | VE 3145 | google | basic | ✓ | 1:05 | clean |
+| T9 | sample_hyperlink.docx | deepl | basic | ✓ | 0:36 | clean |
+| T10 | AJAR 3145 | deepl | basic | ✓ | 1:44 | clean |
 | T11 | VE 3145 | deepl | basic | — | — | needs Selenium |
 
 Findings, run outputs, and per-run notes get appended below as each test

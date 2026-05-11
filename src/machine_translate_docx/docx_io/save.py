@@ -64,13 +64,16 @@ def engine_suffix(ctx: RuntimeContext) -> str:
     """
     engine = (ctx.engine.engine or "").lower().strip()
     method = (ctx.engine.method or "").lower().strip()
+    split_engine = (getattr(ctx.flags, "split_engine", None) or "").lower().strip()
+    double_lines_tag = "_Double_Lines" if split_engine == "persian_double_lines" else ""
     if engine == "google":
-        return "_Google"
+        return "_Google" + double_lines_tag
     if engine == "deepl":
-        return "_Deepl"
+        return "_Deepl" + double_lines_tag
     if engine == "chatgpt":
         if method == "api":
-            return "_Polish" if ctx.flags.with_polish else "_chatGPT"
+            base = "_Polish" if ctx.flags.with_polish else "_chatGPT"
+            return base + double_lines_tag
     return ""
 
 
