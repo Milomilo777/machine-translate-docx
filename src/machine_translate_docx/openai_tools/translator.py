@@ -59,6 +59,7 @@ def _prompt_lang_code(dest_lang: str) -> str:
 def _find_prompts_dir(anchor: Path) -> Path:
     """Walk up from *anchor* to find the project-level prompts/ directory."""
     for candidate in [
+        anchor / "../../../prompts",
         anchor / "../../prompts",
         anchor / "../prompts",
         anchor / "prompts",
