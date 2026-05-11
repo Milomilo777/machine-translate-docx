@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url:  https://github.com/Milomilo777/machine-translate-docx/security/policy
+    about: Please do NOT open a public issue for security problems — see SECURITY.md.
+  - name: Question or discussion
+    url:  https://github.com/Milomilo777/machine-translate-docx/discussions
+    about: For open-ended questions, design discussion, or "how do I do X".

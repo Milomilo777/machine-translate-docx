@@ -18,7 +18,7 @@
   <a href="#architecture">Architecture</a> ·
   <a href="#documentation">Documentation</a> ·
   <a href="CONTRIBUTING.md">Contributing</a> ·
-  <a href="CHANGES.md">Changelog</a>
+  <a href="CHANGELOG.md">Changelog</a>
 </p>
 
 ---

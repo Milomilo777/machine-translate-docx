@@ -11,7 +11,7 @@
 
 2. **Inspect relevant files**
    - Read the target file(s) fully before editing
-   - Check `CHANGES.md` for related prior changes
+   - Check `CHANGELOG.md` for related prior changes
 
 3. **Implement minimally**
    - Change only what is necessary

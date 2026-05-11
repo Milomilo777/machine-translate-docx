@@ -1,0 +1,93 @@
+name: Bug report
+description: Translation failed, output looks wrong, or the launcher crashed
+labels: [bug, triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug! Please fill the form below — the more
+        specific the reproduction, the faster we can fix it. **Do NOT
+        attach files with sensitive content**; the failure-archive
+        folder produced by the launcher (`runtime_dir/failures/`) is
+        a verbatim copy of the input, so strip secrets first.
+
+  - type: input
+    id: version
+    attributes:
+      label: Version / commit
+      description: Run `git rev-parse HEAD` in the repo root, or paste the release tag.
+      placeholder: master @ ed311fe
+    validations:
+      required: true
+
+  - type: dropdown
+    id: engine
+    attributes:
+      label: Translation engine
+      options:
+        - DeepL
+        - Google
+        - OpenAI API (chatgpt)
+        - OpenAI Translate + Polish (chatgpt-polish)
+        - Not engine-specific / not sure
+    validations:
+      required: true
+
+  - type: input
+    id: langs
+    attributes:
+      label: Language pair
+      description: Source → target (ISO-639-1 codes).
+      placeholder: en → fa
+    validations:
+      required: true
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What you did
+      description: |
+        Steps to reproduce. If you used the CLI, paste the command.
+        If you used the v2 frontend, name the dropdowns + files.
+      placeholder: |
+        1. Open /v2/
+        2. Drop sample.docx
+        3. Source = English, Target = Persian, Engine = OpenAI + Polish
+        4. Click Translate
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+      placeholder: A translated docx with all 42 rows preserved.
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: What actually happened
+      placeholder: |
+        Run finished but only 3 of 42 rows were translated. No
+        `[FAIL] reason=…` line in the stdout.
+
+  - type: textarea
+    id: artifacts
+    attributes:
+      label: Artifacts (failure archive, logs, sidecar)
+      description: |
+        If the run created `runtime_dir/failures/<job_id>__<ts>/`,
+        attach `meta.json` and `stdout.log` from it. If a
+        `*_log.json` sidecar was produced next to the output docx,
+        attach it too.
+      placeholder: meta.json, stdout.log, my_doc_PER_Polish_log.json
+
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      placeholder: |
+        OS: Windows 11
+        Python: 3.11.7
+        Chrome: 147.0.7727.117
+        Backend: local_launcher.py

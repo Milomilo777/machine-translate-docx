@@ -68,7 +68,7 @@ Current state and entry point: [`docs/agent-handoff.md`](docs/agent-handoff.md).
 
 10. **Auto-commit + auto-doc.** After every code change:
     - Commit immediately on the current branch.
-    - Update `CHANGES.md` (newest-first).
+    - Update `CHANGELOG.md` (newest-first).
     - Push to origin.
     - Update `PROJECT_MEMORY.md` if a constraint or invariant changes.
 
@@ -154,7 +154,7 @@ You operate without a human in the loop. The deliverable is the PR
 + the markdown report. Talk to the user only via:
 
 - Commit messages (concise, conventional commit style).
-- `CHANGES.md` (running log, newest-first).
+- `CHANGELOG.md` (running log, newest-first).
 - The final report at `docs/agent-run-report.md`.
 - `docs/agent-handoff.md` for any blocker or open question.
 

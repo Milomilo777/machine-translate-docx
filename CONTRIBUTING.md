@@ -32,7 +32,7 @@ test matrix.
    must pass. The current baseline is 113 / 113.
 3. If you touched anything in the translation pipeline, also run the smoke
    test: `make smoke` (DeepL en→fr, ~30 s, 0 / 42 source-column mismatches).
-4. Update [`CHANGES.md`](CHANGES.md) with a one-paragraph entry under
+4. Update [`CHANGELOG.md`](CHANGELOG.md) with a one-paragraph entry under
    the current dated section.
 
 ## Project rules

@@ -1,7 +1,7 @@
 # Next-session handoff — thread docx globals to ctx, then extract parse + get_cell_data
 
 > Read this first. Then `docs/agent-handoff.md` (older, persian-double-lines
-> roadmap), `CHANGES.md` (most-recent first), and `PROJECT_MEMORY.md`
+> roadmap), `CHANGELOG.md` (most-recent first), and `PROJECT_MEMORY.md`
 > (C1-C17 invariants).
 
 ---
@@ -189,10 +189,10 @@ green and shippable.
    sentences. English file names, function names, and code go in
    separate lines or code blocks. Hard rule.
 
-3. **Repo docs (CHANGES.md, PROJECT_MEMORY.md, docs/*) must be
+3. **Repo docs (CHANGELOG.md, PROJECT_MEMORY.md, docs/*) must be
    English.** Conversation stays Persian.
 
-4. **Auto-commit + auto-doc.** Every code change → commit + CHANGES.md
+4. **Auto-commit + auto-doc.** Every code change → commit + CHANGELOG.md
    update + push, in the same flow. No batching.
 
 5. **17 invariants C1-C17 in PROJECT_MEMORY.md.** Especially:
