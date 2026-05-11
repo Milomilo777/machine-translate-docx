@@ -57,6 +57,60 @@ after 1800 ms to avoid the Chrome multi-download permission prompt.
 
 ## Sessions
 
+### 2026-05-11 — `pyproject.toml` (PEP 621) + pytest config migration (branch `next/pyproject-toml`)
+
+Adds the modern Python project metadata file that's been missing
+since the project's start. `pyproject.toml` is now the canonical
+metadata source — IDE integrations, modern resolvers (pip 22+, uv,
+poetry, hatch), and lockfile tools all read from here. The pinned
+`compile/requirements.txt` stays in place as a frozen reproducible
+install set; both live side-by-side on purpose.
+
+**Contents**
+
+  - `[build-system]` — setuptools + wheel, PEP 517 compliant.
+  - `[project]` — full metadata: name, version, description, MIT
+    license, keywords, classifiers, authors, `requires-python>=3.11`,
+    and 25 direct runtime dependencies with permissive `>=` floors
+    (transitive pins remain in `compile/requirements.txt`).
+  - `[project.optional-dependencies]`:
+      - `test` — `pytest>=8.0` (mirrors `requirements-test.txt`).
+      - `db` — `mysql-connector-python>=8.0` for the optional
+        MariaDB translation-memory path (gated by `MARIADB_HOST`).
+      - `fa-legacy` — `hazm`, `nltk`, `newmm-tokenizer`,
+        `tinysegmenter` for historic dev envs (not used in the
+        active pipeline; we ship `openai_tools/fa_postprocess.py`).
+  - `[project.urls]` — homepage, repository, docs, changelog,
+    issues — all populated.
+  - `[tool.pytest.ini_options]` — replaces `pytest.ini`. Default
+    run keeps the existing `-ra -q -m "not live"` behaviour plus
+    `--strict-markers`; `live` marker still documented.
+
+**Migration note**
+
+  Layout caveat is spelled out in a top-of-file comment: the `src/`
+  tree is currently a collection of bare top-level modules, not a
+  single importable package (files import each other by bare name;
+  `tests/conftest.py` puts `src/` on `sys.path`). `pip install -e .`
+  does NOT yet produce a working CLI install — only the metadata is
+  consumed today. Migrating to package-relative imports is parked
+  for a separate refactor; touching it would invalidate every
+  `from runtime import …` line across the codebase.
+
+**Cleanup**
+
+  - `pytest.ini` removed (now `[tool.pytest.ini_options]`).
+
+**Verification**
+
+  - `pytest`: 113 / 113 pass with pytest reading config from
+    `pyproject.toml`. 8 `live`-marked tests still deselected.
+  - **Live smoke** DeepL en→fr on the canonical fixture: exit 0,
+    source 42/42 preserved, target 18/40 phrase-grouped — baseline
+    unchanged.
+
+Master tip going in: `84beb91`.
+
 ### 2026-05-11 — Repo first-impression: README, LICENSE, architecture diagrams (branch `next/repo-readme-and-diagrams`)
 
 A repository-hygiene pass aimed at the visitor experience on GitHub.

@@ -1,0 +1,153 @@
+# PEP 621 project metadata + tooling config.
+#
+# This file is the canonical metadata source for the project.
+# `compile/requirements.txt` is kept as a frozen / pinned reproducible
+# install set (it carries every transitive dep at exact versions);
+# pyproject.toml below carries only the *direct* runtime dependencies
+# with permissive `>=` floors. Both files live side-by-side on purpose
+# so production deploys can `pip install -r compile/requirements.txt`
+# for byte-identical reproducibility, while modern tooling
+# (pip 22+, uv, poetry, hatch, IDE integrations) reads pyproject.toml
+# for resolution, lockfile generation, and tool discovery.
+#
+# Note on layout: the src/ tree is NOT a single importable package
+# today. Files like `src/runner.py` import each other by bare module
+# name (e.g. `from runtime import RuntimeContext`); `tests/conftest.py`
+# puts `src/` on `sys.path` so the unit tests can collect. Until those
+# imports are converted to package-relative form, `pip install -e .`
+# won't produce a working CLI install — only the metadata + tool
+# configuration below is consumed. That migration is intentionally
+# parked for a separate refactor; touching it would invalidate every
+# `from runtime import …` line across the codebase.
+
+[build-system]
+requires      = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+# ── Project metadata ────────────────────────────────────────────────────────
+[project]
+name            = "machine-translate-docx"
+version         = "1.0.0"
+description     = "Translate Word (.docx) documents through DeepL, Google, or OpenAI — with a Persian polish pass tuned for broadcast subtitles."
+readme          = "README.md"
+requires-python = ">=3.11"
+license         = { text = "MIT" }
+keywords        = [
+    "translation", "docx", "openai", "deepl", "google-translate",
+    "persian", "farsi", "subtitles", "rtl",
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
+    "Environment :: Web Environment",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Office/Business :: Office Suites",
+    "Topic :: Text Processing :: Linguistic",
+    "Topic :: Internet :: WWW/HTTP :: HTTP Servers",
+    "Natural Language :: English",
+    "Natural Language :: Persian",
+]
+authors = [
+    { name = "SMTV / machine-translate-docx contributors", email = "smtv.bot@gmail.com" },
+]
+
+# Direct runtime dependencies only. Transitive pins live in
+# `compile/requirements.txt`.
+dependencies = [
+    # ── docx I/O ─────────────────────────────────────────────────────
+    "python-docx>=1.1.0",
+    "lxml>=5.0",
+    # ── OpenAI engine + helpers ─────────────────────────────────────
+    "openai>=1.0",
+    "tiktoken>=0.7",
+    "json5>=0.9",
+    # ── Selenium-driven engines (DeepL, Google) ─────────────────────
+    "selenium>=4.25",
+    "undetected-chromedriver>=3.5",
+    # ── HTTP / utilities ────────────────────────────────────────────
+    "requests>=2.32",
+    "urllib3>=2.0",
+    "certifi>=2024.8",
+    "chardet>=5.2",
+    "beautifulsoup4>=4.12",
+    # ── Process + system ────────────────────────────────────────────
+    "psutil>=6.0",
+    "tqdm>=4.66",
+    "screeninfo>=0.8",
+    # ── i18n / RTL ──────────────────────────────────────────────────
+    "python-bidi>=0.4",
+    "langcodes>=3.4",
+    "language-data>=1.2",
+    # ── Excel translation memory ────────────────────────────────────
+    "openpyxl>=3.1",
+    # ── Misc legacy helpers (still imported by the CLI) ─────────────
+    "regex>=2024.0",
+    "flashtext>=2.7",
+    "pyperclip>=1.9",
+    "clipboard>=0.0.4",
+]
+
+[project.optional-dependencies]
+# Test suite — also installed via `pip install -r requirements-test.txt`
+test = [
+    "pytest>=8.0",
+]
+# Optional MySQL / MariaDB translation-memory persistence. The codepath
+# is guarded by `MARIADB_HOST` env var; without it the driver isn't
+# imported.
+db = [
+    "mysql-connector-python>=8.0",
+]
+# Optional Persian NLP normalisers — NOT used in the active pipeline
+# (we ship our own `openai_tools/fa_postprocess.py` to keep things tight).
+# Kept here so historic dev environments can be reproduced.
+fa-legacy = [
+    "hazm>=0.10",
+    "nltk>=3.9",
+    "newmm-tokenizer>=0.2",
+    "tinysegmenter>=0.4",
+]
+
+[project.urls]
+Homepage      = "https://github.com/Milomilo777/machine-translate-docx"
+Repository    = "https://github.com/Milomilo777/machine-translate-docx"
+Documentation = "https://github.com/Milomilo777/machine-translate-docx/tree/master/docs"
+Changelog     = "https://github.com/Milomilo777/machine-translate-docx/blob/master/CHANGES.md"
+Issues        = "https://github.com/Milomilo777/machine-translate-docx/issues"
+
+# ── Setuptools layout ──────────────────────────────────────────────────────
+# The src/ tree is currently a collection of bare top-level modules, not a
+# single package. We list them explicitly via `py-modules` rather than
+# letting setuptools auto-discover, because the auto-discovery would try
+# to treat `tests/`, `vba_macro/`, `compile/`, etc. as packages.
+#
+# Until the codebase moves to package-relative imports, `pip install -e .`
+# is best-effort: the metadata above is consumed (PyPI search, IDE hints,
+# `pip install -r` resolution), but the CLI is still launched via
+# `python local_launcher.py` or `python src/machine_translate_docx.py`,
+# not via an installed entry-point.
+
+[tool.setuptools]
+# Empty package list keeps `pip install .` from blowing up while still
+# letting modern resolvers parse the metadata.
+packages = []
+py-modules = []
+
+# ── Pytest config (replaces pytest.ini) ───────────────────────────────────
+# Default run skips tests marked `live` — they spawn the launcher
+# subprocess and drive Playwright against a real Chromium, which is
+# slow and requires an external browser binary. Run them on demand
+# with: `pytest -m live`.
+[tool.pytest.ini_options]
+testpaths    = ["tests"]
+python_files = "test_*.py"
+addopts      = '-ra -q -m "not live" --strict-markers'
+markers = [
+    "live: end-to-end tests that boot local_launcher.py + drive Chromium via Playwright",
+]
