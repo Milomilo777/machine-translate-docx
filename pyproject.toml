@@ -122,22 +122,23 @@ Changelog     = "https://github.com/Milomilo777/machine-translate-docx/blob/mast
 Issues        = "https://github.com/Milomilo777/machine-translate-docx/issues"
 
 # ── Setuptools layout ──────────────────────────────────────────────────────
-# The src/ tree is currently a collection of bare top-level modules, not a
-# single package. We list them explicitly via `py-modules` rather than
-# letting setuptools auto-discover, because the auto-discovery would try
-# to treat `tests/`, `vba_macro/`, `compile/`, etc. as packages.
+# The repository ships a thin namespace package — ``machine_translate_docx/``
+# at the project root — whose only job is to put ``src/`` on ``sys.path``
+# so external callers who ran ``pip install -e .`` can do:
 #
-# Until the codebase moves to package-relative imports, `pip install -e .`
-# is best-effort: the metadata above is consumed (PyPI search, IDE hints,
-# `pip install -r` resolution), but the CLI is still launched via
-# `python local_launcher.py` or `python src/machine_translate_docx.py`,
-# not via an installed entry-point.
+#     from machine_translate_docx import runtime, config
+#
+# The flat-layout caveat still applies: every ``.py`` file in ``src/``
+# imports siblings by bare name (e.g. ``from runtime import …``); a
+# full conversion to package-relative imports is parked. Until that
+# refactor lands, the CLI is still launched via
+# ``python local_launcher.py`` or ``python src/machine_translate_docx.py``
+# — there is no installed entry-point, and there is no PyPI wheel
+# (the wheel wouldn't bundle the flat ``src/`` tree). ``pip install -e .``
+# from a clone is the only supported install method.
 
 [tool.setuptools]
-# Empty package list keeps `pip install .` from blowing up while still
-# letting modern resolvers parse the metadata.
-packages = []
-py-modules = []
+packages = ["machine_translate_docx"]
 
 # ── Pytest config (replaces pytest.ini) ───────────────────────────────────
 # Default run skips tests marked `live` — they spawn the launcher
