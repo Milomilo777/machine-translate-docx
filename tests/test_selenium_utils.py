@@ -14,8 +14,8 @@ if str(_SRC) not in sys.path:
 
 from selenium.common.exceptions import WebDriverException
 
-from runtime import RuntimeContext
-from selenium_utils import (
+from machine_translate_docx.runtime import RuntimeContext
+from machine_translate_docx.selenium_utils import (
     safe_click,
     browser_fill_form_field_value,
     set_chrome_window_2_3_screen,
@@ -93,7 +93,7 @@ def test_browser_fill_form_swallows_exceptions(monkeypatch):
     ctx = RuntimeContext.empty()
     ctx.browser.driver = MagicMock()
     # Make WebDriverWait().until() raise.
-    import selenium_utils.forms as forms_mod
+    from machine_translate_docx.selenium_utils import forms as forms_mod
 
     class _Boom(Exception):
         pass

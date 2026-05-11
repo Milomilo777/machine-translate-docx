@@ -4,7 +4,7 @@ We construct an OpenAIPolisher instance without running its real __init__
 (which requires OPENAI_API_KEY) — the methods under test do not touch
 the OpenAI client.
 """
-from openai_tools.polisher import OpenAIPolisher
+from machine_translate_docx.openai_tools.polisher import OpenAIPolisher
 
 
 def _make_polisher() -> OpenAIPolisher:
@@ -42,7 +42,7 @@ def test_detect_en_residue_flags_full_english_sentence():
 
 
 def test_fa_postprocess_normalize_safe_subset():
-    from openai_tools.fa_postprocess import normalize_fa
+    from machine_translate_docx.openai_tools.fa_postprocess import normalize_fa
     # Arabic Yeh / Kaf rewritten to Persian forms.
     assert normalize_fa("كاربرد ي") == "کاربرد ی"
     # Arabic-Indic digits rewritten to Persian-Indic.

@@ -743,7 +743,7 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
                 _src_dir = ROOT / "src"
                 if str(_src_dir) not in sys.path:
                     sys.path.insert(0, str(_src_dir))
-                from config import VALID_AI_MODELS as _VALID
+                from machine_translate_docx.config import VALID_AI_MODELS as _VALID
                 # Inline the same table the polisher uses — the polisher
                 # method is per-instance, so we duplicate it as a
                 # module-level constant here. If you bump the polisher
@@ -1142,18 +1142,34 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
         if translation_engine == "chatgpt-polish" and target_language.lower().startswith("fa"):
             split_translate = False
 
-        cmd = [
-            str(self.state.python_exe),
-            str(self.state.script_path),
-            "--docxfile",
-            str(source_file),
-            "--destlang",
-            target_language,
-            "--silent",
-            "--exitonsuccess",
-            "--engine",
-            engine,
-        ]
+        # 2026-05-11 src-layout migration: invoke the CLI as a *module*
+        # (`python -m machine_translate_docx.cli`) instead of a script
+        # path. The new package uses relative imports — running it as a
+        # script (`python /…/cli.py`) makes Python treat cli.py as the
+        # top-level module and every `from .config import …` fails. The
+        # `-m` form gives Python the right package context.
+        # PYTHONPATH below points at ``src/`` so the package is findable
+        # without `pip install -e .`.
+        is_pkg_layout = self.state.script_path.parent.name == "machine_translate_docx"
+        if is_pkg_layout:
+            cmd = [
+                str(self.state.python_exe),
+                "-m", "machine_translate_docx.cli",
+                "--docxfile", str(source_file),
+                "--destlang", target_language,
+                "--silent", "--exitonsuccess",
+                "--engine", engine,
+            ]
+        else:
+            # Legacy fallback for pre-migration checkouts.
+            cmd = [
+                str(self.state.python_exe),
+                str(self.state.script_path),
+                "--docxfile", str(source_file),
+                "--destlang", target_language,
+                "--silent", "--exitonsuccess",
+                "--engine", engine,
+            ]
 
         if ai_model:
             cmd.extend(["--aimodel", ai_model])
@@ -1203,6 +1219,9 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
                 # don't crash with UnicodeEncodeError on Windows CP1252 consoles.
                 "PYTHONIOENCODING": "utf-8",
                 "PYTHONUTF8": "1",
+                # Point `python -m machine_translate_docx.cli` at the
+                # in-repo package without requiring `pip install -e .`.
+                "PYTHONPATH": str(ROOT / "src"),
             },
         )
 
@@ -1788,7 +1807,7 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
                 sys.path.insert(0, src_dir)
             # Lazy import — keeps the launcher's start-up cheap and avoids
             # loading python-docx until a Persian Double Lines job arrives.
-            from openai_tools.persian_double_lines import FASubtitleAligner
+            from machine_translate_docx.openai_tools.persian_double_lines import FASubtitleAligner
             aligner = FASubtitleAligner(
                 model="gpt-5.4-mini",   # aligner is hardcoded mini (C1)
                 llm_threshold=0,        # purely mechanical; no LLM call
@@ -1875,9 +1894,21 @@ def main() -> int:
     if args.backend == "real" and not python_exe.exists():
         raise FileNotFoundError(f"Python executable not found: {python_exe}")
 
-    script_path = ROOT / "src" / "machine_translate_docx.py"
+    # 2026-05-11: backend script moved from `src/machine_translate_docx.py`
+    # into the new `src/machine_translate_docx/cli.py` package layout.
+    # The launcher invokes it as a regular .py path (NOT `python -m`)
+    # because the CLI carries argparse + lots of import-time side effects
+    # that historically rely on being run as a top-level script, not as
+    # a sub-module. The old name is still recognised as a fallback so
+    # mid-migration checkouts work.
+    script_path = ROOT / "src" / "machine_translate_docx" / "cli.py"
     if not script_path.exists():
-        raise FileNotFoundError(f"Backend script not found: {script_path}")
+        # Fallback for old checkouts where the file hasn't moved yet.
+        legacy = ROOT / "src" / "machine_translate_docx.py"
+        if legacy.exists():
+            script_path = legacy
+        else:
+            raise FileNotFoundError(f"Backend script not found: {script_path}")
 
     state = LocalState(runtime_dir, args.backend, python_exe, script_path)
     state.boot()

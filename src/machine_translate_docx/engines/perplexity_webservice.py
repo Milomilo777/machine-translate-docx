@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import requests
 
-from runtime import RuntimeContext
+from ..runtime import RuntimeContext
 
 
 __all__ = [

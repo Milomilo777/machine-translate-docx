@@ -15,8 +15,8 @@ _SRC = Path(__file__).resolve().parents[1] / "src"
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
-from engines import EngineName, ACTIVE_ENGINES, DISPATCH_TABLE
-from engines import google as google_engine
+from machine_translate_docx.engines import EngineName, ACTIVE_ENGINES, DISPATCH_TABLE
+from machine_translate_docx.engines import google as google_engine
 
 
 def test_engine_name_values_match_cli_strings():
@@ -47,7 +47,7 @@ def test_web_engines_removed():
     """
     # Module imports must fail.
     import importlib
-    for mod_name in ("engines.chatgpt_web", "engines.perplexity_web"):
+    for mod_name in ("machine_translate_docx.engines.chatgpt_web", "machine_translate_docx.engines.perplexity_web"):
         try:
             importlib.import_module(mod_name)
             assert False, f"{mod_name} should not be importable"

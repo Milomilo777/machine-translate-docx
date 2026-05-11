@@ -46,7 +46,7 @@ GOTO END
 IF NOT EXIST %TMPDIR% MKDIR %TMPDIR%
 COPY /Y %FIXTURE% %TMPDIR%\smoke.docx > NUL
 PUSHD %TMPDIR%
-%PYTHON% ..\src\machine_translate_docx.py --docxfile smoke.docx --srclang en --destlang fr --engine deepl --enginemethod phrasesblock --silent --exitonsuccess
+set "PYTHONPATH=..\src" && %PYTHON% -m machine_translate_docx.cli --docxfile smoke.docx --srclang en --destlang fr --engine deepl --enginemethod phrasesblock --silent --exitonsuccess
 POPD
 ECHO smoke: %TMPDIR%\smoke_FRE_Deepl.docx
 GOTO END
@@ -55,11 +55,11 @@ GOTO END
 IF NOT EXIST %TMPDIR% MKDIR %TMPDIR%
 COPY /Y %FIXTURE% %TMPDIR%\deepl_fr.docx > NUL
 PUSHD %TMPDIR%
-%PYTHON% ..\src\machine_translate_docx.py --docxfile deepl_fr.docx --srclang en --destlang fr --engine deepl --enginemethod phrasesblock --silent --exitonsuccess
+set "PYTHONPATH=..\src" && %PYTHON% -m machine_translate_docx.cli --docxfile deepl_fr.docx --srclang en --destlang fr --engine deepl --enginemethod phrasesblock --silent --exitonsuccess
 POPD
 COPY /Y %FIXTURE% %TMPDIR%\deepl_fa.docx > NUL
 PUSHD %TMPDIR%
-%PYTHON% ..\src\machine_translate_docx.py --docxfile deepl_fa.docx --srclang en --destlang fa --engine deepl --enginemethod phrasesblock --silent --exitonsuccess
+set "PYTHONPATH=..\src" && %PYTHON% -m machine_translate_docx.cli --docxfile deepl_fa.docx --srclang en --destlang fa --engine deepl --enginemethod phrasesblock --silent --exitonsuccess
 POPD
 GOTO END
 
@@ -67,11 +67,11 @@ GOTO END
 IF NOT EXIST %TMPDIR% MKDIR %TMPDIR%
 COPY /Y %FIXTURE% %TMPDIR%\google_fr.docx > NUL
 PUSHD %TMPDIR%
-%PYTHON% ..\src\machine_translate_docx.py --docxfile google_fr.docx --srclang en --destlang fr --engine google --enginemethod phrasesblock --silent --exitonsuccess
+set "PYTHONPATH=..\src" && %PYTHON% -m machine_translate_docx.cli --docxfile google_fr.docx --srclang en --destlang fr --engine google --enginemethod phrasesblock --silent --exitonsuccess
 POPD
 COPY /Y %FIXTURE% %TMPDIR%\google_fa.docx > NUL
 PUSHD %TMPDIR%
-%PYTHON% ..\src\machine_translate_docx.py --docxfile google_fa.docx --srclang en --destlang fa --engine google --enginemethod phrasesblock --silent --exitonsuccess
+set "PYTHONPATH=..\src" && %PYTHON% -m machine_translate_docx.cli --docxfile google_fa.docx --srclang en --destlang fa --engine google --enginemethod phrasesblock --silent --exitonsuccess
 POPD
 GOTO END
 

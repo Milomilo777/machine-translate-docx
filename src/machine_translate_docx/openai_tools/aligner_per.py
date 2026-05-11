@@ -6,7 +6,7 @@ Method name. This module re-exports every public symbol from the new
 location so legacy callers keep working unchanged. Prefer the new name
 in new code:
 
-    from openai_tools.persian_double_lines import FASubtitleAligner
+    from ..openai_tools.persian_double_lines import FASubtitleAligner
 
 A future release may delete this shim once no caller references
 ``aligner_per`` any more.

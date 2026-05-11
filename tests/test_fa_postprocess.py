@@ -14,7 +14,7 @@ _SRC = Path(__file__).resolve().parents[1] / "src"
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
-from openai_tools.fa_postprocess import normalize_fa  # noqa: E402
+from machine_translate_docx.openai_tools.fa_postprocess import normalize_fa  # noqa: E402
 
 
 # ── Letter normalisations ────────────────────────────────────────────────

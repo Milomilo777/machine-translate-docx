@@ -25,7 +25,7 @@ import traceback
 
 from selenium.webdriver.chrome.service import Service
 
-from runtime import RuntimeContext
+from ..runtime import RuntimeContext
 
 __all__ = [
     "set_chrome_window_2_3_screen",

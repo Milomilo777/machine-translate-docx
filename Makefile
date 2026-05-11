@@ -35,7 +35,7 @@ test:
 
 smoke: $(TMPDIR)
 	cp $(FIXTURE) $(TMPDIR)/smoke.docx
-	cd $(TMPDIR) && $(PYTHON) ../src/machine_translate_docx.py \
+	cd $(TMPDIR) && PYTHONPATH=../src $(PYTHON) -m machine_translate_docx.cli \
 		--docxfile smoke.docx \
 		--srclang en --destlang fr \
 		--engine deepl --enginemethod phrasesblock \
@@ -44,13 +44,13 @@ smoke: $(TMPDIR)
 
 live-deepl: $(TMPDIR)
 	cp $(FIXTURE) $(TMPDIR)/deepl_fr.docx
-	cd $(TMPDIR) && $(PYTHON) ../src/machine_translate_docx.py \
+	cd $(TMPDIR) && PYTHONPATH=../src $(PYTHON) -m machine_translate_docx.cli \
 		--docxfile deepl_fr.docx \
 		--srclang en --destlang fr \
 		--engine deepl --enginemethod phrasesblock \
 		--silent --exitonsuccess
 	cp $(FIXTURE) $(TMPDIR)/deepl_fa.docx
-	cd $(TMPDIR) && $(PYTHON) ../src/machine_translate_docx.py \
+	cd $(TMPDIR) && PYTHONPATH=../src $(PYTHON) -m machine_translate_docx.cli \
 		--docxfile deepl_fa.docx \
 		--srclang en --destlang fa \
 		--engine deepl --enginemethod phrasesblock \
@@ -58,13 +58,13 @@ live-deepl: $(TMPDIR)
 
 live-google: $(TMPDIR)
 	cp $(FIXTURE) $(TMPDIR)/google_fr.docx
-	cd $(TMPDIR) && $(PYTHON) ../src/machine_translate_docx.py \
+	cd $(TMPDIR) && PYTHONPATH=../src $(PYTHON) -m machine_translate_docx.cli \
 		--docxfile google_fr.docx \
 		--srclang en --destlang fr \
 		--engine google --enginemethod phrasesblock \
 		--silent --exitonsuccess
 	cp $(FIXTURE) $(TMPDIR)/google_fa.docx
-	cd $(TMPDIR) && $(PYTHON) ../src/machine_translate_docx.py \
+	cd $(TMPDIR) && PYTHONPATH=../src $(PYTHON) -m machine_translate_docx.cli \
 		--docxfile google_fa.docx \
 		--srclang en --destlang fa \
 		--engine google --enginemethod phrasesblock \

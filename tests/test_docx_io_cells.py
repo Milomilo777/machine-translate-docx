@@ -30,12 +30,12 @@ if str(_SRC) not in sys.path:
 
 import docx  # noqa: E402  — sys.path tweak above
 
-from docx_io.cells import (  # noqa: E402
+from machine_translate_docx.docx_io.cells import (  # noqa: E402
     _paragraph_shading_color,
     _run_shading_color,
     get_cell_data,
 )
-from runtime import RuntimeContext  # noqa: E402
+from machine_translate_docx.runtime import RuntimeContext  # noqa: E402
 
 
 # ── shading helpers ──────────────────────────────────────────────────────────

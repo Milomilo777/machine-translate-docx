@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
-from runtime import RuntimeContext
+from ..runtime import RuntimeContext
 
 __all__ = ["Engine"]
 

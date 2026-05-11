@@ -41,9 +41,9 @@ from __future__ import annotations
 import functools
 from typing import Callable, Optional
 
-from runtime import RuntimeContext
-from engines.deepl import selenium_chrome_deepl_translate
-from engines.google import selenium_chrome_google_translate
+from .runtime import RuntimeContext
+from .engines.deepl import selenium_chrome_deepl_translate
+from .engines.google import selenium_chrome_google_translate
 
 
 __all__ = [

@@ -24,10 +24,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from exceptions import EmptyDocxError, EngineReturnedEmptyError
+from .exceptions import EmptyDocxError, EngineReturnedEmptyError
 
 if TYPE_CHECKING:
-    from runtime import RuntimeContext
+    from .runtime import RuntimeContext
 
 
 __all__ = [

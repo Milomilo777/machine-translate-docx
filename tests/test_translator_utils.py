@@ -1,6 +1,6 @@
 """Translator utility-function tests — language code normalization."""
-from openai_tools.translator import _normalize_lang, _prompt_lang_code
-from openai_tools._retry import prompt_hash
+from machine_translate_docx.openai_tools.translator import _normalize_lang, _prompt_lang_code
+from machine_translate_docx.openai_tools._retry import prompt_hash
 
 
 def test_lang_normalization_roundtrip():

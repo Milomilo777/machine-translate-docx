@@ -6,60 +6,68 @@
 
 ## Project Purpose
 
-Translate DOCX files (broadcast Persian TV subtitles and general documents) using
-OpenAI (gpt-5.5) and Google Translate. The Persian pipeline adds a second pass:
-a subtitle aligner that produces a bilingual double-line `.docx`.
+Translate DOCX files (broadcast Persian TV subtitles and general documents)
+using DeepL, Google, or OpenAI (default `gpt-5.5`). The Persian pipeline
+adds a second pass: a subtitle aligner that produces a bilingual
+double-line `.docx`.
 
 ---
 
 ## High-Level Architecture
 
 ```
-                ┌─ index.ejs       (legacy UI, served at /)
+                ┌─ index.ejs        (legacy UI, served at /)
 frontend ──────┤
                 └─ web/v2/index.html  (v2 SPA, served at /v2/)
                           │
                           ▼  POST /upload
               local_launcher.py
                   │
-                  ▼  subprocess
-              src/machine-translate-docx.py  ──┐
-                                               ▼
-                  ┌─ src/runtime.py        (RuntimeContext dataclass)
-                  ├─ src/config.py         (constants + tables)
-                  ├─ src/runner.py         (block-loop orchestrator)
-                  ├─ src/engines/          (google, deepl, chatgpt_api)
-                  ├─ src/selenium_utils/   (driver, click, forms)
-                  └─ src/openai_tools/     (translator, polisher, aligner_per)
+                  ▼  python -m machine_translate_docx.cli
+              src/machine_translate_docx/cli.py  ──┐
+                                                   ▼
+                  ┌─ runtime.py        (RuntimeContext dataclass)
+                  ├─ config.py         (constants + VALID_AI_MODELS)
+                  ├─ runner.py         (block-loop orchestrator)
+                  ├─ docx_io/          (parse, cells, runs, save)
+                  ├─ engines/          (google, deepl, chatgpt_api)
+                  ├─ selenium_utils/   (driver, click, forms)
+                  └─ openai_tools/     (translator, polisher, …)
 ```
 
-See [`docs/architecture.md`](docs/architecture.md) for the full pipeline diagram.
+See [`docs/architecture.md`](docs/architecture.md) and the SVG
+diagrams in [`docs/diagrams/`](docs/diagrams/) for the full picture.
 
 ---
 
-## Key Paths
+## Key Paths (post-2026-05-11 src/ layout migration)
 
 | Path | Role |
 |------|------|
-| `src/machine-translate-docx.py` | CLI entry point — orchestrates everything |
-| `src/runtime.py` | `RuntimeContext` dataclass — threaded through engines |
-| `src/config.py` | Module-level constants + parallel arrays |
-| `src/runner.py` | Block-loop orchestrator |
-| `src/engines/google.py` | Selenium-based Google Translate engine |
-| `src/engines/deepl.py` | Selenium-based DeepL engine |
-| `src/engines/chatgpt_api.py` | OpenAI API engine bridge |
-| `src/engines/inactive/` | Disabled web engines (chatgpt_web, perplexity_web) |
-| `src/selenium_utils/` | Driver/click/forms helpers |
-| `src/openai_tools/translator.py` | `OpenAITranslator` — single-call translate |
-| `src/openai_tools/polisher.py` | `OpenAIPolisher` — single-call polish |
-| `src/openai_tools/aligner_per.py` | `FASubtitleAligner` — bilingual doubling |
-| `src/openai_tools/splitting.py` | Legacy per-phrase splitter (only when splitTranslate=true) |
+| `src/machine_translate_docx/cli.py` | CLI entry point — orchestrator (was `src/machine_translate_docx.py`) |
+| `src/machine_translate_docx/runtime.py` | `RuntimeContext` dataclass — threaded through engines |
+| `src/machine_translate_docx/config.py` | `DEFAULT_AI_MODEL`, `VALID_AI_MODELS`, language tables |
+| `src/machine_translate_docx/runner.py` | Block-loop orchestrator |
+| `src/machine_translate_docx/dispatch.py` | `set_translation_function(ctx)` |
+| `src/machine_translate_docx/exceptions.py` | `TranslationFailure` hierarchy |
+| `src/machine_translate_docx/translation_health.py` | `assert_source_has_content`, `assert_translation_present` |
+| `src/machine_translate_docx/docx_io/` | parse, cells, runs, save (every docx-shaped operation) |
+| `src/machine_translate_docx/engines/google.py` | Selenium-based Google Translate engine |
+| `src/machine_translate_docx/engines/deepl.py` | Selenium-based DeepL engine |
+| `src/machine_translate_docx/engines/chatgpt_api.py` | OpenAI API engine bridge |
+| `src/machine_translate_docx/engines/inactive/` | Disabled web engines (perplexity_web, etc.) |
+| `src/machine_translate_docx/selenium_utils/` | Driver/click/forms helpers |
+| `src/machine_translate_docx/openai_tools/translator.py` | `OpenAITranslator` — single-call translate |
+| `src/machine_translate_docx/openai_tools/polisher.py` | `OpenAIPolisher` — single-call polish |
+| `src/machine_translate_docx/openai_tools/persian_double_lines.py` | `FASubtitleAligner` — bilingual doubling |
+| `src/machine_translate_docx/openai_tools/splitting.py` | Legacy per-phrase splitter (only when splitTranslate=true) |
+| `src/machine_translate_docx/openai_tools/fa_postprocess.py` | Safe FA character normaliser (3 mappings) |
 | `local_launcher.py` | Local dev server (Python, no Node required) — serves both UIs |
 | `server.js` | Express server (Node.js production server) |
 | `index.ejs` | **Legacy** frontend — EJS template, served at `/` |
-| `web/v2/index.html` | **v2** frontend — Tailwind + Alpine SPA, served at `/v2/` |
-| `web/v2/app.js` | Alpine factory `docTranslator()` for v2 |
-| `web/v2/i18n.json` | English + Persian locales for v2 |
+| `web/v2/index.html` | **v2** frontend — plain JS SPA, served at `/v2/` |
+| `web/v2/app.js` | Plain-JS app for v2 |
+| `web/v2/content.json` | Announcements + stories (single source of truth for v2 UI copy) |
 | `prompts/translate_PER.txt` | Persian translation system prompt |
 | `prompts/polish_PER.txt` | Persian polish system prompt |
 | `prompts/translate_universal.txt` | Fallback prompt for other languages |
@@ -69,22 +77,23 @@ See [`docs/architecture.md`](docs/architecture.md) for the full pipeline diagram
 ## Critical Commands
 
 ```bash
-# Start local dev server — opens LEGACY UI at /
+# Start local dev server — serves BOTH UIs (legacy + v2)
 E:\Python311\python.exe local_launcher.py
-"run_local_launcher     -----------.bat"
-
-# Start local dev server — opens v2 UI at /v2/
 "run_local_launcher_v2.bat"
 
-# Both UIs are served simultaneously by the same launcher.
-# Legacy:  http://127.0.0.1:3000/
-# v2:      http://127.0.0.1:3000/v2/
+# Legacy UI: http://127.0.0.1:3000/
+# v2 UI:     http://127.0.0.1:3000/v2/
 
-# Run translation directly from CLI
-E:\Python311\python.exe src/machine-translate-docx.py \
-  --input file.docx --target-lang fa --engine chatgpt-polish
+# Run the CLI directly (post-migration; sets PYTHONPATH on the fly)
+PYTHONPATH=src E:\Python311\python.exe -m machine_translate_docx.cli \
+    --docxfile file.docx --destlang fa \
+    --engine chatgpt --enginemethod api --aimodel gpt-5.4-mini \
+    --with-polish --silent --exitonsuccess
 
-# Run pytest (51 tests, ~3 s) — exclude live e2e by default
+# After `pip install -e .`, the same CLI is reachable as `mtd …`
+# (entry-point declared in pyproject.toml).
+
+# Run pytest (113 tests, ~2 s) — `live` marker is deselected by default
 E:\Python311\python.exe -m pytest tests/ --ignore=tests/test_v2_e2e.py
 ```
 
@@ -92,11 +101,10 @@ E:\Python311\python.exe -m pytest tests/ --ignore=tests/test_v2_e2e.py
 
 ## Output Naming Convention
 
-One file per job (phase 7 of the persian-double-lines roadmap). Filenames are
-`{stem}_{LANG}{_engine}{_Double_Lines?}.docx`. The engine tag is `_Polish` /
-`_chatGPT` / `_Google` / `_Deepl` / `_web_chatGPT` / `_web_Perplexity`. The
-`_Double_Lines` suffix is appended when the user picks Persian Double Lines as
-the Split Method (FA target only).
+One file per job. Filenames are `{stem}_{LANG}{_engine}{_Double_Lines?}.docx`.
+The engine tag is `_Polish` / `_chatGPT` / `_Google` / `_Deepl`. The
+`_Double_Lines` suffix is appended when the user picks Persian Double
+Lines as the Split Method (FA target only).
 
 | Engine + split                        | Output                                  |
 |---------------------------------------|-----------------------------------------|
@@ -105,39 +113,64 @@ the Split Method (FA target only).
 | chatgpt + persian_double_lines        | `{stem}_PER_chatGPT_Double_Lines.docx`  |
 | google                                | `{stem}_{LANG}_Google.docx`             |
 
+Every chatgpt-polish run also writes `{stem}_PER_Polish_log.json`
+next to the docx (token counts, cached counts, cost, elapsed).
+DeepL / Google runs write a minimal sidecar with row counts only.
+
 ---
 
 ## Core Conventions
 
-- **Models**: translator + polisher default to `gpt-5.5`; aligner is **always** `gpt-5.4-mini` (hardcoded, do not change)
-- **Prompt cache**: every API call sets `extra_body={"prompt_cache_retention": "24h"}`
-- **Lang codes**: output filenames use ISO 639-2/B (`fa`→`PER`, `ar`→`ARA`, `de`→`GER`)
-- **`_normalize_lang()`** is read-only; for prompt file lookup use `_prompt_lang_code()` instead
-- `reasoning_effort` is active in polisher **only** when `"mini"` is in the model name
-- File collisions get `_1`, `_2` suffixes — never overwrite
+- **Models**: translator + polisher default to `config.DEFAULT_AI_MODEL`
+  (`gpt-5.5`); aligner is **always** `config.ALIGNER_MODEL`
+  (`gpt-5.4-mini`, hardcoded, do not change).
+- **Whitelist**: CLI rejects `--aimodel <unknown>` at parse time
+  (`config.VALID_AI_MODELS`).
+- **Prompt cache**: every API call sets
+  `extra_body={"prompt_cache_retention": "24h"}`.
+- **Lang codes**: output filenames use ISO 639-2/B (`fa`→`PER`,
+  `ar`→`ARA`, `de`→`GER`).
+- **`_normalize_lang()`** is read-only; for prompt-file lookup use
+  `_prompt_lang_code()` instead.
+- `reasoning_effort` is active in polisher **only** when `"mini"` is
+  in the model name; **never** set it on the translator (caused
+  94% reasoning-token overhead in testing).
+- File collisions get `_1`, `_2` suffixes — never overwrite.
 
 ---
 
 ## Safety Constraints
 
-- Never commit `.env`, API keys, or `src/configuration/configuration.json` if it contains secrets
-- Never change the aligner model — it must stay `gpt-5.4-mini`
-- Never add `reasoning_effort` to the translator (causes 94 % reasoning token overhead)
-- `_normalize_lang()` must not be modified — only `_prompt_lang_code()` maps prompt filenames
+- Never commit `.env`, API keys, or
+  `src/configuration/configuration.json` if it contains secrets.
+- Never change the aligner model — it must stay `gpt-5.4-mini`.
+- Never add `reasoning_effort` to the translator.
+- `_normalize_lang()` must not be modified — only `_prompt_lang_code()`
+  maps prompt filenames.
+- The full invariant list (C1–C20) lives in
+  [`PROJECT_MEMORY.md`](PROJECT_MEMORY.md).
 
 ---
 
 ## Deeper Docs
 
-- [`docs/architecture.md`](docs/architecture.md) — full pipeline, data flow
-- [`docs/translation-style.md`](docs/translation-style.md) — Persian broadcast quality rules
-- [`docs/subtitle-syncing.md`](docs/subtitle-syncing.md) — aligner algorithm & thresholds
-- [`docs/testing.md`](docs/testing.md) — how to test locally
-- [`docs/error-catalog.md`](docs/error-catalog.md) — known bugs & recurring issues
-- [`docs/decisions-2026.md`](docs/decisions-2026.md) — architectural decision log
-- [`docs/refactor-roadmap.md`](docs/refactor-roadmap.md) — Phase A→G design rationale
-- [`docs/post-refactor-audit.md`](docs/post-refactor-audit.md) — post-refactor audit (D1-D7 + 15 findings)
-- [`docs/phase-F-blocked.md`](docs/phase-F-blocked.md) — original F1 blocker note
-- [`docs/v2-frontend-hardening.md`](docs/v2-frontend-hardening.md) — v2 hardening sprint (5 phases) summary
-- [`web/v2/README.md`](web/v2/README.md) — v2 frontend stack, deploy, file map
-- [`PROJECT_MEMORY.md`](PROJECT_MEMORY.md) — active constraints, recent changes
+- [`docs/index.md`](docs/index.md) — hub for every other doc.
+- [`docs/architecture.md`](docs/architecture.md) — full pipeline, data flow.
+- [`docs/diagrams/`](docs/diagrams/) — SVG architecture diagrams
+  (light + dark themes, embedded in `README.md`).
+- [`docs/translation-style.md`](docs/translation-style.md) — Persian
+  broadcast quality rules.
+- [`docs/subtitle-syncing.md`](docs/subtitle-syncing.md) — aligner
+  algorithm + thresholds.
+- [`docs/telegram-alerts-setup.md`](docs/telegram-alerts-setup.md) —
+  Telegram failure-alert setup + security.
+- [`docs/testing.md`](docs/testing.md) — how to test locally.
+- [`docs/error-catalog.md`](docs/error-catalog.md) — known bugs.
+- [`docs/decisions-2026.md`](docs/decisions-2026.md) — architectural
+  decisions log.
+- [`docs/audit-2026-05-11.md`](docs/audit-2026-05-11.md) — the
+  comprehensive 2026-05-11 audit + applied fixes.
+- [`PROJECT_MEMORY.md`](PROJECT_MEMORY.md) — active constraints C1–C20,
+  recent changes.
+- [`web/v2/README.md`](web/v2/README.md) — v2 frontend stack, deploy,
+  file map.

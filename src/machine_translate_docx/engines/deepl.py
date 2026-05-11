@@ -57,10 +57,10 @@ from selenium.common.exceptions import (
     WebDriverException,
 )
 
-from runtime import RuntimeContext
-from selenium_utils import safe_click, set_chrome_window_2_3_screen
+from ..runtime import RuntimeContext
+from ..selenium_utils import safe_click, set_chrome_window_2_3_screen
 
-from config import (
+from ..config import (
     get_nested_value_from_json_array,
 )
 

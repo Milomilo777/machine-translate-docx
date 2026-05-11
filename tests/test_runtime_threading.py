@@ -18,7 +18,7 @@ _SRC = Path(__file__).resolve().parents[1] / "src"
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
-from runtime import (
+from machine_translate_docx.runtime import (
     BrowserCtx,
     ConfigCtx,
     DocxCtx,
@@ -154,7 +154,7 @@ def test_deepl_phrasesblock_to_singlephrase_after_extraction():
     and assert each of the four fallback steps lands its expected
     state change on ctx.
     """
-    from engines import DISPATCH_TABLE, EngineName, deepl as deepl_engine
+    from machine_translate_docx.engines import DISPATCH_TABLE, EngineName, deepl as deepl_engine
 
     ctx = RuntimeContext.empty()
     ctx.engine.engine = "deepl"
