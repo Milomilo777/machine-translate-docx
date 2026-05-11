@@ -170,7 +170,34 @@ DeepL / Google runs write a minimal sidecar with row counts only.
   decisions log.
 - [`docs/audit-2026-05-11.md`](docs/audit-2026-05-11.md) — the
   comprehensive 2026-05-11 audit + applied fixes.
-- [`PROJECT_MEMORY.md`](PROJECT_MEMORY.md) — active constraints C1–C20,
+- [`docs/v2-future-ideas.md`](docs/v2-future-ideas.md) — tier-1..4
+  backlog for the v2 SPA with 3-axis cost scoring.
+- [`PROJECT_MEMORY.md`](PROJECT_MEMORY.md) — active constraints C1–C22,
   recent changes.
 - [`web/v2/README.md`](web/v2/README.md) — v2 frontend stack, deploy,
   file map.
+
+## Announcement surfaces (C21)
+
+The v2 SPA renders four content surfaces, all driven exclusively by
+[`web/v2/content.json`](web/v2/content.json). Editing this one file
+is the **only** way to change what visitors see:
+
+| Slot | Where it appears |
+|---|---|
+| `pinned` | Single sticky banner at the very top of the page |
+| `modal`  | One-time welcome dialog (per `id`) |
+| `announcements` | Left column list |
+| `stories` | Centre column tile grid |
+
+Each `id` drives dismissal persistence — bumping it re-shows the
+surface to every visitor. Set any slot to `null` to hide it.
+
+## Weekly newsletter export (C22)
+
+When `MTD_TELEGRAM_TOKEN` + `MTD_TELEGRAM_CHAT_ID` are set, every
+Saturday at 12:00 in `MTD_SCHEDULER_TZ` (default `Europe/Paris`)
+the launcher uploads `subscribers.txt` as a Telegram document.
+State persists at `runtime_dir/subscribers_report_state.json`;
+the next launcher boot prints a one-line warning if last week's
+attempt failed. Empty subscribers file → silent skip.

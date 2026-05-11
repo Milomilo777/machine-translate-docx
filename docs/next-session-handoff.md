@@ -1,228 +1,200 @@
-# Next-session handoff — 2026-05-11 end-of-day
+# Next-session handoff — 2026-05-11 end-of-day (final)
 
-> Read this first. Then [`CHANGELOG.md`](../CHANGELOG.md) (most recent
-> first), [`PROJECT_MEMORY.md`](../PROJECT_MEMORY.md) for the
-> invariants C1–C20, and the README hero diagram in
-> [`README.md`](../README.md) for the high-level picture.
+> Read this first. Then [`../CHANGELOG.md`](../CHANGELOG.md) (most
+> recent first), [`../PROJECT_MEMORY.md`](../PROJECT_MEMORY.md) for
+> the C1–C22 invariants, and the README hero diagram in
+> [`../README.md`](../README.md) for the high-level picture.
 
 ---
 
 ## Status snapshot
 
 ```
-date          2026-05-11  (close of session)
-master tip    336603e     merge: repo-hygiene followup into master
+date          2026-05-11 end-of-day
+master tip    355eca2     merge: announcements + sound + weekly + legacy F-1
 unit tests    113 / 113 pass
                           + 8 live-marked deselected
-real-file     tasks.bat smoke = DeepL en→fr ~27 s, 0 / 42 mismatches
-                          (verified live this session)
-recent tags   archive/comprehensive-audit-2026-05-11
-              archive/cost-field-and-telegram-2026-05-11
-              archive/telegram-multi-recipient-2026-05-11
-              archive/post-test-hardening-2026-05-11
-              archive/pyproject-toml-2026-05-11
-              archive/repo-hygiene-followup-2026-05-11
-              archive/repo-readme-and-diagrams-2026-05-11
-              archive/run-summary-and-history-2026-05-11
-              + many older archive/* tags
-branches      master only on origin (every next/* deleted after merge)
+real-file     DeepL en→fr smoke ~27 s, 0 / 42 mismatches
+                          (verified live at end of session)
+branches      master only on origin (every next/* and `w` deleted
+              after merge). 14 archive/* tags carry every landing.
 ```
 
 ---
 
-## What landed in the 2026-05-10 → 2026-05-11 push
+## What the 2026-05-11 push contains
 
-In rough chronological order. Full per-commit detail in
-[`CHANGELOG.md`](../CHANGELOG.md).
+Chronological summary; full per-commit detail in
+[`../CHANGELOG.md`](../CHANGELOG.md).
 
-### Refactor + structural
+### Refactor + structure
 
-  - **G1–G3** — `docxdoc` + `use_html` threaded onto `DocxCtx`;
-    `get_cell_data` extracted to `docx_io/cells.py`;
-    `read_and_parse_docx_document` extracted to `docx_io/parse.py`.
-    The entire docx-read + docx-write surface now lives in
-    `docx_io/`.
-  - **Comprehensive 2026-05-11 audit** — 14 fixes applied,
-    15 items parked. See [`audit-2026-05-11.md`](audit-2026-05-11.md).
+  - **G1 – G3 docx_io extraction** — `docxdoc`, `use_html`,
+    `get_cell_data`, `read_and_parse_docx_document` all moved into
+    `docx_io/`. The package now owns every docx-shaped operation.
+  - **Full `src/` layout migration** — flat `src/*.py` files +
+    `src/<subpkg>/` directories moved into
+    `src/machine_translate_docx/`. Every `from runtime import …`
+    rewritten to absolute / relative form. CLI is now
+    `python -m machine_translate_docx.cli`. `pip install -e .`
+    ships a working `mtd` console script.
+  - **Comprehensive audit** — `docs/audit-2026-05-11.md`. 14 fixes
+    applied; 11 parked items subsequently drained
+    (R-1/2/6/7/8 + F-6/8 + C-3 + H-2/5 + T-2).
 
-### New invariants
+### New invariants (C18 → C22)
 
-  - **C18** — OpenAI model ids are validated against
-    `config.VALID_AI_MODELS` at CLI parse time.
-  - **C19** — Empty / no-translation runs exit 20 with
-    `[FAIL] reason=<token>` (`empty_docx`, `engine_empty`, …).
-  - **C20** — Failures are archived to
-    `runtime_dir/failures/<job_id>__<ts>/` (input + stdout +
-    meta.json + UNREVIEWED.txt sentinel). Optional Telegram /
-    email / webhook alerts.
+  - C18 — model id validation against `config.VALID_AI_MODELS`.
+  - C19 — empty / no-translation runs exit 20 with
+    `[FAIL] reason=<token>`.
+  - C20 — `runtime_dir/failures/<job_id>__<ts>/` archive +
+    email / webhook / Telegram alerting (all env-gated, all
+    best-effort).
+  - C21 — v2 announcement surfaces driven exclusively by
+    `web/v2/content.json` (slots: `pinned`, `modal`,
+    `announcements`, `stories`).
+  - C22 — weekly Telegram export of `subscribers.txt` (Saturday
+    12:00 Europe/Paris by default; state-persisted; boot-time
+    pending-warning).
 
-### Frontend (v2 only — legacy untouched)
+### v2 frontend
 
-  - smch.ir-style three-column layout: announcements |
-    translator + stories | info / newsletter.
-  - Anthropic warm palette (cream + clay-orange) with light + dark.
-  - Auto-RTL when source or target is fa / ar / he / ur.
-  - `content.json` — single source of truth for announcements +
-    story tiles.
-  - **Run-summary card** under results: model · elapsed · tokens ·
-    cache-hit % · cost · cache savings · cache expiry · rows ·
-    polish-touched. Cost field stays in the layout but renders as
-    `—` until the user flips `showCost` in the Display Preferences
-    modal.
+  - smch.ir three-column layout (announcements | translator +
+    stories | info + history). Anthropic warm palette light + dark.
+    Auto-RTL on fa / ar / he / ur.
+  - **Run-summary card** under results: model, elapsed, tokens,
+    cache-hit %, cost (label always visible — value `—` until the
+    operator flips `showCost` in Display Prefs), cache savings,
+    cache expiry, rows translated, polish lines touched.
   - **Quality warnings** (toggleable): `polish_over_rewrite`,
     `output_short`, `cache_miss_unexpected`.
-  - **Run history sidebar** (last 10 in localStorage) + CSV export.
-  - **ETA + throughput** live under the progress bar.
-  - **Cancel button** during a run, wired to `/cancel/<id>`.
-  - **Offline banner** on `navigator.onLine === false`.
-  - **Display Preferences modal** with five toggles.
+  - **Run history** sidebar (last 10 in localStorage) + CSV export.
+  - **ETA + throughput** under progress bar.
+  - **Cancel button** (POSTs to `/cancel/<id>`).
+  - **Offline banner**.
+  - **Display Preferences modal** with six toggles
+    (`showCost`, `showCacheSavings`, `showCacheExpiry`,
+    `showWarnings`, `showEta`, `playSound`).
+  - **Pinned banner** — sticky top, single slot, dismissable per
+    `id`.
+  - **Welcome modal** — cinematic fade + spring + clay glow pulse,
+    one-time per `id`, optional CTA. Honours
+    `prefers-reduced-motion`.
+  - **Sound notification** — Web Audio C5 → E5 chime, tab-title
+    flash when document is hidden, opt-in Notifications API ping.
 
-### Operations
+### Operations + alerting
 
-  - **Telegram bot** as a third failure-alert channel alongside
-    email + webhook. Multi-recipient via comma-separated
-    `MTD_TELEGRAM_CHAT_ID`. Full setup + threat model in
-    [`telegram-alerts-setup.md`](telegram-alerts-setup.md).
-  - **`/pricing` endpoint** returns per-1M-token rates for every
-    model in `VALID_AI_MODELS`; v2 frontend uses it for the
-    pre-flight cost estimate.
+  - Telegram failure alerts (text + ≤ 20 MB docx attachment),
+    multi-recipient via comma-separated env var.
+  - Weekly Telegram export of subscribers.txt.
+  - Setup + threat model: `docs/telegram-alerts-setup.md`.
+  - `/pricing` endpoint feeds the v2 pre-flight cost estimator.
 
-### Repo hygiene + first-impression
+### Repo first-impression
 
-  - Real `README.md` (was a one-line stub) — hero badges,
-    embedded SVG diagrams (`<picture>` for light / dark),
-    quick-start, pipeline + failure sections, file tree,
-    documentation index.
-  - `LICENSE` (MIT), `CONTRIBUTING.md`, `SECURITY.md` — all
-    missing pre-pass.
-  - `docs/diagrams/` — 3 hand-coded SVGs × 2 themes (6 files),
-    with `<title>` + `<desc>` for a11y, light/dark kept in
-    lock-step via a palette-swap script.
-  - `.github/workflows/ci.yml` — pytest + py_compile sweep on
-    Python 3.11 + 3.12 (Ubuntu).
-  - `.github/ISSUE_TEMPLATE/` — bug, feature, config.
-  - `.github/PULL_REQUEST_TEMPLATE.md` — invariant checklist +
-    test plan + changelog entry.
-  - `scripts/` — new directory with a `README.md`; bloated
-    `run.bat` (hundreds of stale `SET DOCXFILE=` lines) moved
-    to `scripts/legacy/`.
-  - `docs/index.md` — hub for the 24 markdown files under `docs/`.
-  - `CHANGES.md` → `CHANGELOG.md` rename (stub stays for old
-    bookmarks).
-  - `pyproject.toml` (PEP 621) with full metadata + `>=` floor
-    deps + `[tool.pytest.ini_options]` (replaces `pytest.ini`).
-  - `machine_translate_docx/` namespace wrapper so
-    `pip install -e .` succeeds and lets external callers do
-    `from machine_translate_docx import runtime`.
+  - Real `README.md` with embedded SVG diagrams
+    (`docs/diagrams/architecture-*`, `pipeline-*`,
+    `failure-path-*` — 3 × 2 themes via `<picture>`).
+  - `LICENSE` (MIT), `CONTRIBUTING.md`, `SECURITY.md`.
+  - `pyproject.toml` (PEP 621) with `mtd` entry-point.
+  - `.github/workflows/ci.yml` (pytest on 3.11 + 3.12).
+  - `.github/ISSUE_TEMPLATE/` (bug + feature + config).
+  - `.github/PULL_REQUEST_TEMPLATE.md`.
+  - `docs/index.md` hub for the 25 markdown files under `docs/`.
+  - `docs/v2-future-ideas.md` tier-1..4 backlog.
+  - `compile/README.md` clarifies pinned vs. resolved deps.
+  - `scripts/` directory + legacy bat archive.
+  - `CHANGES.md` renamed to `CHANGELOG.md` (stub redirect kept).
+  - `pytest.ini` migrated into `[tool.pytest.ini_options]`.
 
 ### Tests
 
-  - Baseline went from 63 (start of 2026-05-10) to **113** at
-    end of 2026-05-11 (+50 new tests):
-    - `tests/test_docx_io_cells.py` (7)
-    - `tests/test_post_test_hardening.py` (14)
-    - `tests/test_log_sidecar_pair.py` (4)
-    - `tests/test_fa_postprocess.py` (14)
-    - `tests/test_telegram_alert.py` (11)
+  - Baseline: **113** (was 63 at session start). +50 new tests:
+    `tests/test_docx_io_cells.py` (7),
+    `tests/test_post_test_hardening.py` (14),
+    `tests/test_log_sidecar_pair.py` (4),
+    `tests/test_fa_postprocess.py` (14),
+    `tests/test_telegram_alert.py` (11).
 
 ---
 
 ## What's left for the next session
 
-Everything urgent / valuable landed. The remaining items in the
-queue are nice-to-haves; pick from the list when there's budget.
+Everything the user requested is in. The remaining items are
+nice-to-haves and design questions.
 
-### Parked from the audit doc
+### Picked-from backlog ([`v2-future-ideas.md`](v2-future-ideas.md))
 
-| Tag | Item | Why parked |
-|---|---|---|
-| R-1 | `LocalState.job_procs` unbounded growth | small leak, 1-h cleanup masks it |
-| R-2 | `proc.stdout` drain on exception | speculative; no reproducer |
-| R-6 | Cancel race | theoretical; no crash seen |
-| R-7 | Selenium engine error swallowing | needs deep rewrite |
-| R-8 | DeepL email print | production gated by `--silent` |
-| F-1 | Legacy stale model dropdown | legacy untouched constraint (C7) |
-| F-5 | Legacy theme persistence | legacy untouched |
-| F-6 | Mixed innerHTML/textContent | cosmetic |
-| F-8 | Implicit label vs `for=` | cosmetic |
-| C-3 | Reconciler cost capture | low volume |
-| H-2 | Commented-out dead imports in entry script | separate sweep |
-| H-5 | Three `requirements*.txt` files with overlap | reproducibility is fine today |
+The next reviewer can pull the top-of-tier-1 items in any order:
 
-### Bigger items (separate sessions)
+  - Tab-title progress (`(45 %) SMTV Translate`)
+  - Auto-detect source language from filename
+  - Per-file remembered prefs (`v2.fileprefs.<basename>`)
+  - Toast pattern for transient confirmations
+  - Keyboard shortcuts (Esc / `?` help / Ctrl+Enter)
+  - Cached-vs-fresh badge on the Run summary card
 
-  - **`src/` layout migration** — convert every
-    `from runtime import …` to package-relative
-    (`from .runtime import …`), move flat `src/*.py` files into a
-    proper `src/machine_translate_docx/` package, then drop the
-    `sys.path` hack from `tests/conftest.py` and the namespace
-    wrapper at the root. ~2-3 hours, 44 files touched, risk = high
-    because every test, every helper, every import needs an audit.
-    The lightweight wrapper that landed this session is a safe
-    interim step — `pip install -e .` works today, the import
-    surface stays flat.
-  - **Persian Double Lines aligner** — `llm_threshold` is 0
-    (fully mechanical) since 2026-05-08. The roadmap in
-    [`roadmap-persian-double-lines.md`](roadmap-persian-double-lines.md)
-    has 15 phases; only the first half landed. If quality drift
-    appears on production fixtures, revisit.
-  - **Charge-back / cost telemetry** — the per-run sidecar carries
-    everything we need. A cumulative cost report (per-month, per-
-    user, per-language) is a 1-day frontend project; backend is
-    ready (just glob the sidecars + sum).
+Tier-2+ items are listed with cost scores in the same doc.
 
-### Open questions for the operator (not blocking)
+### Three open operator questions (no decision needed to ship)
 
-  - **Telegram bot in production?** The user generated a token in
-    2026-05-11 setup but it was leaked in chat and revoked. Whether
-    the bot is currently live and which chat / channel receives
-    alerts is the operator's call.
-  - **GitHub Actions enabled?** The CI workflow ships but won't
-    fire until the master branch is pushed to a repo with Actions
-    enabled. If you haven't visited the Actions tab on GitHub,
-    do that first.
-  - **MIT vs Apache-2.0?** The current `LICENSE` is MIT. If the
-    project ever adds a patented algorithm or a corporate
-    contributor, consider re-licensing to Apache-2.0 for the
-    explicit patent grant.
+  1. **Telegram bot in production?** Token was leaked once in
+     chat during setup and `/revoke`d. The launcher's failure
+     alerter + weekly subscribers report are both ready to fire
+     the moment two env vars are set
+     (`MTD_TELEGRAM_TOKEN`, `MTD_TELEGRAM_CHAT_ID`).
+  2. **GitHub Actions enabled?** `.github/workflows/ci.yml` ships
+     but won't run until Actions is enabled on the repo settings
+     page.
+  3. **MIT vs. Apache-2.0?** Current `LICENSE` is MIT. Switch only
+     when a patent grant is needed.
+
+### Items intentionally NOT done
+
+  - Full Selenium engine rewrite (R-7) — only a
+    `MTD_SELENIUM_VERBOSE=1` debug-logging helper landed.
+  - Legacy theme persistence (F-5 / U-6) — `index.ejs` has no
+    theme toggle to persist. N/A.
+  - i18n of v2 UI — deferred until non-English user feedback.
+  - WebSocket-based progress — 4 s polling is cheaper on the box.
 
 ---
 
 ## How to run the test matrix (operator quick ref)
 
 ```bash
-# Unit tests (fast, no network, no Chrome)
-python -m pytest tests/ --ignore=tests/test_v2_e2e.py
+# Unit tests — fast, no network, no Chrome (default `-m "not live"`)
+make test
 # → 113 passed, 8 deselected (the `live` ones)
 
+# Opt-in integration tests
+make test-integration
+
+# Everything (unit + integration)
+make test-all
+
 # DeepL en→fr smoke (real Chrome, ~30 s)
-tasks.bat smoke     # Windows
-make smoke          # Unix
+make smoke
 
 # Live engine matrix (all four engines, all language pairs)
-tasks.bat live-all
 make live-all
 
-# Full v2 e2e (Playwright + boot launcher)
-pytest -m live
+# Run the v2 SPA locally
+python local_launcher.py
+# → http://127.0.0.1:3000/v2/
 ```
 
 ---
 
 ## Hand-off complete
 
-Nothing is blocked. The repo is in the best shape it's been in
-since the project started:
+The repo is in the best shape it's been in since the project
+started. Nothing is blocked. The next session can start from any
+of the backlog items in
+[`docs/v2-future-ideas.md`](v2-future-ideas.md), or from one of
+the three open operator questions above.
 
-  - Real README, LICENSE, CONTRIBUTING, SECURITY, PR/issue
-    templates.
-  - 113 unit tests passing on Python 3.11 + 3.12 in CI.
-  - Architecture diagrams (light + dark) on the landing page.
-  - Three failure-alert channels (Telegram, email, webhook) ready
-    to flip on with one env var.
-  - Modern `pyproject.toml` PEP 621 metadata.
-  - All invariants C1–C20 are enforced by tests or by the CLI's
-    pre-flight validation.
-
-Master tip: **`336603e`** at end of session 2026-05-11 (this
-handoff was written on a follow-up branch; merge bumps it).
+Master tip at end of session: **`355eca2`**.
+This handoff doc was written on a follow-up `w` branch; merging it
+bumps master to a final docs-only commit.

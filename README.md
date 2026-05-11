@@ -194,13 +194,17 @@ a PR that touches the pipeline.
 
 ## Status
 
-- **Unit tests**: 113 / 113 passing (`python -m pytest tests/ --ignore=tests/test_v2_e2e.py`).
+- **Unit tests**: 113 / 113 passing (`make test`).
 - **Smoke test**: DeepL en→fr on the canonical fixture in 27 s,
   0 / 42 source-column mismatches (`make smoke`).
 - **Live validation**: re-run weekly across DeepL, Google, and
   OpenAI (with + without polish). Last pass: 2026-05-11.
-- **24-h prompt cache**: 92% hit on translation, 76% on polish in
-  the second run of the same document.
+- **24-h prompt cache**: 92 % hit on translation, 76 % on polish
+  in the second run of the same document.
+- **Weekly newsletter export**: every Saturday at 12:00
+  Europe/Paris the launcher uploads `subscribers.txt` as a
+  Telegram document (env-gated; see
+  [`docs/telegram-alerts-setup.md`](docs/telegram-alerts-setup.md)).
 
 ## Acknowledgements
 
