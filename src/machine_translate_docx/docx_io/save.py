@@ -306,6 +306,22 @@ def save_docx_file(
                 # row counts + elapsed time. Rendered the same way the
                 # chatgpt-polish sidecar is, just with `tokens=null`.
                 _write_minimal_sidecar(ctx)
+            # F7c: run the FA bilingual aligner over the just-saved docx
+            # when the user picked Persian Double Lines as the split
+            # method. FASubtitleAligner is mechanical (no LLM); it
+            # rewrites the FA column into ≤48-char chunks distributed
+            # across the existing rows. Reading + writing the same path
+            # is safe — python-docx loads into memory before saving.
+            _split_engine = getattr(ctx.flags, "split_engine", None)
+            if _split_engine == "persian_double_lines":
+                try:
+                    from ..openai_tools.persian_double_lines import FASubtitleAligner
+                    aligner = FASubtitleAligner()
+                    out_path = ctx.flags.word_file_to_translate_save_as_path
+                    stats = aligner.align(out_path, out_path)
+                    print(f"[INFO] FASubtitleAligner applied: {stats}")
+                except Exception as _aligner_exc:
+                    print(f"[WARN] FASubtitleAligner failed: {_aligner_exc!r}")
         except Exception:
             print(traceback.format_exc())
             if not silent:
