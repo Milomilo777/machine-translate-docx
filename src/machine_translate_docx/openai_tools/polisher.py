@@ -212,7 +212,7 @@ class OpenAIPolisher:
         # larger models (avoids runaway reasoning latency).
         _reasoning_param = (
             {"effort": "high"} if "mini" in self.model.lower()
-            else {"effort": "minimal"}
+            else {"effort": "none"}
         )
 
         _messages_list = [

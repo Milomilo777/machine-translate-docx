@@ -270,7 +270,7 @@ class OpenAITranslator:
                     model=self.model,
                     input=_messages,
                     extra_body=_extra,
-                    reasoning={"effort": "minimal"},
+                    reasoning={"effort": "none"},
                     timeout=1800,
                 ),
                 label="translator.responses.create",
