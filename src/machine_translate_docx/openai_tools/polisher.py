@@ -208,7 +208,7 @@ class OpenAIPolisher:
 
         _extra = {"prompt_cache_retention": "24h"}
         if "mini" in self.model.lower():
-            _extra["reasoning_effort"] = "high"
+            _extra["reasoning_effort"] = "medium"
 
         # GPT-5.x models have broken prompt-caching via chat.completions (known
         # OpenAI bug).  Route them to the Responses API for working cache hits.
@@ -219,12 +219,18 @@ class OpenAIPolisher:
         # reasoning_effort is a chat.completions extra — omit it for Responses API
         # (Responses API accepts reasoning via the `reasoning` parameter, not extra_body).
         _extra_responses = {"prompt_cache_retention": "24h"}
-        # Responses API on gpt-5.x defaults to reasoning.effort=medium,
-        # which on gpt-5.5 caused a 64-minute polish run. Set it
-        # explicitly: "high" for mini (cheap, useful), "minimal" for the
-        # larger models (avoids runaway reasoning latency).
+        # Reasoning effort policy (per model class):
+        #   mini       → medium  (was "high"; 2026-05-12 user lowered to medium
+        #                          — high cost ~3× wall-clock for diminishing
+        #                          quality gain on a 30 % modify-rate document.)
+        #   non-mini   → none    (F3 / 2026-05-12; the main gpt-5.5 model
+        #                          defaults to medium and that turned an 11K
+        #                          char polish into a 64-minute run, so we
+        #                          keep it explicitly "none" until the user
+        #                          asks otherwise.)
+        # The translator never spends reasoning tokens (C2 invariant).
         _reasoning_param = (
-            {"effort": "high"} if "mini" in self.model.lower()
+            {"effort": "medium"} if "mini" in self.model.lower()
             else {"effort": "none"}
         )
 

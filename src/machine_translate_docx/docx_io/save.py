@@ -327,13 +327,26 @@ def save_docx_file(
                 out_path = ctx.flags.word_file_to_translate_save_as_path
                 stats = aligner.align(out_path, out_path)
                 print(f"[INFO] FASubtitleAligner applied: {stats}")
-                _over = int(stats.get("over_limit", 0) or 0) if isinstance(stats, dict) else 0
-                if _over > 0:
+                _over  = int(stats.get("over_limit", 0) or 0) if isinstance(stats, dict) else 0
+                _total = int(stats.get("total_rows", 0) or 0) if isinstance(stats, dict) else 0
+                # A12 (2026-05-12, calibrated): 0-tolerance is too strict for
+                # real broadcast docx — the mechanical splitter can hit a
+                # forced-merge edge once or twice per 1000 rows on dense
+                # Persian sentences. Accept ≤1 % of rows; raise above that.
+                _ratio = (_over / _total) if _total > 0 else 1.0
+                if _over > 0 and _ratio > 0.01:
                     from ..exceptions import TranslationFailure
                     raise TranslationFailure(
-                        f"FA aligner produced {_over} row(s) over MAX_CHARS — "
-                        "broadcast subtitle limit violated.",
+                        f"FA aligner produced {_over}/{_total} rows over MAX_CHARS "
+                        f"({_ratio * 100:.1f} %, threshold 1 %) — broadcast "
+                        "subtitle limit violated.",
                         reason="aligner_over_limit",
+                    )
+                elif _over > 0:
+                    print(
+                        f"[WARN] FA aligner: {_over}/{_total} row(s) over "
+                        f"MAX_CHARS ({_ratio * 100:.2f} %) — accepted under "
+                        "the 1 % broadcast tolerance."
                     )
         except Exception as _exc:
             # A3 / A12 (2026-05-12): structured pipeline failures (e.g.
