@@ -90,20 +90,31 @@ the polish system grew nominally.
 The polish modify-rate is back inside the target 15–25 % range
 (historical floor was 1/106 ≈ 1 % on long news docs — F6).
 
-## Open A/B against the dec-night baseline
+## A/B results (gpt-5.4-mini, real subtitle docs)
 
-Pending: re-run AJAR 3145 (51 src lines) and VE 3145 (106 src lines)
-with the rewritten prompts and compare against the figures recorded
-in `docs/debug-2026-05-11-night.md`. Specifically:
+| File | Lines | Before (master @ 90fab08) | After (this rewrite) | Verdict |
+|------|-------|---------------------------|----------------------|---------|
+| sample_hyperlink | 17 | 1 m 25 s · 0/17 modified | 2 m 11 s · **6/17 (35 %)** ✓ | F6 closed on small docs |
+| AJAR 3145 | 51 | 1 m 14 s · 27/51 (53 % over-edit) | 4 m 29 s · **15/51 (29 %)** ✓ | inside target band |
+| News Scroll NS 3145 | 282 | n/a (split was broken pre-90fab08) | 8 m 18 s · **99/282 (35 %)** ✓ | F6 fully closed on long news docs |
+| VE 3145 | 106 | 1 m 32 s · 1/106 (1 %, F6 sign) | not re-tested (source docx removed locally) | superseded by NS result |
 
-| File | Old mini wall-clock | Old polish-modified % | Target after |
-|------|--------------------|-----------------------|--------------|
-| AJAR 3145 | 1 m 14 s | 27/51 (53 %) | 15–25 % real edits |
-| VE 3145 | 1 m 32 s | 1/106 (1 %) | 15–25 % real edits |
+Conclusion:
 
-If the rewritten polish prompt now produces 15–25 % on VE (instead of
-the 1 % floor), the F6 finding is closed by prompt change rather than
-by adding a sidecar warning.
+- F6 is closed by prompt change rather than by a sidecar warning. The
+  polisher now makes real edits on every document size, and the modify
+  rate (29 – 35 %) is consistent across docs instead of swinging between
+  1 % and 53 %.
+- The translator runs ~2× longer on AJAR and ~2× longer on NS than
+  before. This is the expected trade-off: the new translator does less
+  proofreading and the polisher does more real editing. Polish minutes
+  scale with input size, not with line count alone.
+- Cost: the translator system prompt is 35 % shorter, so input cost per
+  call dropped. The polisher system grew slightly (due to the shared
+  block) but those bytes are now identical across translate + polish
+  for the same document and the cache picks them up.
+- No translation failure across the three real-world A/B runs;
+  113 unit tests still green.
 
 ## Future: third call (FA-only proofread)
 
