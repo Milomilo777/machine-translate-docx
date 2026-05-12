@@ -398,13 +398,51 @@ def _atexit_cleanup_driver() -> None:
     this with ``atexit`` makes sure the driver is closed on any normal
     termination — including crashes — so the launcher's job pool doesn't
     accumulate zombie Chrome processes between failed jobs.
+
+    B5 Jules deep (2026-05-13): also scans `_spawned_driver_pids` so a
+    driver that was spawned BEFORE `_ctx` was initialised (e.g. an
+    exception fired during `_get_ctx()` itself) still gets cleaned up.
     """
+    # First the ctx-tracked driver (normal path)
     try:
         if _ctx is not None and _ctx.browser.driver is not None:
             try:
                 _ctx.browser.driver.quit()
             except Exception:
                 pass
+    except Exception:
+        pass
+    # Then any PIDs we recorded on spawn before ctx existed
+    try:
+        for pid in list(_spawned_driver_pids):
+            try:
+                import os as _os
+                import signal as _signal
+                _os.kill(pid, _signal.SIGTERM)
+            except (ProcessLookupError, PermissionError, OSError):
+                pass
+        _spawned_driver_pids.clear()
+    except Exception:
+        pass
+
+
+# Driver PIDs recorded immediately on spawn so the atexit hook can
+# still clean them up if `_ctx` failed to fully initialise.
+_spawned_driver_pids: set = set()
+
+
+def _track_spawned_driver(driver) -> None:
+    """Record a driver process so atexit can SIGTERM it on crash.
+
+    Safe to call multiple times; idempotent. Failures are silent —
+    tracking is best-effort defence-in-depth, not a hard invariant.
+    """
+    try:
+        svc = getattr(driver, "service", None)
+        proc = getattr(svc, "process", None)
+        pid = getattr(proc, "pid", None)
+        if isinstance(pid, int) and pid > 0:
+            _spawned_driver_pids.add(pid)
     except Exception:
         pass
 
@@ -1677,25 +1715,6 @@ def selenium_chrome_google_translate_html_javascript_file(ctx: RuntimeContext, h
 
 
     
-def getDownLoadedFileNameFirefox(waitTime):
-    driver.execute_script("window.open()")
-    WebDriverWait(driver,10).until(EC.new_window_is_opened)
-    driver.switch_to.window(driver.window_handles[-1])
-    driver.get("about:downloads")
-
-    endTime = time.time()+waitTime
-    while True:
-        try:
-            fileName = driver.execute_script("return document.querySelector('#contentAreaDownloadsView .downloadMainArea .downloadContainer description:nth-of-type(1)').value")
-            if fileName:
-                return fileName
-        except Exception:
-            pass
-        time.sleep(2)
-        if time.time() > endTime:
-            break
-
-
 # method to get the downloaded file name
 def getDownLoadedFileNameChrome(waitTime):
     driver.execute_script("window.open()")
@@ -2088,17 +2107,6 @@ from .docx_io import (
 # global ``dest_font`` and delegates to the new implementation.
 def change_cell_font(cell):
     _change_cell_font_impl(cell, dest_font)
-
-def join_from_lines(line_start, line_end, separator_str):
-    joined_str = ""
-    row_n = line_start
-    joined_str = from_text_table[row_n]
-    row_n = row_n + 1
-    while row_n <= line_end:
-        joined_str += from_text_table[row_n]
-        row_n += 1
-    #print "joined_str (%d, %d)=%s<br>" % (line_start, line_end, joined_str)
-    return joined_str
 
 def tokenize_text_to_array(text, lang_code):
     lang_code = lang_code + ""

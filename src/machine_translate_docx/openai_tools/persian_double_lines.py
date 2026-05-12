@@ -1014,6 +1014,21 @@ class FASubtitleAligner:
         rows   = self._read_rows(input_docx)
         groups = self._parse_groups(rows)
         print(f"[INFO] Aligner: {len(groups)} sentence groups parsed")
+        # B6 Jules deep (2026-05-13): a docx with non-empty source rows
+        # MUST produce at least one group. If the parser drops every row
+        # (bug or upstream corruption), the output would silently end up
+        # empty — surface the failure instead of writing a blank docx.
+        _has_translatable = any(
+            (r.get('fa') or '').strip() or (r.get('en') or '').strip()
+            for r in rows
+            if not r.get('shaded', False)
+        )
+        if _has_translatable and not groups:
+            raise ValueError(
+                "FA aligner parsed zero sentence groups despite a "
+                "non-empty input table — refusing to write a blank docx. "
+                "Check _parse_groups for a regression."
+            )
 
         all_chunks = [self._align_group(g) for g in groups]
 
