@@ -137,6 +137,12 @@ class OpenAITranslator:
         Does NOT substitute {N} here — N goes into the user message so the system
         prompt stays identical across documents and benefits from prompt caching.
         Substitutes {SOURCE_LANG} and {DEST_LANG} only (these are stable per session).
+
+        2026-05-12 (phase-1 prompt rewrite): for Persian, the SMTV brand
+        lexicon is held in a shared `_smtv_locks.txt` block. Both
+        translator and polisher prepend it to their own system prompt
+        so the spec is edited in one place. The combined string stays
+        byte-identical across calls and the prompt cache hits it.
         """
         prompts_dir = _find_prompts_dir(Path(__file__).parent)
         lang_code   = _prompt_lang_code(dest_lang)
@@ -144,6 +150,13 @@ class OpenAITranslator:
         universal   = prompts_dir / "translate_universal.txt"
         path = specific if specific.exists() else universal
         template = path.read_text(encoding="utf-8")
+
+        # Persian: prepend the shared SMTV lexicon block.
+        if specific.exists() and lang_code == "PER":
+            shared = prompts_dir / "_smtv_locks.txt"
+            if shared.exists():
+                template = shared.read_text(encoding="utf-8") + "\n\n" + template
+
         return (
             template
             .replace("{SOURCE_LANG}", source_lang)

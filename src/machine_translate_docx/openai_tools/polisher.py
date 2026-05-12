@@ -50,14 +50,27 @@ class OpenAIPolisher:
         lang_code   = _prompt_lang_code(dest_lang)
         prompts_dir = _find_prompts_dir(Path(__file__).parent)
         specific    = prompts_dir / f"polish_{lang_code}.txt"
+        universal   = prompts_dir / "polish_universal.txt"
 
+        # 2026-05-12 (phase-1 prompt rewrite): for Persian, prepend the
+        # shared SMTV brand lexicon so translator and polisher edit
+        # the same spec. For non-PER targets, fall back to the
+        # universal polish prompt (added 2026-05-12) instead of
+        # raising — keeps the polish pass useful for other languages.
         if specific.exists():
-            return specific.read_text(encoding="utf-8")
+            text = specific.read_text(encoding="utf-8")
+            if lang_code == "PER":
+                shared = prompts_dir / "_smtv_locks.txt"
+                if shared.exists():
+                    text = shared.read_text(encoding="utf-8") + "\n\n" + text
+            return text
+
+        if universal.exists():
+            return universal.read_text(encoding="utf-8")
 
         raise FileNotFoundError(
             f"No polish prompt for language '{lang_code}' "
-            f"(looked for {specific}). "
-            f"Create prompts/polish_{lang_code}.txt (or pass an explicit prompt_path)."
+            f"(looked for {specific} and {universal})."
         )
 
     # ── input / output formatting ─────────────────────────────────────────────
