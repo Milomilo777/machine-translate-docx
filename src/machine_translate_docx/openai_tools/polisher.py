@@ -50,14 +50,27 @@ class OpenAIPolisher:
         lang_code   = _prompt_lang_code(dest_lang)
         prompts_dir = _find_prompts_dir(Path(__file__).parent)
         specific    = prompts_dir / f"polish_{lang_code}.txt"
+        universal   = prompts_dir / "polish_universal.txt"
 
+        # 2026-05-12 (phase-1 prompt rewrite): for Persian, prepend the
+        # shared SMTV brand lexicon so translator and polisher edit
+        # the same spec. For non-PER targets, fall back to the
+        # universal polish prompt (added 2026-05-12) instead of
+        # raising — keeps the polish pass useful for other languages.
         if specific.exists():
-            return specific.read_text(encoding="utf-8")
+            text = specific.read_text(encoding="utf-8")
+            if lang_code == "PER":
+                shared = prompts_dir / "_smtv_locks.txt"
+                if shared.exists():
+                    text = shared.read_text(encoding="utf-8") + "\n\n" + text
+            return text
+
+        if universal.exists():
+            return universal.read_text(encoding="utf-8")
 
         raise FileNotFoundError(
             f"No polish prompt for language '{lang_code}' "
-            f"(looked for {specific}). "
-            f"Create prompts/polish_{lang_code}.txt (or pass an explicit prompt_path)."
+            f"(looked for {specific} and {universal})."
         )
 
     # ── input / output formatting ─────────────────────────────────────────────
@@ -195,7 +208,7 @@ class OpenAIPolisher:
 
         _extra = {"prompt_cache_retention": "24h"}
         if "mini" in self.model.lower():
-            _extra["reasoning_effort"] = "high"
+            _extra["reasoning_effort"] = "medium"
 
         # GPT-5.x models have broken prompt-caching via chat.completions (known
         # OpenAI bug).  Route them to the Responses API for working cache hits.
@@ -206,12 +219,18 @@ class OpenAIPolisher:
         # reasoning_effort is a chat.completions extra — omit it for Responses API
         # (Responses API accepts reasoning via the `reasoning` parameter, not extra_body).
         _extra_responses = {"prompt_cache_retention": "24h"}
-        # Responses API on gpt-5.x defaults to reasoning.effort=medium,
-        # which on gpt-5.5 caused a 64-minute polish run. Set it
-        # explicitly: "high" for mini (cheap, useful), "minimal" for the
-        # larger models (avoids runaway reasoning latency).
+        # Reasoning effort policy (per model class):
+        #   mini       → medium  (was "high"; 2026-05-12 user lowered to medium
+        #                          — high cost ~3× wall-clock for diminishing
+        #                          quality gain on a 30 % modify-rate document.)
+        #   non-mini   → none    (F3 / 2026-05-12; the main gpt-5.5 model
+        #                          defaults to medium and that turned an 11K
+        #                          char polish into a 64-minute run, so we
+        #                          keep it explicitly "none" until the user
+        #                          asks otherwise.)
+        # The translator never spends reasoning tokens (C2 invariant).
         _reasoning_param = (
-            {"effort": "high"} if "mini" in self.model.lower()
+            {"effort": "medium"} if "mini" in self.model.lower()
             else {"effort": "none"}
         )
 
@@ -309,6 +328,16 @@ class OpenAIPolisher:
         usage = response_json.get("usage") or {}
         ptd   = usage.get("prompt_tokens_details") or {}
 
+        # A10 (2026-05-12): the prior "refined N lines" log counted lines
+        # **processed**, not lines **changed** — which gave a green
+        # "refined 51 lines" log on a run where the diff later showed zero
+        # changes (F8). Count modifications now, and surface a quality
+        # warning when the polish pass barely moved anything for a Persian
+        # chatgpt-polish job.
+        _lines_modified = sum(
+            1 for a, b in zip(fa_lines, polished_lines) if a != b
+        )
+
         self.last_call_data = {
             "type":           "polish",
             "model":          self.model,
@@ -319,6 +348,8 @@ class OpenAIPolisher:
             "input_fa_text":  translated_text,
             "output_text":    "\n".join(polished_lines),
             "en_residue":     residue_lines,
+            "lines_processed":  n,
+            "lines_modified":   _lines_modified,
             "tokens": {
                 "prompt":     usage.get("prompt_tokens", 0),
                 "completion": usage.get("completion_tokens", 0),
@@ -329,7 +360,20 @@ class OpenAIPolisher:
             "elapsed_seconds": round(elapsed, 3),
         }
 
-        print(f"[INFO] Polisher: {n} lines refined in {elapsed:.1f}s (model={self.model})")
+        # Warn when polish was effectively a no-op on a real document.
+        # Threshold 2 % of lines is generous — anything lower is unusual
+        # and almost always means a prompt-content mismatch (F6).
+        if n >= 20 and _lines_modified / max(n, 1) < 0.02:
+            print(
+                f"[WARN] Polisher: only {_lines_modified}/{n} lines changed "
+                f"(<2 %) — polish pass likely ineffective for this document. "
+                "Review prompts/polish_PER.txt sensitivity (F6)."
+            )
+
+        print(
+            f"[INFO] Polisher: {n} lines processed, {_lines_modified} "
+            f"modified, in {elapsed:.1f}s (model={self.model})"
+        )
         return "\n".join(polished_lines)
 
     def _estimate_cost(self, response_json: dict) -> float:

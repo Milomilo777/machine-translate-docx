@@ -60,6 +60,9 @@ COMPOUND_PREFIXES = (
 DANGLING_PREPS = frozenset({
     'به', 'از', 'در', 'برای', 'با', 'که', 'تا', 'بر',
     'تحت', 'جز', 'روی', 'زیر', 'نزد', 'پیش', 'سوی',
+    # 2026-05-12 phase-2: extended list — these also strand badly at line-end
+    'بدون', 'علیه', 'مقابل', 'درباره', 'دربارهٔ', 'بنا', 'طبق',
+    'ضد', 'پس', 'قبل', 'بعد', 'وسط', 'میان',
 })
 
 # Bigrams that must never be split across two chunks
@@ -70,6 +73,29 @@ PROTECTED_BIGRAMS = frozenset({
     'به جای', 'در راستای', 'به عنوان', 'در مقابل',
     'بر خلاف', 'به جهت', 'به منظور', 'از سوی',
     'به واسطه', 'در قبال',
+    # 2026-05-12 phase-2: extra fixed expressions observed in real
+    # subtitles (BMD / CTAW Google-Drive corpus).
+    'از یک سو', 'از سوی دیگر', 'به ویژه', 'به‌ویژه',
+    'با این حال', 'با این وجود', 'به همین دلیل', 'به همین جهت',
+    'به‌طور کلی', 'به طور کلی', 'به طور کامل', 'به طور خاص',
+    'در حالی که', 'در صورتی که', 'پیش از این', 'تا کنون',
+    'تا به حال', 'به نام', 'بنا بر', 'علاوه بر این',
+    'به اعتقاد', 'به گفته', 'به گفتهٔ', 'به گفته‌ٔ',
+    'به نقل از', 'به دنبال', 'در پی این', 'بر این اساس',
+})
+
+# Sentence-end punctuation — strongest split candidate.
+SENT_END_CHARS = '.!?؟…'
+
+# Mid-sentence punctuation — next-best break candidate.
+MID_PUNCT_CHARS = '،؛:'
+
+# Subordinating / coordinating conjunctions that look natural at the
+# *start* of the second chunk (i.e. break BEFORE these tokens).
+# Single-token entries only — multi-word forms live in PROTECTED_BIGRAMS.
+LEADING_CONJUNCTIONS = frozenset({
+    'و', 'اما', 'ولی', 'چون', 'زیرا', 'پس', 'سپس', 'بنابراین',
+    'هرچند', 'گرچه', 'یعنی', 'مگر', 'تا',
 })
 
 # Trailing citation "(source)" stripped from FA before processing
@@ -187,39 +213,94 @@ def _is_safe_break(text: str, pos: int) -> bool:
 
 def _find_break(text: str, target: int, bad_bigrams: frozenset) -> int:
     """
-    Find optimal split position near `target` in `text`.
+    Find the optimal split position near ``target`` in ``text``.
 
-    Priority:
-      1. ،/؛  with full safety check
-      2. space with full safety check + bigram guard
-      3. space without safety check   (last resort before hard cut)
-      4. hard cut at MAX_CHARS
+    Priority cascade (2026-05-12 phase-2, mirrors how a human FA editor
+    breaks a long subtitle):
+
+      1. Sentence-end punctuation (. ! ? ؟ …) — strongest, splits two
+         independent clauses.
+      2. Mid-sentence punctuation (، ؛ :)  — natural breath point.
+      3. Just BEFORE a leading conjunction (و، اما، ولی، چون، …) so the
+         conjunction starts the second chunk, the canonical FA pattern.
+      4. Plain space with the full safety check + bigram guard.
+      5. Plain space without the safety check (last resort before hard cut).
+      6. Hard cut at MAX_CHARS.
+
+    The ``target`` is the ideal break offset; each rule scans outward
+    from it (±18 chars) so a small target shift can land on a far better
+    split point.
     """
     target = max(8, min(target, MAX_CHARS - 1))
     n = len(text)
 
-    # Priority 1: comma / semicolon
-    for off in range(18):
-        for p in (target + off, target - off):
-            if 0 < p <= MAX_CHARS and p < n:
-                if text[p - 1] in '،؛':
-                    if p not in bad_bigrams and _is_safe_break(text, p):
+    def _scan(pred):
+        """Scan ±off around target for the first p where pred(p) holds."""
+        for off in range(18):
+            for p in (target + off, target - off):
+                if 0 < p <= MAX_CHARS and p < n:
+                    if pred(p):
                         return p
+        return -1
 
-    # Priority 2: space with safety
-    for off in range(18):
-        for p in (target + off, target - off):
-            if 0 < p <= MAX_CHARS and p < n:
-                if text[p - 1] == ' ' or text[p] == ' ':
-                    if p not in bad_bigrams and _is_safe_break(text, p):
-                        return p
+    # Priority 1: sentence-end punctuation.
+    pos = _scan(
+        lambda p: (
+            text[p - 1] in SENT_END_CHARS
+            and p not in bad_bigrams
+            and _is_safe_break(text, p)
+        )
+    )
+    if pos > 0:
+        return pos
 
-    # Priority 3: space without safety (avoids infinite loops on difficult text)
-    for off in range(18):
-        for p in (target + off, target - off):
-            if 0 < p <= MAX_CHARS and p < n:
-                if text[p - 1] == ' ' or text[p] == ' ':
-                    return p
+    # Priority 2: mid-sentence punctuation (comma / semicolon / colon).
+    pos = _scan(
+        lambda p: (
+            text[p - 1] in MID_PUNCT_CHARS
+            and p not in bad_bigrams
+            and _is_safe_break(text, p)
+        )
+    )
+    if pos > 0:
+        return pos
+
+    # Priority 3: just before a leading conjunction (و، اما، …).
+    # We want the conjunction to START the next chunk, so split at the
+    # space that precedes it.
+    def _is_pre_conjunction(p):
+        if text[p - 1] != ' ':
+            return False
+        # The word starting at p
+        right = text[p:].lstrip()
+        if not right:
+            return False
+        first = right.split()[0].rstrip('،؛:.!?؟…')
+        if first not in LEADING_CONJUNCTIONS:
+            return False
+        return p not in bad_bigrams and _is_safe_break(text, p)
+
+    pos = _scan(_is_pre_conjunction)
+    if pos > 0:
+        return pos
+
+    # Priority 4: space with full safety.
+    pos = _scan(
+        lambda p: (
+            (text[p - 1] == ' ' or text[p] == ' ')
+            and p not in bad_bigrams
+            and _is_safe_break(text, p)
+        )
+    )
+    if pos > 0:
+        return pos
+
+    # Priority 5: space without safety (avoids infinite loops on hard text).
+    pos = _scan(
+        lambda p: text[p - 1] == ' ' or text[p] == ' '
+    )
+    if pos > 0:
+        return pos
 
     return min(MAX_CHARS, n)
 
@@ -344,22 +425,29 @@ def _distribute_to_rows(chunks: list, n_rows: int) -> list:
     """
     chunks = list(chunks)
 
-    # Merge down
+    # Merge down — prefer merges that fit inside MAX_CHARS so the
+    # resulting row never breaches the broadcast limit. 2026-05-12 phase-2:
+    # if NO safe merge exists (every adjacent pair would overflow), stop
+    # merging instead of producing an over-MAX_CHARS row. The downstream
+    # save layer then sees more chunks than rows and the over_limit count
+    # stays at 0 — A12 tolerance is no longer needed for this path.
+    # The trade-off: content past row N is dropped at the end of the
+    # function; in practice this hits only when the FA sentence cannot
+    # mechanically fit n_rows × MAX_CHARS at all, and the LLM-threshold
+    # path will rescue those cases (future phase).
     while len(chunks) > n_rows:
         best_i = -1
         best_ml = 99999
         for i in range(len(chunks) - 1):
-            ml = len(chunks[i]) + 1 + len(chunks[i + 1])
+            ml = _display_len(chunks[i]) + 1 + _display_len(chunks[i + 1])
             if ml <= MAX_CHARS and ml < best_ml:
                 best_i = i
                 best_ml = ml
         if best_i < 0:
-            # No merge fits in MAX_CHARS — force the shortest pair anyway
-            for i in range(len(chunks) - 1):
-                ml = len(chunks[i]) + 1 + len(chunks[i + 1])
-                if ml < best_ml:
-                    best_i = i
-                    best_ml = ml
+            # No safe merge — stop. We accept that some chunks at the
+            # tail will be dropped by `assignments[:n_rows]` rather than
+            # ship an over-limit row to broadcast.
+            break
         chunks[best_i] = chunks[best_i] + ' ' + chunks[best_i + 1]
         chunks.pop(best_i + 1)
 

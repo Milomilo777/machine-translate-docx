@@ -4108,7 +4108,14 @@ def open_app_docx_file(ctx: RuntimeContext):
     out_path = ctx.flags.word_file_to_translate_save_as_path
     try:
         if platform.system() == 'Windows':
-            subprocess.Popen(["start", "", out_path], shell=True)
+            # A2 (2026-05-12): `Popen(["start", "", path], shell=True)` runs
+            # the cmd parser on `path`, so a docx filename containing `&`,
+            # `|`, `^`, `(`, `)`, double quotes, or other cmd metacharacters
+            # could execute attacker-chosen commands when the user clicks
+            # "Open file". `os.startfile` is the documented Windows
+            # shell-open API: no cmd parser, no shell, the filename is
+            # passed verbatim to ShellExecuteEx.
+            os.startfile(out_path)
         elif platform.system() == "Darwin":  # macOS
             subprocess.Popen(["open", out_path])
         elif platform.system() == "Linux":  # Linux
