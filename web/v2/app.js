@@ -23,6 +23,27 @@
   const MAX_FILES        = 2;
   const MAX_FILE_BYTES   = 50 * 1024 * 1024; // 50 MB
 
+  // A9 (2026-05-12): allow only http(s) absolute URLs or relative paths
+  // before assigning to <a href>. Operator-edited content.json shouldn't
+  // be able to inject a javascript: or data: URL just because the JSON
+  // file was mistakenly populated with one.
+  function safeHref(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return null;
+    if (raw.startsWith('/') || raw.startsWith('./') || raw.startsWith('../') || raw.startsWith('#') || raw.startsWith('?')) {
+      return raw;
+    }
+    try {
+      const parsed = new URL(raw, window.location.origin);
+      if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
+        return parsed.toString();
+      }
+    } catch (e) {
+      // fall through
+    }
+    return null;
+  }
+
   const LS = {
     source:      'v2.savedSourceLang',
     target:      'v2.savedTargetLang',
@@ -818,9 +839,10 @@
     if (title) title.textContent = String(m.title || '');
     if (body)  body.textContent  = String(m.body  || '');
     if (cta) {
-      if (m.cta && m.cta.label && m.cta.url) {
+      const safeCtaUrl = m.cta && m.cta.url ? safeHref(m.cta.url) : null;
+      if (m.cta && m.cta.label && safeCtaUrl) {
         cta.textContent = String(m.cta.label);
-        cta.href        = String(m.cta.url);
+        cta.href        = safeCtaUrl;
         cta.classList.remove('hidden');
       } else {
         cta.classList.add('hidden');
@@ -1024,10 +1046,11 @@
         p.textContent = String(s.summary);
         card.appendChild(p);
       }
-      if (s.link) {
+      const safeStoryLink = safeHref(s.link);
+      if (safeStoryLink) {
         const a = document.createElement('a');
         a.className = 'story-link';
-        a.href = String(s.link);
+        a.href = safeStoryLink;
         a.target = '_blank';
         a.rel = 'noopener';
         a.textContent = 'Read more →';

@@ -171,15 +171,25 @@ def reconcile_line_count(
     if client is None:
         client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
+    # A14 (2026-05-12): share the transient-error retry policy with
+    # translator + polisher. Without this, a transient 5xx becomes
+    # "attempt failed" and routes straight to pad_or_truncate, which
+    # mis-aligns the subtitle column. With call_with_retry, the same
+    # error class gets exponential backoff first.
+    from ._retry import call_with_retry
+
     last_attempt = list(translated_lines)
     for attempt in range(1, max_attempts + 1):
         try:
-            resp = client.chat.completions.create(
-                model=RECONCILER_MODEL,
-                messages=_build_messages(
-                    source_lines, last_attempt, src_lang_name, dest_lang_name,
+            resp = call_with_retry(
+                lambda: client.chat.completions.create(
+                    model=RECONCILER_MODEL,
+                    messages=_build_messages(
+                        source_lines, last_attempt, src_lang_name, dest_lang_name,
+                    ),
+                    extra_body={"prompt_cache_retention": PROMPT_CACHE_RETENTION},
                 ),
-                extra_body={"prompt_cache_retention": PROMPT_CACHE_RETENTION},
+                label=f"reconciler.attempt{attempt}",
             )
             # C-3 (2026-05-11): capture the cost of the reconciler call.
             # Volume is small (only runs on line-count mismatch) but

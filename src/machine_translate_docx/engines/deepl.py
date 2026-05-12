@@ -98,8 +98,18 @@ def selenium_chrome_deepl_log_in(ctx: RuntimeContext):
     size through ``ctx.config`` instead of the historical
     ``json_configuration_array`` / ``MAX_TRANSLATION_BLOCK_SIZE`` globals.
     """
+    # A8 (2026-05-12): environment variables take precedence over the
+    # tracked JSON config so real credentials never have to live in a
+    # committed file. Falls back to configuration.json for backwards-
+    # compatibility with existing local checkouts. Set MTD_DEEPL_EMAIL,
+    # MTD_DEEPL_PASSWORD, and optionally MTD_DEEPL_ENABLED=1 to enable
+    # account-based DeepL.
+    import os as _os
     deepl_account_email_key = ['deepl', 'account', 'email']
-    deepl_account_email = get_nested_value_from_json_array(ctx.config.json_configuration_array, deepl_account_email_key)
+    deepl_account_email = (
+        _os.environ.get("MTD_DEEPL_EMAIL")
+        or get_nested_value_from_json_array(ctx.config.json_configuration_array, deepl_account_email_key)
+    )
     # R-8 (2026-05-11): for stdout printing only, mask everything but
     # the first two chars + the domain so a screen-share / log capture
     # cannot leak the full account. Sign-in itself uses the unmasked
@@ -111,10 +121,17 @@ def selenium_chrome_deepl_log_in(ctx: RuntimeContext):
         _deepl_email_masked = "<no-email>"
 
     deepl_account_password_key = ['deepl', 'account', 'password']
-    deepl_account_password = get_nested_value_from_json_array(ctx.config.json_configuration_array, deepl_account_password_key)
+    deepl_account_password = (
+        _os.environ.get("MTD_DEEPL_PASSWORD")
+        or get_nested_value_from_json_array(ctx.config.json_configuration_array, deepl_account_password_key)
+    )
 
     deepl_account_enabled_key = ['deepl', 'account', 'enabled']
-    deepl_account_enabled = get_nested_value_from_json_array(ctx.config.json_configuration_array, deepl_account_enabled_key)
+    _env_enabled = _os.environ.get("MTD_DEEPL_ENABLED")
+    if _env_enabled is not None:
+        deepl_account_enabled = _env_enabled.strip().lower() in {"1", "true", "yes", "on"}
+    else:
+        deepl_account_enabled = get_nested_value_from_json_array(ctx.config.json_configuration_array, deepl_account_enabled_key)
     
     #ctx.browser.driver.maximize_window()
 

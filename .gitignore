@@ -10,6 +10,13 @@ env/
 .env
 .env.*
 
+# Local secrets / credentials
+# Configuration JSON can legitimately stay tracked as a template, but the
+# *.local.json sibling is for real credentials and must never ship.
+src/configuration/configuration.local.json
+src/configuration/*secret*
+src/configuration/*credentials*
+
 # IDE
 .idea/
 .vscode/

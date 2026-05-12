@@ -49,7 +49,7 @@ local_launcher.py  ────────────────────�
 - Calls translator → polisher → aligner in sequence
 - Prints `Saved file name: {path}` to stdout (local_launcher reads this)
 
-### `src/openai_tools/translator.py`
+### `src/machine_translate_docx/openai_tools/translator.py`
 - `OpenAITranslator` class
 - Loads system prompt from `prompts/translate_{LANG}.txt`
 - `_prompt_lang_code()` maps lang code to prompt file suffix (e.g. `fa` → `PER`)
@@ -57,14 +57,14 @@ local_launcher.py  ────────────────────�
 - Single API call with `prompt_cache_retention: 24h`
 - Supports `gpt-5.x` (chat completions) and `o-pro` (responses API)
 
-### `src/openai_tools/polisher.py`
+### `src/machine_translate_docx/openai_tools/polisher.py`
 - `OpenAIPolisher` class
 - Imports `_prompt_lang_code` from `translator.py`
 - Uses `⟨⟨N⟩⟩` tag format for line markers
 - 4-strategy parser for robust tag extraction
 - `reasoning_effort: high` only when `"mini"` in model name
 
-### `src/openai_tools/aligner_per.py`
+### `src/machine_translate_docx/openai_tools/aligner_per.py`
 - `FASubtitleAligner` class
 - Reads bilingual DOCX table (EN | FA columns)
 - Mechanical pass: splits FA sentences into ≤50-char chunks, distributes as singles/doubles
@@ -115,6 +115,6 @@ Naming convention: `{action}_{ISO_639_2B_code}.txt`
 
 ## Legacy Component
 
-`src/openai_tools/splitting.py` — `OpenAISubtitleSplitter`  
+`src/machine_translate_docx/openai_tools/splitting.py` — `OpenAISubtitleSplitter`  
 Used only when `splitTranslate=true` in the UI. Makes per-phrase API calls.
 Requires MariaDB. Use is discouraged; the aligner pipeline supersedes it.

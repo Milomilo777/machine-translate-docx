@@ -56,7 +56,7 @@ gh pr create \
   `_PER` regardless of which engine produced it.
 - `_Classic` is dead code that still ships.
 - Two web engines (`chatgpt_web`, `perplexity_web`) sit in
-  `src/engines/inactive/`.
+  `src/machine_translate_docx/engines/inactive/`.
 - The cache stores whole docx files, so the user pays for the
   engine again every time they want a different splitter.
 - LLM engines occasionally return wrong line counts; the fallback
@@ -107,7 +107,7 @@ phase 7   remove _Classic everywhere
 phase 8   reactivate chatgpt_web + perplexity_web
 phase 9   rename module aligner_per.py → persian_double_lines.py
 phase 10  copy fixture + add live integration test
-phase 11  build src/openai_tools/line_count_reconciler.py
+phase 11  build src/machine_translate_docx/openai_tools/line_count_reconciler.py
 phase 12  cache UI feedback (cacheHit + splitter_only flag)
 phase 13  end-to-end test all engines
 phase 14  write docs/agent-run-report.md

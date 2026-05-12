@@ -72,6 +72,11 @@ class Flags:
     splitonly:         bool = False
     split_translation: bool = False
     split_engine:      str | None = None
+    # Persian Double Lines aligner LLM threshold (0..100). 0 = mechanical-only
+    # (default, current aligner behaviour). 100 = fully model-driven. Wired
+    # end-to-end from the legacy frontend slider through to FASubtitleAligner;
+    # currently a no-op because the aligner ships purely mechanical.
+    aligner_llm_threshold: int = 0
     with_polish:       bool = False
     showbrowser:       bool = False
     exitonsuccess:     bool = False

@@ -242,7 +242,10 @@ def _append_subscriber(email: str) -> tuple[bool, str]:
 
 # Server-side upload limits
 _MAX_DOCX_UNCOMPRESSED = 50 * 1024 * 1024   # 50 MB total uncompressed entries
+_MAX_DOCX_COMPRESSED   = 20 * 1024 * 1024   # 20 MB max raw POST body
 _DOCX_MAGIC_PK         = b"PK\x03\x04"      # ZIP local file header (DOCX is a ZIP)
+# Required entries inside a real DOCX. Validation rejects ZIPs missing them.
+_DOCX_REQUIRED_PARTS   = ("[Content_Types].xml", "word/document.xml")
 
 # Concurrency cap on real-backend subprocesses. Each subprocess loads
 # python-docx + openai client + tiktoken (≈250-500 MB). Two slots is a
@@ -254,10 +257,12 @@ _job_semaphore       = threading.Semaphore(_MAX_CONCURRENT_JOBS)
 def _validate_docx_payload(payload: bytes) -> str | None:
     """Return None when payload is a safe DOCX, otherwise an error message.
 
-    Two layers:
+    Three layers:
       1. Magic bytes — first four bytes must be ZIP local-file header (PK\\x03\\x04).
       2. Decompressed-size cap — sum of all entries' file_size must stay under
          _MAX_DOCX_UNCOMPRESSED. Defends against zip-bomb DOCX uploads.
+      3. DOCX shape — the archive must contain the required parts so a plain
+         ZIP can't masquerade as a Word document.
     """
     if not payload or not payload.startswith(_DOCX_MAGIC_PK):
         return "File does not look like a DOCX (missing ZIP header)."
@@ -267,6 +272,7 @@ def _validate_docx_payload(payload: bytes) -> str | None:
     try:
         with zipfile.ZipFile(io.BytesIO(payload)) as zf:
             total = 0
+            names = set(zf.namelist())
             for zi in zf.infolist():
                 total += zi.file_size
                 if total > _MAX_DOCX_UNCOMPRESSED:
@@ -274,6 +280,9 @@ def _validate_docx_payload(payload: bytes) -> str | None:
                         f"DOCX uncompressed size exceeds the "
                         f"{_MAX_DOCX_UNCOMPRESSED // (1024 * 1024)} MB limit."
                     )
+            for required in _DOCX_REQUIRED_PARTS:
+                if required not in names:
+                    return f"DOCX is missing required part: {required}"
     except zipfile.BadZipFile:
         return "DOCX file is corrupted or not a valid ZIP archive."
     return None
@@ -891,10 +900,22 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def _send_file(self, file_path: Path, download_name: str) -> None:
-        if not file_path.exists():
+        # A1 (2026-05-12): confine download to uploads_dir. Reject paths
+        # that escape via .., absolute roots, or symlinks pointing outside
+        # uploads_dir. Without this, /download/<name> would happily serve
+        # any file the launcher process can read.
+        try:
+            uploads_root = self.state.uploads_dir.resolve()
+            resolved = file_path.resolve()
+            resolved.relative_to(uploads_root)
+        except (ValueError, OSError):
+            self._send_text("Not found", HTTPStatus.NOT_FOUND)
+            return
+        if not resolved.exists() or not resolved.is_file():
             self._send_text("Not found", HTTPStatus.NOT_FOUND)
             return
 
+        file_path = resolved
         data = file_path.read_bytes()
         self.send_response(HTTPStatus.OK)
         self.send_header(
@@ -1111,7 +1132,30 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
             self._send_text("Not found", HTTPStatus.NOT_FOUND)
             return
 
-        content_length = int(self.headers.get("Content-Length", "0"))
+        # A7 (2026-05-12): reject oversize uploads *before* reading the
+        # body into memory. The DOCX inner-validation already catches
+        # zip-bombs (uncompressed cap), but without a compressed-size cap
+        # we still read N MB into RAM on every request, which is a cheap
+        # DoS surface. The cap matches the smaller of the two limits.
+        try:
+            content_length = int(self.headers.get("Content-Length", "0"))
+        except (TypeError, ValueError):
+            content_length = -1
+        if content_length < 0:
+            self._send_json(
+                {"ok": False, "comment": "Missing or invalid Content-Length."},
+                HTTPStatus.LENGTH_REQUIRED,
+            )
+            return
+        if content_length > _MAX_DOCX_COMPRESSED:
+            self._send_json(
+                {"ok": False, "comment": (
+                    f"Upload exceeds the "
+                    f"{_MAX_DOCX_COMPRESSED // (1024 * 1024)} MB limit."
+                )},
+                HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
+            )
+            return
         body = self.rfile.read(content_length)
         fields, files = _parse_multipart(self.headers, body)
 
@@ -1145,6 +1189,15 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
         translation_engine = fields.get("translationEngine", "google")
         split_engine = fields.get("splitEngine")
         ai_model = fields.get("aiModel")
+        # Aligner LLM threshold (legacy frontend slider, 0..100). Default 0
+        # = mechanical-only (matches today's aligner behaviour). The CLI
+        # passes this through to FASubtitleAligner where it is currently
+        # a no-op; it becomes meaningful when a hybrid aligner is wired.
+        try:
+            aligner_llm_threshold = int(fields.get("alignerLlmThreshold", "0"))
+        except (TypeError, ValueError):
+            aligner_llm_threshold = 0
+        aligner_llm_threshold = max(0, min(100, aligner_llm_threshold))
         enable_sound = fields.get("enableSound")
         sound_select = fields.get("soundSelect")
         split_translate = fields.get("splitTranslate", "false").lower() in {"true", "1", "on", "yes"}
@@ -1202,6 +1255,7 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
                 enable_sound,
                 sound_select,
                 cache_key,
+                aligner_llm_threshold,
             ),
             daemon=True,
         )
@@ -1223,6 +1277,7 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
         enable_sound: str | None,
         sound_select: str | None,
         cache_key: str | None = None,
+        aligner_llm_threshold: int = 0,
     ) -> None:
         _job_t0 = time.time()
         print(f"[job {job_id}] ▶ start — file: {original_name} | lang: {target_language} | engine: {translation_engine}")
@@ -1271,6 +1326,7 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
                 split_engine=split_engine,
                 source_language=source_language,
                 ai_model=ai_model,
+                aligner_llm_threshold=aligner_llm_threshold,
             )
 
             count = _read_int(self.state.count_file, 0) + 1
@@ -1351,6 +1407,7 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
         split_engine: str | None,
         source_language: str,
         ai_model: str | None,
+        aligner_llm_threshold: int = 0,
     ) -> Path:
         engine, extra_flags = self._map_engine(translation_engine)
 
@@ -1400,6 +1457,8 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
             cmd.append("--split")
         if split_engine in ("openai", "persian_double_lines"):
             cmd.extend(["--splitengine", split_engine])
+        if split_engine == "persian_double_lines" and isinstance(aligner_llm_threshold, int):
+            cmd.extend(["--alignerllmthreshold", str(aligner_llm_threshold)])
         if engine == "google":
             cmd.append("--showbrowser")
 
@@ -1997,7 +2056,21 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
         if not clean_path.exists():
             path.rename(clean_path)
         else:
-            path.unlink()  # duplicate — remove timestamped copy
+            # A2 (2026-05-12): the previous code dropped the newly produced
+            # file when a clean-named version already existed and served the
+            # OLD file. That violates the collision-safety rule and could
+            # silently hand the user back yesterday's translation. Preserve
+            # the new file by walking the same `_1`, `_2`, … suffix the CLI
+            # uses on collision.
+            stem  = _re.sub(r'(?i)\.docx$', '', clean)
+            ext   = clean[len(stem):]   # preserves original case (.docx / .DOCX)
+            idx   = 1
+            candidate = clean_path.with_name(f"{stem}_{idx}{ext}")
+            while candidate.exists():
+                idx += 1
+                candidate = clean_path.with_name(f"{stem}_{idx}{ext}")
+            path.rename(candidate)
+            clean_path = candidate
 
         # Mirror the rename onto the JSON sidecar if one exists.
         sidecar_old = path.with_name(_re.sub(r"(?i)\.docx$", "_log.json", path.name))

@@ -98,6 +98,26 @@
               <option id="openai-split-option" value="openai">OpenAI API</option>
               <option id="persian-double-lines-split-option" value="persian_double_lines">Persian Double Lines</option>
             </select>
+            <div id="alignerThresholdRow" class="mb-3 hidden">
+              <label for="alignerLlmThreshold" class="block mb-1 text-sm text-gray-600">
+                Persian Double Lines — Aligner LLM Threshold:
+                <span id="alignerLlmThresholdValue" class="font-mono text-gray-800">0</span>
+              </label>
+              <input type="range" id="alignerLlmThreshold" name="alignerLlmThreshold"
+                     min="0" max="100" step="1" value="0" class="w-full" />
+              <div class="flex justify-between text-xs text-gray-500">
+                <span>0 — pure mechanical (no model)</span>
+                <span>100 — model-driven</span>
+              </div>
+              <p class="text-xs text-gray-500 mt-1">
+                The aligner ships as a pure-mechanical Persian doubler today;
+                this dial is wired end-to-end and stored on the run, but the
+                current aligner ignores the value. When a hybrid mechanical +
+                LLM aligner is added, 0 stays mechanical and 100 will hand
+                every decision to the model. Default 0 matches today's
+                behaviour.
+              </p>
+            </div>
           </div>
 		  
           <div class="flex py-2 mb-2 items-center space-x-2">
@@ -432,6 +452,14 @@
           splitSection.style.display = '';
         }
 
+        // Aligner LLM threshold row: only meaningful when the active split
+        // method is persian_double_lines. Hidden otherwise.
+        const alignerRow = document.getElementById('alignerThresholdRow');
+        if (alignerRow) {
+          const isPDL = splitSel && splitSel.value === 'persian_double_lines';
+          alignerRow.classList.toggle('hidden', !isPDL);
+        }
+
         // Apply language-specific default engine — only on language change (setDefault=true).
         // Never runs when called from an engine-change or page-restore event,
         // so the user's explicit choice is never overridden.
@@ -694,6 +722,11 @@
         formData.append('translationEngine', translationEngine);
         formData.append('splitTranslate',    splitTranslate);
         if (splitTranslate) formData.append('splitEngine', splitEngine);
+        if (splitTranslate && splitEngine === 'persian_double_lines') {
+          const thrEl = document.getElementById('alignerLlmThreshold');
+          const thr   = thrEl ? Number(thrEl.value) : 0;
+          formData.append('alignerLlmThreshold', String(thr));
+        }
         if (aiModel)        formData.append('aiModel', aiModel);
 
         try {
@@ -803,6 +836,23 @@
 
       // ------- Expose sendToServer to window if needed elsewhere -------
       window.sendToServer = sendToServer;
+
+      // ------- Aligner LLM threshold slider wiring -------
+      const _alignerSlider = document.getElementById('alignerLlmThreshold');
+      const _alignerValueEl = document.getElementById('alignerLlmThresholdValue');
+      const _alignerRow = document.getElementById('alignerThresholdRow');
+      const _splitSel   = document.getElementById('splitEngine');
+      if (_alignerSlider && _alignerValueEl) {
+        _alignerSlider.addEventListener('input', function () {
+          _alignerValueEl.textContent = String(_alignerSlider.value);
+        });
+      }
+      if (_splitSel && _alignerRow) {
+        _splitSel.addEventListener('change', function () {
+          const isPDL = _splitSel.value === 'persian_double_lines';
+          _alignerRow.classList.toggle('hidden', !isPDL);
+        });
+      }
 
     }); // end DOMContentLoaded
     </script>

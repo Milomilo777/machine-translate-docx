@@ -314,15 +314,34 @@ def save_docx_file(
             # is safe — python-docx loads into memory before saving.
             _split_engine = getattr(ctx.flags, "split_engine", None)
             if _split_engine == "persian_double_lines":
-                try:
-                    from ..openai_tools.persian_double_lines import FASubtitleAligner
-                    aligner = FASubtitleAligner()
-                    out_path = ctx.flags.word_file_to_translate_save_as_path
-                    stats = aligner.align(out_path, out_path)
-                    print(f"[INFO] FASubtitleAligner applied: {stats}")
-                except Exception as _aligner_exc:
-                    print(f"[WARN] FASubtitleAligner failed: {_aligner_exc!r}")
-        except Exception:
+                # A3 / A12 (2026-05-12): aligner failure or any
+                # over-limit row is a job failure, not a warning. The
+                # output file name carries `_Double_Lines`, so silently
+                # falling back to single-line FA would hand the user a
+                # mislabelled file. Raise so the CLI surfaces [FAIL].
+                from ..openai_tools.persian_double_lines import FASubtitleAligner
+                _aligner_llm_threshold = getattr(
+                    ctx.flags, "aligner_llm_threshold", 0
+                )
+                aligner = FASubtitleAligner(llm_threshold=_aligner_llm_threshold)
+                out_path = ctx.flags.word_file_to_translate_save_as_path
+                stats = aligner.align(out_path, out_path)
+                print(f"[INFO] FASubtitleAligner applied: {stats}")
+                _over = int(stats.get("over_limit", 0) or 0) if isinstance(stats, dict) else 0
+                if _over > 0:
+                    from ..exceptions import TranslationFailure
+                    raise TranslationFailure(
+                        f"FA aligner produced {_over} row(s) over MAX_CHARS — "
+                        "broadcast subtitle limit violated.",
+                        reason="aligner_over_limit",
+                    )
+        except Exception as _exc:
+            # A3 / A12 (2026-05-12): structured pipeline failures (e.g.
+            # aligner over-limit, future aligner exceptions) must bubble
+            # up to the CLI's [FAIL] handler — never loop the retry.
+            from ..exceptions import TranslationFailure
+            if isinstance(_exc, TranslationFailure):
+                raise
             print(traceback.format_exc())
             if not silent:
                 input(

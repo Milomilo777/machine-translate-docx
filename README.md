@@ -79,7 +79,7 @@ Both frontends share the same backend.
 For one-shot CLI use:
 
 ```bash
-python src/machine_translate_docx.py \
+PYTHONPATH=src python -m machine_translate_docx.cli \
     --docxfile your_file.docx \
     --srclang en --destlang fa \
     --engine chatgpt --enginemethod api \

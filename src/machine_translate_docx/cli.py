@@ -364,6 +364,13 @@ def _get_ctx() -> RuntimeContext:
             _ctx.flags.split_engine = split_engine
         except (NameError, AttributeError):
             pass
+        # 2026-05-12 — aligner_llm_threshold snapshot. 0..100 slider from
+        # the legacy frontend. Stored on ctx.flags so save.py can pass it
+        # to FASubtitleAligner. Currently a no-op (aligner is mechanical).
+        try:
+            _ctx.flags.aligner_llm_threshold = getattr(args, "alignerllmthreshold", 0)
+        except (NameError, AttributeError):
+            pass
         # 2026-05-10 G1 — docxdoc + use_html snapshot for the upcoming
         # docx_io.parse / docx_io.cells extraction.
         try:
@@ -683,6 +690,8 @@ parser.add_argument('--destfont', '-f', required = False, help="Destination font
 parser.add_argument('--useapi', '-a', required = False, help="Use api to get translation, lower quality but faster", action='store_true')
 parser.add_argument('--split', '-s', required = False, help="Split web translation into cells", action='store_true')
 parser.add_argument('--splitengine', '-p', required = False, help="Specify split engine (openai | persian_double_lines)")
+parser.add_argument('--alignerllmthreshold', required=False, type=int, default=0,
+    help="Persian Double Lines aligner LLM threshold (0..100). 0=mechanical-only (default, current behaviour); 100=fully model-driven. Currently a no-op; reserved for hybrid aligner.")
 parser.add_argument('--splitonly', required = False, help="Split translation into lines only, do not translate.", action='store_true')
 parser.add_argument('--showbrowser', '-b', required = False, help="Show browser", action='store_true')
 parser.add_argument('--exitonsuccess', '-t', required = False, help="Exit progream on success", action='store_true')
