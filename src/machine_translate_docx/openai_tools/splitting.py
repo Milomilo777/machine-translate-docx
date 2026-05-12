@@ -53,7 +53,7 @@ class OpenAISubtitleSplitter:
             print(f"[Warning] Failed to save document info: {e}")
         finally:
             try: cursor.close(); conn.close()
-            except: pass
+            except Exception: pass
 
     def get_db_connection(self):
         return mysql.connector.connect(**self.db_config)
@@ -139,77 +139,77 @@ class OpenAISubtitleSplitter:
             "total_cost_usd":    round(total_cost, 6),
         }
 
+    # Static instructional block — placed in the `system` message so the
+    # 24-hour prompt cache picks it up. Source/target language names and the
+    # required N value travel via the `user` message; the system half stays
+    # byte-identical across all calls. (A2 fix, 2026-05-12.)
+    _SYSTEM_PROMPT = (
+        "You are an elite video subtitle editor and line-splitter. You will\n"
+        "receive a subtitle source text in one language and its translation\n"
+        "in another, and you must re-emit the translation broken into the\n"
+        "exact number of lines requested.\n\n"
+
+        "Rules:\n"
+        "1. Top priority: each output line of the translation aligns with the\n"
+        "   matching source line when viewed side by side.\n"
+        "2. Each source line maps to exactly one output line.\n"
+        "3. Do not change any words, punctuation, or symbols in the\n"
+        "   translation. Preserve emails, URLs, symbols, and emojis verbatim.\n"
+        "4. Only if strict alignment is impossible due to grammar / phrasing,\n"
+        "   apply professional subtitle line-splitting rules in the target\n"
+        "   language:\n"
+        "     - Keep grammatical units together (pronoun+verb, subject+verb,\n"
+        "       auxiliary+main verb, verb+object, article+noun, prep+object).\n"
+        "     - Prefer breaks at natural pauses, commas, conjunctions, or\n"
+        "       between clauses.\n"
+        "     - Do not split fixed expressions, names, phrasal verbs, idioms.\n"
+        "     - Avoid leaving short function words alone.\n"
+        "     - Maintain readability; keep line lengths roughly balanced,\n"
+        "       but prioritise meaning and alignment.\n"
+        "5. Output format:\n"
+        "     - Output only the translation text in the target language.\n"
+        "     - Use exactly N lines (N is given in the user message).\n"
+        "     - Insert line breaks only — no paraphrasing, numbering,\n"
+        "       labels, or extra formatting.\n\n"
+
+        "CRITICAL:\n"
+        "- You MUST emit exactly N lines.\n"
+        "- If natural splitting is impossible, duplicate or break\n"
+        "  arbitrarily — never return fewer or more lines.\n\n"
+
+        "Worked example (English → French, N=2):\n"
+        "  English source:\n"
+        "    I really enjoyed the movie\n"
+        "    and the amazing soundtrack.\n"
+        "  French translation (single line):\n"
+        "    J'ai vraiment apprécié le film et la bande-son incroyable.\n"
+        "  Correct 2-line output:\n"
+        "    J'ai vraiment apprécié le film\n"
+        "    et la bande-son incroyable.\n"
+    )
+
     @staticmethod
     def build_subtitle_splitter_prompt(source_lang, dest_lang, source_text, translation):
+        """Return *only the user-message payload* — all static instructional
+        text now lives in :data:`OpenAISubtitleSplitter._SYSTEM_PROMPT`.
+
+        Kept as a static method so external callers (and the per-line counter
+        below) keep their old API; nothing should rely on the previous
+        single-string return shape (it was only consumed by ``split_phrase``).
+        """
         lines = source_text.split("\n")
         numbered_lines = [f"Input line {i+1}: {line}" for i, line in enumerate(lines)]
         numbered_text = "\n".join(numbered_lines)
-   
-        prompt = (
-            f"You are an elite video subtitle editor. You are given a subtitle text in {source_lang} (source language) and its translation in {dest_lang} (target language).\n\n"
-            
-            f"Task:\n"
-            
-            f"1. Your top priority is that each line in the {dest_lang} translation matches the {source_lang} source line-by-line as closely as possible when viewed side by side.\n"
-            f"2. Each line in the {source_lang} source must correspond to exactly one line in the {dest_lang} output.\n"
-            f"3. Do not change any words, punctuation, or symbols in the {dest_lang} translation.\n"
-            f"4. Preserve all elements such as emails, URLs, symbols, or emojis exactly as they appear in the original {dest_lang} translation.\n\n"
-            
-            f"5. Only if strict alignment is impossible due to grammar or phrasing differences, apply professional subtitle line-splitting rules for {dest_lang}:\n"
-            f"   - Keep grammatical units together (pronouns + verbs, subject + verb, auxiliary + main verb, verb + object, article + noun, preposition + object).\n"
-            f"   - Prefer breaking at natural pauses, commas, conjunctions, or between clauses.\n"
-            f"   - Do not split fixed expressions, names, phrasal verbs, or idioms.\n"
-            f"   - Avoid leaving short words alone (e.g., 'a', 'the', 'to', 'of').\n"
-            f"   - Maintain readability and natural flow.\n"
-            f"   - Keep line lengths roughly balanced but prioritize meaning and alignment with the source.\n\n"
-            
-            f"6. Output requirements:\n"
-            f"   - Output only the {dest_lang} text.\n"
-            f"   - Use exactly {len(lines)} lines, matching the {source_lang} source line count.\n"
-            f"   - Insert line breaks only; no paraphrasing, numbering, labels, or extra formatting.\n\n"
-            
-            f"CRITICAL:\n"
-            f"- You MUST output exactly {len(lines)} lines.\n"
-            f"- If you cannot split naturally, duplicate or break arbitrarily.\n"
-            f"- Never return fewer or more lines.\n"
-            
+
+        return (
+            f"Source language: {source_lang}\n"
+            f"Target language: {dest_lang}\n"
+            f"N = {len(lines)}  (emit exactly this many lines)\n\n"
             f"{source_lang} source ({len(lines)} lines):\n"
             f"{numbered_text}\n\n"
-            
             f"{dest_lang} translation:\n"
-            f"{translation}\n\n"
-            
-            f"Expected output:\n"
-            f"Split the {dest_lang} text into {len(lines)} lines.\n"
-            f"Prioritize exact line alignment with the {source_lang} source.\n"
-            f"Only apply subtitle readability rules when strict alignment is impossible.\n\n"
-            
-            f"Example:\n\n"
-            
-            f"English source:\n"
-            f"I really enjoyed the movie\n"
-            f"and the amazing soundtrack.\n\n"
-            
-            f"French translation:\n"
-            f"J'ai vraiment apprécié le film et la bande-son incroyable.\n\n"
-            
-            f"Correct 2-line output:\n"
-            f"J'ai vraiment apprécié le film\n"
-            f"et la bande-son incroyable."
+            f"{translation}\n"
         )
-
-        # ─────────────────────────────────────────────
-        # Persian-specific rules
-        # ─────────────────────────────────────────────
-        #if dest_lang.lower() == "persian":
-        #    prompt = (
-        #        f"<ID>\n"
-        #    )
-        # ─────────────────────────────────────────────
-        # Text payload
-        # ─────────────────────────────────────────────
-
-        return prompt
 
     def split_phrase(self, source_lang, dest_lang, source_text, translation):
         # Auto-create doc ID & filename if missing
@@ -227,22 +227,20 @@ class OpenAISubtitleSplitter:
 
         _cache_extra = {"prompt_cache_retention": "24h"}
         start_time = time.time()
+        _messages = [
+            {"role": "system", "content": self._SYSTEM_PROMPT},
+            {"role": "user",   "content": prompt},
+        ]
         if "pro" in self.model:
             response = self.client.responses.create(
                 model=self.model,
-                input=[
-                    {"role": "system", "content": "You are a professional subtitle translator line splitting assistant."},
-                    {"role": "user", "content": prompt}
-                ],
+                input=_messages,
                 extra_body=_cache_extra,
             )
         else:
             response = self.client.chat.completions.create(
                 model=self.model,
-                messages=[
-                    {"role": "system", "content": "You are a professional subtitle translator line splitting assistant."},
-                    {"role": "user", "content": prompt}
-                ],
+                messages=_messages,
                 extra_body=_cache_extra,
             )
         elapsed_time = time.time() - start_time
@@ -306,6 +304,6 @@ class OpenAISubtitleSplitter:
             print(f"[Warning] Failed to save query info: {e}")
         finally:
             try: cursor.close(); conn.close()
-            except: pass
+            except Exception: pass
 
         return response, out_lines

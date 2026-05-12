@@ -37,11 +37,23 @@ def prompt_hash(text: str) -> str:
 try:
     from openai import (
         APIConnectionError,
+        APIError,
         APITimeoutError,
         BadRequestError,
+        InternalServerError,
         RateLimitError,
     )
-    _RETRYABLE: tuple = (RateLimitError, APIConnectionError, APITimeoutError)
+    # A4 (2026-05-12): treat transient 5xx (InternalServerError, generic
+    # APIError used for 502/503) the same as connection / timeout / rate
+    # errors — they recover on retry. BadRequestError stays non-retryable
+    # (a bug in our request, not the server).
+    _RETRYABLE: tuple = (
+        RateLimitError,
+        APIConnectionError,
+        APITimeoutError,
+        InternalServerError,
+        APIError,
+    )
     _NON_RETRYABLE: tuple = (BadRequestError,)
 except ImportError:                               # openai not installed in this env
     _RETRYABLE = ()
