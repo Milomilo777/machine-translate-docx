@@ -450,8 +450,14 @@ class LocalState:
         return job_id
 
     def update_job(self, job_id: str, **changes) -> None:
+        # C3 (internal audit 2026-05-13): the cancellation path can pop
+        # a job mid-flight; a late `update_job` from the stdout reader
+        # thread then KeyError'd and killed that thread. Guard with
+        # `.get` so a stale update is a silent no-op.
         with self.lock:
-            job = self.jobs[job_id]
+            job = self.jobs.get(job_id)
+            if job is None:
+                return
             self.jobs[job_id] = Job(**{**asdict(job), **changes})
 
     def get_job(self, job_id: str) -> Job | None:

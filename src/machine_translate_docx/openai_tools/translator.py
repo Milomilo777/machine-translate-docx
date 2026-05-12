@@ -120,7 +120,7 @@ class OpenAITranslator:
             print(f"[Warning] Failed to save document info: {e}")
         finally:
             try: cursor.close(); conn.close()
-            except: pass
+            except Exception: pass
 
     def get_db_connection(self):
         return mysql.connector.connect(**self.db_config)
@@ -403,7 +403,7 @@ class OpenAITranslator:
                 print(f"[Warning] Failed to save query info: {e}")
             finally:
                 try: cursor.close(); conn.close()
-                except: pass
+                except Exception: pass
 
         self.last_call_data = {
             "type":            "translate",

@@ -218,11 +218,20 @@ class OpenAISubtitleSplitter:
             #self.set_filename("inline_text")
 
         prompt = self.build_subtitle_splitter_prompt(source_lang, dest_lang, source_text, translation)
-        print("prompt:")
-        print(prompt)
-        #input("wait")
-
         input_tokens = self.estimate_tokens(prompt)
+        # C2 (internal audit 2026-05-13): payload logging gated like
+        # translator.py + polisher.py. Default = summary only; full
+        # prompt requires MTD_DEBUG_PAYLOADS=1.
+        import os as _os
+        if _os.environ.get("MTD_DEBUG_PAYLOADS") == "1":
+            print("prompt:")
+            print(prompt)
+        else:
+            _lc = source_text.count("\n") + 1
+            print(
+                f"[INFO] Splitter input: ~{_lc} source lines, "
+                f"est. {input_tokens} tokens"
+            )
         print(f"Estimated number of input tokens: {input_tokens}")
 
         _cache_extra = {"prompt_cache_retention": "24h"}
@@ -246,9 +255,18 @@ class OpenAISubtitleSplitter:
         elapsed_time = time.time() - start_time
         response_json = response.model_dump()
 
-        print("response:")
-        print(json.dumps(response_json, indent=4))
-        print("--end of response--")
+        # C2 (internal audit 2026-05-13): same env-gate as translator.
+        if _os.environ.get("MTD_DEBUG_PAYLOADS") == "1":
+            print("response:")
+            print(json.dumps(response_json, indent=4))
+            print("--end of response--")
+        else:
+            _u = response_json.get("usage") or {}
+            print(
+                f"[INFO] Splitter response: model={response_json.get('model', self.model)}, "
+                f"prompt={_u.get('prompt_tokens', '?')}, "
+                f"completion={_u.get('completion_tokens', '?')}"
+            )
 
         cost_info = self.calculate_openai_cost(response_json)
 

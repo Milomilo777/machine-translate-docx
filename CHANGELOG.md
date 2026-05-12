@@ -6,6 +6,31 @@
 
 ---
 
+## 2026-05-13 — Internal deep audit (post-Jules / Antigravity / Codex)
+
+Independent fifth audit pass run by Claude Opus 4.7 against the
+improved prompt at `docs/audit-prompt-v2-2026-05-13.md`. Full report:
+[`docs/internal-audit-2026-05-13.md`](docs/internal-audit-2026-05-13.md).
+
+Three new defects found and fixed in the same commit:
+
+  - **C1** bare `except:` in `translator.py:123` and `:406` (left over
+    from the Codex A3 cleanup that only touched `splitting.py`).
+  - **C2** payload logging in `splitting.py:221-251` was not env-gated
+    like `translator.py` / `polisher.py` after Antigravity-deep B5.
+    Same `MTD_DEBUG_PAYLOADS=1` gate added.
+  - **C3** `update_job` raised `KeyError` when a status update arrived
+    after `cancel_job` had popped the entry — silently killed the
+    stdout-reader thread. Guarded with `dict.get`.
+
+Verdict (cumulative across all 5 audit passes): codebase is solid
+for production use of the `chatgpt-polish` + `persian_double_lines`
+pipeline. The architecture roadmap (`cli.py` monolith, launcher
+monolith, `_sync_globals_from_ctx` bridge) is the next big lever,
+scheduled but not blocking. No open critical or high-severity defect.
+
+---
+
 ## Project shape (current)
 
 ```
