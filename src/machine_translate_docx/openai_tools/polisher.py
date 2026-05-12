@@ -309,6 +309,16 @@ class OpenAIPolisher:
         usage = response_json.get("usage") or {}
         ptd   = usage.get("prompt_tokens_details") or {}
 
+        # A10 (2026-05-12): the prior "refined N lines" log counted lines
+        # **processed**, not lines **changed** — which gave a green
+        # "refined 51 lines" log on a run where the diff later showed zero
+        # changes (F8). Count modifications now, and surface a quality
+        # warning when the polish pass barely moved anything for a Persian
+        # chatgpt-polish job.
+        _lines_modified = sum(
+            1 for a, b in zip(fa_lines, polished_lines) if a != b
+        )
+
         self.last_call_data = {
             "type":           "polish",
             "model":          self.model,
@@ -319,6 +329,8 @@ class OpenAIPolisher:
             "input_fa_text":  translated_text,
             "output_text":    "\n".join(polished_lines),
             "en_residue":     residue_lines,
+            "lines_processed":  n,
+            "lines_modified":   _lines_modified,
             "tokens": {
                 "prompt":     usage.get("prompt_tokens", 0),
                 "completion": usage.get("completion_tokens", 0),
@@ -329,7 +341,20 @@ class OpenAIPolisher:
             "elapsed_seconds": round(elapsed, 3),
         }
 
-        print(f"[INFO] Polisher: {n} lines refined in {elapsed:.1f}s (model={self.model})")
+        # Warn when polish was effectively a no-op on a real document.
+        # Threshold 2 % of lines is generous — anything lower is unusual
+        # and almost always means a prompt-content mismatch (F6).
+        if n >= 20 and _lines_modified / max(n, 1) < 0.02:
+            print(
+                f"[WARN] Polisher: only {_lines_modified}/{n} lines changed "
+                f"(<2 %) — polish pass likely ineffective for this document. "
+                "Review prompts/polish_PER.txt sensitivity (F6)."
+            )
+
+        print(
+            f"[INFO] Polisher: {n} lines processed, {_lines_modified} "
+            f"modified, in {elapsed:.1f}s (model={self.model})"
+        )
         return "\n".join(polished_lines)
 
     def _estimate_cost(self, response_json: dict) -> float:
