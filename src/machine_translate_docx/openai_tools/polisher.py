@@ -195,6 +195,14 @@ class OpenAIPolisher:
                 f"[WARN] Polisher: line count mismatch "
                 f"src={len(src_lines)} fa={n} — skipping polish, returning original."
             )
+            self.last_call_data = {
+                "type":           "polish",
+                "model":          self.model,
+                "polish_skipped": True,
+                "skipped_reason": "line_count_mismatch_input",
+                "lines_processed": n,
+                "lines_modified":  0,
+            }
             return translated_text
 
         user_content = (
@@ -263,8 +271,20 @@ class OpenAIPolisher:
                     label="polisher.chat.completions.create",
                 )
         except Exception as e:
+            # B8 (audit 2026-05-13): structured failure signal. Caller and
+            # sidecar JSON can now check last_call_data["polish_skipped"]
+            # to know the polish pass didn't run, instead of inferring it
+            # from the absence of token counts.
             print(f"[ERROR] Polisher API call failed: {e} — returning original translation.")
-            self.last_call_data = {"error": str(e)}
+            self.last_call_data = {
+                "type":           "polish",
+                "model":          self.model,
+                "error":          str(e),
+                "polish_skipped": True,
+                "skipped_reason": "api_error",
+                "lines_processed": n,
+                "lines_modified":  0,
+            }
             return translated_text
 
         elapsed       = time.time() - t0
@@ -294,6 +314,14 @@ class OpenAIPolisher:
                 f"[WARN] Polisher: output line count {len(polished_lines)} != {n} "
                 f"— returning original translation."
             )
+            self.last_call_data = {
+                "type":           "polish",
+                "model":          self.model,
+                "polish_skipped": True,
+                "skipped_reason": "line_count_mismatch_output",
+                "lines_processed": n,
+                "lines_modified":  0,
+            }
             return translated_text
 
         # English-residue scan: any line that came back as English (or mostly

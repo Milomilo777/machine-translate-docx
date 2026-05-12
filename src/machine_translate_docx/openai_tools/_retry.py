@@ -18,6 +18,7 @@ stays consistent across the three OpenAI callers.
 from __future__ import annotations
 
 import hashlib
+import random
 import time
 from typing import Callable, TypeVar
 
@@ -62,21 +63,29 @@ except ImportError:                               # openai not installed in this
 
 T = TypeVar("T")
 
-MAX_RETRIES   = 3       # total attempts: 1 initial + (MAX_RETRIES - 1) retries
+# Total attempts = 1 initial + (MAX_RETRIES - 1) retries.
+# 5 (audit B4, 2026-05-13): bumped from 3 to give transient 5xx more
+# room — a 30-minute polish was failing on a 7-second 502 blip.
+MAX_RETRIES   = 5
 BASE_DELAY_S  = 1.0
+MAX_DELAY_S   = 30.0
 
 
 def call_with_retry(fn: Callable[[], T], *, label: str = "openai") -> T:
-    """Invoke `fn` and retry transient OpenAI failures with exponential backoff.
+    """Invoke `fn` and retry transient OpenAI failures with exponential backoff
+    + full jitter.
 
     `fn` must be a zero-argument callable that performs exactly one API call
     and returns its result. Wrap your client call in a lambda or local def.
 
+    Backoff (B3, 2026-05-13): full jitter — ``delay = uniform(0, base * 2^n)``
+    capped at MAX_DELAY_S. Prevents retry-herd collisions when several jobs
+    hit a rate-limit window simultaneously.
+
     Raises:
         BadRequestError (and other non-retryable openai errors) immediately.
         Any other exception type also bubbles up immediately.
-        The last RateLimitError / APIConnectionError / APITimeoutError if all
-        retries are exhausted.
+        The last retryable error if all attempts are exhausted.
     """
     last_exc: Exception | None = None
     for attempt in range(MAX_RETRIES):
@@ -88,10 +97,13 @@ def call_with_retry(fn: Callable[[], T], *, label: str = "openai") -> T:
             last_exc = exc
             if attempt == MAX_RETRIES - 1:
                 break
-            delay = BASE_DELAY_S * (2 ** attempt)  # 1 s, 2 s, 4 s
+            # Full jitter — uniform between 0 and the exponential ceiling.
+            ceiling = min(BASE_DELAY_S * (2 ** attempt), MAX_DELAY_S)
+            delay   = random.uniform(0, ceiling)
             print(
                 f"[RETRY] {label}: {type(exc).__name__} on attempt "
-                f"{attempt + 1}/{MAX_RETRIES} — sleeping {delay:.0f}s"
+                f"{attempt + 1}/{MAX_RETRIES} — sleeping {delay:.1f}s "
+                f"(jittered ceiling {ceiling:.0f}s)"
             )
             time.sleep(delay)
     assert last_exc is not None

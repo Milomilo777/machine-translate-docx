@@ -881,12 +881,41 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
         # Keep the console readable. The launcher prints its own status lines.
         print(f"[http] {self.address_string()} - {fmt % args}")
 
+    def _send_security_headers(self) -> None:
+        """B14 (audit 2026-05-13): defence-in-depth response headers.
+
+        These reduce the blast radius of a future XSS or supply-chain
+        compromise. They do not fix any current vulnerability; they
+        just prevent a hypothetical malicious script from exfiltrating
+        upload names, framing the launcher inside an iframe, or
+        guessing content-type to bypass MIME sniffing.
+        """
+        # The v2 SPA loads its CSS inline (Tailwind) and its JS from /v2/app.js
+        # on the same origin. CDN audio files (Pixabay) play via the existing
+        # frontend audio element — `media-src` opens that exact case. The
+        # WebSocket-free architecture means no `connect-src` exemption needed
+        # beyond same-origin.
+        self.send_header(
+            "Content-Security-Policy",
+            "default-src 'self'; "
+            "script-src 'self'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data:; "
+            "media-src 'self' https://cdn.pixabay.com; "
+            "connect-src 'self'; "
+            "frame-ancestors 'none'",
+        )
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
+
     def _send_json(self, payload: dict, status: int = 200) -> None:
         data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "no-store")
+        self._send_security_headers()
         self.end_headers()
         self.wfile.write(data)
 
@@ -896,6 +925,7 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "no-store")
+        self._send_security_headers()
         self.end_headers()
         self.wfile.write(data)
 
@@ -925,6 +955,7 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Content-Disposition", f'attachment; filename="{download_name}"')
         self.send_header("Cache-Control", "no-store")
+        self._send_security_headers()
         self.end_headers()
         self.wfile.write(data)
 
@@ -949,6 +980,7 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
             self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate")
             self.send_header("Pragma", "no-cache")
             self.send_header("Expires", "0")
+            self._send_security_headers()
             self.end_headers()
             self.wfile.write(self.index_html.encode("utf-8"))
             return
@@ -1053,6 +1085,7 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
                 self.send_response(HTTPStatus.OK)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.send_header("Cache-Control", "no-store")
+                self._send_security_headers()
                 self.end_headers()
                 self.wfile.write(data.encode("utf-8"))
             else:
@@ -1077,6 +1110,7 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
                 self.send_header("Content-Type", ctype or "application/octet-stream")
                 self.send_header("Content-Length", str(asset.stat().st_size))
                 self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
+                self._send_security_headers()
                 self.end_headers()
                 self.wfile.write(asset.read_bytes())
                 return

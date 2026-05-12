@@ -248,10 +248,22 @@ class OpenAITranslator:
         system_prompt = self._load_system_prompt(source_lang, dest_lang)
         user_message  = self._build_user_message(text_to_translate)
 
-        print("user_message:")
-        print(user_message)
-
+        # B5 (audit 2026-05-13): full user payload only goes to stdout when
+        # `MTD_DEBUG_PAYLOADS=1` is set. By default we emit a redacted summary
+        # — line count, first-line sample, token estimate — so production
+        # logs don't archive subtitle content and Telegram failure alerts
+        # don't accidentally exfiltrate document text.
         input_tokens = self.estimate_tokens(system_prompt + user_message)
+        if os.environ.get("MTD_DEBUG_PAYLOADS") == "1":
+            print("user_message:")
+            print(user_message)
+        else:
+            _first_line = lines[0] if lines else ""
+            _sample = _first_line[:80] + ("…" if len(_first_line) > 80 else "")
+            print(
+                f"[INFO] Translator input: {n} lines, est. {input_tokens} tokens. "
+                f"First line: {_sample!r}"
+            )
         print(f"Estimated number of input tokens: {input_tokens}")
 
         start_time = time.time()
@@ -317,9 +329,21 @@ class OpenAITranslator:
                 "completion_tokens_details": _raw_usage.get("output_tokens_details", {}),
             }
 
-        print("response:")
-        print(json.dumps(response_json, indent=4))
-        print("--end of response--")
+        # B5 (audit 2026-05-13): full response JSON only when explicitly
+        # asked for. Default: usage + cost summary only.
+        if os.environ.get("MTD_DEBUG_PAYLOADS") == "1":
+            print("response:")
+            print(json.dumps(response_json, indent=4))
+            print("--end of response--")
+        else:
+            _u = response_json.get("usage") or {}
+            print(
+                f"[INFO] Translator response: model={response_json.get('model', self.model)}, "
+                f"prompt={_u.get('prompt_tokens', '?')} (cached "
+                f"{(_u.get('prompt_tokens_details') or {}).get('cached_tokens', 0)}), "
+                f"completion={_u.get('completion_tokens', '?')}, "
+                f"total={_u.get('total_tokens', '?')}"
+            )
 
         cost_info = self.calculate_openai_cost(response_json)
 
@@ -334,14 +358,20 @@ class OpenAITranslator:
         out_lines = translated_text.split("\n")
 
         if len(in_lines) != len(out_lines):
-            print("[WARNING] Line count mismatch!")
-            print(f"Input lines: {len(in_lines)}, Output lines: {len(out_lines)}")
-            out_lines = "\n".join(out_lines)
-            if len(out_lines) > len(in_lines):
-                print("Error in openai translation, too many lines")
-            else:
-                print("Error in openai translation, too few lines")
-            translated_text = out_lines
+            # B6 (audit 2026-05-13): single-call mode routes through the
+            # reconciler in chatgpt_api.py — that path is unaffected. The
+            # per-block path lands here. We surface the mismatch loudly so
+            # downstream (cell writer) sees the structural risk in stdout,
+            # but still hand back the raw output to preserve the legacy
+            # contract (some callers fix this themselves via reconciler).
+            # The next refactor will lift this into a structured
+            # TranslationFailure that the launcher can flag.
+            print(
+                f"[WARNING] Line count mismatch — "
+                f"input={len(in_lines)} output={len(out_lines)}. "
+                f"Downstream MUST reconcile; raw output retained for now."
+            )
+            translated_text = "\n".join(out_lines)
 
         # Save query record (only when DB persistence is enabled)
         if self.db_enabled:

@@ -139,7 +139,8 @@ def reconcile_line_count(
     src_lang_name:   str,
     dest_lang_name:  str,
     *,
-    max_attempts: int = 2,
+    max_attempts: int = 4,   # B13 (audit 2026-05-13): bumped from 2 to give
+                             # gpt-5.4-mini room to converge on dense docs.
     client:       OpenAI | None = None,
 ) -> list[str]:
     """Re-emit ``translated_lines`` so its length equals ``len(source_lines)``.

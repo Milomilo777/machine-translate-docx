@@ -143,9 +143,29 @@ def _strip_citation(text: str) -> str:
 
 
 def _normalize_fa(text: str) -> str:
-    """Collapse whitespace and fix stray punctuation spacing."""
+    """Collapse whitespace and fix stray punctuation spacing.
+
+    B15 (audit 2026-05-13): also normalise Arabic→Persian script
+    variants the translator may have leaked through. The polisher's
+    ``fa_postprocess.normalize_fa`` does the same on its own input,
+    but the aligner runs upstream of the polisher in some workflows,
+    so we duplicate the rule here. Safe: every mapping is a 1:1
+    canonical-form substitution that the SMTV style guide already
+    requires.
+    """
     text = re.sub(r'\s+', ' ', text).strip()
     text = re.sub(r'\s+([.!?؟])', r'\1', text)
+    # Arabic Yeh / Kaf → Persian forms
+    text = text.replace('ي', 'ی')   # ي → ی
+    text = text.replace('ك', 'ک')   # ك → ک
+    # Arabic-Indic digits → Persian digits
+    _AR_TO_FA = {
+        '٠': '۰', '١': '۱', '٢': '۲', '٣': '۳',
+        '٤': '۴', '٥': '۵', '٦': '۶', '٧': '۷',
+        '٨': '۸', '٩': '۹',
+    }
+    for src, dst in _AR_TO_FA.items():
+        text = text.replace(src, dst)
     return text
 
 
