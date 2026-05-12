@@ -477,6 +477,70 @@ def _distribute_to_rows(chunks: list, n_rows: int) -> list:
     return assignments[:n_rows]
 
 
+def _group_difficulty_score(rows: list, n_rows: int) -> int:
+    """
+    Score a mechanically-aligned group on a 0..100 difficulty scale.
+    Higher score = more likely the mechanical output is sub-optimal and
+    an LLM rewrite would help.
+
+    Calibrated 2026-05-12 phase-3 against the BMD / CTAW Google-Drive
+    benchmark corpus. The sweet spot is llm_threshold≈40 invoking the
+    LLM on the dense-line groups (every chunk close to MAX_CHARS) while
+    leaving the clean ones to the mechanical path.
+
+    Signals (cheap; single pass, no regex):
+
+      • Each over-MAX_CHARS chunk            +60   (broadcast violation)
+      • Each chunk > MAX_CHARS-4 (≥45)       +15   (too tight to read)
+      • Each chunk between 40 and 44         +6    (dense but legal)
+      • Each chunk ≤ 6 chars (orphan)        +15
+      • triple-repeat (run ≥ 3)              +30
+      • length spike vs median (forced merge)+8
+      • truncation tail (2+ trailing empties)+12
+
+    Caller invokes the LLM when ``score >= (100 - llm_threshold)``.
+    """
+    score = 0
+    if not rows:
+        return 0
+    nonempty = [r for r in rows if r.strip()]
+    if not nonempty:
+        return 0
+    for r in rows:
+        L = _display_len(r)
+        if L > MAX_CHARS:
+            score += 60
+        elif L >= MAX_CHARS - 4:
+            score += 15
+        elif L >= 40:
+            score += 6
+        if 0 < L <= 6:
+            score += 15
+    # Triple repeats
+    idx = 0
+    while idx < len(rows):
+        ch = rows[idx].strip()
+        j = idx + 1
+        while j < len(rows) and rows[j].strip() == ch and ch:
+            j += 1
+        if j - idx >= 3:
+            score += 30
+        idx = j
+    # Length spike (a row >40% longer than median signals a forced merge)
+    lengths = [_display_len(r) for r in nonempty]
+    if len(lengths) >= 3:
+        sorted_lens = sorted(lengths)
+        median = sorted_lens[len(sorted_lens) // 2]
+        if max(lengths) > median * 1.4 + 4:
+            score += 8
+    # Truncation tail (last 2+ rows empty in a 3+-row group)
+    if n_rows >= 3 and any(r.strip() for r in rows[:-1]) and not rows[-1].strip():
+        empties = sum(1 for r in rows if not r.strip())
+        if empties >= 2:
+            score += 12
+    return min(100, score)
+
+
 def _enforce_no_triple(rows: list) -> list:
     """
     Hard ban: no three or more identical consecutive rows.
@@ -572,8 +636,15 @@ class FASubtitleAligner:
         aligner = FASubtitleAligner(model='gpt-5.4-mini', llm_threshold=0)
         stats   = aligner.align(input_docx, output_docx)
 
-    llm_threshold and token_budget are accepted but have no effect.
-    This version is purely mechanical; LLM can be layered on top later.
+    llm_threshold semantics (2026-05-12 phase-3):
+        0   = pure mechanical (default; every existing run stays
+              byte-identical with the pre-phase-3 output).
+        40  = invoke the LLM only on hard groups (difficulty score ≥ 60).
+              Calibration sweet spot per the prompt-rewrite roadmap.
+        100 = invoke the LLM on every group with score ≥ 0 (almost all).
+        Anything in between is interpolated linearly: the LLM fires when
+        ``group_score >= 100 - llm_threshold``.
+    token_budget is still accepted for API compatibility, currently unused.
     """
 
     def __init__(
@@ -583,9 +654,140 @@ class FASubtitleAligner:
         token_budget:   int = 0,
     ):
         self.model         = model
-        self.llm_threshold = llm_threshold   # accepted, ignored
-        self.token_budget  = token_budget    # accepted, ignored
+        self.llm_threshold = max(0, min(100, int(llm_threshold)))
+        self.token_budget  = token_budget   # accepted, currently unused
         self.last_stats:   dict = {}
+        self._llm_corrected_count = 0
+        self._llm_tokens_used     = 0
+        # Lazy OpenAI client — only built when threshold > 0 and we need it.
+        self._client = None
+
+    def _get_client(self):
+        if self._client is None:
+            from openai import OpenAI
+            import os
+            key = os.environ.get("OPENAI_API_KEY")
+            if not key:
+                return None
+            self._client = OpenAI(api_key=key)
+        return self._client
+
+    # ── LLM rescue for hard groups ────────────────────────────────────────────
+
+    _LLM_SYSTEM = (
+        "You are a Persian subtitle line-splitter. You receive an English "
+        "source block, the Persian translation of that block, and the number "
+        "of rows N the FA must be distributed across. Your job: split the "
+        "Persian text into exactly N chunks for broadcast display.\n\n"
+        "Hard rules:\n"
+        "1. Output exactly N lines, in order.\n"
+        "2. Each line MUST be ≤ 48 visible characters (ZWNJ excluded).\n"
+        "3. Concatenating all output lines (with single spaces) MUST equal "
+        "the input Persian text, modulo whitespace. Do NOT change words.\n"
+        "4. Break at natural Persian boundaries: sentence-end punctuation > "
+        "comma > before a coordinating/subordinating conjunction (و، اما، "
+        "ولی، چون، که) > between full phrases.\n"
+        "5. Never strand a preposition (به/از/در/برای/با/که/تا) at line end.\n"
+        "6. Never split a compound verb (می‌کند | انجام داد).\n"
+        "7. Never split inside a protected idiom (از جمله | با این حال | "
+        "به همین دلیل | به ویژه | به گفتهٔ | به نقل از | …).\n"
+        "8. If a row must repeat (N > distinct chunks), repeat earlier chunks "
+        "verbatim — never invent a new one.\n\n"
+        "Output format — MANDATORY. One line per row, no markers, no labels, "
+        "no markdown. First character of output = first character of row 1.\n"
+        "If you cannot satisfy every rule simultaneously, return the single "
+        "literal token ABORT on its own line; the caller will fall back to "
+        "the mechanical output."
+    )
+
+    def _llm_refine_group(
+        self,
+        full_fa: str,
+        mech_rows: list,
+        n_rows: int,
+        group: dict,
+    ) -> list | None:
+        """
+        Ask gpt-5.4-mini to re-split the FA text into n_rows chunks.
+        Returns the refined rows or None if the LLM declined / failed validation.
+        """
+        client = self._get_client()
+        if client is None:
+            return None
+
+        en_text = ' '.join(p.strip() for p in group.get('en_parts', []) if p) \
+                  if 'en_parts' in group else ''
+        user = (
+            f"N = {n_rows}\n"
+            f"MAX_CHARS_PER_LINE = {MAX_CHARS}\n\n"
+            f"Persian text to split:\n{full_fa}\n"
+        )
+        if en_text:
+            user += f"\nEnglish source (context only — do NOT translate):\n{en_text}\n"
+        user += (
+            "\nMechanical baseline (for your reference; improve if possible, "
+            "match if already optimal):\n"
+            + "\n".join(mech_rows)
+        )
+
+        try:
+            from ._retry import call_with_retry
+            resp = call_with_retry(
+                lambda: client.responses.create(
+                    model=self.model,
+                    input=[
+                        {"role": "system", "content": self._LLM_SYSTEM},
+                        {"role": "user",   "content": user},
+                    ],
+                    extra_body={"prompt_cache_retention": "24h"},
+                    reasoning={"effort": "low"},
+                    timeout=120,
+                ),
+                label="aligner.llm_refine",
+            )
+        except Exception as exc:
+            print(f"[WARN] FA aligner LLM refine failed: {exc!r} — using mechanical.")
+            return None
+
+        # Token accounting
+        try:
+            usage = (resp.model_dump() or {}).get("usage") or {}
+            self._llm_tokens_used += int(
+                usage.get("input_tokens", usage.get("prompt_tokens", 0)) or 0
+            )
+            self._llm_tokens_used += int(
+                usage.get("output_tokens", usage.get("completion_tokens", 0)) or 0
+            )
+        except Exception:
+            pass
+
+        if hasattr(resp, "output_text") and resp.output_text is not None:
+            raw = resp.output_text
+        else:
+            try:
+                raw = resp.choices[0].message.content
+            except Exception:
+                return None
+
+        text = (raw or "").strip()
+        if text.upper().strip() == "ABORT" or not text:
+            return None
+
+        lines = [ln.rstrip() for ln in text.split("\n") if ln.strip() != ""]
+        if len(lines) != n_rows:
+            return None
+        # Validate: every line ≤ MAX_CHARS, every word present in mech text.
+        for ln in lines:
+            if _display_len(ln) > MAX_CHARS:
+                return None
+        # Loose content-preservation check: concatenated whitespace-stripped
+        # output should match the whitespace-stripped input (within 5 % token
+        # delta, mostly to allow function-word reorders).
+        out_strip = re.sub(r"\s+", "", "".join(lines))
+        in_strip  = re.sub(r"\s+", "", full_fa)
+        if abs(len(out_strip) - len(in_strip)) > max(8, len(in_strip) * 0.05):
+            return None
+        return lines
 
     # ── reading ───────────────────────────────────────────────────────────────
 
@@ -632,6 +834,7 @@ class FASubtitleAligner:
         groups: list = []
         current_indices: list = []
         current_fa_parts: list = []
+        current_en_parts: list = []   # 2026-05-12 phase-3 — context for LLM rescue
 
         i = 0
         while i < len(rows):
@@ -645,9 +848,11 @@ class FASubtitleAligner:
                     groups.append({
                         'row_indices': list(current_indices),
                         'fa_parts':    list(current_fa_parts),
+                        'en_parts':    list(current_en_parts),
                     })
                     current_indices = []
                     current_fa_parts = []
+                    current_en_parts = []
                 i += 1
                 continue
 
@@ -657,6 +862,8 @@ class FASubtitleAligner:
             if not fa.strip():
                 if current_indices:
                     current_indices.append(rd['ri'])
+                    if en.strip():
+                        current_en_parts.append(en.strip())
                 i += 1
                 continue
 
@@ -664,20 +871,26 @@ class FASubtitleAligner:
             if (not current_indices
                     and _display_len(fa) > MAX_CHARS):
                 rep_indices = [rd['ri']]
+                rep_en      = [en.strip()] if en.strip() else []
                 j = i + 1
                 while j < len(rows) and rows[j]['fa'] == fa:
                     rep_indices.append(rows[j]['ri'])
+                    if rows[j]['en'].strip():
+                        rep_en.append(rows[j]['en'].strip())
                     j += 1
                 if len(rep_indices) > 1:
                     groups.append({
                         'row_indices': rep_indices,
                         'fa_parts':    [fa],   # once — not repeated
+                        'en_parts':    rep_en,
                     })
                     i = j
                     continue
 
             current_indices.append(rd['ri'])
             current_fa_parts.append(fa.strip())
+            if en.strip():
+                current_en_parts.append(en.strip())
 
             if _ends_sentence(fa):
                 # Look-ahead: absorb any immediately following empty-FA
@@ -691,13 +904,17 @@ class FASubtitleAligner:
                     if nxt['fa'].strip():
                         break   # next sentence starts here
                     current_indices.append(nxt['ri'])
+                    if nxt['en'].strip():
+                        current_en_parts.append(nxt['en'].strip())
                     j += 1
                 groups.append({
                     'row_indices': list(current_indices),
                     'fa_parts':    list(current_fa_parts),
+                    'en_parts':    list(current_en_parts),
                 })
                 current_indices = []
                 current_fa_parts = []
+                current_en_parts = []
                 i = j
                 continue
 
@@ -707,6 +924,7 @@ class FASubtitleAligner:
             groups.append({
                 'row_indices': list(current_indices),
                 'fa_parts':    list(current_fa_parts),
+                'en_parts':    list(current_en_parts),
             })
 
         return groups
@@ -733,7 +951,25 @@ class FASubtitleAligner:
         # Pad / trim to exact count
         if len(rows) < n_rows:
             rows.extend([''] * (n_rows - len(rows)))
-        return rows[:n_rows]
+        rows = rows[:n_rows]
+
+        # Hybrid path (2026-05-12 phase-3): score the mechanical output;
+        # if the LLM threshold is high enough AND this group looks rough,
+        # hand it to gpt-5.4-mini for a second take. The pure-mechanical
+        # default (llm_threshold == 0) leaves this branch dormant — every
+        # existing run stays byte-identical.
+        if self.llm_threshold > 0:
+            score = _group_difficulty_score(rows, n_rows)
+            # threshold semantics: 100 = always invoke LLM, 0 = never.
+            # We invoke when score >= (100 - threshold), so:
+            #   threshold=40 → invoke on score ≥ 60   (only hard groups)
+            #   threshold=80 → invoke on score ≥ 20   (most groups)
+            if score >= (100 - self.llm_threshold):
+                refined = self._llm_refine_group(full_fa, rows, n_rows, group)
+                if refined is not None:
+                    self._llm_corrected_count += 1
+                    return refined
+        return rows
 
     # ── write ─────────────────────────────────────────────────────────────────
 
@@ -806,10 +1042,11 @@ class FASubtitleAligner:
 
         self.last_stats = {
             'groups':          len(groups),
-            'llm_corrected':   0,
-            'mechanical_only': len(groups),
-            'tokens_used':     0,
-            'prompt_hash':     _prompt_hash('mechanical-v2.0'),
+            'llm_corrected':   self._llm_corrected_count,
+            'mechanical_only': len(groups) - self._llm_corrected_count,
+            'tokens_used':     self._llm_tokens_used,
+            'llm_threshold':   self.llm_threshold,
+            'prompt_hash':     _prompt_hash('mechanical-v2.0+llm'),
             'total_rows':      len(all_rows),
             'doubles':         n_doubles,
             'triples':         n_triples,

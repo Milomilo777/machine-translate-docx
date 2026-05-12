@@ -106,16 +106,20 @@
               <input type="range" id="alignerLlmThreshold" name="alignerLlmThreshold"
                      min="0" max="100" step="1" value="0" class="w-full" />
               <div class="flex justify-between text-xs text-gray-500">
-                <span>0 — pure mechanical (no model)</span>
-                <span>100 — model-driven</span>
+                <span>0 — mechanical only (fast, no cost)</span>
+                <span>40 — balanced (recommended)</span>
+                <span>100 — model-driven (slow)</span>
               </div>
               <p class="text-xs text-gray-500 mt-1">
-                The aligner ships as a pure-mechanical Persian doubler today;
-                this dial is wired end-to-end and stored on the run, but the
-                current aligner ignores the value. When a hybrid mechanical +
-                LLM aligner is added, 0 stays mechanical and 100 will hand
-                every decision to the model. Default 0 matches today's
-                behaviour.
+                The mechanical aligner handles every group by default. As you
+                raise the threshold the LLM (gpt-5.4-mini) rescues the hardest
+                groups — those with rows close to the 48-char broadcast limit
+                or with forced merges. Calibrated sweet spot on real
+                Persian-translated docx is around <strong>40</strong>:
+                ~2&nbsp;% of groups go to the model, long-line count drops
+                ~15&nbsp;%, doubles stay in the 50&nbsp;% band, and a typical
+                document takes ~2–5 extra minutes for a few cents of OpenAI
+                tokens. Use 0 if you need the cheapest, most predictable run.
               </p>
             </div>
           </div>

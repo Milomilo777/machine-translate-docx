@@ -33,10 +33,10 @@ def _row_metrics(rows):
     return over, tight, long_lines
 
 
-def bench_one(path: Path) -> dict:
+def bench_one(path: Path, llm_threshold: int = 0) -> dict:
     tmp = Path(tempfile.mkdtemp()) / path.name
     shutil.copy(path, tmp)
-    aligner = FASubtitleAligner(llm_threshold=0)
+    aligner = FASubtitleAligner(llm_threshold=llm_threshold)
     stats = aligner.align(str(tmp), str(tmp))
 
     # Re-open the output and read its FA column for extra metrics
@@ -60,6 +60,8 @@ def bench_one(path: Path) -> dict:
         "double_ratio":   round(stats.get("doubles", 0) / max(stats.get("groups", 1), 1), 2),
         "long_lines":     long_lines,
         "tight_short":    tight,
+        "llm_corrected":  stats.get("llm_corrected", 0),
+        "tokens_used":    stats.get("tokens_used", 0),
         "elapsed_s":      stats.get("elapsed_seconds", 0),
     }
 
@@ -67,6 +69,8 @@ def bench_one(path: Path) -> dict:
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("files", nargs="+", help="Persian-translated docx files")
+    p.add_argument("--llm-threshold", type=int, default=0,
+                   help="0..100; 0 = pure mechanical (default), 40 = LLM rescue for hard groups only")
     args = p.parse_args()
 
     results = []
@@ -76,7 +80,7 @@ def main():
             print(f"SKIP (not found): {f}", file=sys.stderr)
             continue
         try:
-            r = bench_one(path)
+            r = bench_one(path, llm_threshold=args.llm_threshold)
             results.append(r)
         except Exception as exc:
             print(f"FAIL: {f}: {exc!r}", file=sys.stderr)
@@ -86,8 +90,10 @@ def main():
         sys.exit(1)
 
     cols = ["file", "rows", "groups", "doubles", "triples", "over_limit",
-            "double_ratio", "long_lines", "tight_short", "elapsed_s"]
-    headers = ["File", "Rows", "Grp", "Dbl", "Tri", "Over", "Dbl%", "Long(>44)", "Tight(<=8)", "Sec"]
+            "double_ratio", "long_lines", "tight_short",
+            "llm_corrected", "tokens_used", "elapsed_s"]
+    headers = ["File", "Rows", "Grp", "Dbl", "Tri", "Over", "Dbl%",
+               "Long", "Tight", "LLM", "Tok", "Sec"]
     widths = [max(len(h), max(len(str(r[c])) for r in results)) for h, c in zip(headers, cols)]
 
     def _fmt(row, fields):
@@ -115,17 +121,21 @@ def main():
         "over_limit":   sum(r["over_limit"]   for r in results),
         "long_lines":   sum(r["long_lines"]   for r in results),
         "tight_short":  sum(r["tight_short"]  for r in results),
+        "llm_corrected": sum(r.get("llm_corrected", 0) for r in results),
+        "tokens_used":  sum(r.get("tokens_used", 0) for r in results),
         "elapsed_s":    round(sum(r["elapsed_s"] for r in results), 2),
     }
     agg["double_ratio"] = round(agg["doubles"] / max(agg["groups"], 1), 2)
     print()
-    print(f"AGGREGATE ({n} files): "
+    print(f"AGGREGATE ({n} files, threshold={args.llm_threshold}): "
           f"{agg['rows']} rows, {agg['groups']} groups, "
           f"{agg['doubles']} doubles ({int(agg['double_ratio']*100)}%), "
           f"{agg['triples']} triples, "
           f"over_limit={agg['over_limit']}, "
           f"long(>44)={agg['long_lines']}, "
           f"tight(<=8)={agg['tight_short']}, "
+          f"llm_fired={agg['llm_corrected']}, "
+          f"tokens={agg['tokens_used']}, "
           f"total {agg['elapsed_s']}s")
 
 
