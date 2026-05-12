@@ -1411,10 +1411,20 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
     ) -> Path:
         engine, extra_flags = self._map_engine(translation_engine)
 
-        # B1-guard: fa + chatgpt-polish pipeline never uses basic split —
-        # the aligner handles line distribution. Force off regardless of
-        # what the frontend sent (e.g. stale localStorage checkbox state).
-        if translation_engine == "chatgpt-polish" and target_language.lower().startswith("fa"):
+        # B1-guard (2026-05-12 revised): only the persian_double_lines
+        # split path runs the FA aligner, and that path does its OWN
+        # row distribution on the saved docx. For the basic split path
+        # the legacy line-by-line splitter (document_split_phrases) is
+        # the only thing that fans the single-call FA output back across
+        # the cell column — without `--split` the entire polished
+        # translation lands in row 1 and every following row stays
+        # empty (bug observed on News Scroll NS 3145, 2026-05-12).
+        # So: force off ONLY for persian_double_lines, leave basic alone.
+        if (
+            translation_engine == "chatgpt-polish"
+            and target_language.lower().startswith("fa")
+            and split_engine == "persian_double_lines"
+        ):
             split_translate = False
 
         # 2026-05-11 src-layout migration: invoke the CLI as a *module*
