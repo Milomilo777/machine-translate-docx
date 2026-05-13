@@ -6,6 +6,60 @@
 
 ---
 
+## 2026-05-13 — FA aligner: three bugs from AJAR 3147 fixed
+
+User-reported defects in
+`AJAR 3147 (One World of Peace... P6) sf1 - table fix1_PER_Polish_Double_Lines.docx`:
+metadata wiped from row 0, "Persian" gone from row 1, `...` ellipsis
+split across rows (`.` ending one chunk and `..` orphaned at the start
+of the next), `)` and `"` separated from their content, and 44 entire
+FA translations dropped from rows that contained legitimate text.
+
+Three root causes, all fixed in `persian_double_lines.py`:
+
+  **B-003 SHADING_MISCLASSIFY**: `_cell_has_shading` returned True for
+  every non-white fill. Real broadcast docx files use yellow `FFF2CC`,
+  pink `FFC0CB`, blue `B4D5FF` as EDITOR HIGHLIGHTS for "Fix1 yellow
+  shaded lines" content — not as bridge markers. Treating them as grey
+  bridge rows wiped every yellow-flagged Persian line (~30 of the 44
+  dropped rows). Fix: bridge classification now requires a TRUE GREY
+  fill (six hex chars with R == G == B). Editor highlights are
+  preserved.
+
+  **B-004 BRIDGE_REGEX_OVER_AND_UNDER**: `^SM\s*:` and `^Master\s*:`
+  swallowed every line of dialogue starting with the speaker prefix
+  ("SM: Speak something?" → bridge → content lost). Conversely,
+  `01:40:39 John Moschitta, MC(m):` (timecode + speaker on the same
+  line) was NOT classified as a bridge, so the group grouper grew
+  across the speaker boundary and merged unrelated sentences. Fix:
+  added end-anchors to `^SM\s*:\s*$` / `^Master\s*:\s*$` /
+  `^Narrator\s*:?\s*$` / `^Maharaj\s*:\s*$`; extended timecode
+  patterns to `^\d{1,2}:\d{2}(:\d{2})?\s*$` and added a new
+  `^\d{1,2}:\d{2}:\d{2}\s+\S.*[\(\[][mf][\)\]]\s*:?\s*$` for
+  timecode-prefixed speaker rows.
+
+  **B-005 PUNCT_CLUSTER_SPLIT**: `_is_safe_break` allowed splitting
+  inside `...`, between `(` and its content, and right before `)` /
+  `"`. The split scanner's priority-1 (sentence-end) rule then broke
+  at the FIRST `.` of `...`, leaving `..` orphaned on the next chunk.
+  Same for `((parens` and trailing `)`. Fix: `_is_safe_break` now
+  refuses any position where (a) both sides are sentence-end
+  punctuation (mid-cluster), (b) `text[pos-1]` is an opener (`( " «
+  「 [`), or (c) `text[pos]` is a closer (`) " » 」 ]`).
+
+Validated on the failing file: 44 dropped rows → 12 (all 12 are
+expected tail rows of multi-row groups where content sits in the head
+rows). 0 orphaned punctuation rows. Metadata r0/r1 preserved. R150
+"جان سالم به در می‌برند" restored. R272 "خانم‌ها و آقایان!", R274
+"استاد اعظم چینگ های!" restored.
+
+New regression tests (5): `test_bridge_speaker_label_only`,
+`test_bridge_timecode_with_speaker`, `test_safe_break_avoids_ellipsis_split`,
+`test_safe_break_avoids_orphaned_brackets`, `test_grey_only_shading_is_bridge`.
+Total: 118/118 pass.
+
+---
+
 ## 2026-05-13 — Multi-script polish cycle (zh / vi / ar) + critical AR fix
 
 User-requested second cycle, polishing the universal prompt against

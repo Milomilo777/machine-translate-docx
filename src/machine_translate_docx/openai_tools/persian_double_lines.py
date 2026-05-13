@@ -127,10 +127,18 @@ _BRIDGE_PATTERNS_RAW = [
     r'^Please send', r'^In English', r'^Originally in',
     r'^CAPTION:', r'^VO[,&\s].*ONSCREEN', r'^ONSCREEN TEXT',
     r'^https?://', r'^file:///',
-    r'^\d+:\d+\s*[-~]\s*\d+:\d+', r'^\d+:\d+\s*$', r'^\(\d+:\d+',
+    r'^\d+:\d+\s*[-~]\s*\d+:\d+', r'^\d{1,2}:\d{2}(:\d{2})?\s*$', r'^\(\d+:\d+',
+    # 2026-05-13 (AJAR-3147 fix): "HH:MM:SS Speaker(m):" — timecode +
+    # speaker label on the same line is a bridge row, not dialogue.
+    r'^\d{1,2}:\d{2}:\d{2}\s+\S.*[\(\[][mf][\)\]]\s*:?\s*$',
     r'^\[English', r'^\[German', r'^\[.*starts\]', r'^\[.*End\]',
-    r'^Narrator', r'^Maharaj:',
-    r'^SM\s*:', r'^Master\s*:',
+    # 2026-05-13 (AJAR-3147 fix): speaker labels are bridges ONLY when
+    # they stand alone on their own line. "SM: real dialogue" / "Master:
+    # actual words" / "Narrator: continues" are real content rows that
+    # the old patterns wrongly swallowed. The `\s*$` anchor restricts
+    # bridge classification to the label-only case.
+    r'^Narrator\s*:?\s*$', r'^Maharaj\s*:\s*$',
+    r'^SM\s*:\s*$', r'^Master\s*:\s*$',
     r'^[A-Z][A-Z\s]{2,}:\s*$',
     # 2026-05-13: stand-alone hashtag-id rows (`#193465`).
     r'^#\d{3,}\s*$',
@@ -242,6 +250,23 @@ def _is_safe_break(text: str, pos: int) -> bool:
     left = text[:pos].rstrip()
     if not left:
         return True
+    # 2026-05-13 (AJAR-3147 fix): don't break in the middle of a
+    # multi-char punctuation cluster (.., ..., …, !!, ??, !!!). The
+    # sentence-end scanner sees the first '.' and wants to break there,
+    # which orphans '.. content' onto the next chunk.
+    if text[pos - 1] in '.!?…':
+        if pos < n and text[pos] in '.!?…':
+            return False  # mid-cluster — never break here
+    # 2026-05-13 (AJAR-3147 fix): paren/quote orphan guard.
+    # Don't break right after an opener (chunk ends with '(' or '"') —
+    # the matching closer would land on the next chunk far from the
+    # word it wraps.
+    if text[pos - 1] in '("«「[':
+        return False
+    # Don't break right before a closer (next chunk starts with ')')
+    # — the close-bracket belongs to the previous chunk.
+    if pos < n and text[pos] in ')"»」]':
+        return False
     last_word = left.split()[-1]
     if last_word in DANGLING_PREPS:
         return False
@@ -623,7 +648,17 @@ def _cell_text(cell) -> str:
 
 
 def _cell_has_shading(cell) -> bool:
-    """True if the cell has a non-white / non-auto background (grey bridge row)."""
+    """True if the cell has a GREY bridge background.
+
+    2026-05-13 (AJAR-3147 fix): the previous "any non-white fill =
+    bridge" rule swept up editor-highlight colours too. Real broadcast
+    docx files use yellow `FFF2CC`, pink `FFC0CB`, blue `B4D5FF`, etc.
+    to flag content rows ("Fix1 yellow shaded lines"). Treating those
+    as bridge rows wiped every yellow-flagged Persian line.
+
+    Now: bridge = greyscale fill ONLY (R == G == B, all six hex chars
+    equal). Editor-highlight non-grey colours are preserved.
+    """
     tcPr = cell._tc.find(_qn('w:tcPr'))
     if tcPr is None:
         return False
@@ -633,7 +668,16 @@ def _cell_has_shading(cell) -> bool:
     fill = shd.get(_qn('w:fill'))
     if not fill:
         return False
-    return fill.lower() not in ('auto', 'ffffff', '')
+    fill = fill.lower().strip()
+    if fill in ('auto', 'ffffff', ''):
+        return False
+    # Greyscale check: 6-char hex with R == G == B.
+    if len(fill) == 6 and all(c in '0123456789abcdef' for c in fill):
+        r, g, b = fill[0:2], fill[2:4], fill[4:6]
+        if r == g == b:
+            return True
+    # Any non-grey colour → editor highlight, not a bridge row.
+    return False
 
 
 def _ensure_rtl_paragraph(p) -> None:
