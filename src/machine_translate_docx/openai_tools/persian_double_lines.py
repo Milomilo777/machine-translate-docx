@@ -101,14 +101,20 @@ LEADING_CONJUNCTIONS = frozenset({
 # Trailing citation "(source)" stripped from FA before processing
 _RE_CITATION = re.compile(r'\s*\([^()]{2,40}\)\s*$')
 
-# Speaker tag: "John Smith (m):" is a bridge row
+# Speaker tag: "John Smith (m):" on its OWN line is a bridge row.
+# 2026-05-13 (AW-3146 fix): added end-of-string anchor so the pattern
+# matches only when the speaker tag stands alone. The old regex also
+# matched "Lee (f): She ended up" → the whole sentence was marked as
+# bridge and lost its translation.
 _SPEAKER_RE = re.compile(
-    r'^[A-Za-zÀ-ÖÙ-öù-ÿ\s\-]{2,40}\s*[\(\[]\s*[mf]\s*[\)\]]',
+    r'^[A-Za-zÀ-ÖÙ-öù-ÿ\s\-]{2,40}\s*[\(\[]\s*[mf]\s*[\)\]]\s*:?\s*$',
     re.IGNORECASE
 )
 
 _BRIDGE_PATTERNS_RAW = [
-    r'^HOST\s*:', r'^HOST INTRO', r'^HOST OUTRO',
+    # 2026-05-13 (AW-3146 fix): HOST line variants. The old single-pattern
+    # `r'^HOST\s*:'` missed `HOST (INTRO):`, `HOST (OUTRO):`, `HOST(M):`.
+    r'^HOST\b',
     r'^SHOW:', r'^TITLE:', r'^WEEK', r'^AIRDATE',
     r'^YOUR LANGUAGE:', r'^Title VO:',
     r'^OUTRO:', r'^INTRO\([mf]\):', r'^GENERIC INTRO', r'^\(Generic Intro',
@@ -119,13 +125,15 @@ _BRIDGE_PATTERNS_RAW = [
     r'^Our programs', r'^offer many', r'^please visit',
     r'^We welcome', r'^stories and or', r'^loving animal',
     r'^Please send', r'^In English', r'^Originally in',
-    r'^CAPTION:', r'^VO & ONSCREEN', r'^ONSCREEN TEXT',
+    r'^CAPTION:', r'^VO[,&\s].*ONSCREEN', r'^ONSCREEN TEXT',
     r'^https?://', r'^file:///',
     r'^\d+:\d+\s*[-~]\s*\d+:\d+', r'^\d+:\d+\s*$', r'^\(\d+:\d+',
     r'^\[English', r'^\[German', r'^\[.*starts\]', r'^\[.*End\]',
     r'^Narrator', r'^Maharaj:',
     r'^SM\s*:', r'^Master\s*:',
     r'^[A-Z][A-Z\s]{2,}:\s*$',
+    # 2026-05-13: stand-alone hashtag-id rows (`#193465`).
+    r'^#\d{3,}\s*$',
 ]
 _BRIDGE_RE = [re.compile(p, re.IGNORECASE) for p in _BRIDGE_PATTERNS_RAW]
 
@@ -1019,23 +1027,79 @@ class FASubtitleAligner:
         # it sometimes fills FA cells in HOST: / WARNING: / time-code
         # rows with continuation text from neighbouring groups. The
         # aligner correctly skips those rows during sentence grouping
-        # but leaves whatever was already in the cell. Result: a
-        # bridge row carries a misleading FA fragment.
+        # but leaves whatever was already in the cell.
         #
-        # Fix: collect every row index that the parser flagged as bridge
-        # OR shaded, and empty its FA cell before writing the aligned
-        # group output. The bridge detector is the same one
-        # `_is_bridge` + shading scan that the aligner already uses, so
-        # there is no new heuristic — only an explicit clear pass.
+        # 2026-05-13 (AW-3146 refinement): the previous fix cleared every
+        # bridge row's FA cell unconditionally — which destroyed editor
+        # metadata that pre-existed in the FA column (Fix1 / blue-pink
+        # change notes / due-time strings). Only clear a bridge FA cell
+        # when it looks like classic-distributor leakage:
+        #   (a) the cell's text appears verbatim in an adjacent
+        #       non-bridge FA cell (the classic distributor's duplicate
+        #       pattern); OR
+        #   (b) the cell is shaded (grey row — never editorial metadata).
+        # Everything else stays byte-id.
         bridge_row_indices: set = set()
         try:
             input_rows = self._read_rows(input_path)
-            for rd in input_rows:
+            # Build a quick neighbour lookup: ri → FA-text of the
+            # nearest non-bridge row above and below.
+            row_by_ri = {rd['ri']: rd for rd in input_rows}
+            sorted_ris = sorted(row_by_ri.keys())
+            for idx, rd in enumerate(input_rows):
                 en = rd.get('en', '')
                 fa = rd.get('fa', '')
                 shaded = rd.get('shaded', False)
-                if _is_bridge(en, fa, shaded):
+                if not _is_bridge(en, fa, shaded):
+                    continue
+                # Shaded rows are always safe to clear (grey bridge).
+                if shaded:
                     bridge_row_indices.add(rd['ri'])
+                    continue
+                fa_stripped = (fa or '').strip()
+                if not fa_stripped:
+                    bridge_row_indices.add(rd['ri'])
+                    continue
+                # Editor-metadata heuristic: if the cell is mostly Latin
+                # / ASCII characters (Fix1 / due-time notes / blue-pink
+                # change instructions, often pre-existing in the docx
+                # template), preserve it. Persian translation leakage
+                # is always majority FA script.
+                _ascii_letters = sum(1 for c in fa_stripped if 'a' <= c.lower() <= 'z')
+                _fa_letters    = sum(1 for c in fa_stripped if '؀' <= c <= 'ۿ')
+                _total_letters = _ascii_letters + _fa_letters
+                if _total_letters > 0 and _ascii_letters / _total_letters > 0.4:
+                    # Majority Latin → editor metadata, keep verbatim.
+                    continue
+                # Check if this FA text duplicates a neighbour's FA.
+                neighbours_fa = []
+                for offset in (-2, -1, 1, 2):
+                    nb_idx = idx + offset
+                    if 0 <= nb_idx < len(input_rows):
+                        nb = input_rows[nb_idx]
+                        nb_fa = (nb.get('fa') or '').strip()
+                        if nb_fa:
+                            neighbours_fa.append(nb_fa)
+                # Clear if (a) duplicate of neighbour (classic
+                # distributor leakage) or (b) the EN cell carries one
+                # of the hard-trigger bridge patterns (HOST:, WARNING:,
+                # SHOW:, time-code, URL, etc.). Both indicate the FA
+                # text is NOT a real translation belonging to this row.
+                if fa_stripped in neighbours_fa:
+                    bridge_row_indices.add(rd['ri'])
+                else:
+                    # EN-pattern path. If the EN cell matches a known
+                    # bridge regex (not just 'empty'), the FA value is
+                    # certainly mis-placed translation.
+                    _en_strip = (en or '').strip()
+                    if _en_strip:
+                        for _p in _BRIDGE_RE:
+                            if _p.search(_en_strip):
+                                bridge_row_indices.add(rd['ri'])
+                                break
+                # else (EN empty + FA Persian text + no duplicate):
+                # preserve. The classic distributor never plants
+                # standalone Persian without an EN context to map from.
         except Exception as _exc:
             # Defensive: if the re-read fails, fall back to the legacy
             # behaviour (don't touch bridge cells) rather than crashing.
