@@ -10,7 +10,7 @@
 
     <title>Document Translator</title>
     <link
-      href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css"
+      href="/static/tailwind.min.css"
       rel="stylesheet"
     />
     <style>
@@ -263,6 +263,76 @@
           };
         });
       }
+
+      // Render a compact run-summary card into #result after a job
+       // finishes. Pulls fields from the JSON sidecar (run_info, summary,
+       // blocks). Best-effort: every field is optional and rendered as
+       // "—" when missing.
+       function renderRunSummary(log, displayName) {
+         const result = document.getElementById('result');
+         if (!result) return;
+         const ri = log.run_info || {};
+         const sm = log.summary  || {};
+         const blocks = Array.isArray(log.blocks) ? log.blocks : [];
+
+         // Pull headline numbers
+         const model       = ri.model || sm.model || (blocks[0] && blocks[0].translation && blocks[0].translation.model) || '—';
+         const srcLang     = ri.source_lang || '—';
+         const dstLang     = ri.dest_lang   || '—';
+         const elapsed     = (sm.elapsed_total_seconds != null ? sm.elapsed_total_seconds : null);
+         const rows        = sm.row_count != null ? sm.row_count : (sm.target_rows_nonempty != null ? sm.target_rows_nonempty : null);
+         const tokens      = sm.total_tokens != null ? sm.total_tokens : null;
+         const cached      = sm.total_cached_tokens != null ? sm.total_cached_tokens : null;
+         const cost        = (typeof sm.total_cost_usd === 'number') ? sm.total_cost_usd : null;
+         // Polish stats from the first block if present
+         const polish = (blocks[0] && blocks[0].polish) || null;
+         const linesProcessed = polish && polish.lines_processed != null ? polish.lines_processed : null;
+         const linesModified  = polish && polish.lines_modified  != null ? polish.lines_modified  : null;
+         const polishSkipped  = polish && polish.polish_skipped === true;
+         const wasReconciled  = polish && polish.was_reconciled === true;
+
+         function row(label, value) {
+           if (value === null || value === undefined || value === '') return '';
+           return '<div class="flex justify-between text-sm py-0.5"><span class="text-gray-500">'
+                  + label + '</span><span class="font-mono text-gray-800">' + value + '</span></div>';
+         }
+         function fmtNum(n) {
+           if (n == null) return '—';
+           return Number(n).toLocaleString();
+         }
+         function fmtSec(s) {
+           if (s == null) return '—';
+           if (s < 60) return s.toFixed(1) + ' s';
+           const m = Math.floor(s / 60);
+           const rem = Math.round(s - m * 60);
+           return m + ' min ' + rem + ' s';
+         }
+
+         let polishLine = '';
+         if (polish) {
+           if (polishSkipped) {
+             polishLine = row('Polish', '<span class="text-yellow-700">skipped (' + (polish.skipped_reason || 'unknown') + ')</span>');
+           } else if (linesModified != null && linesProcessed != null) {
+             const pct = linesProcessed > 0 ? Math.round(100 * linesModified / linesProcessed) : 0;
+             let note = '';
+             if (wasReconciled) note = ' <span class="text-gray-500 text-xs">(line-shape repaired by reconciler — count is a lower bound)</span>';
+             polishLine = row('Polish lines modified', linesModified + ' / ' + linesProcessed + ' (' + pct + ' %)' + note);
+           }
+         }
+
+         result.innerHTML =
+           '<div class="bg-white p-4 mt-4 rounded shadow-sm border border-gray-200">'
+           + '<h3 class="font-bold text-base mb-2">Run summary — ' + displayName + '</h3>'
+           + row('Model',              model)
+           + row('Source → Target',    srcLang + ' → ' + dstLang)
+           + row('Rows',               fmtNum(rows))
+           + row('Elapsed',            fmtSec(elapsed))
+           + row('Input tokens',       fmtNum(tokens))
+           + row('Cached input tokens', fmtNum(cached))
+           + row('Estimated cost USD', cost != null ? '$ ' + cost.toFixed(4) : '—')
+           + polishLine
+           + '</div>';
+       }
 
       function flashTabTitle(message) {
         const originalTitle = document.title;
@@ -788,6 +858,19 @@
           let displayName = filename
             .replace(/^\d{13}-/, '')
             .replace(/ - \d{4}-\d{2}-\d{2}T\d{6}\.\d{3}(?=\.docx$)/, '');
+
+          // 2026-05-13: render a run-summary card from the JSON sidecar.
+          // Best-effort — if the endpoint is missing or returns no log,
+          // skip silently.
+          try {
+            const logResp = await fetch('/log/' + encodeURIComponent(filename));
+            if (logResp.ok) {
+              const logBody = await logResp.json();
+              if (logBody && logBody.ok && logBody.log) {
+                renderRunSummary(logBody.log, displayName);
+              }
+            }
+          } catch (e) { /* sidecar fetch failed; ignore */ }
 
           triggerDownload('/download/' + filename.replace(/#/g, '%23'));
 

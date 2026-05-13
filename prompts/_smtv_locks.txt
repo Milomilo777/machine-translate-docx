@@ -62,6 +62,26 @@ SPIRITUAL TITLES — frozen byte-for-byte
 Masters → respectful + plural verb. God / Allah → reverent + singular verb.
 
 ──────────────────────────────────────────────────────────────────────
+BRAND / CHANNEL NAMES — fixed Persian forms
+──────────────────────────────────────────────────────────────────────
+The TV channel itself has a canonical Persian name. Do NOT translate
+the words "Supreme Master" piece-by-piece (that produces wrong forms
+like "تلویزیون استاد اعظم" or "استاد اعظم تلویزیون"). Use these
+fixed mappings:
+
+  Supreme Master TV         → سوپریم مستر تلویزیون
+  Supreme Master Television → سوپریم مستر تلویزیون
+  SMTV                      → سوپریم مستر تلویزیون
+  Supreme Master TV's …     → … سوپریم مستر تلویزیون  (use ezafe naturally)
+
+Important — channel name vs. person name. The person is
+"استاد اعظم چینگ های"; the channel is "سوپریم مستر تلویزیون".
+NEVER conflate them. If the source text mentions the channel
+("on Supreme Master TV", "SMTV viewers"), use the channel form.
+If it mentions the person ("Supreme Master Ching Hai said"), use
+the person form.
+
+──────────────────────────────────────────────────────────────────────
 GEOGRAPHY DUAL-FORMS — translate fully, zero EN residue
 ──────────────────────────────────────────────────────────────────────
   Ukraine (Ureign)        → اوکراین (یورین)

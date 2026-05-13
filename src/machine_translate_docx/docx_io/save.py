@@ -286,12 +286,22 @@ def save_docx_file(
     _resolve_output_path(ctx)
     _restore_source_column(ctx)
 
+    # 2026-05-13: developer kill-switch. The sidecar is on by default
+    # (production behaviour). Setting MTD_DISABLE_SIDECAR=1 in the
+    # environment suppresses every _log.json write so a dev poking at
+    # the pipeline doesn't accumulate sidecar files. The launcher's
+    # /log/<filename> endpoint and the legacy run-summary card both
+    # treat a missing sidecar as 'no extra info' — never a hard error.
+    _sidecar_enabled = os.environ.get("MTD_DISABLE_SIDECAR", "").strip() != "1"
+
     file_saved = 0
     while file_saved == 0:
         try:
             docxdoc.save(ctx.flags.word_file_to_translate_save_as_path)
             file_saved = 1
-            if ctx.flags.with_polish and ctx.openai.translation_log.get("blocks"):
+            if not _sidecar_enabled:
+                print("[INFO] Sidecar disabled via MTD_DISABLE_SIDECAR=1.")
+            elif ctx.flags.with_polish and ctx.openai.translation_log.get("blocks"):
                 log_path = re.sub(
                     r"(?i)\.docx$",
                     "_log.json",

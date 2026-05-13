@@ -46,6 +46,7 @@ os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 ROOT = Path(__file__).resolve().parent
 INDEX_FILE = ROOT / "index.ejs"
 WEB_V2_DIR = ROOT / "web" / "v2"
+WEB_STATIC_DIR = ROOT / "web" / "static"
 SUBSCRIBERS_FILE = ROOT / "subscribers.txt"
 
 # 36-hour cache for API-translated files (sha256(payload) + lang + engine
@@ -1086,6 +1087,30 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
             self._send_file(self.state.uploads_dir / file_name, file_name)
             return
 
+        # 2026-05-13: /log/<filename> returns the JSON sidecar so the
+        # legacy frontend can render a run-summary card after a job
+        # finishes. Same path-traversal guard as /download.
+        if path.startswith("/log/"):
+            file_name = unquote(path.removeprefix("/log/"))
+            try:
+                uploads_root = self.state.uploads_dir.resolve()
+                # Map the output docx name to its _log.json sibling.
+                base_no_ext = _re.sub(r"(?i)\.docx$", "", file_name)
+                log_path = (self.state.uploads_dir / f"{base_no_ext}_log.json").resolve()
+                log_path.relative_to(uploads_root)
+            except (ValueError, OSError):
+                self._send_json({"ok": False, "error": "not found"}, HTTPStatus.NOT_FOUND)
+                return
+            if not log_path.exists():
+                self._send_json({"ok": False, "error": "no sidecar"}, HTTPStatus.NOT_FOUND)
+                return
+            try:
+                data = log_path.read_text(encoding="utf-8")
+                self._send_json({"ok": True, "log": json.loads(data)})
+            except Exception as exc:
+                self._send_json({"ok": False, "error": str(exc)}, HTTPStatus.INTERNAL_SERVER_ERROR)
+            return
+
         if path.startswith("/download-zip/"):
             # ZIP download is disabled — see _send_zip_for_job() for explanation.
             job_id = unquote(path.removeprefix("/download-zip/"))
@@ -1094,6 +1119,36 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
 
         if path == "/robots.txt":
             self._send_text("User-agent: *\nDisallow:\n")
+            return
+
+        # ── /static/* — shared assets (e.g. Tailwind served locally) ─────────
+        # 2026-05-13: legacy frontend used to pull Tailwind from
+        # cdn.jsdelivr.net but some users see the CDN load fail
+        # (Brave's blocker, corporate proxy, slow DNS). Ship a local
+        # copy under web/static/ and route /static/* to it. Path
+        # traversal blocked by resolve()+relative_to.
+        if path.startswith("/static/"):
+            relative = path.removeprefix("/static/").lstrip("/")
+            if ".." in relative.split("/") or relative.startswith("/"):
+                self._send_text("Not found", HTTPStatus.NOT_FOUND)
+                return
+            asset = (WEB_STATIC_DIR / relative).resolve()
+            try:
+                asset.relative_to(WEB_STATIC_DIR.resolve())
+            except ValueError:
+                self._send_text("Not found", HTTPStatus.NOT_FOUND)
+                return
+            if asset.is_file():
+                ctype, _ = mimetypes.guess_type(str(asset))
+                self.send_response(HTTPStatus.OK)
+                self.send_header("Content-Type", ctype or "application/octet-stream")
+                self.send_header("Content-Length", str(asset.stat().st_size))
+                self.send_header("Cache-Control", "public, max-age=86400")
+                self._send_security_headers()
+                self.end_headers()
+                self.wfile.write(asset.read_bytes())
+                return
+            self._send_text("Not found", HTTPStatus.NOT_FOUND)
             return
 
         # ── v2 frontend (Claude-inspired UI) ─────────────────────────────────
