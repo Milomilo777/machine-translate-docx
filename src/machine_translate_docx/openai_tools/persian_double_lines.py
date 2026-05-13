@@ -138,8 +138,24 @@ def _display_len(text: str) -> int:
 
 
 def _strip_citation(text: str) -> str:
-    """Remove trailing '(source)' attribution from FA cell text."""
-    return _RE_CITATION.sub('', text).strip()
+    """Remove trailing '(source)' attribution from FA cell text.
+
+    2026-05-13 bug fix (News Scroll NS 3146): when an FA cell contains
+    ONLY the citation (e.g. '(EuroWeekly News)' or '(Reuters)' on its
+    own row — the standard SMTV layout for news-source attribution),
+    the old version wiped the cell to empty. The aligner then saw an
+    empty FA row, treated it as a continuation slot, and the source
+    name disappeared from the final docx. The W2 whitelist contract
+    is that source-name tokens stay byte-identical end-to-end.
+
+    Fix: if stripping leaves nothing, the cell was citation-only —
+    keep it verbatim. Only strip when the cell carries a Persian
+    sentence followed by a parenthesised source.
+    """
+    stripped = _RE_CITATION.sub('', text).strip()
+    if not stripped and text.strip():
+        return text
+    return stripped
 
 
 def _normalize_fa(text: str) -> str:

@@ -62,18 +62,22 @@ def engine_suffix(ctx: RuntimeContext) -> str:
     Anything outside this table returns the empty string so the file
     keeps the legacy bare ``_{LANG}.docx`` name and nothing breaks.
     """
+    # 2026-05-13 (News Scroll NS 3146 fix): CLI no longer adds the
+    # `_Double_Lines` suffix. The aligner does not run inside the CLI
+    # anymore (F7c rolled back); the launcher's _apply_splitter is the
+    # one that actually performs the alignment AND renames the output
+    # via _double_lines_output_path. Adding the suffix here too caused
+    # `…_Polish_Double_Lines_Double_Lines.docx` when the launcher
+    # applied its rename pass on top.
     engine = (ctx.engine.engine or "").lower().strip()
     method = (ctx.engine.method or "").lower().strip()
-    split_engine = (getattr(ctx.flags, "split_engine", None) or "").lower().strip()
-    double_lines_tag = "_Double_Lines" if split_engine == "persian_double_lines" else ""
     if engine == "google":
-        return "_Google" + double_lines_tag
+        return "_Google"
     if engine == "deepl":
-        return "_Deepl" + double_lines_tag
+        return "_Deepl"
     if engine == "chatgpt":
         if method == "api":
-            base = "_Polish" if ctx.flags.with_polish else "_chatGPT"
-            return base + double_lines_tag
+            return "_Polish" if ctx.flags.with_polish else "_chatGPT"
     return ""
 
 
@@ -316,48 +320,19 @@ def save_docx_file(
                 # row counts + elapsed time. Rendered the same way the
                 # chatgpt-polish sidecar is, just with `tokens=null`.
                 _write_minimal_sidecar(ctx)
-            # F7c: run the FA bilingual aligner over the just-saved docx
-            # when the user picked Persian Double Lines as the split
-            # method. FASubtitleAligner is mechanical (no LLM); it
-            # rewrites the FA column into ≤48-char chunks distributed
-            # across the existing rows. Reading + writing the same path
-            # is safe — python-docx loads into memory before saving.
-            _split_engine = getattr(ctx.flags, "split_engine", None)
-            if _split_engine == "persian_double_lines":
-                # A3 / A12 (2026-05-12): aligner failure or any
-                # over-limit row is a job failure, not a warning. The
-                # output file name carries `_Double_Lines`, so silently
-                # falling back to single-line FA would hand the user a
-                # mislabelled file. Raise so the CLI surfaces [FAIL].
-                from ..openai_tools.persian_double_lines import FASubtitleAligner
-                _aligner_llm_threshold = getattr(
-                    ctx.flags, "aligner_llm_threshold", 0
-                )
-                aligner = FASubtitleAligner(llm_threshold=_aligner_llm_threshold)
-                out_path = ctx.flags.word_file_to_translate_save_as_path
-                stats = aligner.align(out_path, out_path)
-                print(f"[INFO] FASubtitleAligner applied: {stats}")
-                _over  = int(stats.get("over_limit", 0) or 0) if isinstance(stats, dict) else 0
-                _total = int(stats.get("total_rows", 0) or 0) if isinstance(stats, dict) else 0
-                # A12 (2026-05-12, calibrated): 0-tolerance is too strict for
-                # real broadcast docx — the mechanical splitter can hit a
-                # forced-merge edge once or twice per 1000 rows on dense
-                # Persian sentences. Accept ≤1 % of rows; raise above that.
-                _ratio = (_over / _total) if _total > 0 else 1.0
-                if _over > 0 and _ratio > 0.01:
-                    from ..exceptions import TranslationFailure
-                    raise TranslationFailure(
-                        f"FA aligner produced {_over}/{_total} rows over MAX_CHARS "
-                        f"({_ratio * 100:.1f} %, threshold 1 %) — broadcast "
-                        "subtitle limit violated.",
-                        reason="aligner_over_limit",
-                    )
-                elif _over > 0:
-                    print(
-                        f"[WARN] FA aligner: {_over}/{_total} row(s) over "
-                        f"MAX_CHARS ({_ratio * 100:.2f} %) — accepted under "
-                        "the 1 % broadcast tolerance."
-                    )
+            # F7c REMOVED 2026-05-13: the launcher's _apply_splitter step
+            # is the canonical place where the FA aligner runs. Having
+            # it ALSO run here was a duplication that
+            #   (a) caused double-aligned output named `…_Double_Lines_Double_Lines.docx`
+            #       when the launcher applied its own pass on top, and
+            #   (b) poisoned the 36-hour cache, because the cached
+            #       main_path then held the aligned file — a later
+            #       upload that asked for basic-split still received
+            #       the previously-aligned content under the wrong
+            #       splitter's filename.
+            # The launcher's _apply_splitter handles the aligner for
+            # every web-driven job. CLI standalone callers can opt-in
+            # by running the aligner explicitly post-save.
         except Exception as _exc:
             # A3 / A12 (2026-05-12): structured pipeline failures (e.g.
             # aligner over-limit, future aligner exceptions) must bubble

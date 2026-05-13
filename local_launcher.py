@@ -577,6 +577,18 @@ class LocalState:
             dst_main = entry_dir / main_path.name
             if not dst_main.exists() or dst_main.stat().st_size != main_path.stat().st_size:
                 shutil.copy2(main_path, dst_main)
+            # 2026-05-13: also cache the JSON sidecar so a cache-hit
+            # delivers the run log too. Old behaviour cached only the
+            # docx, so re-using a cached translation gave the user a
+            # docx without its accompanying _log.json.
+            dst_log: Path | None = None
+            sidecar_src = main_path.with_name(
+                _re.sub(r"(?i)\.docx$", "_log.json", main_path.name)
+            )
+            if sidecar_src.exists():
+                dst_log = entry_dir / sidecar_src.name
+                if not dst_log.exists() or dst_log.stat().st_size != sidecar_src.stat().st_size:
+                    shutil.copy2(sidecar_src, dst_log)
             dst_src: Path | None = None
             if source_file and source_file.exists():
                 dst_src = entry_dir / "_source.docx"
@@ -584,6 +596,7 @@ class LocalState:
                     shutil.copy2(source_file, dst_src)
             data: dict = {
                 "main_path": dst_main,
+                "log_path":  dst_log,
                 "source_path": dst_src,
                 "translation_array": list(translation_array or []),
                 "phrase_separator_table": list(phrase_separator_table or []),
@@ -2270,6 +2283,13 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
             return base_path
         if not (target_language or "").lower().startswith("fa"):
             return base_path
+        # 2026-05-13 (News Scroll NS 3146 fix): if the file already
+        # carries _Double_Lines in its name, refuse to re-align it.
+        # Safety net for any future code path that produces an
+        # already-aligned file (kept after F7c rollback in case
+        # someone calls the aligner directly from a CLI script).
+        if "_Double_Lines" in base_path.stem:
+            return base_path
         try:
             out_path = _double_lines_output_path(base_path)
             if out_path.exists():
@@ -2316,6 +2336,18 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
             except Exception as exc:
                 print(f"[cache] copy-back failed: {exc}")
                 return None
+        # 2026-05-13: copy the sidecar too so /download/<…>_log.json
+        # works on a cache-hit job.
+        log_src = cached.get("log_path")
+        if log_src:
+            log_src = Path(log_src)
+            if log_src.exists():
+                log_dst = uploads_dir / log_src.name
+                try:
+                    if not log_dst.exists():
+                        shutil.copy2(log_src, log_dst)
+                except Exception as exc:
+                    print(f"[cache] log copy-back failed: {exc}")
         return self._apply_splitter(
             base_dst,
             split_engine=split_engine,
