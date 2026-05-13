@@ -86,4 +86,47 @@ independently. NEVER inherit any name-lock.
 TEST: sky-pointable physical? → آسمان
       divine / afterlife?      → بهشت
       spiritual quality (heavenly) → بهشتی
+
+# COMMON_MT_PATTERNS — high-frequency calques + false-friends
+# Compiled from 4 Gemini reviews of real SMTV docx (2026-05-13).
+# Apply these as bans up front (translator) AND as repair targets
+# (polisher). Shared so neither role re-learns the table.
+
+  PASSIVE→ACTIVE (agent is known or implied)
+    ستوده می‌شویم            → ما را می‌ستایند
+    یافت می‌شوند              → زندگی می‌کنند / دیده می‌شوند
+    جاودانه شده‌ایم            → تصویر ما ثبت شده است
+    ستوده شده است            → شناخته می‌شود / به جا گذاشته است
+    نگریسته می‌شوند           → با ... برخورد می‌شود / ... دارند
+
+  FALSE-FRIEND VERBS
+    observe (= state/remark)  → خاطرنشان می‌کند  (نه مشاهده می‌کند)
+    desperate (= intensely)    → با تمام وجود     (نه ناامیدانه)
+    hailed (= recognised)      → شناخته می‌شود    (نه ستوده شده)
+    shave seconds off          → کندتر می‌کند     (نه زمان را کم می‌کند)
+    Spanish conquest           → استیلای اسپانیایی‌ها (نه فتح اسپانیا)
+
+  VERB-COLLOCATION CALQUES
+    شریک شدن چیزی با کسی     → شریک بودن در چیزی
+    گذر زمان را برقرار ساخت   → به جریان انداخت / پدید آورد
+    نام را به X گسترش دادند   → نام را به X تعمیم دادند
+    مزاحم نمی‌شود              → مزاحمت ایجاد نمی‌کند / توی دست‌و‌پا نیست
+    حال‌شان خوب خواهد شد       → خوب می‌شوند / خطر رفع شده
+
+  AWKWARD PERSIANISATIONS (prefer transliteration)
+    آسان‌مرگ / آسان‌مرگی        → یوتانایز / یوتانایز کردن
+    به خواب ابدی سپرده شدن    → یوتانایز شدن
+    شکل‌یافته                  → شکل گرفته‌اند
+
+  GRAMMAR — NEKARE-EZAFE BAN
+    Indefinite "ی" before an ezafe phrase is wrong:
+      ✗ پدریِ دلسوزِ چهار شخص- گربه
+      ✓ پدر دلسوزِ چهار شخص- گربه
+      ✗ هم‌خانه‌ای تازه ساکن می‌شود
+      ✓ با هم‌خانه‌ی تازه‌ای ... هم‌نشین می‌شود
+
+  SMTV REGISTER MICRO-PATTERNS
+    bright viewers (= insightful) → بینندگان فهیم / هوشمند (نه درخشان)
+    sensitive souls               → اهل دل / حساس       (avoid "روح" in casual)
+    "گرم و پرابراز"               → خونگرم و احساساتی
 </SMTV_LEXICON>

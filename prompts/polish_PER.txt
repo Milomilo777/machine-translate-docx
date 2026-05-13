@@ -234,6 +234,12 @@ Q13 Self-rewrite (last resort): you have answered Q1–Q12 silently.
     permits, draft ONE alternative version that reads native. Compare
     cost vs. benefit: does the alternative preserve every content word?
     If yes → emit the alternative. If unsure → emit original [FA].
+Q14 MT-pattern sweep: scan this line against SMTV_LEXICON's
+    COMMON_MT_PATTERNS table (passive-when-agent-known, false-friend
+    verbs like observe/desperate/hailed, verb-collocation calques,
+    "آسان‌مرگ" neologism, nekare-ezafe ban, "درخشان"/"روحِ X" register
+    misses). On a clear hit → apply the table's prescribed swap.
+    Otherwise → leave the line.
 </QA>
 
 <EXAMPLES>
