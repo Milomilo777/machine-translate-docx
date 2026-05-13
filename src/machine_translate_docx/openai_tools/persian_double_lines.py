@@ -997,9 +997,46 @@ class FASubtitleAligner:
                     groups: list, all_chunks: list) -> None:
         doc   = Document(input_path)
         table = doc.tables[0]
+
+        # 2026-05-13 (CS-3146 fix): the basic distributor that runs BEFORE
+        # the aligner does not know which rows are bridge / metadata, so
+        # it sometimes fills FA cells in HOST: / WARNING: / time-code
+        # rows with continuation text from neighbouring groups. The
+        # aligner correctly skips those rows during sentence grouping
+        # but leaves whatever was already in the cell. Result: a
+        # bridge row carries a misleading FA fragment.
+        #
+        # Fix: collect every row index that the parser flagged as bridge
+        # OR shaded, and empty its FA cell before writing the aligned
+        # group output. The bridge detector is the same one
+        # `_is_bridge` + shading scan that the aligner already uses, so
+        # there is no new heuristic — only an explicit clear pass.
+        bridge_row_indices: set = set()
+        try:
+            input_rows = self._read_rows(input_path)
+            for rd in input_rows:
+                en = rd.get('en', '')
+                fa = rd.get('fa', '')
+                shaded = rd.get('shaded', False)
+                if _is_bridge(en, fa, shaded):
+                    bridge_row_indices.add(rd['ri'])
+        except Exception as _exc:
+            # Defensive: if the re-read fails, fall back to the legacy
+            # behaviour (don't touch bridge cells) rather than crashing.
+            print(f"[WARN] FA aligner: bridge-cell clear pass skipped — {_exc!r}")
+
+        # Aligned groups overwrite first.
         for group, chunks in zip(groups, all_chunks):
             for ri, chunk in zip(group['row_indices'], chunks):
                 _set_fa_cell(table, ri, chunk)
+        # Then sweep bridge rows to '' so leftover classic-distributor
+        # fragments are erased.
+        for ri in bridge_row_indices:
+            try:
+                _set_fa_cell(table, ri, '')
+            except Exception:
+                continue
+
         doc.save(output_path)
 
     # ── main entry point ──────────────────────────────────────────────────────
@@ -1089,10 +1126,22 @@ class FASubtitleAligner:
             'elapsed_seconds': round(elapsed, 1),
         }
 
+        # 2026-05-13: surface the LLM-rescue count and the threshold so
+        # the user can see whether raising the dial actually changed
+        # anything on this document. When threshold > 0 but llm fired 0
+        # times, this print says so explicitly.
+        _llm_note = ""
+        if self.llm_threshold > 0:
+            _llm_note = (
+                f" | LLM threshold {self.llm_threshold}"
+                f" | LLM rescues fired: {self._llm_corrected_count}/{len(groups)}"
+            )
+            if self._llm_corrected_count == 0:
+                _llm_note += " (no group's difficulty score reached the threshold)"
         print(
             f"[INFO] Aligner done in {elapsed:.1f}s"
             f" | groups: {len(groups)}"
             f" | doubles: {n_doubles} | triples: {n_triples}"
-            f" | over-{MAX_CHARS}: {n_over}"
+            f" | over-{MAX_CHARS}: {n_over}{_llm_note}"
         )
         return self.last_stats
