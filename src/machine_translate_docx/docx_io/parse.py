@@ -107,6 +107,20 @@ def read_and_parse_docx_document(ctx: "RuntimeContext") -> None:
     if use_html:
         print("Content-Type: text/html\n")
 
+    # Edge-case audit 2026-05-13 (E1): a docx with no tables previously
+    # crashed here with `IndexError: list index out of range`. The
+    # translator expects an SMTV-shaped table; without one there's
+    # nothing for the pipeline to do. Raise a structured failure so
+    # the launcher surfaces it as [FAIL] reason=empty_docx instead of
+    # crashing.
+    if not docxdoc.tables:
+        from ..exceptions import EmptyDocxError
+        raise EmptyDocxError(
+            f"Input docx has no tables — the pipeline expects an "
+            f"SMTV-shaped (No. | EN | FA) table. Path: "
+            f"{ctx.flags.word_file_to_translate}"
+        )
+
     docx.word_translation_table_length = len(docxdoc.tables[0].rows)
 
     nb_tables = len(docxdoc.tables)  # noqa: F841 — historical print uses this comment

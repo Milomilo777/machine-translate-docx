@@ -318,6 +318,20 @@ class OpenAIPolisher:
 
         polished_lines = self._parse_output(raw, fa_lines)
 
+        # 2026-05-13 (F8): count real edits BEFORE the line-shape reconciler
+        # touches the output. The reconciler re-emits every line through
+        # the model, which makes ~100 % of rows look "modified" downstream
+        # even when the polish content barely changed. We capture the
+        # honest count here on the raw polished_lines vs fa_lines pairing
+        # (using min length so a mismatch still gives us a meaningful
+        # number). When `was_reconciled` is True, treat the figure as a
+        # lower bound — the real edit count may be higher because the
+        # reconciler may have merged content from extra Persian lines.
+        _pre_reconcile_modified = sum(
+            1 for a, b in zip(fa_lines, polished_lines) if a != b
+        )
+        _was_reconciled = False
+
         if len(polished_lines) != n:
             # 2026-05-13 (F5 cascade): instead of dropping the polish pass
             # outright, hand the mismatched output to the line-count
@@ -338,9 +352,10 @@ class OpenAIPolisher:
                 )
                 if len(reconciled) == n:
                     polished_lines = reconciled
+                    _was_reconciled = True
                     print(
                         f"[INFO] Polisher: reconciler restored {n} lines; "
-                        f"keeping polished content."
+                        f"keeping polished content (line-shape repaired)."
                     )
                 else:
                     raise ValueError("reconciler did not converge")
@@ -394,9 +409,17 @@ class OpenAIPolisher:
         # changes (F8). Count modifications now, and surface a quality
         # warning when the polish pass barely moved anything for a Persian
         # chatgpt-polish job.
-        _lines_modified = sum(
-            1 for a, b in zip(fa_lines, polished_lines) if a != b
-        )
+        # F8 (audit 2026-05-13): when the reconciler ran, the post-pass
+        # diff is dominated by re-emit noise (every line passed through
+        # gpt-5.4-mini once more, so almost everything looks "modified").
+        # Prefer the pre-reconcile honest count; expose was_reconciled
+        # so callers can warn the user that the figure is a lower bound.
+        if _was_reconciled:
+            _lines_modified = _pre_reconcile_modified
+        else:
+            _lines_modified = sum(
+                1 for a, b in zip(fa_lines, polished_lines) if a != b
+            )
 
         self.last_call_data = {
             "type":           "polish",
@@ -410,6 +433,7 @@ class OpenAIPolisher:
             "en_residue":     residue_lines,
             "lines_processed":  n,
             "lines_modified":   _lines_modified,
+            "was_reconciled":   _was_reconciled,
             "tokens": {
                 "prompt":     usage.get("prompt_tokens", 0),
                 "completion": usage.get("completion_tokens", 0),
@@ -430,9 +454,10 @@ class OpenAIPolisher:
                 "Review prompts/polish_PER.txt sensitivity (F6)."
             )
 
+        _reconcile_note = " (line shape repaired by reconciler — count is a lower bound)" if _was_reconciled else ""
         print(
             f"[INFO] Polisher: {n} lines processed, {_lines_modified} "
-            f"modified, in {elapsed:.1f}s (model={self.model})"
+            f"modified, in {elapsed:.1f}s (model={self.model}){_reconcile_note}"
         )
         return "\n".join(polished_lines)
 
