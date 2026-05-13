@@ -145,6 +145,39 @@ def test_safe_break_avoids_ellipsis_split():
     assert _is_safe_break(text, 7)
 
 
+def test_safe_break_refuses_inside_paren_span():
+    """Inside an unclosed `(`, don't break. The `)` would land on the
+    next chunk far from its content (orphan close-bracket pattern that
+    showed up in AJAR 3147 reference comparison).
+    """
+    from machine_translate_docx.openai_tools.aligner_per import _is_safe_break
+    # "گفت (بسیار خوب) ادامه داد" — paren is balanced; safe in the middle.
+    safe = "گفت (بسیار خوب) ادامه داد"
+    # Position 15 is in "ادامه" (after the close paren). Should be safe.
+    pos_after_close = safe.find(") ") + 2
+    assert _is_safe_break(safe, pos_after_close)
+
+    # "گفت (بسیار خوب ادامه داد)" — unbalanced when we try to break
+    # inside the open `(`. Position right before "ادامه" (still inside
+    # the unclosed paren span) must be refused.
+    unclosed = "گفت (بسیار خوب ادامه داد"
+    pos_inside = unclosed.find("ادامه")
+    assert not _is_safe_break(unclosed, pos_inside)
+
+
+def test_safe_break_refuses_inside_quote_span():
+    """Inside an unclosed `"`, don't break."""
+    from machine_translate_docx.openai_tools.aligner_per import _is_safe_break
+    text = 'گفت "بسیار خوب ادامه داد"'
+    # Closed quote — break inside (between «خوب» and «ادامه») would be
+    # inside the quote span; refuse.
+    pos_inside_quote = text.find("ادامه")
+    # Use a version without close quote (odd count of " left of pos).
+    unclosed = 'گفت "بسیار خوب ادامه داد'
+    pos_inside = unclosed.find("ادامه")
+    assert not _is_safe_break(unclosed, pos_inside)
+
+
 def test_safe_break_avoids_orphaned_brackets():
     """Don't break right after `(` or right before `)` / `"`.
 

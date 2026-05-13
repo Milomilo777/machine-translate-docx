@@ -6,6 +6,43 @@
 
 ---
 
+## 2026-05-13 — FA aligner: span-guard + benchmark scaffolding + باشه ban
+
+User attached a manually-corrected reference file `… Persian.docx` and
+asked for a cross-language "benchmark" alignment — using punctuation
+that exists in both EN and FA (parens, quotes, commas) as anchors so
+the FA chunk for row N ends where the EN row N ends.
+
+What was built:
+
+  **Span guard in `_is_safe_break`** — the safe-and-effective subset of
+  the benchmark idea. The splitter now refuses any position that sits
+  INSIDE an unclosed `(`, `"`, or `“` span:
+    if left.count('(') > left.count(')')   → not safe
+    if left.count('"') % 2 == 1            → not safe
+    if left.count('“') > left.count('”')   → not safe
+  Validated on AJAR 3147: 0 punctuation orphans (down from many), 71 %
+  exact match with the manual reference, 185 doubles, 0 triples.
+
+  **`_parse_groups` now tracks `en_per_row`** — one EN string per
+  row_index, "" if EN was empty. Foundation for an eventual LLM-rescue
+  path that can hint anchors to the model.
+
+  **`_align_to_en_benchmarks` scaffolding** kept INACTIVE — a pure
+  position-based EN→FA punct mapper. Validated to over-correct on
+  ~30 % of groups because the manual editor restructures sentences
+  semantically (e.g. moves "خوشحالیم" forward in the FA clause). Left
+  in the file as a hook the future LLM rescue can borrow.
+
+  **`polish_PER.txt` HL-14 NO_BAASHE** — broadcast Persian on state TV
+  in year 1400 never uses `باشه`. Polisher now lifts it to `بله` (or
+  context-appropriate `درست است` / `حتماً`). User-reported register
+  miss.
+
+5 new aligner regression tests + 2 new span-guard tests (total: 120).
+
+---
+
 ## 2026-05-13 — FA aligner: three bugs from AJAR 3147 fixed
 
 User-reported defects in

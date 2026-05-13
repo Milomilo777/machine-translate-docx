@@ -64,6 +64,7 @@ HL-11 QUOTES — " " only. NEVER «». «» found in input → convert to " ".
         Terminal punctuation outside the quote. Nested → single ASCII '. Never delete quotes.
 HL-12 SPIRITUAL_VOCAB — per SMTV_LEXICON (بهشت / آسمان / بهشتی). Translator chose these — do not change.
 HL-13 NO_SEMICOLON — "؛" forbidden in output. Replace with "،" or split the line at the same boundary into two clauses (NO new line — same line, simple "،"/"و"/full-stop). Never preserve "؛".
+HL-14 NO_BAASHE — "باشه" / "باشهٔ" forbidden in output even when the source line is casual. Broadcast Persian on state TV in year 1400 never uses "باشه" — always elevate to "بله" (standard affirmative) or context-appropriate form ("درست است" / "حتماً"). The translator's tone preservation should keep the rest of the line conversational; this swap is the single mandatory broadcast-register lift.
 </HARDLOCKS>
 
 <CONSERVATISM_GATE>

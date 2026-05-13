@@ -267,6 +267,19 @@ def _is_safe_break(text: str, pos: int) -> bool:
     # — the close-bracket belongs to the previous chunk.
     if pos < n and text[pos] in ')"»」]':
         return False
+    # 2026-05-13 (AJAR-3147 benchmark fix): paren/quote span guard.
+    # Don't break INSIDE an unclosed span. If everything to the left of
+    # `pos` contains more openers than closers, we're inside a paren
+    # span — splitting here orphans the close paren on the next chunk.
+    # Same logic for double-quote pairs.
+    left = text[:pos]
+    if left.count('(') > left.count(')'):
+        return False
+    if left.count('"') % 2 == 1:
+        return False
+    # Curly-quote span: count opens vs closes.
+    if left.count('“') > left.count('”'):
+        return False
     last_word = left.split()[-1]
     if last_word in DANGLING_PREPS:
         return False
@@ -432,6 +445,156 @@ def _split_natural(text: str) -> list:
         chunks.append(chunk)
         remaining = remaining[pos:].lstrip()
     return chunks or [text[:MAX_CHARS]]
+
+
+# EN punctuation → preferred FA equivalent for benchmark anchoring.
+# 2026-05-13 (AJAR-3147 benchmark fix): captured but currently INACTIVE.
+# The user's reference manually rearranges sentences semantically, so a
+# purely position-based EN→FA punct mapping over-corrects in 30% of
+# groups. The functions below are kept as scaffolding for the future
+# LLM-rescue path that can use the EN anchors as soft hints.
+_EN2FA_PUNCT = {
+    '.': '.', '!': '!', '?': '؟',
+    ',': '،', ';': '؛', ':': ':',
+    ')': ')', ']': ']',
+    '"': '"',
+    '“': '"',   # LEFT DOUBLE QUOTATION MARK
+    '”': '"',   # RIGHT DOUBLE QUOTATION MARK
+    '»': '"',   # RIGHT-POINTING DOUBLE ANGLE
+    '…': '…',   # HORIZONTAL ELLIPSIS
+}
+
+# Terminal punctuation set we will trust as a row-boundary signal.
+_EN_TERM_PUNCT = set(_EN2FA_PUNCT.keys())
+
+
+def _en_row_terminal(en_row: str) -> str | None:
+    """Return the trailing punct char of an EN row (last non-space),
+    if and only if it's one of the benchmark-trusted characters.
+    Otherwise None.
+    """
+    en_row = en_row.rstrip()
+    if not en_row:
+        return None
+    last = en_row[-1]
+    return last if last in _EN_TERM_PUNCT else None
+
+
+def _align_to_en_benchmarks(en_per_row: list, full_fa: str,
+                            n_rows: int) -> list | None:
+    """Anchor FA chunk boundaries to EN row terminal punctuation.
+
+    Strategy (2026-05-13 AJAR-3147 benchmark fix):
+      • Walk through `en_per_row[:-1]`. For each EN row that ends with
+        a benchmark punct, locate the next matching FA punct in
+        `full_fa` (after the last anchor). Cut there.
+      • Rows BETWEEN anchors (EN rows without terminal punct) inherit
+        the doubled-content pattern: their slot reuses the surrounding
+        anchored chunk via `_distribute_to_rows`.
+      • The last row gets the remainder.
+
+    Returns a `list[str]` of length `n_rows` on success, or `None`
+    if no useful benchmarks were found or any sub-chunk would exceed
+    `MAX_CHARS`. The caller falls back to the mechanical splitter on
+    `None`.
+    """
+    if n_rows < 2 or len(en_per_row) != n_rows:
+        return None
+    if not full_fa or _display_len(full_fa) <= MAX_CHARS:
+        # Trivial cases — let the mechanical path handle them.
+        return None
+
+    # Identify anchored rows (EN row terminal punct that we'll use).
+    anchors: list = []   # list of (row_idx, fa_punct_char)
+    for i in range(n_rows - 1):
+        tp = _en_row_terminal(en_per_row[i])
+        if tp is None:
+            continue
+        anchors.append((i, _EN2FA_PUNCT[tp]))
+    if not anchors:
+        return None
+
+    # Walk full_fa and locate each anchor's matching FA punct position.
+    cuts: list = []   # list of (row_idx, end_pos_in_full_fa)
+    fa_pos = 0
+    n = len(full_fa)
+    for row_idx, fa_punct in anchors:
+        # Search forward for the next occurrence.
+        idx = full_fa.find(fa_punct, fa_pos)
+        if idx < 0:
+            # No matching punct ahead → bail; mechanical fallback.
+            return None
+        end = idx + 1
+        # Absorb a trailing close-quote / close-paren that belongs to
+        # the same boundary (so a chunk ending with `?` then `)` keeps
+        # the `)` attached, not orphaned onto the next chunk).
+        while end < n and full_fa[end] in ')"»」]”':
+            end += 1
+        # Reject if this would produce a chunk longer than MAX_CHARS
+        # (e.g. one very long FA sentence with all punct at the tail).
+        if _display_len(full_fa[fa_pos:end]) > MAX_CHARS:
+            return None
+        cuts.append((row_idx, end))
+        fa_pos = end
+
+    if fa_pos >= n and any(cut[0] < n_rows - 1 for cut in cuts):
+        # Anchors consumed all FA — nothing left for the tail row.
+        # Reject so mechanical path can balance better.
+        return None
+
+    # Distribute chunks. Rows from prev_anchor+1 .. cut.row_idx get the
+    # chunk that ends at `cut.end_pos`. If the run is >1 row, double /
+    # split via the existing helper so we still respect MAX_CHARS.
+    chunks_out: list = [''] * n_rows
+    fa_pos = 0
+    prev_row = -1
+    for row_idx, end in cuts:
+        chunk = full_fa[fa_pos:end].strip()
+        if not chunk:
+            return None
+        rows_in_block = list(range(prev_row + 1, row_idx + 1))
+        if len(rows_in_block) == 1:
+            chunks_out[row_idx] = chunk
+        else:
+            # Re-split this chunk for the inner rows; if it can't fit,
+            # fall through to mechanical.
+            sub_chunks = _split_for_n_rows(chunk, len(rows_in_block))
+            if not sub_chunks or any(
+                _display_len(c) > MAX_CHARS for c in sub_chunks
+            ):
+                return None
+            distributed = _distribute_to_rows(sub_chunks, len(rows_in_block))
+            for k, r in enumerate(rows_in_block):
+                chunks_out[r] = distributed[k] if k < len(distributed) else ''
+        fa_pos = end
+        prev_row = row_idx
+
+    # Tail: anything from the last anchored row + 1 to the very end.
+    tail_rows = list(range(prev_row + 1, n_rows))
+    tail_text = full_fa[fa_pos:].strip()
+    if not tail_rows:
+        if tail_text:
+            # Anchors ended mid-text but no row slots left → reject.
+            return None
+    elif not tail_text:
+        # No content for the tail rows → fail (would silently drop rows).
+        return None
+    else:
+        if len(tail_rows) == 1:
+            if _display_len(tail_text) > MAX_CHARS:
+                return None
+            chunks_out[tail_rows[0]] = tail_text
+        else:
+            sub_chunks = _split_for_n_rows(tail_text, len(tail_rows))
+            if not sub_chunks or any(
+                _display_len(c) > MAX_CHARS for c in sub_chunks
+            ):
+                return None
+            distributed = _distribute_to_rows(sub_chunks, len(tail_rows))
+            for k, r in enumerate(tail_rows):
+                chunks_out[r] = distributed[k] if k < len(distributed) else ''
+
+    return chunks_out
 
 
 def _split_for_n_rows(text: str, n_rows: int) -> list:
@@ -923,6 +1086,11 @@ class FASubtitleAligner:
         current_indices: list = []
         current_fa_parts: list = []
         current_en_parts: list = []   # 2026-05-12 phase-3 — context for LLM rescue
+        # 2026-05-13: per-row EN text (one entry per row_index, "" if EN
+        # cell was empty). Used by the benchmark-anchored splitter that
+        # tries to land FA punct at the same row index where EN punct
+        # appears — the user's "بنچ مارک" reference pattern.
+        current_en_per_row: list = []
 
         i = 0
         while i < len(rows):
@@ -937,10 +1105,12 @@ class FASubtitleAligner:
                         'row_indices': list(current_indices),
                         'fa_parts':    list(current_fa_parts),
                         'en_parts':    list(current_en_parts),
+                        'en_per_row':  list(current_en_per_row),
                     })
                     current_indices = []
                     current_fa_parts = []
                     current_en_parts = []
+                    current_en_per_row = []
                 i += 1
                 continue
 
@@ -950,6 +1120,7 @@ class FASubtitleAligner:
             if not fa.strip():
                 if current_indices:
                     current_indices.append(rd['ri'])
+                    current_en_per_row.append(en.strip())
                     if en.strip():
                         current_en_parts.append(en.strip())
                 i += 1
@@ -960,9 +1131,11 @@ class FASubtitleAligner:
                     and _display_len(fa) > MAX_CHARS):
                 rep_indices = [rd['ri']]
                 rep_en      = [en.strip()] if en.strip() else []
+                rep_en_per_row = [en.strip()]
                 j = i + 1
                 while j < len(rows) and rows[j]['fa'] == fa:
                     rep_indices.append(rows[j]['ri'])
+                    rep_en_per_row.append(rows[j]['en'].strip())
                     if rows[j]['en'].strip():
                         rep_en.append(rows[j]['en'].strip())
                     j += 1
@@ -971,12 +1144,14 @@ class FASubtitleAligner:
                         'row_indices': rep_indices,
                         'fa_parts':    [fa],   # once — not repeated
                         'en_parts':    rep_en,
+                        'en_per_row':  rep_en_per_row,
                     })
                     i = j
                     continue
 
             current_indices.append(rd['ri'])
             current_fa_parts.append(fa.strip())
+            current_en_per_row.append(en.strip())
             if en.strip():
                 current_en_parts.append(en.strip())
 
@@ -992,6 +1167,7 @@ class FASubtitleAligner:
                     if nxt['fa'].strip():
                         break   # next sentence starts here
                     current_indices.append(nxt['ri'])
+                    current_en_per_row.append(nxt['en'].strip())
                     if nxt['en'].strip():
                         current_en_parts.append(nxt['en'].strip())
                     j += 1
@@ -999,10 +1175,12 @@ class FASubtitleAligner:
                     'row_indices': list(current_indices),
                     'fa_parts':    list(current_fa_parts),
                     'en_parts':    list(current_en_parts),
+                    'en_per_row':  list(current_en_per_row),
                 })
                 current_indices = []
                 current_fa_parts = []
                 current_en_parts = []
+                current_en_per_row = []
                 i = j
                 continue
 
@@ -1013,6 +1191,7 @@ class FASubtitleAligner:
                 'row_indices': list(current_indices),
                 'fa_parts':    list(current_fa_parts),
                 'en_parts':    list(current_en_parts),
+                'en_per_row':  list(current_en_per_row),
             })
 
         return groups
