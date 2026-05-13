@@ -901,13 +901,21 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
         # frontend audio element — `media-src` opens that exact case. The
         # WebSocket-free architecture means no `connect-src` exemption needed
         # beyond same-origin.
+        # B14 (audit 2026-05-13, revised 2026-05-13 evening):
+        # the legacy `index.ejs` loads Tailwind CSS from `cdn.jsdelivr.net`
+        # and audio cues from `cdn.pixabay.com`. The original CSP locked
+        # style-src to 'self' and blocked Tailwind, which rendered the page
+        # without any styles. Explicitly allow these two CDNs for the
+        # respective resource types. Everything else (scripts, fetch,
+        # frame embedding) stays locked down to 'self' / DENY.
         self.send_header(
             "Content-Security-Policy",
             "default-src 'self'; "
             "script-src 'self'; "
-            "style-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
             "img-src 'self' data:; "
             "media-src 'self' https://cdn.pixabay.com; "
+            "font-src 'self' https://cdn.jsdelivr.net; "
             "connect-src 'self'; "
             "frame-ancestors 'none'",
         )
