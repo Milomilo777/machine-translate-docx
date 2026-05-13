@@ -344,7 +344,6 @@ app.post("/upload", upload.single("file"), async (req, res) => {
         `-t -q ` +
         (splitTranslate ? ' --split' : '');
 
-    if (translationEngine === 'perplexity') fullCommand += ` --enginemethod webservice `;
     if (splitEngine === 'openai')           fullCommand += ` --splitengine openai `;
     if (translationEngine === 'google')     fullCommand += ` --showbrowser `;
     if (translationEngine === 'chatgpt' || translationEngine === 'chatgpt-polish') {

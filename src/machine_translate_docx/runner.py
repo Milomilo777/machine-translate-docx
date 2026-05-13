@@ -42,16 +42,14 @@ __all__ = ["selenium_chrome_translate_maxchar_blocks"]
 
 def selenium_chrome_translate_maxchar_blocks(
     ctx: RuntimeContext,
-    selenium_webservice_perplexity_translate=None,
+    **_legacy_kwargs,   # tolerated for back-compat with old callers
 ):
     """Run the block-loop pipeline over ``ctx.docx.blocks_nchar_max_to_translate_array``.
 
     Returns ``(translation_succeded, translation_array)``.
 
-    ``selenium_webservice_perplexity_translate`` is injected by the
-    caller so this module does not have to import the entry script
-    (which has a hyphenated filename and is not importable). Pass the
-    helper from the entry script's namespace.
+    The legacy ``selenium_webservice_perplexity_translate`` kwarg is
+    silently ignored on 2026-05-13 (Perplexity engine fully removed).
     """
     translation_succeded = True
     translated_blocks = []
@@ -85,17 +83,6 @@ def selenium_chrome_translate_maxchar_blocks(
                 f"chatgpt method '{method}' not supported (supported: api)"
             )
 
-        if engine == "perplexity":
-            if method == "webservice":
-                if selenium_webservice_perplexity_translate is None:
-                    raise ValueError(
-                        "perplexity webservice helper not provided to runner"
-                    )
-                return selenium_webservice_perplexity_translate(ctx, text, attempt)
-            raise ValueError(
-                f"perplexity method '{method}' not supported (supported: webservice)"
-            )
-
         raise ValueError(f"Unknown translation engine: {engine}")
 
     # ── recursive split-and-retry algorithm ─────────────────────────────────
@@ -125,10 +112,7 @@ def selenium_chrome_translate_maxchar_blocks(
         if success and translated:
             return translated.strip()
 
-        # Google last-resort fallback for genuine engines (deepl,
-        # perplexity webservice, chatgpt api). The web-LLM gate that
-        # existed here was removed when chatgpt-web / perplexity-web
-        # were deleted from the codebase.
+        # Google last-resort fallback for genuine engines (deepl, chatgpt).
         selenium_chrome_google_click_cookies_consent_button(ctx)
         translated = selenium_chrome_google_translate(ctx, line)
         if translated:

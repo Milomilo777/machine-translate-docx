@@ -205,7 +205,6 @@ from .engines.deepl import (
 )
 # Stale ``engines._prompts`` shim was removed in C3 of the 2026-05-10
 # cleanup. The only callers of ``build_translation_prompt`` were the
-# now-deleted chatgpt-web / perplexity-web engines.
 from .runner import selenium_chrome_translate_maxchar_blocks as _runner_translate_maxchar_blocks
 
 # Module-level RuntimeContext singleton — Phase F1 transition shim.
@@ -508,7 +507,6 @@ def _sync_globals_from_ctx(ctx: RuntimeContext) -> None:
     if getattr(ctx.language, "src_lang", None) is not None:
         setattr(_mod, "src_lang", ctx.language.src_lang)
     # ── ctx.browser ─────────────────────────────────────────────────
-    # Browser handle: many helpers (download utilities, Perplexity login,
     # the recovery branches inside the Selenium engines) read `driver` as
     # a bare name. Mirror the active handle so they reach the live session.
     if getattr(ctx.browser, "driver", None) is not None:
@@ -719,7 +717,7 @@ parser = argparse.ArgumentParser()
 #parser.add_argument('--source-language', required = True, choices = Languages, help="Specify the source language!")
 parser.add_argument('--srclang', '-sl', required = False, help="Specify the default source language, en is default (hi,ja,ru,de,ru,hi,ja,in, etc)", default='en')
 parser.add_argument('--destlang', '--dl', required = False, help="Specify the destination language with 2 letter code (hi,ja,ru,de,ru,hi,ja,in, etc)")
-parser.add_argument('--engine', '-e', required = False, help="Specify the translation engine (google, deepl, chatgpt, perplexity)")
+parser.add_argument('--engine', '-e', required = False, help="Specify the translation engine (google, deepl, chatgpt)")
 parser.add_argument('--enginemethod', '-m', required = False, help="Specify the method (javascript, phrasesblock, singlephrase, xlsxfile, textfile )")
 parser.add_argument('--aimodel', '-am', required = False, help="Specify the ai model when applicable")
 parser.add_argument('--docxfile', '-d', required = False, help="Input file name")
@@ -945,7 +943,7 @@ if translation_engine is not None:
 else:
     translation_engine = ""
 
-if translation_engine in ['perplexity', 'chatgpt', 'deepl']:
+if translation_engine in ['chatgpt', 'deepl']:
     showbrowser = True
 elif translation_engine in ['deepl', 'chatgpt']:
     pass  # keep the value as is
@@ -953,10 +951,8 @@ else:
     translation_engine = 'google'
 
 if use_api and translation_engine != 'chatgpt':
-    use_api = False 
-    
-perplexity_max_char_bloc_size_key = ['perplexity', 'account','maximum_character_block']
-perplexity_maximum_character_block = get_nested_value_from_json_array(json_configuration_array, perplexity_max_char_bloc_size_key)
+    use_api = False
+
 
 engine_method = args.enginemethod
 engine_method = "%s" % engine_method
@@ -1010,13 +1006,6 @@ elif translation_engine == 'chatgpt':
         engine_method = 'api'
         showbrowser = False
 
-elif translation_engine == 'perplexity':
-    # perplexity-web was removed in the 2026-05-10 cleanup; only the
-    # webservice path remains.
-    if engine_method == 'webservice':
-        engine_method = 'webservice'
-    else:
-        engine_method = 'webservice'
 else:
     engine_method = "web"
 
@@ -1036,9 +1025,7 @@ chatgpt_maximum_character_block = get_nested_value_from_json_array(json_configur
 # Load openai line splitting package
 from .openai_tools import OpenAISubtitleSplitter
     
-if translation_engine == 'perplexity':
-    MAX_TRANSLATION_BLOCK_SIZE = perplexity_maximum_character_block
-elif translation_engine == 'chatgpt':
+if translation_engine == 'chatgpt':
     MAX_TRANSLATION_BLOCK_SIZE = chatgpt_maximum_character_block
 else:
     MAX_TRANSLATION_BLOCK_SIZE = deepl_maximum_character_block
@@ -1047,7 +1034,7 @@ else:
 # When translation engine is deepl or chatgpt : use undetected_chromedriver
 # Else, use standard selenium webdriver
 
-if translation_engine in ['perplexity', 'chatgpt'] and engine_method != "webservice":
+if translation_engine == 'chatgpt' and engine_method != "webservice":
     import undetected_chromedriver as webdriver
 else:
     from selenium import webdriver  # regular selenium webdriver
@@ -1954,46 +1941,9 @@ def remove_span_tag(text):
 
 
 
-def selenium_chrome_perplexity_wait_log_in():
-    """Phase F1.2: drops vestigial global declarations — neither
-    json_configuration_array nor MAX_TRANSLATION_BLOCK_SIZE is read or
-    written in this function body. (The only caller is currently
-    commented-out in main().)"""
-    driver.set_window_size(600, 600)
-    #driver.maximize_window()
-
-    loop_count = 200
-    sleep_wait_sec = 5
-
-    while True:
-        try:
-            driver.get("https://www.perplexity.ai/")
-            
-            # Wait up to 10 seconds for the signed-in avatar to appear
-            WebDriverWait(driver, 3).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, '[data-testid="sidebar-popover-trigger-signed-in"]'))
-            )
-            print("✅ User is logged in perplexity.")
-            return True
-
-        except Exception:
-            var = traceback.format_exc()
-            print(var)
-            
-    return False
-
-
-
-# build_translation_prompt was deleted in C3 of the 2026-05-10
-# cleanup pass — its only callers were the now-deleted chatgpt-web /
-# perplexity-web engines.
-
-
-# selenium_webservice_perplexity_translate was extracted to
-# ``src/engines/perplexity_webservice.py`` in C3.1 of the 2026-05-10
-# architecture cleanup. Imported here so the runner-injection call
-# site (and any historical caller) keeps resolving.
-from .engines.perplexity_webservice import selenium_webservice_perplexity_translate
+# module, and every dispatch / runner / config reference were all
+# deleted in the same pass. The only remaining mentions in the tree
+# are historical CHANGELOG and PROJECT_MEMORY notes.
 
 
 # set_translation_function was extracted to ``src/dispatch.py`` in the
@@ -2844,10 +2794,7 @@ def translate_from_phrasesblock(ctx: RuntimeContext):
     #input("phrasesblock")
     print("Starting translation in %s using phrase blocks of %d characters..." % (ctx.engine.engine, ctx.config.max_translation_block_size))
 
-    translation_succeded, ctx.docx.translation_array = _runner_translate_maxchar_blocks(
-        ctx,
-        selenium_webservice_perplexity_translate=selenium_webservice_perplexity_translate,
-    )
+    translation_succeded, ctx.docx.translation_array = _runner_translate_maxchar_blocks(ctx)
     try:
         os.remove(text_file_path)
         pass
@@ -4151,8 +4098,7 @@ def save_docx_file(ctx: RuntimeContext):
     # PROGRESS:90 — about to write the docx to disk. The aligner branch
     # in print_console_docx_file_translated also emits 90 (and 100), so
     # this is a no-op there; for non-aligner engines (DeepL, Google web,
-    # Perplexity) it fills the gap between block-loop's last 75 and the
-    # final 100.
+    # chatgpt) it fills the gap before the save-time final 100.
     print("PROGRESS:90", flush=True)
     _save_docx_file_impl(
         ctx,
@@ -4221,12 +4167,6 @@ def main() -> int:
 
     if ctx.engine.engine == 'deepl':
         ctx.browser.logged_into_deepl = selenium_chrome_deepl_log_in(ctx)
-
-    if ctx.engine.engine == 'perplexity':
-        pass
-        #logged_into_perplexity = selenium_chrome_perplexity_wait_log_in
-        #if not logged_into_perplexity:
-        #    print("Failed to login into perplexity")
 
     translation_succeded = translate_docx(ctx)
     _sync_globals_from_ctx(ctx)  # refresh module-level after translation_array etc. populated

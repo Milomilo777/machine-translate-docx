@@ -77,8 +77,9 @@ def use_phrasesblock(translation_engine: str, engine_method: str) -> bool:
     ``set_translation_function`` is now impossible because there is no
     other place to drift to.
 
-    chatgpt-web and perplexity-web are intentionally absent — both
-    were deleted in the 2026-05-10 cleanup pass.
+    chatgpt-web / perplexity-web / perplexity-webservice are intentionally
+    absent — chatgpt-web and perplexity-web were deleted in the 2026-05-10
+    cleanup pass, perplexity-webservice was deleted entirely on 2026-05-13.
     """
     if translation_engine == "chatgpt":
         # API path always uses phrase-block — the OpenAI translator
@@ -87,10 +88,6 @@ def use_phrasesblock(translation_engine: str, engine_method: str) -> bool:
         return True
     if translation_engine == "deepl":
         return engine_method == "phrasesblock"
-    if translation_engine == "perplexity":
-        # Both the HTTP webservice path and classic phrasesblock use
-        # the same block loop.
-        return engine_method in ("phrasesblock", "webservice")
     if translation_engine == "google":
         # google-phrasesblock = textarea URL with \n-joined phrases.
         # Other google methods (javascript, textfile, xlsxfile) populate
@@ -142,8 +139,6 @@ def set_translation_function(ctx: RuntimeContext) -> None:
         # is just the array lookup. (chatgpt-web removed 2026-05-10.)
         ctx.engine.dispatcher = _array_dispatcher
     else:
-        # google / perplexity-webservice paths.
-        # (perplexity-web removed 2026-05-10.)
         if method == "textfile":
             ctx.engine.dispatcher = _array_dispatcher
         elif method == "singlephrase":

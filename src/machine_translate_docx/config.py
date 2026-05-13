@@ -254,11 +254,6 @@ DefaultJsonConfiguration: Final[str] = """{
 			"maximum_character_block": 5000
 		}
 	},
-	"perplexity": {
-		"account": {
-			"maximum_character_block": 950
-		}
-	},
 	"chatgpt": {
 		"no_account": {
 			"maximum_character_block": 1000

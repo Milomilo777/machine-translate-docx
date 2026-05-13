@@ -123,8 +123,8 @@ class EngineCtx:
     DeepL phrasesblock → singlephrase fallback (see module docstring).
     """
 
-    engine:     str = ""               # 'google' | 'deepl' | 'chatgpt' | 'perplexity'
-    method:     str = ""               # 'phrasesblock' | 'singlephrase' | 'api' | 'webservice' | 'textfile' | 'xlsxfile' | 'javascript' | 'web'
+    engine:     str = ""               # 'google' | 'deepl' | 'chatgpt'
+    method:     str = ""               # 'phrasesblock' | 'singlephrase' | 'api' | 'textfile' | 'xlsxfile' | 'javascript' | 'web'
     dispatcher: DispatcherFn | None = None
 
 

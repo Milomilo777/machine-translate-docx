@@ -91,7 +91,6 @@ def _engine_suffix_for(translation_engine: str | None) -> str:
     has to guess the output filename because the subprocess never
     printed `Saved file name:`.
     """
-    # chatgpt-web / perplexity-web were removed in the 2026-05-10
     # cleanup pass — Cloudflare gating made them never-reach-prod.
     return {
         'google':         '_Google',
@@ -908,10 +907,18 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
         # without any styles. Explicitly allow these two CDNs for the
         # respective resource types. Everything else (scripts, fetch,
         # frame embedding) stays locked down to 'self' / DENY.
+        # Legacy index.ejs uses inline <script> blocks for the whole
+        # form / engine / language wiring (~500 lines). The original
+        # B14 CSP locked script-src to 'self' which silently disabled
+        # every inline script — the language dropdowns rendered empty
+        # because populateLanguage() never ran. Allow 'unsafe-inline'
+        # for scripts (same as styles, also inline-heavy via Tailwind
+        # utility tags). The remaining frame-ancestors / X-Frame-Options
+        # / nosniff protections still apply.
         self.send_header(
             "Content-Security-Policy",
             "default-src 'self'; "
-            "script-src 'self'; "
+            "script-src 'self' 'unsafe-inline'; "
             "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
             "img-src 'self' data:; "
             "media-src 'self' https://cdn.pixabay.com; "
@@ -1230,6 +1237,20 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
         upload_path = self.state.uploads_dir / saved_name
         upload_path.write_bytes(payload)
 
+        # 2026-05-13: optional XLSX search-and-replace file. When the
+        # legacy frontend sends a second file under the name "xlsxFile",
+        # save it next to the docx and pass --xlsxreplacefile to the
+        # CLI. Missing → CLI falls back to the bundled default.
+        xlsx_uploaded = files.get("xlsxFile")
+        xlsx_path: Path | None = None
+        if xlsx_uploaded:
+            xlsx_orig_name, xlsx_payload = xlsx_uploaded
+            if xlsx_payload and xlsx_orig_name.lower().endswith(".xlsx"):
+                xlsx_safe = _sanitize_filename(xlsx_orig_name)
+                xlsx_saved = f"{int(time.time() * 1000)}-{xlsx_safe}"
+                xlsx_path = self.state.uploads_dir / xlsx_saved
+                xlsx_path.write_bytes(xlsx_payload)
+
         job_id = self.state.register_job()
 
         source_language = fields.get("sourceLanguage", "Auto")
@@ -1304,6 +1325,7 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
                 sound_select,
                 cache_key,
                 aligner_llm_threshold,
+                xlsx_path,
             ),
             daemon=True,
         )
@@ -1326,6 +1348,7 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
         sound_select: str | None,
         cache_key: str | None = None,
         aligner_llm_threshold: int = 0,
+        xlsx_path: Path | None = None,
     ) -> None:
         _job_t0 = time.time()
         print(f"[job {job_id}] ▶ start — file: {original_name} | lang: {target_language} | engine: {translation_engine}")
@@ -1375,6 +1398,7 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
                 source_language=source_language,
                 ai_model=ai_model,
                 aligner_llm_threshold=aligner_llm_threshold,
+                xlsx_path=xlsx_path,
             )
 
             count = _read_int(self.state.count_file, 0) + 1
@@ -1432,13 +1456,9 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
         engine = translation_engine.lower().strip()
         extra: list[str] = []
 
-        # chatgpt-web / perplexity-web cases removed in the 2026-05-10
-        # cleanup pass — Cloudflare gating made them never-reach-prod.
         if engine == "chatgpt-polish":
             engine = "chatgpt"
             extra.extend(["--enginemethod", "api", "--with-polish"])
-        elif engine == "perplexity":
-            extra.extend(["--enginemethod", "webservice"])
         elif engine == "chatgpt":
             extra.extend(["--enginemethod", "api"])
 
@@ -1456,6 +1476,7 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
         source_language: str,
         ai_model: str | None,
         aligner_llm_threshold: int = 0,
+        xlsx_path: Path | None = None,
     ) -> Path:
         engine, extra_flags = self._map_engine(translation_engine)
 
@@ -1517,6 +1538,8 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
             cmd.extend(["--splitengine", split_engine])
         if split_engine == "persian_double_lines" and isinstance(aligner_llm_threshold, int):
             cmd.extend(["--alignerllmthreshold", str(aligner_llm_threshold)])
+        if xlsx_path is not None and xlsx_path.exists():
+            cmd.extend(["--xlsxreplacefile", str(xlsx_path)])
         if engine == "google":
             cmd.append("--showbrowser")
 

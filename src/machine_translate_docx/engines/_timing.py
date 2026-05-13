@@ -149,9 +149,7 @@ DEEPL_COPY_BUTTON_WAIT: Final[float] = 0.2
 Multiple fallback selectors share this timeout."""
 
 
-# ── Removed: chatgpt-web + perplexity-web ──────────────────────────────────
 # The two web-LLM engines were deleted in the 2026-05-10 cleanup pass —
-# chatgpt.com Cloudflare-gates guest sessions, perplexity.ai's selectors
 # kept drifting, and neither ever reached a working live state.
 #
 # The legacy snapshot in this module's docstring is preserved as a

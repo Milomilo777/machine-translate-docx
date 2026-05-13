@@ -58,8 +58,8 @@
           <label for="docxFile" class="block mb-2 text-sm text-gray-600">Select DOCX File:</label>
           <input type="file" id="docxFile" accept=".docx" name="file" class="w-full mb-4 p-2 border rounded" onchange="validateFile()" />
 
-          <label for="xlsxFile" class="block mb-2 text-sm text-gray-600">Select XLSX File (Optional):<br/><i>Web feature not implemented yet, using default file<i/></label>
-          <input type="file" id="xlsxFile" accept=".xlsx" class="w-full mb-4 p-2 border rounded" disabled />
+          <label for="xlsxFile" class="block mb-2 text-sm text-gray-600">Select XLSX File (Optional):<br/><i>Custom search-and-replace table. If empty, the default file in <code>src/configuration/</code> is used.</i></label>
+          <input type="file" id="xlsxFile" name="xlsxFile" accept=".xlsx" class="w-full mb-4 p-2 border rounded" />
 
           <label for="sourceLanguages" class="block mb-2 text-sm text-gray-600">Source Language:</label>
           <select id="sourceLanguages" class="w-full mb-4 p-2 border rounded" name="sourceLanguage"></select>
@@ -73,7 +73,6 @@
             <option id="deepl-engine-option" value="deepl">Deepl</option>
             <option id="openai-engine-option" value="chatgpt">OpenAI API</option>
             <option id="openai-polish-engine-option" value="chatgpt-polish">OpenAI Translation + Polish</option>
-            <option id="perplexity-engine-option" value="perplexity">Perplexity AI</option>
           </select>
 
           <div id="aiModelRow" style="display:none;">
@@ -381,16 +380,8 @@
 
         const deeplOption        = document.querySelector('#deepl-engine-option');
         const googleOption       = document.querySelector('#google-engine-option');
-        const perplexOption      = document.querySelector('#perplexity-engine-option');
         const openaiAPIOption    = document.querySelector('#openai-engine-option');
         const openaiPolishOption = document.querySelector('#openai-polish-engine-option');
-
-        // Always-disabled engines.
-        // perplexity (HTTP webservice) was deprecated in the refactor;
-        // chatgpt-web + perplexity-web options were removed entirely in
-        // the 2026-05-10 cleanup pass — Cloudflare gating made them
-        // never-reach-prod.
-        if (perplexOption)    perplexOption.disabled    = true;
 
         // OpenAI API always available
         if (openaiAPIOption) openaiAPIOption.disabled = false;
