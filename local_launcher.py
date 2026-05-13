@@ -997,6 +997,16 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
         path = parsed.path
 
         if path == "/":
+            # 2026-05-13: re-read index.ejs from disk on every request
+            # instead of relying on the in-memory copy captured at boot.
+            # Otherwise a fix to index.ejs only takes effect after a
+            # full launcher restart, which surprised the user when the
+            # CDN→/static migration didn't appear in the browser.
+            try:
+                fresh_html = _inject_client_patch(_load_index_html())
+            except Exception as exc:
+                print(f"[WARN] /: re-reading index.ejs failed ({exc!r}); falling back to boot-cached copy.")
+                fresh_html = self.index_html
             self.send_response(HTTPStatus.OK)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate")
@@ -1004,7 +1014,7 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
             self.send_header("Expires", "0")
             self._send_security_headers()
             self.end_headers()
-            self.wfile.write(self.index_html.encode("utf-8"))
+            self.wfile.write(fresh_html.encode("utf-8"))
             return
 
         if path == "/count":
