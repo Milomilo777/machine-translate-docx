@@ -35,6 +35,7 @@ class OpenAIPolisher:
         if not self.api_key:
             raise ValueError("OPENAI_API_KEY not set in environment")
         self.client = OpenAI(api_key=self.api_key)
+        self.dest_lang = _normalize_lang(dest_lang)
         self.system_prompt = self._load_prompt(dest_lang, prompt_path)
         self.last_call_data = {}
 
@@ -391,14 +392,16 @@ class OpenAIPolisher:
                 f"English residue — reverted to translator output."
             )
 
-        # Conservative FA normalization — Arabic Yeh/Kaf and Arabic-Indic
-        # digits to their Persian equivalents only. Safe for TECH_LOCK
-        # tokens, ASCII content, ZWNJ, quotes. See fa_postprocess.py for
-        # the full list of what it does NOT touch.
-        normalized_lines = [normalize_fa(line) for line in polished_lines]
-        if any(a != b for a, b in zip(polished_lines, normalized_lines)):
-            print("[INFO] Polisher: FA letter/digit normalization applied.")
-        polished_lines = normalized_lines
+        # Conservative FA normalization — only for FA target. Arabic-Indic
+        # digits + Arabic Yeh/Kaf get mapped to Persian variants. SAFETY:
+        # 2026-05-13 — applying this unconditionally was actively breaking
+        # Arabic output (every legitimate ي in AR became ی). Now gated by
+        # dest_lang so AR / UR / etc. keep their canonical script set.
+        if self.dest_lang == "fa":
+            normalized_lines = [normalize_fa(line) for line in polished_lines]
+            if any(a != b for a, b in zip(polished_lines, normalized_lines)):
+                print("[INFO] Polisher: FA letter/digit normalization applied.")
+            polished_lines = normalized_lines
 
         usage = response_json.get("usage") or {}
         ptd   = usage.get("prompt_tokens_details") or {}

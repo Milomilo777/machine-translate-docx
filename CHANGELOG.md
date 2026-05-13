@@ -6,6 +6,49 @@
 
 ---
 
+## 2026-05-13 — Multi-script polish cycle (zh / vi / ar) + critical AR fix
+
+User-requested second cycle, polishing the universal prompt against
+three non-European target languages on the same UL 3147 source. One
+translate+polish run per language, then reflect across all three to
+extract universal patterns (not language-specific rules).
+
+Critical defect uncovered (B-002 SCRIPT_LEAK):
+  `polisher.py` was running `normalize_fa()` unconditionally on every
+  polished line, regardless of target language. `normalize_fa()` maps
+  Arabic Yeh `ي` → Persian Yeh `ی` and Arabic Kaf `ك` → Persian Kaf
+  `ک` — correct for FA, but actively breaks Arabic output. Every AR
+  run was silently writing Persian variants for 500+ characters per
+  file. Fix: gate the normaliser by `self.dest_lang == "fa"`; AR runs
+  now preserve their canonical `ي` / `ك`. Verified on UL 3147 → ar:
+  AR yeh 520 / FA yeh 0, AR kaf 190 / FA kaf 0.
+
+Universal prompt refinements (v1 → v2):
+
+  - `polish_universal.txt` HL-7 SCRIPT_PURITY — Arabic-script targets
+    must use only their own canonical letter variants. Documented the
+    Persian/Arabic/Urdu sets so future runs catch any residual leak
+    even if the post-processor gate is later disabled.
+  - EDIT rule ④e (Genre-register literalism) — "personal narrative" in
+    casual speech does NOT mean the bookish target noun for "narrative"
+    (个人叙事 / tự sự cá nhân / السرد الشخصي); use the conversational
+    equivalent. Observed in all three languages on the same source line.
+  - EDIT rule ④f (Repeated-title consistency) — when the SAME quoted
+    title appears more than once (welcome + welcome-back + "for more
+    info, visit X"), every instance must use the IDENTICAL form. Caught
+    after ZH output mixed 《》 and "" for the same book title.
+
+Re-translation of both source files (UL 3147 + VEGC 3148) into FA was
+also run from their original `C:/.../00 Translation Files/` location
+so the `_PER_Polish.docx` outputs now live beside the originals (the
+earlier session 1 outputs in the project root were cleaned up).
+
+Total spend this cycle: 4 runs × ≈$0.27 = $1.08. Plus two FA
+re-translations (~$0.66) so users get the polished outputs alongside
+their sources. Tests: 113/113 unchanged.
+
+---
+
 ## 2026-05-13 — Prompt-quality reflective cycle (UL 3147 + VEGC 3148)
 
 Seven-round iterative refinement run on `gpt-5.5` against two new

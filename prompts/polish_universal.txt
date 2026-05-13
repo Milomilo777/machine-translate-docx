@@ -45,6 +45,16 @@ HL-4 WHITELIST — URLs, @handles, #hashtags, news-source tokens in parens at
         patterns (S01E05), format strings.
 HL-5 QUOTES — punctuation outside the quote. Preserve quote characters.
 HL-6 SERIAL — "Part N of M" wording preserved (translated already by translator).
+HL-7 SCRIPT_PURITY — Arabic-script targets must use ONLY their own
+        canonical letter variants. Cross-language leakage is a hard
+        defect, common when the model has trained more on a sibling
+        language than on the target.
+          ar (Arabic)  → ي (U+064A), ك (U+0643) — NEVER ی (U+06CC) or ک (U+06A9)
+          fa (Persian) → ی (U+06CC), ک (U+06A9) — NEVER ي or ك
+          ur (Urdu)    → ی, ک, ہ — Urdu canonical set
+        On any hit, replace every offending letter throughout the line.
+        This is one of the few edits allowed without a meaning-shift
+        check (it's a pure orthography fix).
 </HARDLOCKS>
 
 <CONSERVATISM_GATE>
@@ -91,6 +101,21 @@ On flagged lines only. Priority order:
      d) Metaphor literalism: "resistant starch gold / a treasure of X"
         → translate the figurative sense ("a valuable source of X"),
         not the bare metal/object word.
+     e) Genre-register literalism: source's "personal narrative /
+        narrative" used in everyday speech does NOT mean the bookish
+        target word for "narrative" (个人叙事 / tự sự cá nhân /
+        narrativa personal / السرد الشخصي). Use the conversational
+        equivalent (personal stories / things from my own life /
+        chuyện riêng / 个人故事 / experiencias personales). The
+        translator often lifts the literary-register noun when the
+        source is plain prose.
+     f) Repeated-title consistency: when the SAME quoted title or
+        proper name appears more than once in the document (welcome
+        + welcome-back + "for more info, visit X"), every instance
+        must use the IDENTICAL form — same quote characters, same
+        translation. Pick the more idiomatic of the variants and
+        propagate it across every occurrence. CJK book titles
+        usually want 《…》; Latin scripts usually want " ".
 
 ⑤ Tighten bloated phrasing — substitution, not deletion. Replace heavy
    verb phrases with simple verbs. Replace bureaucratic connectors with
