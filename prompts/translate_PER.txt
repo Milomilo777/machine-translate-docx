@@ -48,6 +48,70 @@ NUMBERS      Persian digits (۰–۹). Thousands separator "٬". Decimal ".".
              Metric + Imperial both → keep Metric only. Imperial only → transliterate unit, keep value (5 miles → ۵ مایل). Never invent a conversion.
 </STYLE>
 
+<NATIVE_REGISTER>
+Output must sound like professionally localised Persian broadcast
+subtitles, NOT translated prose. The reader feels these lines were
+written in Persian first; the EN source must leave no syntactic
+fingerprint. The five rules below override any literal preference
+unless P3 (semantic meaning) is at risk.
+
+N1) NATIVE_SYNTAX — Restructure to Persian sentence architecture; do
+    NOT preserve the EN clause order. Reorder, demote, or fuse
+    sub-clauses freely so the line reads as Persian-first.
+    ✗ "رابطه‌اش با دوست‌دخترش مگان، از راه عشق مشترکشان به اشخاص-حیوان، عمیق‌تر می‌شود."
+       (EN clause order kept intact)
+    ✓ "عشق مشترک او و مگان به اشخاص-حیوان، رابطه‌شان را عمیق‌تر می‌کند."
+       (Persian-first arrangement)
+    ✗ "با تورا در کنارش، دیوید هر جا سفر می‌کند، احساس می‌کند در خانه است."
+    ✓ "دیوید با حضور تورا، هر جا باشد احساس خانه‌بودن می‌کند."
+
+N2) BROADCAST_REGISTER — Spoken-formal broadcast Persian, NOT
+    literary / archaic / poetic prose. Reach for the everyday
+    standard form. Skip elevated nouns when a plain one carries the
+    same meaning.
+    ✗ "در ژرفای خود"             ✓ "در اصل"
+    ✗ "گام بردارید"               ✓ "سپری کنید"
+    ✗ "چنان‌که تقریباً بهشتی به نظر می‌رسد"   ✓ "و حالتی تقریباً آسمانی دارد"
+    ✗ "در شیوهٔ آرام خود، پیام روشن است"     ✓ "پیام فیلم روشن است"
+    Use literary register only when the SOURCE itself is poetic.
+
+N3) NO_INFLATION — Match the emotional weight of the source. Never
+    upgrade ordinary verbs / nouns to grand ones; never inject
+    ideological warmth the source did not carry. Stay within ±10%
+    of the source's emotional load.
+    ✗ "uplift the world"  → "برای تعالی جهان"   (overweight)
+    ✓                     → "برای بهتر کردن جهان"
+    ✗ "resilient Zaza people" → "مردم تاب‌آور زازا" (literary)
+    ✓                          → "مردم مقاوم زازا"
+    ✗ "immense Blessings" → "برکات بی‌کران"
+    ✓                     → "برکات فراوان"
+
+N4) SUBTITLE_COMPRESSION — Each line must be as tight as a real
+    broadcast subtitle. Strip helper verbs / hedging that add no
+    meaning. Prefer denser verb choice.
+    ✗ "مرد نزدیک می‌ماند تا مطمئن شود راکون در امان است."
+    ✓ "مرد می‌ماند تا مطمئن شود راکون امن است."
+    ✗ "و به حامیان امکان می‌دهد نجات‌ها را از نزدیک ببینند."
+    ✓ "و به حامیان اجازه می‌دهد نجات‌ها را مستقیم ببینند."
+    ✗ "این تجربه اولویت‌های او را تغییر می‌دهد."
+    ✓ "این تجربه نگاهش را عوض می‌کند."
+
+N5) NATIVE_CADENCE — Use Persian sentence rhythm, not EN cadence.
+    Avoid "از راه …، X را Y می‌کند" calque patterns. Avoid leaving a
+    Persian relative-clause structure that mirrors EN "more X and Y
+    than we once imagined" word-for-word.
+    ✗ "از راه این کار، او صبر را می‌آموزد."
+    ✓ "این کار به او صبر می‌آموزد."
+    ✗ "قدرت حقیقی، متنوع‌تر و پویاتر از آن است که زمانی تصور می‌کردیم."
+    ✓ "قدرت واقعی، بسیار گسترده‌تر و پویاتر از تصور گذشتهٔ ماست."
+    ✗ "فیلم صمیمی و زمینی می‌ماند"
+    ✓ "فیلم همچنان صمیمی و واقع‌گرا باقی می‌ماند."
+
+These rules are evaluated AFTER P3 (semantic meaning). If applying
+any rule would change negation, quantifier, speaker, or factual
+content, drop the rule for that line. Otherwise apply.
+</NATIVE_REGISTER>
+
 <NON_WHITELIST>
 Whatever is not in the SMTV_LEXICON Whitelist (W1–W5) → mandatory Persianisation:
   1) FA equivalent exists → use it (optimise → بهینه‌سازی | dramatic → چشمگیر).

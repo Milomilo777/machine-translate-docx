@@ -1,11 +1,8 @@
 <SMTV_LEXICON>
-Shared SMTV brand block. Identical bytes in both translate_PER and polish_PER
-system prompts → prompt cache picks it up once and reuses the prefix for
-every call regardless of which pass invoked the model.
+Shared SMTV brand block. Identical bytes in both translate_PER and
+polish_PER prompts so OpenAI's prompt cache reuses the prefix.
 
-──────────────────────────────────────────────────────────────────────
-WHITELIST (W1–W5) — frozen tokens
-──────────────────────────────────────────────────────────────────────
+# WHITELIST (W1–W5) — frozen tokens
 W1) URLs | @handles | #hashtags                                  → BYTE-ID
 W2) News-source token in parens at end of a news line            → BYTE-ID
     (Reuters) (AFP) (AP) (Lao Động) (VTV) (Báo Tin Tức)
@@ -26,9 +23,7 @@ W5) Quoted titles                                                → TRANSLATE F
     EXCEPTION: a complete literary/poetic sentence inside " " is a
     LITERARY_QUOTE, not a title — handle as quote, not as title.
 
-──────────────────────────────────────────────────────────────────────
-SMTV COMPOUNDS — spiritual-equality doctrine
-──────────────────────────────────────────────────────────────────────
+# SMTV COMPOUNDS — spiritual-equality doctrine
 INPUT-DRIVEN ONLY. Activate only when input already contains an SMTV
 compound (or one in ±10 surrounding lines). Plain animal words on
 their own → ordinary translation. Never invent compounds.
@@ -54,46 +49,31 @@ Species:  from the compound in the input, or scan ±10 lines.
 SMTV_OVERRIDE_TRUST: silently auto-correct a malformed input
 compound to the canonical format above.
 
-──────────────────────────────────────────────────────────────────────
-SPIRITUAL TITLES — frozen byte-for-byte
-──────────────────────────────────────────────────────────────────────
+# SPIRITUAL TITLES — frozen byte-for-byte
 استاد اعظم چینگ های  ← all forms of "(Supreme) Master Ching Hai"
 اساتید | استاد روشن‌ضمیر
 Masters → respectful + plural verb. God / Allah → reverent + singular verb.
 
-──────────────────────────────────────────────────────────────────────
-BRAND / CHANNEL NAMES — fixed Persian forms
-──────────────────────────────────────────────────────────────────────
-The TV channel itself has a canonical Persian name. Do NOT translate
-the words "Supreme Master" piece-by-piece (that produces wrong forms
-like "تلویزیون استاد اعظم" or "استاد اعظم تلویزیون"). Use these
-fixed mappings:
-
+# BRAND / CHANNEL NAMES — fixed Persian forms
+The TV channel has a canonical Persian name. Do NOT translate
+"Supreme Master" piece-by-piece (wrong forms: "تلویزیون استاد اعظم",
+"استاد اعظم تلویزیون"). Use:
   Supreme Master TV         → سوپریم مستر تلویزیون
   Supreme Master Television → سوپریم مستر تلویزیون
   SMTV                      → سوپریم مستر تلویزیون
-  Supreme Master TV's …     → … سوپریم مستر تلویزیون  (use ezafe naturally)
 
-Important — channel name vs. person name. The person is
-"استاد اعظم چینگ های"; the channel is "سوپریم مستر تلویزیون".
-NEVER conflate them. If the source text mentions the channel
-("on Supreme Master TV", "SMTV viewers"), use the channel form.
-If it mentions the person ("Supreme Master Ching Hai said"), use
-the person form.
+Channel name ≠ person name. Person = "استاد اعظم چینگ های"; channel
+= "سوپریم مستر تلویزیون". Never conflate.
 
-──────────────────────────────────────────────────────────────────────
-GEOGRAPHY DUAL-FORMS — translate fully, zero EN residue
-──────────────────────────────────────────────────────────────────────
+# GEOGRAPHY DUAL-FORMS — translate fully, zero EN residue
   Ukraine (Ureign)        → اوکراین (یورین)
   Vietnam (Âu Lạc)        → ویتنام (آولاک)
   Taiwan (Formosa)        → تایوان (فورموسا)
   Aulacese (Vietnamese)   → آولاکی (ویتنامی)
   Formosan (Taiwanese)    → فورموسایی (تایوانی)
-When both forms appear in the input → translate both per the table.
+When both forms appear in input → translate both per the table.
 
-──────────────────────────────────────────────────────────────────────
-PARENTHETICAL_AFTER_NAME
-──────────────────────────────────────────────────────────────────────
+# PARENTHETICAL_AFTER_NAME
 A descriptor in parens after any proper name → translate / transliterate
 independently. NEVER inherit any name-lock.
   (vegan)                       → (وگان)
@@ -102,9 +82,7 @@ independently. NEVER inherit any name-lock.
   Supreme Master Ching Hai (vegan)
                                 → استاد اعظم چینگ های (وگان)
 
-──────────────────────────────────────────────────────────────────────
-SPIRITUAL LEXICON
-──────────────────────────────────────────────────────────────────────
+# SPIRITUAL LEXICON
 TEST: sky-pointable physical? → آسمان
       divine / afterlife?      → بهشت
       spiritual quality (heavenly) → بهشتی

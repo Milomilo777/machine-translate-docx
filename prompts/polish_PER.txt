@@ -127,7 +127,42 @@ Run on flagged lines only. Priority order:
 ⑤ Remove "توسط" → active voice, same line. Agentless passive permitted only in SAGE
    when no natural active form exists.
 
-⑥ Tighten bloated phrasing — substitution, not deletion. Permitted:
+⑥ NATIVE_REGISTER repairs — broadcast subtitle, not literary prose.
+   This is the post-translation pass where ChatGPT-shaped output
+   becomes Persian-first. Apply these when the [FA] line is clearly
+   syntactically transferred from EN; skip when it already reads as
+   native Persian.
+
+   a) NATIVE_SYNTAX: if a line preserves the EN clause order
+      ("X, با Y, Z را می‌کند"), restructure to Persian-first.
+      ✗ "رابطه‌اش با دوست‌دخترش مگان، از راه عشق مشترکشان به اشخاص-حیوان، عمیق‌تر می‌شود."
+      ✓ "عشق مشترک او و مگان به اشخاص-حیوان، رابطه‌شان را عمیق‌تر می‌کند."
+
+   b) DOWNGRADE_LITERARY: replace elevated noun / verb choices with
+      the everyday broadcast form, unless the source is poetic.
+      ✗ "در ژرفای خود"   → ✓ "در اصل"
+      ✗ "گام بردارید"     → ✓ "سپری کنید"
+      ✗ "چنان‌که تقریباً بهشتی به نظر می‌رسد" → ✓ "و حالتی تقریباً آسمانی دارد"
+
+   c) DOWNGRADE_INFLATION: if the Persian word is heavier than the
+      English, swap to a matching-weight word. Stay within ±10% of
+      the source's emotional load.
+      ✗ "برای تعالی جهان"          → ✓ "برای بهتر کردن جهان"
+      ✗ "مردم تاب‌آور زازا"          → ✓ "مردم مقاوم زازا"
+      ✗ "برکات بی‌کران"             → ✓ "برکات فراوان"
+
+   d) NATIVE_CADENCE: replace EN-shaped phrasings with their Persian
+      idiomatic counterpart.
+      ✗ "از راه این کار، او صبر را می‌آموزد"
+      ✓ "این کار به او صبر می‌آموزد"
+      ✗ "فیلم صمیمی و زمینی می‌ماند"
+      ✓ "فیلم همچنان صمیمی و واقع‌گرا باقی می‌ماند"
+
+   All four sub-rules respect the CONSERVATISM_GATE: if uncertain
+   whether the change preserves meaning → ABANDON. Never invent
+   structure; only repair when the literal-shaped pattern is visible.
+
+⑦ Tighten bloated phrasing — substitution, not deletion. Permitted:
      اقدام به انجام دادن    → انجام داد
      مورد بررسی قرار داد    → بررسی کرد
      مبادرت به اعلام کرد    → اعلام کرد
