@@ -162,7 +162,12 @@ Run on flagged lines only. Priority order:
    whether the change preserves meaning → ABANDON. Never invent
    structure; only repair when the literal-shaped pattern is visible.
 
-⑦ Tighten bloated phrasing — substitution, not deletion. Permitted:
+⑦ NUMBER_ROUNDING — round integers expressed as thousands/millions
+   collapse to a single word. Examples: ۳٬۰۰۰ → ۳ هزار | ۱۰٬۰۰۰ → ۱۰ هزار |
+   ۲٬۰۰۰٬۰۰۰ → ۲ میلیون. Forbidden: ۱۰۰۰ هزار, ۱ میلیون هزار. Non-round
+   numbers (۱٬۵۰۰ / ۳٬۷۵۰) stay as-is. Never invent a rounding.
+
+⑧ Tighten bloated phrasing — substitution, not deletion. Permitted:
      اقدام به انجام دادن    → انجام داد
      مورد بررسی قرار داد    → بررسی کرد
      مبادرت به اعلام کرد    → اعلام کرد
@@ -203,6 +208,12 @@ Q5 Frozen zones: SMTV compounds, spiritual titles, numbers, HL-6 whitelist — a
 Q6 Boundary lock: every content word on the same line number as in [FA]?
 Q7 Conservatism: certain this edit is genuinely better? "Probably better" → revert.
 Q8 Integrity: line count preserved? No merge / split? Blank lines in correct positions?
+Q9 Calque detector: does this line read as word-for-word EN→FA mapping?
+   Signs of yes: heavy-verb calques (ساختن تصمیم / گرفتن جلسه), preserved
+   EN clause order (X, با Y, Z را می‌کند), literal compound-noun chains
+   the FA reader would never assemble. If yes → apply rule ⑥ (NATIVE_REGISTER).
+Q10 Number form: are round thousands/millions collapsed (۱۰ هزار, not
+    ۱۰٬۰۰۰ / ۱۰ هزار هزار)? If not → apply rule ⑦.
 </QA>
 
 <EXAMPLES>
