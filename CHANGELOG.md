@@ -6,6 +6,65 @@
 
 ---
 
+## 2026-05-13 — Prompt-quality reflective cycle (UL 3147 + VEGC 3148)
+
+Seven-round iterative refinement run on `gpt-5.5` against two new
+attached docx files (`UL 3147 (Isabella La Rocca González, P2of2)`
+and `VEGC 3148 (Namibian Potato Recipes P2of 2)`). Each round:
+translate + polish in classic-split mode, dump phrase pairs, multi-
+layer reflective analysis, then minimum-bytes prompt refinement.
+
+Infrastructure additions:
+
+  - New `src/machine_translate_docx/log_paths.py` resolves a central
+    `Log json file/` folder at project root and runs a 10-day
+    retention sweep at CLI startup. `_log.json` sidecars no longer
+    sit beside the output docx — they all land in the central folder
+    so a working directory can host many translation runs without
+    drowning in side files.
+  - `docx_io/save.py` + `cli.py` rewired to call the helper. The
+    docx itself still saves to the user's chosen path; only the
+    sidecar moves. CLI prints `[INFO] Log retention swept N file(s)
+    older than 10 days.` when files are pruned.
+  - `Log json file/` added to `.gitignore`.
+
+FA prompt refinements (v0 → v2, 4 tests):
+
+  - `polish_PER.txt` HL-13 NO_SEMICOLON — `؛` forbidden in polished
+    output; split into clauses on the same line or map to `،`.
+    Caught the two `؛` leaks visible in UL 3147 round 1 (G105, G110).
+  - `_smtv_locks.txt` COMMON_MT_PATTERNS table extended with four
+    fresh patterns observed in real output:
+      روایت شخصی زیادی آوردم   → خاطرات شخصی زیادی به کار گرفتم
+      گوشت گاو مورد بزرگی است → گوشت گاو نمونهٔ بارزی است
+      تأسیسات غیرشفاف‌اند     → تأسیسات کاملاً بسته‌اند
+      گنجی از X (gold metaphor) → ذخیره / گنجینه
+  - All 5 v0 defects (semicolon×2, opaque calque, "big one" calque,
+    "personal narrative" calque) verified fixed on the v2 re-run.
+
+Universal prompt refinements (v0 → v1, 3 tests):
+
+  - `polish_universal.txt` MISSION gained a calibration note: if the
+    first pass touched < 5 % of lines, re-scan — 0 % is almost never
+    correct on a real document.
+  - EDIT rule ④ expanded with four named calque shapes (abstract-
+    adjective literalism, vague-noun literalism, Romance preposed-
+    adjective inversion, metaphor literalism) so the model has
+    concrete patterns to fire on without a language-specific table.
+  - QA gained Q6 (calque sweep) and Q7 (semicolon copied verbatim
+    from source).
+  - Validated on UL 3147 → Spanish: `Son muy opacas` → `Son muy
+    herméticas`; `un gran factor` → `un caso importante`. The
+    Spanish polisher touch rate stays low (≤ 1 %) because the
+    translator is already producing native-shaped Spanish; the
+    calque examples fire only when truly needed.
+
+Total spend: 7 runs × ≈$0.28 = $1.95. The remaining 5 of the 12-
+test budget were unused — the prompts converged earlier than
+budgeted. No code regression: all 113 unit tests still pass.
+
+---
+
 ## 2026-05-13 — Internal deep audit (post-Jules / Antigravity / Codex)
 
 Independent fifth audit pass run by Claude Opus 4.7 against the

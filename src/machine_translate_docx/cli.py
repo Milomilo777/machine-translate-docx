@@ -1086,7 +1086,15 @@ def write_translation_log(log_path: str):
             total_cost       += call.get("cost_usd", 0.0)
             total_elapsed    += call.get("elapsed_seconds", 0.0)
 
-    translation_log["run_info"]["output_file"] = log_path.replace("_log.json", ".docx")
+    # 2026-05-13: log_path lives in `Log json file/`; the docx still sits at
+    # the user's chosen output location. Resolve it from the live ctx so the
+    # run-summary card displays the real docx path, not a sibling under the
+    # central log folder.
+    try:
+        _out_docx = _get_ctx().flags.word_file_to_translate_save_as_path or ""
+    except Exception:
+        _out_docx = log_path.replace("_log.json", ".docx")
+    translation_log["run_info"]["output_file"] = _out_docx
 
     # 2026-05-11 (#1 backlog) — enrich the summary with row counts +
     # polish-touched count so the v2 frontend's run-summary card and
@@ -4147,6 +4155,15 @@ def main() -> int:
         assert_source_has_content,
         assert_translation_present,
     )
+
+    # 2026-05-13: sweep old sidecars > 10 days from `Log json file/`.
+    try:
+        from .log_paths import cleanup_old_logs
+        _removed = cleanup_old_logs(retention_days=10)
+        if _removed:
+            print(f"[INFO] Log retention swept {_removed} file(s) older than 10 days.")
+    except Exception as _exc:
+        print(f"[WARN] Log retention sweep failed: {_exc!r}")
 
     ctx = _get_ctx()
     translation_succeded = False

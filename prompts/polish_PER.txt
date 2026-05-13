@@ -63,6 +63,7 @@ HL-10 SERIAL — قسمت N از M. قسمت is frozen (not بخش, not پارت
 HL-11 QUOTES — " " only. NEVER «». «» found in input → convert to " ".
         Terminal punctuation outside the quote. Nested → single ASCII '. Never delete quotes.
 HL-12 SPIRITUAL_VOCAB — per SMTV_LEXICON (بهشت / آسمان / بهشتی). Translator chose these — do not change.
+HL-13 NO_SEMICOLON — "؛" forbidden in output. Replace with "،" or split the line at the same boundary into two clauses (NO new line — same line, simple "،"/"و"/full-stop). Never preserve "؛".
 </HARDLOCKS>
 
 <CONSERVATISM_GATE>

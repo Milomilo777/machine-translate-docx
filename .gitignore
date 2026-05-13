@@ -65,3 +65,6 @@ web/v2/node_modules/
 # Smoke / live target output directory (created by `tasks.bat smoke`
 # and the `make smoke` / `make live-*` targets). Always scratch.
 /_real_test/
+
+# Log json file/ — central sidecar folder with 10-day retention
+Log json file/

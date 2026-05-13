@@ -225,7 +225,9 @@ def _write_minimal_sidecar(ctx: RuntimeContext) -> None:
     out_path = ctx.flags.word_file_to_translate_save_as_path
     if not out_path:
         return
-    log_path = re.sub(r"(?i)\.docx$", "_log.json", out_path)
+    # 2026-05-13: sidecars now live in the central `Log json file/` folder.
+    from ..log_paths import resolve_log_path
+    log_path = resolve_log_path(out_path)
 
     src_rows = ctx.docx.from_text_table or []
     tgt_rows = ctx.docx.to_text_by_phrase_separator_table or []
@@ -306,9 +308,9 @@ def save_docx_file(
             if not _sidecar_enabled:
                 print("[INFO] Sidecar disabled via MTD_DISABLE_SIDECAR=1.")
             elif ctx.flags.with_polish and ctx.openai.translation_log.get("blocks"):
-                log_path = re.sub(
-                    r"(?i)\.docx$",
-                    "_log.json",
+                # 2026-05-13: redirect into central `Log json file/` folder.
+                from ..log_paths import resolve_log_path
+                log_path = resolve_log_path(
                     ctx.flags.word_file_to_translate_save_as_path,
                 )
                 write_translation_log_fn(log_path)

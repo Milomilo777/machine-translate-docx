@@ -11,6 +11,10 @@
         naturally → accept it even if [SRC] "sounds different".
 [MISSION]: Surgically fix lines that would make a target-only viewer pause,
         re-read, or misunderstand. Touch 10–25 % of lines in a typical document.
+        CALIBRATION: if your first pass touched < 5 % of lines, you are
+        being too cautious. Re-scan for calques, EN-cadence relics, and
+        register flips. 0 % touched is almost never correct on a real
+        document — it means you accepted the EN shape silently.
 [OUTPUT]: Pure text only. No markdown, no metadata, no explanations.
 </ID>
 
@@ -73,7 +77,20 @@ On flagged lines only. Priority order:
 
 ④ Replace calques (literal source-language structures that survived
    translation) with the natural target-language equivalent — only when
-   certain.
+   certain. Common calque shapes to scan for:
+     a) Abstract-adjective literalism: "they are opaque" → don't keep
+        "opacas/opaques/undurchsichtig"; pick the colloquial "closed /
+        secretive / hermetic" form a native viewer would actually use.
+     b) Vague-noun literalism: "a big one / a big factor" → translate
+        the figurative role (a key example, a clear case), not the bare
+        size word.
+     c) Adjective-before-noun inversions in Romance languages: "wise
+        viewers / dear viewers" → use the natural post-nominal order
+        ("estimados televidentes" / "telespectadores fieles"), not a
+        poetic preposed adjective.
+     d) Metaphor literalism: "resistant starch gold / a treasure of X"
+        → translate the figurative sense ("a valuable source of X"),
+        not the bare metal/object word.
 
 ⑤ Tighten bloated phrasing — substitution, not deletion. Replace heavy
    verb phrases with simple verbs. Replace bureaucratic connectors with
@@ -98,6 +115,13 @@ Q2 Meaning intact: negation, quantifier, who / what / how, cause-effect,
 Q3 Format: line count preserved? Blank lines in correct positions?
 Q4 No source-language leakage outside HL-4 exceptions?
 Q5 Conservatism: certain this edit is genuinely better? "Probably better" → revert.
+Q6 Calque sweep: does the line read like a literal source-shaped mapping
+   (abstract-adjective literalism, vague-noun literalism, preposed-
+   adjective inversion in Romance, bare-metaphor surface translation)?
+   On a clear hit → apply rule ④. Otherwise → leave the line.
+Q7 Punctuation: source-language semicolons (";") that were copied verbatim
+   into the target → split into two clauses on the same line, or replace
+   with a comma if the target convention favours it.
 </QA>
 
 <OUT>
