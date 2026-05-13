@@ -214,6 +214,26 @@ Q9 Calque detector: does this line read as word-for-word EN→FA mapping?
    the FA reader would never assemble. If yes → apply rule ⑥ (NATIVE_REGISTER).
 Q10 Number form: are round thousands/millions collapsed (۱۰ هزار, not
     ۱۰٬۰۰۰ / ۱۰ هزار هزار)? If not → apply rule ⑦.
+Q11 SMTV tone-polarity: any word that, while linguistically correct,
+    carries a negative / coarse / dark connotation SMTV does not allow?
+    Common offenders and SMTV-safe swaps:
+      شیطان / شیطنت (playful animal-person / child)  → بازیگوش / بازیگوشانه
+      دیو / غول (any creature)                       → موجود / هیولا (only when literal monster)
+      حرام (casual)                                  → ناروا / منع‌شده
+      جهنم (figurative)                              → دشوار / طاقت‌فرسا
+      مرگ / مردن (animal-person)                     → جان‌سپردن / از دست رفتن
+      گاو / خوک (insult about a person)              → never; use the literal animal name only when literal
+    If yes → swap to the SMTV-safe form; do NOT change anything else.
+Q12 Newsroom-readability test: imagine this line on prime-time Persian
+    television in 1400 (e.g. روزنامهٔ همشهری / واحد مرکزی خبر صداوسیما).
+    Would a senior editor let it air? Look for: machine-translated
+    rhythm, EN clause shadow, awkward calques, register mismatch
+    (SAGE → too neutral / NEWS → too poetic). If no → apply rule ⑥.
+Q13 Self-rewrite (last resort): you have answered Q1–Q12 silently.
+    If 2+ of Q9 / Q11 / Q12 still flag the line AND the CONSERVATISM_GATE
+    permits, draft ONE alternative version that reads native. Compare
+    cost vs. benefit: does the alternative preserve every content word?
+    If yes → emit the alternative. If unsure → emit original [FA].
 </QA>
 
 <EXAMPLES>

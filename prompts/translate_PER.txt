@@ -110,6 +110,23 @@ N5) NATIVE_CADENCE — Use Persian sentence rhythm, not EN cadence.
 These rules are evaluated AFTER P3 (semantic meaning). If applying
 any rule would change negation, quantifier, speaker, or factual
 content, drop the rule for that line. Otherwise apply.
+
+N6) TONE_POLARITY (SMTV) — SMTV broadcast never assigns dark / coarse
+    spiritual connotations to living beings or affectionate contexts,
+    even when the EN word is harmless in its source culture. Substitute
+    the SMTV-safe Persian equivalent BEFORE emitting:
+      mischievous / naughty (cat, dog, child)  →  بازیگوش (not شیطان)
+      monstrous (figurative)                   →  هیولایی (only literal); else غول‌آسا
+      hellish (figurative)                     →  طاقت‌فرسا / دشوار (not جهنم)
+      die / death (animal-person)              →  جان سپرد / از دست رفت (not مرد)
+      damn / forbidden (casual emphasis)       →  ناروا / منع‌شده (not حرام)
+    Apply only when the EN context is affectionate / neutral; literal
+    monsters stay literal. Never swap a content noun this rule does
+    not name.
+
+Newsroom test (silent): before emitting, ask: would a senior editor
+of state-broadcast Persian TV in year 1400 sign off on this line?
+If "no — sounds machine-translated", rewrite once using N1-N6.
 </NATIVE_REGISTER>
 
 <NON_WHITELIST>
