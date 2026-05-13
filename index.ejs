@@ -50,54 +50,57 @@
     </style>
   </head>
   <body class="bg-gray-100 p-4">
-    <div class="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-6">
-      <!-- Left column: Form -->
-      <div class="md:col-span-2 bg-white p-8 rounded shadow-md avoid-collapse">
-        <h1 class="text-2xl font-bold mb-4">Document Translator</h1>
-        <form id="translationForm" action="/upload" method="post" enctype="multipart/form-data">
-          <label for="docxFile" class="block mb-2 text-sm text-gray-600">Select DOCX File:</label>
-          <input type="file" id="docxFile" accept=".docx" name="file" class="w-full mb-4 p-2 border rounded" onchange="validateFile()" />
+    <div class="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-4">
+      <!-- Left column: Form. 2026-05-13 layout compaction:
+           - field rows now use grid-cols-2 so label+input share a line
+           - paddings reduced (p-8 → p-4, mb-4 → mb-2)
+           - first-paint shows the whole form on a 1080p / 220 %-zoom screen
+             without any scroll. -->
+      <div class="md:col-span-2 bg-white p-4 rounded shadow-md avoid-collapse text-sm">
+        <h1 class="text-xl font-bold mb-2">Document Translator</h1>
+        <form id="translationForm" action="/upload" method="post" enctype="multipart/form-data" class="space-y-2">
 
-          <label for="xlsxFile" class="block mb-2 text-sm text-gray-600">Select XLSX File (Optional):<br/><i>Web feature not implemented yet, using default file<i/></label>
-          <input type="file" id="xlsxFile" accept=".xlsx" class="w-full mb-4 p-2 border rounded" disabled />
+          <div class="grid grid-cols-2 gap-2 items-center">
+            <label for="docxFile" class="text-gray-600">Select DOCX File:</label>
+            <input type="file" id="docxFile" accept=".docx" name="file" class="p-1 border rounded" onchange="validateFile()" />
 
-          <label for="sourceLanguages" class="block mb-2 text-sm text-gray-600">Source Language:</label>
-          <select id="sourceLanguages" class="w-full mb-4 p-2 border rounded" name="sourceLanguage"></select>
+            <label for="xlsxFile" class="text-gray-600">Select XLSX File <span class="text-xs text-gray-400">(Optional, default in use)</span>:</label>
+            <input type="file" id="xlsxFile" accept=".xlsx" class="p-1 border rounded" disabled />
 
-          <label for="targetLanguages" class="block mb-2 text-sm text-gray-600">Target Languages:</label>
-          <select id="targetLanguages" class="w-full mb-4 p-2 border rounded" name="targetLanguage"></select>
+            <label for="sourceLanguages" class="text-gray-600">Source Language:</label>
+            <select id="sourceLanguages" class="p-1 border rounded" name="sourceLanguage"></select>
 
-          <label for="translationEngine" class="block mb-2 text-sm text-gray-600">Translation Engine: </label>
-          <select id="translationEngine" class="w-full mb-4 p-2 border rounded" name="engine">
-            <option id="google-engine-option" value="google">Google Translate</option>
-            <option id="deepl-engine-option" value="deepl">Deepl</option>
-            <option id="openai-engine-option" value="chatgpt">OpenAI API</option>
-            <option id="openai-polish-engine-option" value="chatgpt-polish">OpenAI Translation + Polish</option>
-            <option id="perplexity-engine-option" value="perplexity">Perplexity AI</option>
-          </select>
+            <label for="targetLanguages" class="text-gray-600">Target Language:</label>
+            <select id="targetLanguages" class="p-1 border rounded" name="targetLanguage"></select>
 
-          <div id="aiModelRow" style="display:none;">
-            <label for="aiModel" class="block mb-2 text-sm text-gray-600">OpenAI Model:</label>
-            <select id="aiModel" class="w-full mb-4 p-2 border rounded" name="aiModel">
-              <!-- F-1 (2026-05-11): values match config.VALID_AI_MODELS.
-                   The stale gpt-5.4 option was removed because the CLI
-                   rejects it at parse time (B-004). -->
+            <label for="translationEngine" class="text-gray-600">Translation Engine:</label>
+            <select id="translationEngine" class="p-1 border rounded" name="engine">
+              <option id="google-engine-option" value="google">Google Translate</option>
+              <option id="deepl-engine-option" value="deepl">Deepl</option>
+              <option id="openai-engine-option" value="chatgpt">OpenAI API</option>
+              <option id="openai-polish-engine-option" value="chatgpt-polish">OpenAI Translation + Polish</option>
+              <option id="perplexity-engine-option" value="perplexity">Perplexity AI</option>
+            </select>
+
+            <label id="aiModelLabel" for="aiModel" class="text-gray-600" style="display:none;">OpenAI Model:</label>
+            <select id="aiModel" class="p-1 border rounded" name="aiModel" style="display:none;">
               <option value="gpt-5.5" selected>GPT-5.5 — Recommended</option>
               <option value="gpt-5.4-mini">GPT-5.4-mini — Faster, cheaper</option>
             </select>
           </div>
 
-          <div id="splitSection">
-            <div class="flex py-2 mb-2">
-              <input type="checkbox" id="splitTranslate" class="mr-2" name="splitTranslate" checked />
-              <label for="splitTranslate" class="block text-sm text-gray-600">Splittranslation:</label>
+          <div id="splitSection" class="border-t pt-2">
+            <div class="grid grid-cols-2 gap-2 items-center">
+              <label for="splitTranslate" class="text-gray-600 flex items-center gap-1">
+                <input type="checkbox" id="splitTranslate" name="splitTranslate" checked />
+                Splittranslation:
+              </label>
+              <select id="splitEngine" class="p-1 border rounded" name="splitEngine" disabled>
+                <option id="basic-split-option" value="basic">Basic with excel file</option>
+                <option id="openai-split-option" value="openai">OpenAI API</option>
+                <option id="persian-double-lines-split-option" value="persian_double_lines">Persian Double Lines</option>
+              </select>
             </div>
-            <label for="splitEngine" class="block mb-2 text-sm text-gray-600">Split Method: </label>
-            <select id="splitEngine" class="w-full mb-4 p-2 border rounded" name="splitEngine" disabled>
-              <option id="basic-split-option" value="basic">Basic with excel file</option>
-              <option id="openai-split-option" value="openai">OpenAI API</option>
-              <option id="persian-double-lines-split-option" value="persian_double_lines">Persian Double Lines</option>
-            </select>
             <div id="alignerThresholdRow" class="mb-3 hidden">
               <label for="alignerLlmThreshold" class="block mb-1 text-sm text-gray-600">
                 Persian Double Lines — Aligner LLM Threshold:
@@ -172,57 +175,64 @@
         <p>In case of bugs or error, please report to smtv.bot at gmail dot com for support.</p>
       </div>
 
-      <!-- Right column: About & Latest Updates -->
-      <div class="mt-8 avoid-collapse">
-        <h2 class="text-xl font-bold mb-4">About the Machine Translation Robot</h2>
-        <div class="space-y-4">
-          <div class="p-4 bg-gray-50 rounded-lg shadow">
-            <h3 class="font-semibold text-lg mb-2">The source code is available for free on github</h3>
-            <p class="text-gray-700">The source code is available on the translation-robot account on GitHub: <b><a href="https://github.com/translation-robot/machine-translate-docx/">https://github.com/translation-robot/machine-translate-docx/</a></b></p>
-          </div>
+      <!-- Right column: About & Latest Updates — collapsed by default so
+           the page fits without scrolling. The translate form is the main
+           interaction surface; the secondary content lives behind two
+           summary toggles. (2026-05-13 layout compaction.) -->
+      <div class="mt-4 avoid-collapse space-y-3">
 
-          <div class="p-4 bg-gray-50 rounded-lg shadow">
-            <h3 class="font-semibold text-lg mb-2">Download the Machine Translator and run it on your computer</h3>
-            <p class="text-gray-700">Mac OS X and Windows installers are available for <b><a href="https://github.com/translation-robot/machine-translate-docx/blob/main/download.md">download</a></b>. This web site and the robot runs on Linux, but no linux installers are provided for now.</p>
+        <details class="bg-white rounded shadow-sm">
+          <summary class="cursor-pointer select-none px-4 py-2 font-semibold text-gray-700 hover:bg-gray-50">
+            About the Machine Translation Robot
+          </summary>
+          <div class="px-4 pb-4 pt-2 space-y-3">
+            <div class="p-3 bg-gray-50 rounded">
+              <h3 class="font-semibold text-base mb-1">The source code is available for free on github</h3>
+              <p class="text-gray-700 text-sm">The source code is available on the translation-robot account on GitHub: <b><a class="text-blue-700 underline" href="https://github.com/translation-robot/machine-translate-docx/">github.com/translation-robot/machine-translate-docx</a></b></p>
+            </div>
+            <div class="p-3 bg-gray-50 rounded">
+              <h3 class="font-semibold text-base mb-1">Download the Machine Translator and run it on your computer</h3>
+              <p class="text-gray-700 text-sm">Mac OS X and Windows installers are available for <b><a class="text-blue-700 underline" href="https://github.com/translation-robot/machine-translate-docx/blob/main/download.md">download</a></b>. This web site and the robot run on Linux, but no linux installers are provided for now.</p>
+            </div>
           </div>
+        </details>
 
-          <h2 class="text-xl font-bold mb-4">Latest Updates</h2>
-		  
-          <div id="update1" class="p-4 bg-gray-50 rounded-lg shadow">
-            <h3 class="font-semibold text-lg mb-2"><font color="#0000FF">March 29th, 2026: Line splitting with OpenAI API is now available for testing for Persian language only.</font></h3>
-            <p class="text-gray-700"><u>It must be selected in the combo box instead of basic line splitting. It makes processing 5 times slower, but quality of subtitle phrase splitting is improved significantly. Other languages will be added later after it is optimized.</u></p>
+        <details class="bg-white rounded shadow-sm">
+          <summary class="cursor-pointer select-none px-4 py-2 font-semibold text-gray-700 hover:bg-gray-50">
+            Latest Updates
+          </summary>
+          <div class="px-4 pb-4 pt-2 space-y-2 max-h-96 overflow-y-auto">
+            <div class="p-3 bg-blue-50 rounded text-sm">
+              <h3 class="font-semibold mb-1 text-blue-800">March 29th, 2026 — Line splitting with OpenAI API (Persian, testing)</h3>
+              <p class="text-gray-700"><u>Select it in the combo box instead of basic line splitting. 5× slower but significantly better subtitle splitting. Other languages will follow once optimised.</u></p>
+            </div>
+            <div class="p-3 bg-gray-50 rounded text-sm">
+              <h3 class="font-semibold mb-1">May 2026 — OpenAI model selector added (default GPT-5.5)</h3>
+              <p class="text-gray-700"><u>When using <b>OpenAI API</b> or <b>OpenAI Translation + Polish</b>, you can now select the model. Default is GPT-5.5.</u></p>
+            </div>
+            <div class="p-3 bg-gray-50 rounded text-sm">
+              <h3 class="font-semibold mb-1">January 13, 2026 — OpenAI (ChatGPT) model 5.2 available for all languages</h3>
+              <p class="text-gray-700"><u>Please select <b>OpenAI API</b> when using GPT-5.2 as translation engine.</u></p>
+            </div>
+            <div class="p-3 bg-gray-50 rounded text-sm">
+              <h3 class="font-semibold mb-1">January 13, 2026 — Deepl supports 70+ languages</h3>
+              <p class="text-gray-700"><u>All listed languages are now supported by Deepl except Thai; Deepl is the default engine. Send feedback if you prefer Google Translate for your language.</u></p>
+            </div>
+            <div class="p-3 bg-gray-50 rounded text-sm">
+              <h3 class="font-semibold mb-1">October 23, 2025 — Fixed Deepl translation</h3>
+              <p class="text-gray-700"><u>Deepl works again after the 2025-10-23 update. Use the download link on this page to get the latest version.</u></p>
+            </div>
+            <div class="p-3 bg-gray-50 rounded text-sm">
+              <h3 class="font-semibold mb-1">October 16, 2025 — Slow Deepl cases mostly fixed</h3>
+              <p class="text-gray-700">The robot no longer falls back to phrase-by-phrase translation on initial failure.</p>
+            </div>
+            <div class="p-3 bg-gray-50 rounded text-sm">
+              <h3 class="font-semibold mb-1">Line splitting improvements</h3>
+              <p class="text-gray-700">Short-line splitting improved; fewer empty lines in translation.</p>
+            </div>
           </div>
-		  
-          <div id="update1" class="p-4 bg-gray-50 rounded-lg shadow">
-            <h3 class="font-semibold text-lg mb-2">May 2026: OpenAI model selector added — default is GPT-5.5</h3>
-            <p class="text-gray-700"><u>When using <b>OpenAI API</b> or <b>OpenAI Translation + Polish</b>, you can now select the model. Default is GPT-5.5.</u></p>
-          </div>
-		  
-          <div id="update1" class="p-4 bg-gray-50 rounded-lg shadow">
-            <h3 class="font-semibold text-lg mb-2">January 13, 2026: OpenAI (ChatGPT) using model 5.2 is now available for all languages.</h3>
-            <p class="text-gray-700"><u>Please select <b>OpenAI API</b> when using GPT-5.2 as translation engine.</u></p>
-          </div>
-		  
-		  <div id="update1" class="p-4 bg-gray-50 rounded-lg shadow">
-            <h3 class="font-semibold text-lg mb-2">January 13, 2026:  Deepl added support for 70+ languages.</h3>
-            <p class="text-gray-700"><u>All listed langues on this web site are now supported by Deepl except Thai, and now uses Deepl by default. We would like to receive your feedback and if you prefer having Google translate for your language.</u></p>
-          </div>
+        </details>
 
-          <div id="update1" class="p-4 bg-gray-50 rounded-lg shadow">
-            <h3 class="font-semibold text-lg mb-2">October 23, 2025: Fixed Deepl translation.</h3>
-            <p class="text-gray-700"><u>Deepl translation only work after updating to the version 2025-10-23. Use the download link on this page to get the latest version.</u></p>
-          </div>
-
-          <div id="update1" class="p-4 bg-gray-50 rounded-lg shadow">
-            <h3 class="font-semibold text-lg mb-2">October 16, 2025: Fixed some slow Deepl translation cases.</h3>
-            <p class="text-gray-700">Deepl slow translation should mostly be fixed. The robot does not use phrase by phrase translation from the beginning in case of failure.</p>
-          </div>
-
-          <div id="update3" class="p-4 bg-gray-50 rounded-lg shadow">
-            <h3 class="font-semibold text-lg mb-2">Line splitting improvements</h3>
-            <p class="text-gray-700">Short line splitting are now improved, fixing some empty lines in translation.</p>
-          </div>
-        </div>
       </div>
     </div>
 
@@ -480,11 +490,16 @@
           }
         }
 
-        // Show AI model selector only when OpenAI engine is selected
-        const aiModelRow = document.getElementById('aiModelRow');
-        if (aiModelRow && engineSel) {
+        // Show AI model selector only when OpenAI engine is selected.
+        // 2026-05-13 layout: the row is now two separate elements
+        // (label + select) inside a 2-column grid, so toggle both.
+        const aiModelLabelEl = document.getElementById('aiModelLabel');
+        const aiModelSelEl   = document.getElementById('aiModel');
+        if (engineSel && aiModelLabelEl && aiModelSelEl) {
           const eng = engineSel.value;
-          aiModelRow.style.display = (eng === 'chatgpt' || eng === 'chatgpt-polish') ? '' : 'none';
+          const show = (eng === 'chatgpt' || eng === 'chatgpt-polish');
+          aiModelLabelEl.style.display = show ? '' : 'none';
+          aiModelSelEl.style.display   = show ? '' : 'none';
         }
       }
 
@@ -572,10 +587,13 @@
       // setDefault=false: user explicitly chose an engine — never override.
       engineSelector.addEventListener('change', () => {
         engineChecker(false);
-        const aiModelRow = document.getElementById('aiModelRow');
-        if (aiModelRow) {
+        const aiModelLabelEl2 = document.getElementById('aiModelLabel');
+        const aiModelSelEl2   = document.getElementById('aiModel');
+        if (aiModelLabelEl2 && aiModelSelEl2) {
           const eng = engineSelector.value;
-          aiModelRow.style.display = (eng === 'chatgpt' || eng === 'chatgpt-polish') ? '' : 'none';
+          const show = (eng === 'chatgpt' || eng === 'chatgpt-polish');
+          aiModelLabelEl2.style.display = show ? '' : 'none';
+          aiModelSelEl2.style.display   = show ? '' : 'none';
         }
       });
 
