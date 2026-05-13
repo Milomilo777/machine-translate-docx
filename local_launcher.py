@@ -969,11 +969,19 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
 
         file_path = resolved
         data = file_path.read_bytes()
+        # 2026-05-13: Content-Type by extension. Previously hard-coded
+        # to docx, which made the JSON sidecar (also served through
+        # this endpoint) arrive with a Word MIME and tripped some
+        # downloaders. Map the common cases; default to octet-stream.
+        ext = file_path.suffix.lower()
+        if ext == ".docx":
+            ctype = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        elif ext == ".json":
+            ctype = "application/json; charset=utf-8"
+        else:
+            ctype = "application/octet-stream"
         self.send_response(HTTPStatus.OK)
-        self.send_header(
-            "Content-Type",
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        )
+        self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Content-Disposition", f'attachment; filename="{download_name}"')
         self.send_header("Cache-Control", "no-store")

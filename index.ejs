@@ -874,6 +874,23 @@
 
           triggerDownload('/download/' + filename.replace(/#/g, '%23'));
 
+          // 2026-05-13: also deliver the JSON sidecar (run log) so the
+          // user has a permanent record of model / tokens / cost / polish
+          // stats next to the docx. Same /download/<name> endpoint; the
+          // launcher detects the .json extension and serves the right
+          // MIME type. HEAD-check first because not every engine path
+          // produces a sidecar (e.g. when MTD_DISABLE_SIDECAR=1).
+          try {
+            const logName = filename.replace(/\.docx$/i, '_log.json');
+            const logURL  = '/download/' + logName.replace(/#/g, '%23');
+            const probe = await fetch(logURL, { method: 'GET' });
+            if (probe.ok) {
+              // Give the docx download a tiny head-start so the browser
+              // doesn't merge them and offer a single bundled prompt.
+              setTimeout(() => triggerDownload(logURL), 400);
+            }
+          } catch (e) { /* sidecar download failed; ignore */ }
+
           // Play notification sound after short delay (Safari-safe)
           setTimeout(() => {
             try {
