@@ -21,6 +21,7 @@ per the project-wide rule (C4).
 from __future__ import annotations
 
 import os
+import re
 from typing import Final
 
 from openai import OpenAI
@@ -104,33 +105,82 @@ def _pad_or_truncate(translated: list[str], target_len: int) -> list[str]:
     return list(translated)
 
 
+_RE_TAG = re.compile(r"^\s*⟨⟨\s*(\d+)\s*⟩⟩\s?")
+
+
 def _build_messages(
     source_lines:    list[str],
     candidate_lines: list[str],
     src_lang_name:   str,
     dest_lang_name:  str,
 ) -> list[dict]:
-    """Assemble the chat-completion messages for one reconcile call."""
+    """Assemble the chat-completion messages for one reconcile call.
+
+    2026-05-13 (F5 sweep): the production prompt converged on 0 of 4
+    attempts for FLYIN-1646 (1387 source vs 1403 translator output).
+    A 10-prompt sweep on the same data showed that asking the model to
+    emit a ``⟨⟨N⟩⟩`` per-line tag forces it to count explicitly. P4
+    converged in attempt 1; the other 9 prompts (including the legacy
+    raw-line shape, delta-aware merge, zip-and-merge, worked examples,
+    high-pressure framing) all came back wrong. The tag-format prompt
+    costs ~60 % more output tokens but it actually works.
+
+    The reconciler now requests tagged output; the caller strips the
+    tags before returning.
+    """
+    N = len(source_lines)
     system = (
-        "You are a line-count reconciler. The user gives you a "
-        f"{src_lang_name} source and a candidate {dest_lang_name} "
-        "translation. The translation has the wrong number of lines. "
-        "Re-emit the translation so that it has EXACTLY one line per "
-        "source line, in the same order, preserving meaning. Output "
-        "the lines only — no commentary, no numbering, no surrounding "
-        "fences, no leading or trailing blank lines."
+        f"You are a line-count reconciler. The user gives you a "
+        f"{src_lang_name} source with N lines and its {dest_lang_name} "
+        f"translation that has the WRONG line count. Re-emit the "
+        f"translation so it has exactly N lines, one per source line, "
+        f"in the same order, preserving meaning. Merge or split lines "
+        f"as needed; do not invent new content; do not drop content.\n\n"
+        f"OUTPUT FORMAT — MANDATORY. Emit EXACTLY N lines. Each line "
+        f"MUST begin with ⟨⟨K⟩⟩ where K is the source line number "
+        f"(1..N) in ASCII digits. The tags are machine-parsed; omitting "
+        f"them silently discards your work. A blank source line gets a "
+        f"tag with nothing after it (⟨⟨K⟩⟩ alone). No preamble, no "
+        f"numbering outside the tags, no markdown, no JSON."
     )
+    numbered_src = "\n".join(f"SRC[{i+1}]: {l}" for i, l in enumerate(source_lines))
+    numbered_tr  = "\n".join(f"TR[{i+1}]: {l}"  for i, l in enumerate(candidate_lines))
     user = (
-        f"Source ({len(source_lines)} lines):\n"
-        + "\n".join(source_lines)
-        + f"\n\nCandidate translation "
-        f"({len(candidate_lines)} lines, must become {len(source_lines)}):\n"
-        + "\n".join(candidate_lines)
+        f"Target line count N = {N}\n"
+        f"Current translation has {len(candidate_lines)} lines.\n\n"
+        f"── SOURCE ({src_lang_name}, {N} lines) ──\n"
+        f"{numbered_src}\n\n"
+        f"── CURRENT TRANSLATION ({dest_lang_name}, {len(candidate_lines)} lines) ──\n"
+        f"{numbered_tr}"
     )
     return [
         {"role": "system", "content": system},
         {"role": "user",   "content": user},
     ]
+
+
+def _strip_tags(text: str, target_len: int) -> list[str] | None:
+    """Parse `⟨⟨N⟩⟩ content` lines back to a plain list[str].
+
+    Returns None if the tagged output cannot be parsed cleanly to
+    exactly `target_len` lines — the caller treats None the same way
+    as a line-count mismatch and retries (or pad/truncates).
+    """
+    out = [""] * target_len
+    seen: set[int] = set()
+    for raw in text.split("\n"):
+        m = _RE_TAG.match(raw)
+        if not m:
+            continue
+        idx = int(m.group(1))
+        if idx < 1 or idx > target_len:
+            continue
+        content = raw[m.end():].rstrip("\r")
+        out[idx - 1] = content
+        seen.add(idx)
+    if len(seen) != target_len:
+        return None
+    return out
 
 
 def reconcile_line_count(
@@ -204,6 +254,13 @@ def reconcile_line_count(
                 pass
 
             text = (resp.choices[0].message.content or "")
+            # 2026-05-13 (F5 sweep result): prefer the tag-format parser
+            # because the new prompt asks for ⟨⟨N⟩⟩-tagged output. Fall
+            # back to plain-line parsing for backward-compat with any
+            # caller that supplied a different prompt builder.
+            parsed = _strip_tags(text, len(source_lines))
+            if parsed is not None:
+                return parsed
             lines = text.split("\n")
             if len(lines) == len(source_lines):
                 return lines

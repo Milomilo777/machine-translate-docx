@@ -237,10 +237,19 @@ class OpenAIPolisher:
         #                          keep it explicitly "none" until the user
         #                          asks otherwise.)
         # The translator never spends reasoning tokens (C2 invariant).
-        _reasoning_param = (
-            {"effort": "medium"} if "mini" in self.model.lower()
-            else {"effort": "none"}
-        )
+        #
+        # 2026-05-13: MTD_POLISH_REASONING env var overrides the default
+        # for ad-hoc benchmarking (e.g. `MTD_POLISH_REASONING=low` for a
+        # fast smoke test on a long document). Valid values:
+        # none / low / medium / high (gpt-5.4-mini also supports xhigh).
+        _user_override = os.environ.get("MTD_POLISH_REASONING", "").strip().lower()
+        if _user_override in {"none", "low", "medium", "high", "xhigh"}:
+            _reasoning_param = {"effort": _user_override}
+        else:
+            _reasoning_param = (
+                {"effort": "medium"} if "mini" in self.model.lower()
+                else {"effort": "none"}
+            )
 
         _messages_list = [
             {"role": "system", "content": system},
@@ -310,19 +319,42 @@ class OpenAIPolisher:
         polished_lines = self._parse_output(raw, fa_lines)
 
         if len(polished_lines) != n:
+            # 2026-05-13 (F5 cascade): instead of dropping the polish pass
+            # outright, hand the mismatched output to the line-count
+            # reconciler (gpt-5.4-mini, tag-format prompt). If the
+            # reconciler converges, we keep the polished content and
+            # only fix the line shape. If it cannot, we still fall back
+            # to the untouched translator output.
             print(
                 f"[WARN] Polisher: output line count {len(polished_lines)} != {n} "
-                f"— returning original translation."
+                f"— invoking reconciler to repair line shape."
             )
-            self.last_call_data = {
-                "type":           "polish",
-                "model":          self.model,
-                "polish_skipped": True,
-                "skipped_reason": "line_count_mismatch_output",
-                "lines_processed": n,
-                "lines_modified":  0,
-            }
-            return translated_text
+            try:
+                from .line_count_reconciler import reconcile_line_count
+                reconciled = reconcile_line_count(
+                    fa_lines, polished_lines,
+                    "English", "Persian",
+                    max_attempts=2,    # quick attempt; failure → revert
+                )
+                if len(reconciled) == n:
+                    polished_lines = reconciled
+                    print(
+                        f"[INFO] Polisher: reconciler restored {n} lines; "
+                        f"keeping polished content."
+                    )
+                else:
+                    raise ValueError("reconciler did not converge")
+            except Exception as _r:
+                print(f"[WARN] Polisher: reconciler failed ({_r!r}); reverting to translator output.")
+                self.last_call_data = {
+                    "type":           "polish",
+                    "model":          self.model,
+                    "polish_skipped": True,
+                    "skipped_reason": "line_count_mismatch_output",
+                    "lines_processed": n,
+                    "lines_modified":  0,
+                }
+                return translated_text
 
         # English-residue scan: any line that came back as English (or mostly
         # English) is replaced with the pre-polish translator output for that
