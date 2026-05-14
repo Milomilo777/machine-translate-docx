@@ -1,0 +1,151 @@
+<SMTV_LEXICON>
+Shared SMTV brand block. Identical bytes in both translate_PER and
+polish_PER prompts so OpenAI's prompt cache reuses the prefix.
+
+# WHITELIST (W1–W5) — frozen tokens
+W1) URLs | @handles | #hashtags                                  → BYTE-ID
+W2) News-source token in parens at end of a news line            → BYTE-ID
+    (Reuters) (AFP) (AP) (Lao Động) (VTV) (Báo Tin Tức)
+    SCOPE: only the source token itself; every other (...) and
+    [...] on the same line translates normally / BRACKETGLOSS.
+    Government / NGO / company names → translate
+    (US Department of Labor → وزارت کار آمریکا)
+W3) TECH_LOCK codes                                              → BYTE-ID
+    version codes (v2.1) | model codes (GPT-4o, F-16)
+    formulas (H5N1, NaCl) | serial patterns (S01E05)
+    ⚠ NOT TECH_LOCK: vitamin codes (A B C D E K) →
+        transliterate: A→آ B→بی C→سی D→دی E→ای K→کا
+W4) Placeholders                                                 → BYTE-ID
+    {…} | %s/%d | $VAR | <span> | \n | \t | path/to/file | 00:01:23,456
+W5) Quoted titles                                                → TRANSLATE FULLY
+    Every word of the title must be translated/transliterated. No EN residue.
+    Retain " " quotes. FALLBACK only if untranslatable → transliterate.
+    EXCEPTION: a complete literary/poetic sentence inside " " is a
+    LITERARY_QUOTE, not a title — handle as quote, not as title.
+
+# SMTV COMPOUNDS — spiritual-equality doctrine
+INPUT-DRIVEN ONLY. Activate only when input already contains an SMTV
+compound (or one in ±10 surrounding lines). Plain animal words on
+their own → ordinary translation. Never invent compounds.
+
+Format:  [Honorific]- [Species]   (hyphen + ONE space)
+  ✓ شخص- سگ | اشخاص- گاو | شهروند- گربه | نبرد اشخاص- سگ
+  ✗ [S]-[H]   |   [H]-[S]   |   [H] - [S]
+
+Honorifics:
+  person / being                  → شخص (sg) | اشخاص (pl)
+  citizen / folk / people         → شهروند | شهروندان
+  friend / companion              → دوست
+  resident / inhabitant           → ساکن | ساکنان
+  co-inhabitant / fellow-inhabit. → هم‌ساکن (-ان)
+  co-citizen / fellow-citizen     → هم‌شهروند (-ان)
+  collective / community / group  → اشخاص
+
+Species:  from the compound in the input, or scan ±10 lines.
+  Use حیوان only if genuinely unidentifiable.
+  FORBIDDEN: skip the honorific, write the species in English,
+  pluralise the species, drop the hyphen, or reorder.
+
+SMTV_OVERRIDE_TRUST: silently auto-correct a malformed input
+compound to the canonical format above.
+
+# SPIRITUAL TITLES — frozen byte-for-byte
+استاد اعظم چینگ های  ← all forms of "(Supreme) Master Ching Hai"
+اساتید | استاد روشن‌ضمیر
+Masters → respectful + plural verb. God / Allah → reverent + singular verb.
+
+# BRAND / CHANNEL NAMES — fixed Persian forms
+The TV channel has a canonical Persian name. Do NOT translate
+"Supreme Master" piece-by-piece (wrong forms: "تلویزیون استاد اعظم",
+"استاد اعظم تلویزیون"). Use:
+  Supreme Master TV         → سوپریم مستر تلویزیون
+  Supreme Master Television → سوپریم مستر تلویزیون
+  SMTV                      → سوپریم مستر تلویزیون
+
+Channel name ≠ person name. Person = "استاد اعظم چینگ های"; channel
+= "سوپریم مستر تلویزیون". Never conflate.
+
+# GEOGRAPHY DUAL-FORMS — translate fully, zero EN residue
+  Ukraine (Ureign)        → اوکراین (یورین)
+  Vietnam (Âu Lạc)        → ویتنام (آولاک)
+  Taiwan (Formosa)        → تایوان (فورموسا)
+  Aulacese (Vietnamese)   → آولاکی (ویتنامی)
+  Formosan (Taiwanese)    → فورموسایی (تایوانی)
+When both forms appear in input → translate both per the table.
+
+# PARENTHETICAL_AFTER_NAME
+A descriptor in parens after any proper name → translate / transliterate
+independently. NEVER inherit any name-lock.
+  (vegan)                       → (وگان)
+  Part N of M                   → قسمت N از M
+  Dr. Dean Ornish (vegan)       → دکتر دین اورنیش (وگان)
+  Supreme Master Ching Hai (vegan)
+                                → استاد اعظم چینگ های (وگان)
+
+# SPIRITUAL LEXICON
+TEST: sky-pointable physical? → آسمان
+      divine / afterlife?      → بهشت
+      spiritual quality (heavenly) → بهشتی
+
+# COMMON_MT_PATTERNS — high-frequency calques + false-friends
+# Compiled from 4 Gemini reviews of real SMTV docx (2026-05-13).
+#
+# SCOPE NOTE: This table is INDICATIVE, not exhaustive. It lists the
+# highest-frequency offenders. The PRINCIPLE behind each row matters
+# more than the literal string match — apply the row only when the
+# trigger condition holds. For unlisted variants, infer from the
+# governing principle (passive→active when agent is known;
+# false-friend disambiguation by context; calque detection by clause
+# shape), not by aggressive pattern-matching. When in doubt → leave
+# the line.
+
+  PASSIVE→ACTIVE (apply only when the agent is known or implied; if the
+  source is genuinely agentless / abstract, the Persian passive may
+  be correct — do NOT force-rewrite)
+    ستوده می‌شویم            → ما را می‌ستایند
+    یافت می‌شوند              → زندگی می‌کنند / دیده می‌شوند
+    جاودانه شده‌ایم            → تصویر ما ثبت شده است
+    ستوده شده است            → شناخته می‌شود / به جا گذاشته است
+    نگریسته می‌شوند           → با ... برخورد می‌شود / ... دارند
+
+  FALSE-FRIEND VERBS (apply only when the EN context matches the listed
+  sense; the literal sense, when present, keeps its literal Persian)
+    observe (= state/remark)        → خاطرنشان می‌کند (NOT مشاهده می‌کند)
+       observe (= watch/perceive)   → مشاهده می‌کند (literal sense stays)
+    desperate (= intensely)          → با تمام وجود (NOT ناامیدانه)
+       desperate (= without hope)    → ناامیدانه (literal sense stays)
+    hailed (= publicly recognised)   → شناخته می‌شود (NOT ستوده شد)
+       hailed (= genuinely praised)  → ستوده شد (literal sense stays)
+    shave seconds off                → کندتر می‌کند (NOT زمان را کم می‌کند)
+    Spanish conquest                 → استیلای اسپانیایی‌ها (NOT فتح اسپانیا)
+
+  VERB-COLLOCATION CALQUES
+    شریک شدن چیزی با کسی     → شریک بودن در چیزی
+    گذر زمان را برقرار ساخت   → به جریان انداخت / پدید آورد
+    نام را به X گسترش دادند   → نام را به X تعمیم دادند
+    مزاحم نمی‌شود              → مزاحمت ایجاد نمی‌کند / توی دست‌و‌پا نیست
+    حال‌شان خوب خواهد شد       → خوب می‌شوند / خطر رفع شده
+    روایت شخصی زیادی آوردم   → خاطرات شخصی زیادی به کار گرفتم
+    گوشت گاو مورد بزرگی است   → گوشت گاو نمونهٔ بارزی است
+    تأسیسات غیرشفاف‌اند        → تأسیسات کاملاً بسته‌اند / دسترسی به آن‌ها ممنوع است
+    گنجی از X (gold metaphor) → ذخیره / گنجینه (translate the figurative sense)
+
+  AWKWARD PERSIANISATIONS (prefer transliteration — apply when the EN
+  source is a technical / institutional term, not folk language)
+    آسان‌مرگ / آسان‌مرگی        → یوتانایز / یوتانایز کردن
+    به خواب ابدی سپرده شدن    → یوتانایز شدن
+    شکل‌یافته                  → شکل گرفته‌اند
+
+  GRAMMAR — NEKARE-EZAFE BAN
+    Indefinite "ی" before an ezafe phrase is wrong:
+      ✗ پدریِ دلسوزِ چهار شخص- گربه
+      ✓ پدر دلسوزِ چهار شخص- گربه
+      ✗ هم‌خانه‌ای تازه ساکن می‌شود
+      ✓ با هم‌خانه‌ی تازه‌ای ... هم‌نشین می‌شود
+
+  SMTV REGISTER MICRO-PATTERNS (apply only when the EN context matches)
+    bright viewers (= insightful) → بینندگان فهیم / هوشمند (NOT درخشان)
+       bright (= luminous)         → درخشان (literal sense stays)
+    sensitive souls               → اهل دل / حساس (avoid "روح" in casual)
+    "گرم و پرابراز" (warm and expressive) → خونگرم و احساساتی
+</SMTV_LEXICON>
