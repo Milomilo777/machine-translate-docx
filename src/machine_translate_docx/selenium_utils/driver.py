@@ -81,7 +81,21 @@ def create_webdriver(ctx: RuntimeContext) -> None:
 
     The webdriver module to use (selenium.webdriver vs
     undetected_chromedriver) lives on ``ctx.browser.webdriver_module``.
+
+    2026-05-13 (feat/exe-packaging): NO-OP fast-path for the OpenAI API
+    engine. The chatgpt-api path is pure HTTP — it never needs a
+    browser. Skipping the Chrome launch here makes the CLI work on
+    boxes where Chrome is not installed (a packaged .exe for the
+    OpenAI-only flow) and removes the ~6 second launch latency.
     """
+    if ctx.engine.engine == 'chatgpt' and ctx.engine.method == 'api':
+        if not ctx.flags.splitonly:
+            print(
+                "\nStarting translation using engine : %s (API mode — no browser)"
+                % (ctx.engine.engine.title())
+            )
+        return
+
     webdriver = ctx.browser.webdriver_module
 
     if not ctx.flags.splitonly:

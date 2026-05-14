@@ -3,7 +3,10 @@ import uuid
 import json
 import time
 import tiktoken
-import mysql.connector
+# 2026-05-13 (feat/exe-packaging): mysql.connector is an OPTIONAL
+# dependency — only required when MARIADB_HOST is set in the
+# environment. Top-level import broke PyInstaller builds for users who
+# never touch the DB feature. Lazy-load inside `get_db_connection`.
 from openai import OpenAI
 from pathlib import Path
 import re
@@ -57,7 +60,26 @@ def _prompt_lang_code(dest_lang: str) -> str:
 
 
 def _find_prompts_dir(anchor: Path) -> Path:
-    """Walk up from *anchor* to find the project-level prompts/ directory."""
+    """Walk up from *anchor* to find the project-level prompts/ directory.
+
+    Frozen-build hook (2026-05-13, feat/exe-packaging): PyInstaller
+    bundles `prompts/` under ``sys._MEIPASS/prompts``. An explicit
+    ``MTD_FROZEN_ROOT/prompts`` (set by the wrapper) overrides — that
+    lets a packaged user drop a customised prompts directory beside the
+    .exe without rebuilding.
+    """
+    import os as _os
+    import sys as _sys
+    frozen_root = _os.environ.get("MTD_FROZEN_ROOT", "").strip()
+    if frozen_root:
+        override = Path(frozen_root) / "prompts"
+        if override.is_dir():
+            return override
+    meipass = getattr(_sys, "_MEIPASS", None)
+    if meipass:
+        bundled = Path(meipass) / "prompts"
+        if bundled.is_dir():
+            return bundled
     for candidate in [
         anchor / "../../../prompts",
         anchor / "../../prompts",
@@ -123,6 +145,8 @@ class OpenAITranslator:
             except Exception: pass
 
     def get_db_connection(self):
+        # Lazy import: optional dep, only needed when DB persistence is on.
+        import mysql.connector  # noqa: WPS433 — intentional in-function import
         return mysql.connector.connect(**self.db_config)
 
     def get_doc_id(self):

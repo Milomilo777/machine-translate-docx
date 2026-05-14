@@ -3,7 +3,8 @@ import uuid
 import json
 import time
 import tiktoken
-import mysql.connector
+# 2026-05-13 (feat/exe-packaging): mysql.connector lazy-loaded inside
+# get_db_connection — see translator.py for rationale.
 from openai import OpenAI
 import re
 
@@ -56,6 +57,7 @@ class OpenAISubtitleSplitter:
             except Exception: pass
 
     def get_db_connection(self):
+        import mysql.connector  # noqa: WPS433 — lazy optional import
         return mysql.connector.connect(**self.db_config)
 
     @staticmethod
