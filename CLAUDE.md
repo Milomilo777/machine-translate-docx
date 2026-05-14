@@ -29,10 +29,18 @@ frontend ──────┤
                   ┌─ runtime.py        (RuntimeContext dataclass)
                   ├─ config.py         (constants + VALID_AI_MODELS)
                   ├─ runner.py         (block-loop orchestrator)
+                  ├─ log_paths.py      (Log json file/ resolver + retention)
                   ├─ docx_io/          (parse, cells, runs, save)
                   ├─ engines/          (google, deepl, chatgpt_api)
                   ├─ selenium_utils/   (driver, click, forms)
                   └─ openai_tools/     (translator, polisher, …)
+
+  Distributable .exe path (2026-05-14):
+              packaging/mtd_entry.py
+                  │
+                  ▼  PyInstaller bundles entry + prompts/ + deps
+              dist/mtd/mtd.exe  ──► same cli.main(), runs without
+                                    Python / Chrome / MariaDB / hazm
 ```
 
 See [`docs/architecture.md`](docs/architecture.md) and the SVG
@@ -71,6 +79,10 @@ diagrams in [`docs/diagrams/`](docs/diagrams/) for the full picture.
 | `prompts/translate_PER.txt` | Persian translation system prompt |
 | `prompts/polish_PER.txt` | Persian polish system prompt |
 | `prompts/translate_universal.txt` | Fallback prompt for other languages |
+| `packaging/mtd_entry.py` | PyInstaller wrapper that sets `MTD_FROZEN_ROOT` |
+| `packaging/mtd.spec` | PyInstaller config (onedir, ~65 MB output) |
+| `packaging/README.md` | Clean-venv build instructions |
+| `src/machine_translate_docx/log_paths.py` | Central `Log json file/` resolver + 10-day retention; honours `MTD_FROZEN_ROOT` |
 
 ---
 
@@ -92,6 +104,18 @@ PYTHONPATH=src E:\Python311\python.exe -m machine_translate_docx.cli \
 
 # After `pip install -e .`, the same CLI is reachable as `mtd …`
 # (entry-point declared in pyproject.toml).
+
+# Build a standalone Windows .exe for distribution (CLI only, OpenAI API
+# path only). Onedir output is ship-ready: zip dist/mtd/ and send it.
+# See packaging/README.md for the clean-venv setup that keeps the build
+# at ~65 MB instead of 1.2 GB.
+python -m venv .venv-build && .venv-build/Scripts/python.exe -m pip install \
+    pyinstaller openai python-docx lxml requests tiktoken openpyxl \
+    beautifulsoup4 json5 regex pyyaml python-bidi chardet clipboard \
+    langcodes progressbar2 psutil screeninfo selenium pywin32 \
+    newmm-tokenizer tinysegmenter httpx certifi
+.venv-build/Scripts/python.exe -m PyInstaller packaging/mtd.spec --clean --noconfirm
+# Output: dist/mtd/mtd.exe
 
 # Run pytest (113 tests, ~2 s) — `live` marker is deselected by default
 E:\Python311\python.exe -m pytest tests/ --ignore=tests/test_v2_e2e.py

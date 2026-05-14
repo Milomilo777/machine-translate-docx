@@ -118,3 +118,41 @@ Naming convention: `{action}_{ISO_639_2B_code}.txt`
 `src/machine_translate_docx/openai_tools/splitting.py` — `OpenAISubtitleSplitter`  
 Used only when `splitTranslate=true` in the UI. Makes per-phrase API calls.
 Requires MariaDB. Use is discouraged; the aligner pipeline supersedes it.
+
+## Distribution — Standalone .exe (2026-05-14)
+
+```
+packaging/mtd_entry.py
+    │  sets MTD_FROZEN_ROOT = Path(sys.executable).parent
+    ▼
+packaging/mtd.spec   (PyInstaller, onedir, ~65 MB)
+    │  collects:
+    │    - prompts/                  (translate_PER, polish_PER, _smtv_locks,
+    │                                 translate_universal, polish_universal)
+    │    - python-docx XML templates
+    │    - tiktoken BPE rank files
+    │    - newmm-tokenizer Thai word list
+    ▼
+dist/mtd/mtd.exe   (+ _internal/ sibling)
+    │
+    │  At runtime:
+    │    - `log_paths._find_project_root` honours MTD_FROZEN_ROOT
+    │       → `Log json file/` lands next to mtd.exe
+    │    - `translator._find_prompts_dir` honours MTD_FROZEN_ROOT
+    │       → an override prompts/ next to mtd.exe wins,
+    │         else falls back to bundled sys._MEIPASS/prompts
+    │
+    └─► same machine_translate_docx.cli.main() — zero behaviour drift
+        from the dev-tree CLI. Only the OpenAI-API engine path is
+        validated for the .exe (Google / DeepL paths still work but
+        require a real Chrome + chromedriver on the user's box).
+
+Why the OpenAI API path "just works" in the .exe:
+  - `create_webdriver(ctx)` returns early for engine=chatgpt+api
+    (no Chrome needed).
+  - mysql.connector, hazm, undetected_chromedriver are lazy-loaded
+    or wrapped in try/except with passthrough fallbacks.
+  - The dev shell still sees the full feature set; only the
+    .exe-friendly subset avoids the optional deps.
+
+Build instructions: see `packaging/README.md`. Constraints C24-C26.
