@@ -172,3 +172,4 @@ The prompt iteration files in this branch:
 - `prompts/*_proposal_v2.txt` — v2 (compacted, severity tags)
 - `prompts/*_proposal_v3.txt` — v3 (PHASE_0_BASE, SA, LOCKED/MN split)
 - `prompts/*_proposal_v4.txt` — v4 (ALLOWED_LATIN, LS-11, MN-9, SA-10/11, idiom-aware)
+- `prompts/*_proposal_v5.txt` — v5 (MASTER_SPEECH fidelity tier, MN-10 NUMBER_FORMAT moved into PHASE_0_BASE, SA-12 LOGICAL_CONNECTOR, SA-13 COMPARISON_SCOPE, comma-before-number precedence, ambiguous-date Persianisation, Month D YYYY, quote title punctuation exception, URL punctuation attachment ban, SVU soft heuristic, ACRONYM-IN-PARENS pattern-bound, blank-policy reconciled with SA-11, [EN]-blank policy, idiom example "spill the beans → راز را فاش کردن")
