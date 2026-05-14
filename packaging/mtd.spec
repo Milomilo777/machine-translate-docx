@@ -1,25 +1,42 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller spec for the `mtd` CLI .exe.
+"""PyInstaller spec for the `mtd` CLI executable.
 
-Build:
+Build (Windows):
     python -m PyInstaller packaging/mtd.spec --clean --noconfirm
+    → dist/mtd/mtd.exe   (~65 MB onedir)
 
-Output:
-    dist/mtd/mtd.exe   (--onedir mode, faster startup, easier to debug)
+Build (macOS):
+    python3 -m PyInstaller packaging/mtd.spec --clean --noconfirm
+    → dist/mtd/mtd        (Unix binary, no extension)
+    See packaging/mac_build.md for the full Mac flow (codesign,
+    quarantine attribute, .dmg packaging).
+
+Build (Linux): same as macOS; output is `dist/mtd/mtd`.
 
 Why onedir, not onefile:
   - onefile re-extracts to a temp dir on every launch (~0.5-1s slow
-    startup, broken antivirus signature on some systems).
-  - onedir produces a folder the user can ship as-is. The .exe + a
-    `_internal/` directory sit side-by-side.
+    startup, broken antivirus signature on some systems, Gatekeeper
+    headache on Mac).
+  - onedir produces a folder the user can ship as-is. The binary +
+    a `_internal/` directory sit side-by-side.
   - For network distribution: zip the folder, end user unzips, runs
-    `mtd.exe`. No installer needed.
+    `mtd[.exe]`. No installer needed.
+
+2026-05-14: spec is platform-aware. The Windows-only hidden imports
+(pywin32, win32com, pythoncom, pywintypes) and the .ico icon are
+gated by `sys.platform` so the same spec builds cleanly on Win + Mac
++ Linux. cli.py already wraps `from win32com.client import Dispatch`
+in `if platform.system() == 'Windows'` so the runtime path is safe.
 """
+import sys as _sys
 from pathlib import Path
 
 import PyInstaller.utils.hooks as _hooks
 
 REPO_ROOT = Path(SPECPATH).parent.resolve()
+IS_WINDOWS = _sys.platform.startswith("win")
+IS_MACOS   = _sys.platform == "darwin"
+IS_LINUX   = _sys.platform.startswith("linux")
 
 # ── data files bundled inside the package ──────────────────────────────────
 datas = [
@@ -127,11 +144,19 @@ hiddenimports = [
     "newmm_tokenizer",
     "newmm_tokenizer.tokenizer",
     "tinysegmenter",
-    "win32com",
-    "win32com.client",
-    "pythoncom",
-    "pywintypes",
 ]
+
+# Windows-only hidden imports — pywin32 family. cli.py only imports
+# win32com.client behind a `platform.system() == 'Windows'` guard, so on
+# Mac / Linux these modules don't exist and PyInstaller must NOT try to
+# bundle them.
+if IS_WINDOWS:
+    hiddenimports += [
+        "win32com",
+        "win32com.client",
+        "pythoncom",
+        "pywintypes",
+    ]
 
 # Collect all submodules of openai / httpx — they discover plugins via
 # importlib at runtime.
@@ -185,7 +210,14 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=str(REPO_ROOT / "google_translate.ico") if (REPO_ROOT / "google_translate.ico").exists() else None,
+    # Icon: .ico is Windows-only. macOS would want a .icns file (none
+    # bundled yet); on non-Windows we skip the icon rather than crash
+    # PyInstaller with a wrong-format file.
+    icon=(
+        str(REPO_ROOT / "google_translate.ico")
+        if IS_WINDOWS and (REPO_ROOT / "google_translate.ico").exists()
+        else None
+    ),
 )
 coll = COLLECT(
     exe,

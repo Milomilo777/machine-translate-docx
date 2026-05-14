@@ -91,3 +91,11 @@ prompts (useful for testing custom prompt edits without rebuilding).
 - 2026-05-13 Windows 10/11 — `gpt-5.4-mini` × `UL 3147` → French
   (94 s, $0.26), `VEGC 3148` → Persian (22 s, $0.07). Both produced
   native-quality output. See `CHANGELOG.md`.
+
+## macOS support
+
+See [`mac_build.md`](mac_build.md). The spec file is platform-aware
+(skips `pywin32` and `.ico` icon on non-Windows), but PyInstaller
+cannot cross-compile — the Mac build must run on a Mac. The Mac flow
+is documented but **not yet end-to-end validated** from this Windows
+machine; the first Mac run should be treated as a verification pass.
