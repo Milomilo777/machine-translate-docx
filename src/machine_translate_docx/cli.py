@@ -890,8 +890,19 @@ if dest_lang == 'zh' or dest_lang == 'ja' or dest_lang == 'ko':
     from tinysegmenter import TinySegmenter
     cjk_segmenter = TinySegmenter()
 if dest_lang == 'fa':
-    from hazm import Normalizer
-    my_hazm_normalizer = Normalizer()
+    # 2026-05-13 (feat/exe-packaging): hazm is heavy and only used on
+    # the Selenium-scraping FA path. Make it best-effort so a packaged
+    # CLI build (OpenAI API only) doesn't fail to start when hazm is
+    # absent. Falls back to a passthrough Normalizer that returns text
+    # unchanged — fine because the API path never calls .normalize().
+    try:
+        from hazm import Normalizer
+        my_hazm_normalizer = Normalizer()
+    except Exception as _hazm_exc:
+        class _PassthroughNormalizer:
+            def normalize(self, text=""):
+                return text
+        my_hazm_normalizer = _PassthroughNormalizer()
 
 
 
@@ -1035,7 +1046,15 @@ else:
 # Else, use standard selenium webdriver
 
 if translation_engine == 'chatgpt' and engine_method != "webservice":
-    import undetected_chromedriver as webdriver
+    # 2026-05-13 (feat/exe-packaging): undetected_chromedriver is only
+    # needed for the legacy chatgpt-WEB path (Selenium browser
+    # automation). The OpenAI-API engine doesn't touch a browser at
+    # all. Treat the import as best-effort so packaged builds that
+    # only ship the API path don't fail to start.
+    try:
+        import undetected_chromedriver as webdriver
+    except Exception:
+        from selenium import webdriver
 else:
     from selenium import webdriver  # regular selenium webdriver
 
@@ -4274,13 +4293,17 @@ def main() -> int:
 
     get_robot_usage_comment(ctx)
 
-    try:
-        print("\nClosing chrome browser...")
-        ctx.browser.driver.close()
-        ctx.browser.driver.quit()
-    except Exception:
-        var = traceback.format_exc()
-        print(var)
+    # 2026-05-13 (feat/exe-packaging): chatgpt-api path never opened a
+    # browser, so ctx.browser.driver is None. Skip the cleanup
+    # gracefully instead of stamping a noisy traceback.
+    if ctx.browser.driver is not None:
+        try:
+            print("\nClosing chrome browser...")
+            ctx.browser.driver.close()
+            ctx.browser.driver.quit()
+        except Exception:
+            var = traceback.format_exc()
+            print(var)
 
     if ctx.language.dest_lang_name is None or ctx.language.dest_lang_name == "":
         if not ctx.flags.splitonly:

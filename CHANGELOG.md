@@ -6,6 +6,59 @@
 
 ---
 
+## 2026-05-14 — Distributable Windows .exe (`feat/exe-packaging` branch)
+
+Colleague reported the previous `compile.bat` PyInstaller flow built
+an .exe that wouldn't run on end-user machines. Spent a build pass
+on a clean working solution:
+
+  - New `packaging/` directory with `mtd_entry.py` wrapper and
+    `mtd.spec` PyInstaller config. Onedir mode (faster startup,
+    debuggable folder layout, ~65 MB total).
+  - `packaging/README.md` walks through the clean-venv setup that
+    keeps the build size sane — system pythons contaminated by
+    PyTorch / PyQt5 / numpy ballooned the .exe to 1.2 GB; the clean
+    venv keeps it at 65 MB.
+  - `log_paths.py` and `translator.py` honour `MTD_FROZEN_ROOT` so
+    the bundled `prompts/` and the central `Log json file/` directory
+    resolve next to the executable instead of trying to find a
+    project root that doesn't exist in the frozen layout.
+  - `selenium_utils/driver.py` got a fast-path NO-OP for the
+    `chatgpt+api` engine combination — the OpenAI API path doesn't
+    need Chrome, and trying to launch it on a box without Chrome
+    installed was the colleague's repro for "exe builds but doesn't
+    work". Skip the driver entirely on that path; also fixed a NPE
+    in the cleanup branch when `ctx.browser.driver is None`.
+  - Lazy-imported `mysql.connector` from `translator.py` and
+    `splitting.py` so end users without MariaDB installed don't get
+    a startup ImportError. The DB persistence layer is opt-in via
+    `MARIADB_HOST` env var; the import only fires when it's actually
+    used.
+  - Wrapped `hazm` and `undetected_chromedriver` top-level imports in
+    try/except so a packaged build that ships only the OpenAI API
+    flow doesn't fail to start on the heavy Persian-NLP and
+    Selenium-stealth dependencies. Both have passthrough fallbacks.
+
+Validation on a clean folder install (zipped .exe + unzipped on a
+machine that has no Python and no Chrome — simulated by copying the
+`dist/mtd/` folder to a separate working directory):
+
+| Test | File | Lang | Model | Duration | Cost | Status |
+|------|------|------|-------|----------|------|--------|
+| 1 | VEGC 3148 (Namibian Potato Recipes) | Persian | gpt-5.4-mini | 22 s | $0.07 | ✅ |
+| 2 | UL 3147 (Isabella La Rocca González) | French  | gpt-5.4-mini | 94 s | $0.26 | ✅ |
+
+Output samples:
+  - FA: "پس از بازدید از بازار پرجنب‌وجوش صبحگاهی اوشاکاتی..."
+  - FR: "Les canetons nagent pour la toute première fois."
+
+Both runs wrote the docx beside the input + `_log.json` into
+`Log json file/` next to `mtd.exe`. No Python required on the user's
+machine. No Chrome required. Drop-folder distribution: zip the
+`dist/mtd/` folder, send to user, they extract and run `mtd.exe`.
+
+---
+
 ## 2026-05-13 — FA aligner: span-guard + benchmark scaffolding + باشه ban
 
 User attached a manually-corrected reference file `… Persian.docx` and

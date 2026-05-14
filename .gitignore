@@ -68,3 +68,9 @@ web/v2/node_modules/
 
 # Log json file/ — central sidecar folder with 10-day retention
 Log json file/
+
+# PyInstaller build artefacts (feat/exe-packaging)
+.venv-build/
+build/
+dist/
+*.spec.bak

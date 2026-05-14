@@ -24,7 +24,18 @@ _RETENTION_DAYS = 10
 
 def _find_project_root(anchor: Path) -> Path:
     """Walk up from *anchor* until we find a directory that contains
-    both `prompts/` and `src/` — the project root signature."""
+    both `prompts/` and `src/` — the project root signature.
+
+    Frozen-build fallback: if the env var ``MTD_FROZEN_ROOT`` is set
+    (the PyInstaller wrapper writes it to the .exe's parent
+    directory), use that as the root. Inside a PyInstaller bundle the
+    `src/` directory doesn't exist on disk, so the development-time
+    signature check fails — but the user still expects log files to
+    land next to the executable.
+    """
+    frozen_root = os.environ.get("MTD_FROZEN_ROOT", "").strip()
+    if frozen_root:
+        return Path(frozen_root)
     for candidate in [anchor, *anchor.parents]:
         if (candidate / "prompts").is_dir() and (candidate / "src").is_dir():
             return candidate
