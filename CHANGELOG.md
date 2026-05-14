@@ -6,6 +6,37 @@
 
 ---
 
+## 2026-05-14 — Mac build scaffolding (cross-platform spec + docs)
+
+Follow-up to the .exe packaging landing. Made the PyInstaller spec
+file platform-aware so the same `packaging/mtd.spec` builds on
+Windows, macOS, and Linux:
+
+  - `sys.platform` is read at spec-load time. `IS_WINDOWS` / `IS_MACOS`
+    / `IS_LINUX` gate the platform-specific bits.
+  - `pywin32` family hidden imports (`win32com`, `pythoncom`,
+    `pywintypes`) are added ONLY on Windows. `cli.py` already guards
+    the runtime usage with `if platform.system() == 'Windows'`.
+  - The `.ico` icon is skipped on non-Windows (wrong format for Mac;
+    a future iteration can add a real `.icns`).
+  - Windows build re-validated after the spec edits (`--help` ran
+    cleanly; 65 MB output unchanged).
+
+New `packaging/mac_build.md` walks through the Mac build flow:
+  - Clean venv setup with pyenv + python 3.11.7.
+  - Same dep list minus `pywin32`.
+  - Three distribution paths: (A) zip + `xattr -dr com.apple.quarantine`,
+    (B) codesign + notarize for production, (C) `.app` bundle.
+  - Common pitfalls table: Gatekeeper quarantine, missing Xcode CLT,
+    dyld_library_path, Apple Silicon vs Intel architecture.
+
+**Honest validation status:** the Mac flow has not been run from this
+machine — PyInstaller cannot cross-compile, so a real Mac is needed
+for the first verification pass. The Windows flow remains validated
+on 2026-05-14 with FA + FR translations.
+
+---
+
 ## 2026-05-14 — Distributable Windows .exe (`feat/exe-packaging` branch)
 
 Colleague reported the previous `compile.bat` PyInstaller flow built
