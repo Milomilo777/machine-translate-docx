@@ -229,3 +229,42 @@ coll = COLLECT(
     upx_exclude=[],
     name="mtd",
 )
+
+# 2026-05-14: macOS .app bundle. Optional but produces a native Mac
+# experience (drag-to-Applications, Finder-recognisable). The dev
+# can still use the `dist/mtd/mtd` binary directly for CLI scripting;
+# the .app sits alongside it. Inspired by the upstream repo's
+# `compile/mac/MachineTranslator.spec` BUNDLE() recipe.
+#
+# Why we set everything explicitly:
+#   - `icon` — defaults to no icon if `packaging/mtd.icns` isn't
+#     present yet. To add a real icon, drop a 1024-px .icns file at
+#     that path before building.
+#   - `bundle_identifier` — reverse-DNS, used by Apple's codesign +
+#     notarytool for tracking.
+#   - `info_plist` — minimal NSHighResolutionCapable for Retina UI.
+#     `LSMinimumSystemVersion` matches the Python.org installer
+#     minimum (macOS 10.13 High Sierra) — adjust if you build with
+#     a newer base.
+#
+# NB: upstream sets `upx=True` for size, but UPX-compressed binaries
+# get flagged by Apple's notarisation service. We leave UPX off so
+# `xcrun notarytool submit` accepts the bundle out of the box.
+if IS_MACOS:
+    _mac_icon = REPO_ROOT / "packaging" / "mtd.icns"
+    app = BUNDLE(
+        coll,
+        name="mtd.app",
+        icon=str(_mac_icon) if _mac_icon.exists() else None,
+        bundle_identifier="com.smtv.mtd",
+        info_plist={
+            "CFBundleName":              "mtd",
+            "CFBundleDisplayName":       "Machine Translate DOCX",
+            "CFBundleShortVersionString": "1.0.0",
+            "CFBundleVersion":           "1.0.0",
+            "CFBundleIdentifier":        "com.smtv.mtd",
+            "NSHighResolutionCapable":   True,
+            "LSMinimumSystemVersion":    "10.13",
+            "LSApplicationCategoryType": "public.app-category.productivity",
+        },
+    )

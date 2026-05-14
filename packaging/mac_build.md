@@ -153,12 +153,127 @@ xcrun stapler staple dist/mtd
 
 After this, end users can download and run with no quarantine fuss.
 
-### Path C — .app bundle (graphical launcher feel)
+### Path C — .app bundle (native Mac experience)
 
-If a future iteration wants a double-clickable `.app`, change
-`exe = EXE(...)` in the spec to `console=False` and add a `BUNDLE()`
-call at the end. PyInstaller's docs walk through this. Not done now
-because the current build is CLI-only.
+`packaging/mtd.spec` now includes a `BUNDLE(...)` call gated by
+`IS_MACOS`. Building on a Mac produces both:
+
+```
+dist/mtd/         ← onedir folder (mtd binary + _internal/)
+dist/mtd.app/     ← Mac app bundle (drag to Applications)
+```
+
+The `.app` is a wrapper around the same binary plus an `Info.plist`
+with `CFBundleIdentifier=com.smtv.mtd`, `LSMinimumSystemVersion=10.13`,
+and `NSHighResolutionCapable=true`. Bundle identifier is reverse-DNS
+so codesign + notarisation can track it.
+
+**Adding a Mac icon** (optional):
+
+```bash
+# 1. Source: any 1024×1024 PNG (transparent background recommended).
+mkdir mtd.iconset
+sips -z 16 16     icon.png --out mtd.iconset/icon_16x16.png
+sips -z 32 32     icon.png --out mtd.iconset/icon_16x16@2x.png
+sips -z 32 32     icon.png --out mtd.iconset/icon_32x32.png
+sips -z 64 64     icon.png --out mtd.iconset/icon_32x32@2x.png
+sips -z 128 128   icon.png --out mtd.iconset/icon_128x128.png
+sips -z 256 256   icon.png --out mtd.iconset/icon_128x128@2x.png
+sips -z 256 256   icon.png --out mtd.iconset/icon_256x256.png
+sips -z 512 512   icon.png --out mtd.iconset/icon_256x256@2x.png
+sips -z 512 512   icon.png --out mtd.iconset/icon_512x512.png
+sips -z 1024 1024 icon.png --out mtd.iconset/icon_512x512@2x.png
+
+# 2. Convert to .icns
+iconutil -c icns mtd.iconset
+
+# 3. Drop into packaging/ before building
+mv mtd.icns packaging/mtd.icns
+```
+
+The spec auto-picks `packaging/mtd.icns` when present and skips it
+quietly otherwise (no build break).
+
+### Path D — .dmg disk image (the proper Mac distribution format)
+
+Once you have a `.app`, wrap it in a `.dmg` so users get the canonical
+"drag the icon to Applications" experience. Requires `create-dmg`
+(Homebrew):
+
+```bash
+brew install create-dmg
+
+# Drop the .app into a staging folder so the .dmg only contains it
+mkdir -p dist/dmg-staging
+cp -r "dist/mtd.app" dist/dmg-staging/
+
+# If a previous .dmg exists, remove it first
+rm -f "dist/Machine Translate DOCX.dmg"
+
+create-dmg \
+  --volname        "Machine Translate DOCX" \
+  --volicon        packaging/mtd.icns \
+  --window-pos     200 120 \
+  --window-size    600 300 \
+  --icon-size      100 \
+  --icon           "mtd.app" 175 120 \
+  --hide-extension "mtd.app" \
+  --app-drop-link  425 120 \
+  --no-mount \
+  "dist/Machine Translate DOCX.dmg" \
+  "dist/dmg-staging/"
+```
+
+The end user double-clicks the `.dmg`, drags `mtd.app` onto the
+Applications shortcut, and launches from Spotlight/Launchpad. The
+`--volicon` step gives the mounted volume itself a custom icon.
+
+**Don't forget**: an unsigned `.dmg` is still subject to Gatekeeper
+quarantine. The full polished flow is:
+
+```bash
+# 1. Sign the .app
+codesign --deep --force --options=runtime \
+  --sign "Developer ID Application: YOUR NAME (TEAMID)" \
+  dist/mtd.app
+
+# 2. Build the .dmg (as above)
+# 3. Sign the .dmg itself
+codesign --sign "Developer ID Application: YOUR NAME (TEAMID)" \
+  "dist/Machine Translate DOCX.dmg"
+
+# 4. Notarise
+xcrun notarytool submit "dist/Machine Translate DOCX.dmg" \
+  --apple-id you@example.com --team-id TEAMID \
+  --password "@keychain:NOTARY_PASSWORD" --wait
+
+# 5. Staple
+xcrun stapler staple "dist/Machine Translate DOCX.dmg"
+```
+
+After step 5 the `.dmg` opens cleanly on any Mac, no quarantine fuss.
+
+### Comparison with the upstream repo's Mac build
+
+The upstream repo (`translation-robot/machine-translate-docx`) has a
+Mac build in `compile/mac/MachineTranslator.spec` + `compileall.sh` +
+`builddmg-gui.sh`. We borrowed the BUNDLE() and create-dmg patterns
+from there. Where we diverged:
+
+| Choice | Upstream | This repo |
+|---|---|---|
+| Heavy NLP deps (parsivar, gensim, sklearn, demoji, usaddress) | bundled | NOT bundled (lazy-loaded or removed) |
+| upx compression | `upx=True` | `upx=False` (UPX-compressed Mach-O is rejected by Apple notarytool) |
+| Python source | hardcoded `/Library/Frameworks/Python.framework/...` paths | clean venv chosen by the operator |
+| Selenium binaries | bundled, then manually stripped | bundled but no chromedriver — the API path doesn't need it |
+| Build artefacts | `Machine Translator Term.app` + GUI `Machine Translator.app` | `mtd.app` only (CLI) |
+| .icns icon | bundled in repo | optional — drop your own at `packaging/mtd.icns` |
+| Result size | ~300+ MB | ~70-80 MB |
+| Cross-platform spec | separate Mac + Windows spec files | single platform-aware `mtd.spec` |
+
+The smaller surface is the main win — fewer transitive deps mean
+fewer reasons for a Mac build to break with a `dyld: Library not
+loaded` after the user upgrades their system.
 
 ## Common pitfalls on macOS
 
@@ -190,3 +305,6 @@ because the current build is CLI-only.
 | Signing | optional, SmartScreen friendly | strongly recommended (Gatekeeper) |
 | Distribution | zip the folder | zip + xattr strip, or .dmg + codesign |
 | Validated? | YES — 2026-05-14 (FA + FR) | **NOT YET** |
+| `.app` bundle | n/a | optional via `BUNDLE()` in spec |
+| `.dmg` distribution | n/a | optional via `create-dmg` |
+| Icon | `google_translate.ico` | optional `packaging/mtd.icns` |
