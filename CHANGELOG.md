@@ -6,6 +6,44 @@
 
 ---
 
+## 2026-05-14 — Mac .app bundle + .dmg recipe (upstream comparison)
+
+User asked how the upstream repo (`translation-robot/machine-translate-
+docx`) handled Mac packaging. Upstream's `compile/mac/` directory uses
+PyInstaller's `BUNDLE()` to produce a `.app`, then `create-dmg` to
+wrap it in a `.dmg` — both proper Mac distribution formats. Folded
+the good parts into our spec and docs.
+
+  packaging/mtd.spec:
+    - New `BUNDLE()` call gated by `IS_MACOS`. Produces `dist/mtd.app/`
+      alongside the existing `dist/mtd/` onedir. Bundle id
+      `com.smtv.mtd`, NSHighResolutionCapable, LSMinimumSystemVersion
+      10.13, productivity category. Auto-picks an optional
+      `packaging/mtd.icns` icon when present.
+    - Kept `upx=False` deliberately — Apple's notarytool rejects
+      UPX-compressed Mach-O binaries; the upstream's `upx=True`
+      breaks signed distribution.
+
+  packaging/mac_build.md:
+    - New "Path C — .app bundle (native Mac experience)" with the
+      `iconutil -c icns` recipe for an .icns icon.
+    - New "Path D — .dmg disk image" with the full `create-dmg`
+      invocation and the codesign + notarytool + stapler sequence
+      that produces a quarantine-free download.
+    - "Comparison with the upstream repo's Mac build" table — heavy
+      NLP deps, upx, hardcoded Python framework paths, and result
+      size are documented. Upstream is ~300+ MB; this build is
+      ~70-80 MB.
+
+Windows build re-validated; same onedir output, `BUNDLE()` is a no-op
+on non-Mac platforms.
+
+Still not validated on a real Mac — requires running PyInstaller on
+macOS (no cross-compile). The flow is now complete enough for one
+build pass.
+
+---
+
 ## 2026-05-14 — Mac build scaffolding (cross-platform spec + docs)
 
 Follow-up to the .exe packaging landing. Made the PyInstaller spec
