@@ -207,6 +207,8 @@ Q10 (spot) Calque residue → EDIT ③/④?
 Q11 (spot) Number form per MN-7?
 Q12 (spot) MT-pattern sweep?
 Q13 (final) ROUND_TRIP — mentally back-check target proposition: polarity, quantifier, modality, speaker, scope, pragmatic force should not come back materially different. Mismatch → revert to BASE.
+Q14 (cross-line, before emit) NAME_CONSISTENCY — every proper noun (person, place, organisation, brand, channel) appears in EXACTLY ONE target-language form across all N output lines. The FIRST line's names and the LAST line's names use identical orthography. Any drift → align all occurrences to the first-occurrence canonical form before emit.
+Q15 (cross-line, before emit) TERMINOLOGY_LOCK — every recurring domain term uses ONE target-language rendering throughout. No synonym drift mid-document.
 </QA>
 
 <OUT>

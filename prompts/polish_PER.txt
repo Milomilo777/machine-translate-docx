@@ -247,6 +247,8 @@ Q13 (spot) PERSONA-aware readability — never apply NEWS persona to SAGE.
 Q14 (spot) MT-pattern sweep against SMTV_LEXICON COMMON_MT_PATTERNS.
 Q15 (spot) 👑 MASTER lines: EDIT ①–⑤ skipped (G10) unless zero-nuance-loss?
 Q16 (final) ROUND_TRIP — mentally back-check Persian proposition: polarity, quantifier, modality, speaker, scope, pragmatic force should not come back materially different. Mismatch → revert to BASE.
+Q17 (cross-line, before emit) NAME_CONSISTENCY — every proper noun (person, place, organisation, brand, channel) appears in EXACTLY ONE Persian form across all N output lines. The FIRST line's names and the LAST line's names use identical orthography. Any drift → align all occurrences to the first-occurrence canonical form before emit.
+Q18 (cross-line, before emit) TERMINOLOGY_LOCK — every recurring domain/spiritual/SMTV term uses ONE Persian rendering throughout. No synonym drift mid-document.
 </QA>
 
 <EXAMPLES>

@@ -6,6 +6,59 @@
 
 ---
 
+## 2026-05-15b — PRE_EMIT_CHECK pass: name-consistency gate end-to-end
+
+Follow-up to the v7 promote. User asked whether proper nouns stay
+consistent across the document (first line == last line orthography),
+and pointed out that the universal prompt is the primary engine for
+many users who never run polish — so universal translate must produce
+publication-quality output in a single call.
+
+Added a compact, focused pre-flight check to both translate prompts
+and to both polish prompts. Modelled on a 9-layer pre-flight pattern
+but condensed to the 4–6 checks that actually apply to subtitle
+translation execution (most code-related layers don't transfer).
+
+translate_universal.txt — new `<PRE_EMIT_CHECK>` block (C1–C6):
+  C1 NAME_CONSISTENCY — every proper noun appears in ONE form across
+     all N lines. FIRST line names == LAST line names. No variants like
+     "ایلان ماسک / الون ماسک" or "Bounxou / Bun Xou" coexisting.
+  C2 TERMINOLOGY_LOCK — recurring domain term → ONE rendering throughout.
+  C3 SCOPE_INTEGRITY — not / never / no longer / only / except / unless /
+     must / may / should / can / already / still / yet / because /
+     although / despite — verify scope vs source.
+  C4 ONTOLOGICAL_SAFETY — inanimate subject + human/religious action
+     → reverse-engineer (e.g. "the glacier meditates" → restore literal
+     "the glacier retreats").
+  C5 LINE_INTEGRITY — count(input) == count(output). No merge/split/reorder.
+  C6 LATIN_CLEAN — zero source-language residue outside ALLOWED_LATIN.
+
+  Wider than Persian's check because universal callers usually have no
+  downstream polish pass — this is the only chance to catch drift.
+
+translate_PER.txt — compact `<PRE_EMIT_CHECK>` (C1–C4):
+  C1 NAME_CONSISTENCY (same as universal).
+  C2 TERMINOLOGY_LOCK (same).
+  C3 LINE_INTEGRITY.
+  C4 LATIN_CLEAN.
+  Tighter because polisher provides a second pass; the polisher catches
+  scope/ontological/modality drift via SA-1, SA-6, SA-7, SA-14.
+
+polish_PER.txt — Q17 NAME_CONSISTENCY + Q18 TERMINOLOGY_LOCK
+  added to the QA list as cross-line, before-emit checks. Polish sees all
+  pairs at once and can correct any drift the translator missed.
+
+polish_universal.txt — Q14 NAME_CONSISTENCY + Q15 TERMINOLOGY_LOCK
+  added to QA, matching the Persian polish structure.
+
+Proposal-v7 trail files synced with canonical so the iteration trail
+stays accurate at the v7 leaf.
+
+Tests: 120/120 still passing. No code changes in this pass — prompt-
+only edits to the four pipeline prompts + their proposal-v7 mirrors.
+
+---
+
 ## 2026-05-15 — v7 prompts promoted: STATIC + JOB_CONFIG, legacy injections, code restructure
 
 Six iterations of round-trip critique between Claude and GPT-5.5

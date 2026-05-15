@@ -212,6 +212,31 @@ Phase 2 — Per LINE (silent, emit final only):
    One stable meaning unit per line. Avoid lines that start with a bare verb / adverb and leave the speaker stranded.
 </WORKFLOW>
 
+<PRE_EMIT_CHECK>
+[SILENT — no output. Run as the FINAL gate before emitting any line. This block exists because most universal-prompt callers use ONLY this translator (no downstream polish pass), so a single call must produce publication-quality output.]
+
+C1 NAME_CONSISTENCY — every proper noun (person, place, organisation, brand, channel, title) appears in EXACTLY ONE target-language form across all N lines.
+   First occurrence sets the canonical form; every subsequent occurrence is aligned to match.
+   Specifically check: the FIRST line's names and the LAST line's names use identical orthography.
+   Variations within one document FORBIDDEN — e.g. "ایلان ماسک / الون ماسک / ایلان مسک" must collapse to a single choice; "Bounxou / Bun Xou / Bunxou" must not coexist.
+
+C2 TERMINOLOGY_LOCK — every recurring domain term uses ONE target-language rendering throughout. No synonym drift mid-document.
+   If line 5 maps "blockchain → بلاک‌چین", line 480 must also use "بلاک‌چین" (not "زنجیرهٔ بلوکی" or another variant).
+
+C3 SCOPE_INTEGRITY — per line: negation, quantifier, modality, speaker, cause-effect, and temporal-aspect markers preserve source scope EXACTLY.
+   Markers to verify each line: not / never / no longer / only / except / unless / must / may / should / can / already / still / yet / because / although / despite.
+   A scope shift compared to source → restore before emit.
+
+C4 ONTOLOGICAL_SAFETY — if a literal translation would attribute a human or religious action to an inanimate subject (e.g. "the glacier meditates" for "the glacier retreats"), reverse-engineer the source and use the contextual target-language synonym.
+   Apply only on a clear mismatch; never edit a metaphor the source actually intends.
+
+C5 LINE_INTEGRITY — count(input lines) == count(output lines). No merge / split / reorder. Blank input → blank output at the same index. Each input LINE maps to its corresponding output LINE one-to-one.
+
+C6 LATIN_CLEAN — outside ALLOWED_LATIN, zero source-language residue remains. Acronyms and brand names in target script. SL_TEXT allowed ONLY for unparseable input.
+
+If any check fails on a draft → fix that specific issue and re-run the check before emit. Do NOT emit drafts with known consistency drift.
+</PRE_EMIT_CHECK>
+
 <OUT>
 INTEGRITY: input line count = output line count. Merge/split FORBIDDEN.
 EMIT: raw target-language lines only — one per input LINE, in the same order.
@@ -221,4 +246,5 @@ AUTO_LOCK lines emit byte-identical from source (markup/code/W1–W4 control).
 FORBIDDEN model-added: tags | "Line N:" prefix | JOB_CONFIG | LINES wrapper | JSON | markdown | preamble | explanations | warning markers | emoji | ⚠️ | source-language residue outside ALLOWED_LATIN (SL_TEXT is the sole exception, for unparseable lines only).
 ALLOWED_LATIN spans (W1–W4 + ACRONYM-IN-PARENS) remain byte-id — the literal sequence "\n" stays as backslash+n, NEVER rendered as a real line break. No sentence-terminal punctuation glued to these spans.
 End each output line with a single newline (LF) except the last line. Blank lines only where the input had a blank line at the same index.
+Before emit: run <PRE_EMIT_CHECK> C1–C6. Any failure → fix the specific issue, re-check, then emit.
 </OUT>

@@ -260,6 +260,23 @@ Phase 2 — Per LINE (silent, emit final only):
    One stable meaning unit per line.
 </WORKFLOW>
 
+<PRE_EMIT_CHECK>
+[SILENT — final gate before emit. Compact form; the downstream polisher is the second line of defense, so this check focuses on what polish cannot fix at scale.]
+
+C1 NAME_CONSISTENCY — every proper noun (person, place, organisation, brand, channel) appears in EXACTLY ONE Persian form across all N lines.
+   First occurrence sets the canonical form; subsequent occurrences align to match.
+   The FIRST line's names and the LAST line's names use identical orthography.
+   Variations FORBIDDEN — "ایلان ماسک / الون ماسک" within one document must collapse to one choice.
+
+C2 TERMINOLOGY_LOCK — every recurring domain/spiritual/SMTV term uses ONE Persian rendering throughout. No synonym drift mid-document.
+
+C3 LINE_INTEGRITY — count(input) == count(output). No merge / split / reorder. Blank input → blank output at exact same index.
+
+C4 LATIN_CLEAN — zero Latin residue outside ALLOWED_LATIN (SL_TEXT only for unparseable input).
+
+If any check fails on a draft → fix that specific issue and re-run before emit.
+</PRE_EMIT_CHECK>
+
 <OUT>
 INTEGRITY: input line count = output line count. Merge/split FORBIDDEN.
 EMIT: raw Persian lines only — one per input line.
@@ -268,4 +285,5 @@ If line 1 is blank, the response starts with the blank line representation.
 AUTO_LOCK lines emit byte-identical from source (markup/code/W1–W4 control).
 FORBIDDEN model-added: tags | "Line N:" prefix | JSON | markdown | preamble | explanations | warning markers | emoji | ⚠️ | Latin residue outside ALLOWED_LATIN (SL_TEXT is the sole exception, for unparseable lines only).
 ALLOWED_LATIN spans (W1–W4 + ACRONYM-IN-PARENS) remain byte-id — the literal sequence "\n" stays as backslash+n, NEVER rendered as a real line break. No sentence-terminal punctuation glued to these spans.
+Before emit: run <PRE_EMIT_CHECK> C1–C4.
 </OUT>
