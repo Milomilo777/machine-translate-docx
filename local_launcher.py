@@ -136,23 +136,24 @@ def _sanitize_filename(name: str) -> str:
 
 def _cache_key(payload: bytes, target_lang: str, engine: str,
                ai_model: str | None, split_engine: str | None = None) -> str:
-    """SHA-256 over payload + lang + engine + ai_model + split_engine.
+    """SHA-256 over payload + lang + engine + ai_model.
 
-    Two requests collide ONLY when the uploaded bytes are byte-identical AND
-    the language/engine/model/split_engine quadruple matches. A one-byte
-    difference in the docx zip (e.g. different metadata, different
-    timestamp) yields a different key — by design.
+    Two requests collide ONLY when the uploaded bytes are byte-identical
+    AND the language/engine/model triple matches.
 
-    2026-05-15 — `split_engine` added to the key. The launcher routes
-    Persian Double Lines and Basic through different CLI flag combinations
-    (B1-guard forces `splitTranslate=false` for persian_double_lines, true
-    for basic), so the cached ``main_path`` file has a different row
-    shape depending on which split method ran first. Without
-    `split_engine` in the key, a Persian-Double-Lines-first run would
-    cache a raw "everything in row 1" docx, and a subsequent Basic run
-    would replay that wrong-shape cache (bug observed on MOS 3148,
-    2026-05-15). Including `split_engine` forces a cache miss on switch,
-    which re-runs the engine with the correct flags for the new method.
+    2026-05-15 (raw-cache architecture) — ``split_engine`` is intentionally
+    NOT folded into the SHA-256. The launcher now always runs the CLI
+    subprocess with ``splitTranslate=False`` (raw single-blob-per-phrase
+    output) and applies the requested splitter as a launcher-side
+    post-process. A single cached entry — the raw post-polish docx —
+    serves both Basic and Double Lines requests for the same source.
+    Switching split methods on a cached file becomes a sub-second
+    aligner-or-splitonly re-run instead of a full translation+polish
+    replay.
+
+    The ``split_engine`` parameter is kept on the signature for
+    backward compatibility (older callers pass it positionally) but
+    its value no longer affects the returned digest.
     """
     h = hashlib.sha256()
     h.update(payload)
@@ -162,8 +163,7 @@ def _cache_key(payload: bytes, target_lang: str, engine: str,
     h.update(engine.encode("utf-8", errors="replace"))
     h.update(b"\x00")
     h.update((ai_model or "").encode("utf-8", errors="replace"))
-    h.update(b"\x00")
-    h.update((split_engine or "").encode("utf-8", errors="replace"))
+    # split_engine intentionally NOT included — see docstring.
     return h.hexdigest()
 
 
@@ -1601,19 +1601,27 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
     ) -> Path:
         engine, extra_flags = self._map_engine(translation_engine)
 
-        # B1-guard (2026-05-12 revised): only the persian_double_lines
-        # split path runs the FA aligner, and that path does its OWN
-        # row distribution on the saved docx. For the basic split path
-        # the legacy line-by-line splitter (document_split_phrases) is
-        # the only thing that fans the single-call FA output back across
-        # the cell column — without `--split` the entire polished
-        # translation lands in row 1 and every following row stays
-        # empty (bug observed on News Scroll NS 3145, 2026-05-12).
-        # So: force off ONLY for persian_double_lines, leave basic alone.
+        # B1-guard (2026-05-15 raw-cache rewrite): for the chatgpt-polish
+        # FA path, ALWAYS force splitTranslate=False so the subprocess
+        # emits the raw "single-blob-per-phrase" docx (one polished FA
+        # blob per phrase head row, every other row blank). That raw
+        # output is then split in the launcher post-process by
+        # _apply_splitter: basic → subprocess --splitonly,
+        # persian_double_lines → FASubtitleAligner. The cache stores
+        # only the raw docx, so a single cached entry serves both
+        # split methods on the same source file — switching split
+        # methods on a cached file is a sub-second re-split instead of
+        # a full translation + polish replay.
+        #
+        # Earlier versions of this guard (pre-2026-05-15) varied
+        # splitTranslate by split_engine; that variation forced the
+        # cache key to include split_engine, which then broke cache
+        # reuse across split methods. The new architecture pushes ALL
+        # splitting into the launcher so the cache key is split-engine
+        # independent.
         if (
             translation_engine == "chatgpt-polish"
             and target_language.lower().startswith("fa")
-            and split_engine == "persian_double_lines"
         ):
             split_translate = False
 
