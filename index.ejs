@@ -97,6 +97,25 @@
               <option id="openai-split-option" value="openai">OpenAI API</option>
               <option id="persian-double-lines-split-option" value="persian_double_lines">Persian Double Lines</option>
             </select>
+            <div id="alignerMaxCharsRow" class="mb-3 hidden">
+              <label for="alignerMaxChars" class="block mb-1 text-sm text-gray-600">
+                Persian Double Lines — Max chars per chunk (CPL ceiling):
+                <span id="alignerMaxCharsValue" class="font-mono text-gray-800">45</span>
+              </label>
+              <input type="range" id="alignerMaxChars" name="alignerMaxChars"
+                     min="24" max="70" step="1" value="45" class="w-full" />
+              <div class="flex justify-between text-xs text-gray-500">
+                <span>24 — tight (very short chunks)</span>
+                <span>45 — default (balanced)</span>
+                <span>70 — loose (broader chunks)</span>
+              </div>
+              <p class="text-xs text-gray-500 mt-1">
+                Maximum character width of each Persian chunk in the
+                bilingual double-line output. Default 45 matches the
+                historical broadcast ceiling. The setting is remembered
+                in your browser between runs.
+              </p>
+            </div>
             <div id="alignerThresholdRow" class="mb-3 hidden">
               <label for="alignerLlmThreshold" class="block mb-1 text-sm text-gray-600">
                 Persian Double Lines — Aligner LLM Threshold:
@@ -517,6 +536,14 @@
           splitSection.style.display = '';
         }
 
+        // Aligner MAX_CHARS slider: only meaningful when persian_double_lines
+        // is the active Split Method. Hidden otherwise.
+        const maxCharsRow = document.getElementById('alignerMaxCharsRow');
+        if (maxCharsRow) {
+          const isPDL = splitSel && splitSel.value === 'persian_double_lines';
+          maxCharsRow.classList.toggle('hidden', !isPDL);
+        }
+
         // Aligner LLM threshold row: only meaningful when the active split
         // method is persian_double_lines. Hidden otherwise.
         const alignerRow = document.getElementById('alignerThresholdRow');
@@ -791,6 +818,15 @@
           const thrEl = document.getElementById('alignerLlmThreshold');
           const thr   = thrEl ? Number(thrEl.value) : 0;
           formData.append('alignerLlmThreshold', String(thr));
+
+          // 2026-05-15: per-job MAX_CHARS for the FA aligner.
+          // Clamped to 24..70; default 45. Stored in localStorage so
+          // the user's preference persists across sessions.
+          const mcEl = document.getElementById('alignerMaxChars');
+          let   mc   = mcEl ? Number(mcEl.value) : 45;
+          if (!Number.isFinite(mc)) mc = 45;
+          mc = Math.max(24, Math.min(70, Math.round(mc)));
+          formData.append('alignerMaxChars', String(mc));
         }
         if (aiModel)        formData.append('aiModel', aiModel);
 
@@ -947,6 +983,46 @@
           const isPDL = _splitSel.value === 'persian_double_lines';
           _alignerRow.classList.toggle('hidden', !isPDL);
         });
+      }
+
+      // ------- Aligner MAX_CHARS slider wiring (Persian Double Lines) -------
+      // Persisted across sessions in localStorage('mtd.alignerMaxChars').
+      // Range 24..70, default 45. The slider hides when splitEngine != PDL.
+      const _maxCharsSlider = document.getElementById('alignerMaxChars');
+      const _maxCharsValueEl = document.getElementById('alignerMaxCharsValue');
+      const _maxCharsRow = document.getElementById('alignerMaxCharsRow');
+      const _MAX_CHARS_LS_KEY = 'mtd.alignerMaxChars';
+      if (_maxCharsSlider && _maxCharsValueEl) {
+        // Hydrate from localStorage on first paint.
+        try {
+          const stored = window.localStorage.getItem(_MAX_CHARS_LS_KEY);
+          if (stored !== null) {
+            const v = parseInt(stored, 10);
+            if (Number.isFinite(v) && v >= 24 && v <= 70) {
+              _maxCharsSlider.value = String(v);
+              _maxCharsValueEl.textContent = String(v);
+            }
+          }
+        } catch (_e) { /* private mode, ignore */ }
+
+        _maxCharsSlider.addEventListener('input', function () {
+          _maxCharsValueEl.textContent = String(_maxCharsSlider.value);
+        });
+        _maxCharsSlider.addEventListener('change', function () {
+          // Persist after the user releases the slider, not on every drag tick.
+          try {
+            window.localStorage.setItem(_MAX_CHARS_LS_KEY, String(_maxCharsSlider.value));
+          } catch (_e) { /* private mode, ignore */ }
+        });
+      }
+      if (_splitSel && _maxCharsRow) {
+        _splitSel.addEventListener('change', function () {
+          const isPDL = _splitSel.value === 'persian_double_lines';
+          _maxCharsRow.classList.toggle('hidden', !isPDL);
+        });
+        // Initial paint — match the current splitEngine value.
+        const isPDL = _splitSel.value === 'persian_double_lines';
+        _maxCharsRow.classList.toggle('hidden', !isPDL);
       }
 
     }); // end DOMContentLoaded

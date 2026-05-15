@@ -903,6 +903,7 @@ class FASubtitleAligner:
         model:          str = 'gpt-5.4-mini',
         llm_threshold:  int = 0,
         token_budget:   int = 0,
+        max_chars:      int = 48,
     ):
         self.model         = model
         self.llm_threshold = max(0, min(100, int(llm_threshold)))
@@ -912,6 +913,25 @@ class FASubtitleAligner:
         self._llm_tokens_used     = 0
         # Lazy OpenAI client — only built when threshold > 0 and we need it.
         self._client = None
+
+        # 2026-05-15 — broadcast CPL override. The module-level constants
+        # MAX_CHARS / MIN_TARGET are referenced by ~35 helper functions
+        # at file scope. Rather than thread a self.max_chars through every
+        # one of them (huge refactor, easy to miss a site), we mutate the
+        # module globals when the operator asks for a non-default value.
+        # The aligner is process-singleton in practice (the launcher only
+        # instantiates it once per job, and FASubtitleAligner does not
+        # support concurrent jobs by design), so this is safe.
+        # Clamp to the same band the frontend exposes (24..70). The
+        # MIN_TARGET stays at the historical 1:2 ratio to MAX_CHARS so
+        # rounder splits remain idiomatic at the new CPL ceiling.
+        global MAX_CHARS, MIN_TARGET   # noqa: PLW0603
+        clamped = max(24, min(70, int(max_chars)))
+        if clamped != MAX_CHARS:
+            MAX_CHARS  = clamped
+            MIN_TARGET = max(12, clamped // 2)
+        self.max_chars  = MAX_CHARS
+        self.min_target = MIN_TARGET
 
     def _get_client(self):
         if self._client is None:

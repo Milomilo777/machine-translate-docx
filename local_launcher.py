@@ -1353,6 +1353,16 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
         except (TypeError, ValueError):
             aligner_llm_threshold = 0
         aligner_llm_threshold = max(0, min(100, aligner_llm_threshold))
+
+        # 2026-05-15 — Persian Double Lines MAX_CHARS override. Default 48
+        # (the historical broadcast-CPL constant). UI exposes 24..70 with
+        # a stored preference in localStorage. Clamp here too so a hand-
+        # crafted request cannot drive the aligner outside the safe band.
+        try:
+            aligner_max_chars = int(fields.get("alignerMaxChars", "48"))
+        except (TypeError, ValueError):
+            aligner_max_chars = 48
+        aligner_max_chars = max(24, min(70, aligner_max_chars))
         enable_sound = fields.get("enableSound")
         sound_select = fields.get("soundSelect")
         split_translate = fields.get("splitTranslate", "false").lower() in {"true", "1", "on", "yes"}
@@ -1373,6 +1383,7 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
                     cached,
                     split_engine=split_engine,
                     target_language=target_language,
+                    aligner_max_chars=aligner_max_chars,
                 )
                 if served:
                     splitter_only = served.name.endswith("_Double_Lines.docx")
@@ -1412,6 +1423,7 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
                 cache_key,
                 aligner_llm_threshold,
                 xlsx_path,
+                aligner_max_chars,
             ),
             daemon=True,
         )
@@ -1435,6 +1447,7 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
         cache_key: str | None = None,
         aligner_llm_threshold: int = 0,
         xlsx_path: Path | None = None,
+        aligner_max_chars: int = 48,
     ) -> None:
         _job_t0 = time.time()
         print(f"[job {job_id}] ▶ start — file: {original_name} | lang: {target_language} | engine: {translation_engine}")
@@ -1498,6 +1511,7 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
                 output_path,
                 split_engine=split_engine,
                 target_language=target_language,
+                aligner_max_chars=aligner_max_chars,
             )
 
             self.state.update_job(
@@ -2268,6 +2282,7 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
         *,
         split_engine: str | None,
         target_language: str,
+        aligner_max_chars: int = 48,
     ) -> Path:
         """Apply the requested Split Method to a translated docx.
 
@@ -2278,6 +2293,11 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
 
         Falls back to the input path on any aligner error so the user
         always receives at least the engine's translated docx.
+
+        ``aligner_max_chars`` (added 2026-05-15) controls the broadcast
+        CPL ceiling that the FA aligner enforces per chunk. UI exposes
+        24..70 with default 48; we clamp to the same band here so a
+        hand-crafted request cannot push the aligner out of range.
         """
         if split_engine != "persian_double_lines":
             return base_path
@@ -2300,10 +2320,15 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
             # Lazy import — keeps the launcher's start-up cheap and avoids
             # loading python-docx until a Persian Double Lines job arrives.
             from machine_translate_docx.openai_tools.persian_double_lines import FASubtitleAligner
+            # Clamp again at the boundary in case a caller passed an
+            # unvalidated value (e.g. cache replay path).
+            mc = max(24, min(70, int(aligner_max_chars)))
+            print(f"[splitter] persian_double_lines: MAX_CHARS={mc}")
             aligner = FASubtitleAligner(
                 model="gpt-5.4-mini",   # aligner is hardcoded mini (C1)
                 llm_threshold=0,        # purely mechanical; no LLM call
                 token_budget=0,
+                max_chars=mc,
             )
             aligner.align(str(base_path), str(out_path))
             return out_path
@@ -2317,6 +2342,7 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
         *,
         split_engine: str | None,
         target_language: str,
+        aligner_max_chars: int = 48,
     ) -> Path | None:
         """Copy the cached engine output back into uploads/, applying the
         requested splitter (Phase 4: Persian Double Lines re-runs the FA
@@ -2352,6 +2378,7 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
             base_dst,
             split_engine=split_engine,
             target_language=target_language,
+            aligner_max_chars=aligner_max_chars,
         )
 
     def _fallback_output_path(
