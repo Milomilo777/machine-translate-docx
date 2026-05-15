@@ -49,10 +49,15 @@ WEB_V2_DIR = ROOT / "web" / "v2"
 WEB_STATIC_DIR = ROOT / "web" / "static"
 SUBSCRIBERS_FILE = ROOT / "subscribers.txt"
 
-# 36-hour cache for API-translated files (sha256(payload) + lang + engine
+# 5-day cache for API-translated files (sha256(payload) + lang + engine
 # + ai_model). Cache key + paths held in memory; payloads themselves stay on
 # disk under runtime_dir/cache/<hash>/. Pruned by start_cleanup_thread().
-CACHE_TTL_SEC = 36 * 60 * 60
+# 2026-05-15: bumped from 36 hours to 5 days. With the new "raw cache +
+# post-process split" architecture, a single cache entry serves both
+# Basic and Double Lines requests for the same source file, so longer
+# retention pays off — a returning user who tries a different split
+# method on a 4-day-old file still skips translation + polish.
+CACHE_TTL_SEC = 5 * 24 * 60 * 60
 _API_ENGINES = frozenset({"chatgpt", "chatgpt-polish"})  # only API engines cache
 
 # ISO 639-2/B codes matching what machine_translate_docx.py produces via langcodes
