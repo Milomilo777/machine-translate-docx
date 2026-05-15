@@ -1,0 +1,32 @@
+id: case_05_lao_greeting_byte_id
+description: |
+  LS-13 FOREIGN_SCRIPT_AUTHENTIC_VOICE — non-EN, non-FA script
+  greeting tokens preserved byte-id, including their romanized
+  transliteration in parens. Only the framing sentence and the
+  English meaning inside the trailing quote get translated.
+source_lang: en
+target_lang: fa
+pipeline: translate
+input: |
+  "ສະບາຍດີ (Sabaidee)!"
+  In my native Lao language,
+  that means, "Hello, kind viewers."
+
+mock_output: |
+  "ສະບາຍດີ (Sabaidee)!"
+  در زبان مادری لائوسی من،
+  یعنی، "سلام، بینندگان مهربان."
+
+invariants:
+  line_count: 3
+  # Foreign-script greeting must be byte-id, including transliteration.
+  must_contain:
+    - "ສະບາຍດີ"
+    - "(Sabaidee)"
+  # English meaning ("Hello, kind viewers") must be in Persian.
+  must_not_contain:
+    - "Hello, kind viewers"
+    - "Hello"
+  validator_must_not_flag:
+    - LINE_COUNT_MISMATCH
+    - PROTECTED_SPAN_MISSING

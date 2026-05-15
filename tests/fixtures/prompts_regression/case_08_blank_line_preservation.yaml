@@ -1,0 +1,30 @@
+id: case_08_blank_line_preservation
+description: |
+  Blank lines in input must appear at the exact same index in output.
+  PRE_EMIT_CHECK C5 LINE_INTEGRITY + the validator's
+  BLANK_POSITION_MISMATCH guard.
+source_lang: en
+target_lang: fa
+pipeline: translate
+input: |
+  Welcome to the show.
+
+  Our topic today is kindness.
+
+  Let's begin.
+
+mock_output: |
+  خوش آمدید به برنامه.
+
+  موضوع امروز ما مهربانی است.
+
+  بیایید شروع کنیم.
+
+invariants:
+  line_count: 5
+  must_contain:
+    - "خوش آمدید"
+    - "مهربانی"
+  validator_must_not_flag:
+    - LINE_COUNT_MISMATCH
+    - BLANK_POSITION_MISMATCH

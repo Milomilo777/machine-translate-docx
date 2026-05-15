@@ -1,0 +1,38 @@
+id: case_03_name_consistency
+description: |
+  A proper noun mentioned in line 1 must appear in identical form
+  in the last line. PRE_EMIT_CHECK C1 NAME_CONSISTENCY in
+  translate_PER.txt and translate_universal.txt.
+source_lang: en
+target_lang: fa
+pipeline: translate
+input: |
+  Welcome to Supreme Master TV. I'm Bounxou from Laos.
+  Today we'll discuss compassion.
+  Stay with us.
+  This is Bounxou, signing off from Supreme Master TV.
+
+mock_output: |
+  خوش آمدید به سوپریم مستر تلویزیون. من بانخو هستم اهل لائوس.
+  امروز درباره‌ی شفقت گفت‌وگو خواهیم کرد.
+  با ما همراه باشید.
+  این بانخو بود، خداحافظی از سوپریم مستر تلویزیون.
+
+invariants:
+  line_count: 4
+  must_contain:
+    - "بانخو"
+    - "سوپریم مستر تلویزیون"
+    - "لائوس"
+  # Name on first occurrence must equal name on last occurrence.
+  name_consistency:
+    - "بانخو"
+    - "سوپریم مستر تلویزیون"
+  must_not_contain:
+    - "Bounxou"
+    - "Laos"
+    - "Supreme Master TV"
+  validator_must_not_flag:
+    - LATIN_LEAKAGE
+    - LINE_COUNT_MISMATCH
+    - BLANK_POSITION_MISMATCH

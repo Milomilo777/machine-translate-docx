@@ -1,0 +1,28 @@
+id: case_07_tech_code_byte_id
+description: |
+  W3 TECH_LOCK — H5N1, GPT-4o, F-16, S01E05 stay byte-id.
+  Vitamin codes (D, K) are NOT TECH_LOCK and transliterate.
+source_lang: en
+target_lang: fa
+pipeline: translate
+input: |
+  Scientists tracked the H5N1 outbreak using GPT-4o for analysis.
+  Vitamin D deficiency is common in winter.
+
+mock_output: |
+  دانشمندان شیوع H5N1 را با کمک GPT-4o تحلیل کردند.
+  کمبود ویتامین دی در زمستان رایج است.
+
+invariants:
+  line_count: 2
+  # Tech codes stay byte-id.
+  must_contain:
+    - "H5N1"
+    - "GPT-4o"
+    - "ویتامین دی"
+  # Single uppercase letter D should be transliterated, not byte-id.
+  must_not_contain:
+    - "Vitamin D"
+  validator_must_not_flag:
+    - PROTECTED_SPAN_MISSING
+    - LINE_COUNT_MISMATCH

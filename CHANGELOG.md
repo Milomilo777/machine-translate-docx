@@ -6,6 +6,101 @@
 
 ---
 
+## 2026-05-15c — Validator layer + prompt-regression suite (env-gated)
+
+Follow-up to the v7 promote. Two new code modules deliver the
+"machine-deterministic post-pass" and "fixture-based regression"
+items from `docs/prompt-architecture-followups.md`. Both are
+opt-in via a single env var so production runs are unaffected
+until the operator explicitly turns them on.
+
+### Validator layer
+
+`src/machine_translate_docx/validators/` (NEW package):
+- `__init__.py` — public API (`validate_translate_output`,
+  `validate_polish_output`, `is_validator_enabled`,
+  `ValidatorReport`, `ValidatorIssue`).
+- `post_translate.py` — translation-side checks: LINE_COUNT_MISMATCH,
+  BLANK_POSITION_MISMATCH, LATIN_LEAKAGE (FA-only),
+  PROTECTED_SPAN_MISSING (URL/handle/hashtag/tech code),
+  LITERAL_BACKSLASH_N_LOST, PERSIAN_BASHE, PERSIAN_SEMICOLON_OUTSIDE_QUOTE,
+  TOOSAT_PASSIVE (warning), FORBIDDEN_GLYPH.
+- `post_polish.py` — polish-side checks: adds TAG_FORMAT_INVALID,
+  TAG_NUMBER_MISMATCH, UNEXPECTED_BLANK_OUTPUT on top of every
+  translation check.
+
+Wired into:
+- `OpenAITranslator.translate()` — runs the validator after parsing
+  the model response, before returning. Reports issues to stdout
+  with the `[validator]` prefix. Never rejects output; the layer
+  is diagnostic in v1.
+- `OpenAIPolisher.polish()` — same flow.
+
+Single env var: `MTD_VALIDATOR_ENABLED`. Truthy (1/true/yes/on) →
+validator runs. Anything else (including unset) → no-op fast path.
+The contract is "always call validate_*; check `.passed`; ignore
+issues when disabled" — caller code is one if-statement.
+
+The validator is wrapped in a try/except in both callsites so a
+bug in the validator can never break a translation job; it logs
+and steps aside.
+
+### Regression suite
+
+`tests/test_prompts_regression.py` + `tests/fixtures/prompts_regression/`:
+- YAML-based fixture format. Each fixture describes one regression
+  case: input, mock_output, line_count, must_contain / must_not_contain /
+  must_contain_one_of / name_consistency / validator_must_(not)_flag.
+- Two run modes:
+    MOCK (default, CI-safe): asserts the fixture's hand-crafted
+      mock_output against its invariants. No API calls.
+    LIVE (opt-in): set `MTD_REGRESSION_LIVE=1`. Sends the input to
+      the real translator / polisher; asserts model output against
+      invariants. Costs API tokens.
+
+Initial 8 fixtures land covering:
+  case_01_baashe_normalization        MN-4 / COLLOQUIAL_NORMALIZE
+  case_02_url_preservation            W1 / SA-11 / PROTECTED_SPAN
+  case_03_name_consistency            PRE_EMIT_CHECK C1
+  case_04_welcome_to_x_polish         LS-12 BROADCAST_OPENING_PATTERNS
+  case_05_lao_greeting_byte_id        LS-13 FOREIGN_SCRIPT_AUTHENTIC_VOICE
+  case_06_negation_scope              SA-1 + SCOPE_ATTACHMENT_GUARD
+  case_07_tech_code_byte_id           W3 / vitamin-code transliteration
+  case_08_blank_line_preservation     PRE_EMIT_CHECK C5
+
+`tests/fixtures/prompts_regression/README.md` documents the schema
+so a new case is one YAML drop-in.
+
+### Test results
+
+- `tests/test_validators.py` — 25 new unit tests, all green.
+- `tests/test_prompts_regression.py` — 9 mock-mode tests + 8 live-mode
+  tests (skipped without env var).
+- Full suite: **154 passed, 8 skipped, 8 deselected** (vs 120 before).
+- `py_compile` clean on all new and modified modules.
+
+### Operator usage
+
+Turn on the validator for one run:
+
+```powershell
+$env:MTD_VALIDATOR_ENABLED = "1"
+E:\Python311\python.exe local_launcher.py
+```
+
+Run the live regression once before promoting a new prompt version:
+
+```powershell
+$env:MTD_REGRESSION_LIVE = "1"
+$env:OPENAI_API_KEY = "sk-..."
+E:\Python311\python.exe -m pytest tests/test_prompts_regression.py -v
+```
+
+Both env vars default to off — packaged builds and existing CI runs
+behave exactly as before.
+
+---
+
 ## 2026-05-15b — PRE_EMIT_CHECK pass: name-consistency gate end-to-end
 
 Follow-up to the v7 promote. User asked whether proper nouns stay

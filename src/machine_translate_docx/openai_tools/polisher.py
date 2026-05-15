@@ -501,6 +501,47 @@ class OpenAIPolisher:
             f"[INFO] Polisher: {n} lines processed, {_lines_modified} "
             f"modified, in {elapsed:.1f}s (model={self.model}){_reconcile_note}"
         )
+
+        # 2026-05-15 (v7 follow-up): post-polish validator gate.
+        # Disabled by default; opt in with MTD_VALIDATOR_ENABLED=1. The
+        # report only logs to stdout — we never reject the polish output
+        # because of validator findings (the caller would have no fallback).
+        # The validator is a diagnostic, not a hard gate; over time the
+        # most common error codes can graduate into the prompt or a
+        # repair loop.
+        try:
+            from ..validators import validate_polish_output, is_validator_enabled
+            if is_validator_enabled():
+                # The polisher emits ⟨⟨N⟩⟩ tags only when parsing succeeded
+                # via Strategy 1; later strategies strip the tags. Build a
+                # tagged form for the validator regardless so TAG_FORMAT_INVALID
+                # doesn't false-fire on parser-stripped output.
+                tagged_for_check = [
+                    f"⟨⟨{i+1}⟩⟩ {ln}" if ln else f"⟨⟨{i+1}⟩⟩"
+                    for i, ln in enumerate(polished_lines)
+                ]
+                report = validate_polish_output(
+                    source_lines=src_lines,
+                    fa_input_lines=fa_lines,
+                    polish_output=tagged_for_check,
+                    target_lang=self.dest_lang,
+                )
+                if report.issues:
+                    print(f"[validator] post-polish: {report.summary()}")
+                    for issue in report.errors():
+                        print(
+                            f"[validator] ERROR line {issue.line_no}: "
+                            f"{issue.code} — {issue.message}"
+                        )
+                    for issue in report.warnings():
+                        print(
+                            f"[validator] warn  line {issue.line_no}: "
+                            f"{issue.code} — {issue.message}"
+                        )
+        except Exception as _e:
+            # The validator must never break a job. Log and move on.
+            print(f"[validator] post-polish gate skipped: {_e}")
+
         return "\n".join(polished_lines)
 
     def _estimate_cost(self, response_json: dict) -> float:

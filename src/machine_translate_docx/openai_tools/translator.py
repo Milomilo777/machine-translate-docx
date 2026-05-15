@@ -480,4 +480,35 @@ class OpenAITranslator:
             "elapsed_seconds": round(elapsed_time, 3),
         }
 
+        # 2026-05-15 (v7 follow-up): post-translation validator gate.
+        # Disabled by default; opt in with MTD_VALIDATOR_ENABLED=1. The
+        # report only logs to stdout — we never reject the translation
+        # output because of validator findings (the legacy contract
+        # always returns the model's output for the cell writer to
+        # consume). The validator is a diagnostic. Future work: feed
+        # error lines back into a tight repair-prompt loop.
+        try:
+            from ..validators import validate_translate_output, is_validator_enabled
+            if is_validator_enabled():
+                report = validate_translate_output(
+                    source_lines=in_lines,
+                    translate_output=out_lines,
+                    target_lang=dest_lang,
+                )
+                if report.issues:
+                    print(f"[validator] post-translate: {report.summary()}")
+                    for issue in report.errors():
+                        print(
+                            f"[validator] ERROR line {issue.line_no}: "
+                            f"{issue.code} — {issue.message}"
+                        )
+                    for issue in report.warnings():
+                        print(
+                            f"[validator] warn  line {issue.line_no}: "
+                            f"{issue.code} — {issue.message}"
+                        )
+        except Exception as _e:
+            # The validator must never break a job. Log and move on.
+            print(f"[validator] post-translate gate skipped: {_e}")
+
         return response, translated_text

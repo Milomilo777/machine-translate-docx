@@ -1,0 +1,28 @@
+id: case_04_welcome_to_x_polish
+description: |
+  Polish must enforce LS-12 BROADCAST_OPENING_PATTERNS:
+  "Welcome to <X>" → canonical "خوش آمدید به <X>" (deliberately
+  non-idiomatic for SMTV cross-episode consistency).
+  This is corrective: if [FA] says "به <X> خوش آمدید" (more idiomatic),
+  polish must rewrite to the canonical form.
+source_lang: en
+target_lang: fa
+pipeline: polish
+input: |
+  Welcome to Supreme Master TV.
+fa_input: |
+  به سوپریم مستر تلویزیون خوش آمدید.
+
+# Polish output uses ⟨⟨N⟩⟩ tags.
+mock_output: |
+  ⟨⟨1⟩⟩ خوش آمدید به سوپریم مستر تلویزیون.
+
+invariants:
+  line_count: 1
+  must_contain:
+    - "خوش آمدید به سوپریم مستر تلویزیون"
+  must_not_contain:
+    - "به سوپریم مستر تلویزیون خوش آمدید"
+  validator_must_not_flag:
+    - LATIN_LEAKAGE
+    - TAG_FORMAT_INVALID

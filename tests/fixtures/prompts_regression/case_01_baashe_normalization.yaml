@@ -1,0 +1,29 @@
+id: case_01_baashe_normalization
+description: |
+  Casual Persian "باشه" in the source must normalize to standard
+  written Persian (بله / حتماً / درست است) in the output. This is
+  MN-4 in polish_PER.txt and COLLOQUIAL_NORMALIZE in translate_PER.txt.
+source_lang: en
+target_lang: fa
+pipeline: translate
+input: |
+  He nodded and said, "OK, I'll check the system tomorrow."
+
+# Hand-crafted expected output for mock mode. The validator should
+# find zero issues here.
+mock_output: |
+  سر تکان داد و گفت "بله، فردا سیستم را بررسی می‌کنم."
+
+invariants:
+  line_count: 1
+  must_not_contain:
+    - "باشه"
+    - "OK"
+  must_contain_one_of:
+    - "بله"
+    - "حتماً"
+    - "درست است"
+  validator_must_not_flag:
+    - LATIN_LEAKAGE
+    - PERSIAN_BASHE
+    - LINE_COUNT_MISMATCH

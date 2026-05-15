@@ -1,0 +1,21 @@
+id: case_02_url_preservation
+description: |
+  W1 URL must be preserved byte-id in the output. The polisher's
+  SA-11 PROTECTED_SPAN_PRESENCE catches drop-outs; this fixture
+  verifies the translator also keeps it.
+source_lang: en
+target_lang: fa
+pipeline: translate
+input: |
+  Visit https://example.org for more information.
+
+mock_output: |
+  برای اطلاعات بیشتر، به https://example.org مراجعه کنید.
+
+invariants:
+  line_count: 1
+  must_contain:
+    - "https://example.org"
+  validator_must_not_flag:
+    - PROTECTED_SPAN_MISSING
+    - LATIN_LEAKAGE

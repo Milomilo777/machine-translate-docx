@@ -1,0 +1,25 @@
+id: case_06_negation_scope
+description: |
+  SA-1 NEGATION + SCOPE_ATTACHMENT_GUARD. "did not approve" must
+  become "تصویب نکرد" (clause-level negation), NEVER turn into a
+  nominalized form like "عدم تصویب".
+source_lang: en
+target_lang: fa
+pipeline: translate
+input: |
+  The committee did not approve the proposal.
+
+mock_output: |
+  کمیته این پیشنهاد را تصویب نکرد.
+
+invariants:
+  line_count: 1
+  must_contain:
+    - "تصویب نکرد"
+  must_not_contain:
+    - "عدم تصویب"        # nominalization — wrong scope
+    - "non-approval"
+    - "did not approve"
+  validator_must_not_flag:
+    - LATIN_LEAKAGE
+    - LINE_COUNT_MISMATCH
