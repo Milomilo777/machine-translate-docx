@@ -173,3 +173,12 @@ The prompt iteration files in this branch:
 - `prompts/*_proposal_v3.txt` — v3 (PHASE_0_BASE, SA, LOCKED/MN split)
 - `prompts/*_proposal_v4.txt` — v4 (ALLOWED_LATIN, LS-11, MN-9, SA-10/11, idiom-aware)
 - `prompts/*_proposal_v5.txt` — v5 (MASTER_SPEECH fidelity tier, MN-10 NUMBER_FORMAT moved into PHASE_0_BASE, SA-12 LOGICAL_CONNECTOR, SA-13 COMPARISON_SCOPE, comma-before-number precedence, ambiguous-date Persianisation, Month D YYYY, quote title punctuation exception, URL punctuation attachment ban, SVU soft heuristic, ACRONYM-IN-PARENS pattern-bound, blank-policy reconciled with SA-11, [EN]-blank policy, idiom example "spill the beans → راز را فاش کردن")
+- `prompts/*_proposal_v6.txt` — v6 — FINAL prompt iteration (MASTER EDIT ①–⑤ all skip explicit, W1–W4 → ALLOWED_LATIN consistency sweep, "start directly with translation" wording fix, SA-11 example preserves FA structure, Terminal punct example shows [FA]→BASE hygiene, locked Persian month names table, SL_TEXT sole-exception clause, reverse acronym pattern ACRONYM (Full Name), Oxford-comma clause exception, HARAKAT clarity split, MN-5 MASTER prepositional preference, SA-12/13 anchor-only constraint, MN-10 protected-span exemption)
+
+## Next Step
+
+After v6 approval, the prompt iteration phase ends. Next milestones:
+1. Promote v6 → canonical `translate_PER.txt`, `polish_PER.txt`, `_smtv_locks.txt`.
+2. Build the validator layer (Section 1) — machine-deterministic post-pass.
+3. Build the regression test suite (Section 2) — 30 fixtures covering edge cases.
+Further prompt rules should NOT be added until regression baseline exists.
