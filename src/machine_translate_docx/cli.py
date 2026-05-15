@@ -1753,9 +1753,17 @@ def selenium_chrome_google_translate_html_javascript_file(ctx: RuntimeContext, h
                 ctx.browser.chrome_options.add_argument("--headless")
             
             docxfile_table_number_of_lines = numrows
-            if ctx.flags.use_api or ctx.flags.splitonly:
+            # MTD_SKIP_STATS_BROWSER=1 skips the optional Chrome startup
+            # whose sole purpose is to POST anonymous usage stats. The
+            # launcher sets this when invoking `--splitonly` for a cache
+            # replay — we already burned the stats budget on the original
+            # run, and skipping Chrome shaves 15-20 seconds off the
+            # subprocess. The downstream stats submission below is also
+            # guarded by this env var.
+            _skip_stats_browser = os.environ.get("MTD_SKIP_STATS_BROWSER", "").strip() == "1"
+            if (ctx.flags.use_api or ctx.flags.splitonly) and not _skip_stats_browser:
                 print("\nCreating a new browser for stats")
-                                                      
+
                 service = Service()
                 driver = webdriver.Chrome(service=service, options=ctx.browser.chrome_options)
                 ctx.browser.driver = driver  # mirror new handle back into ctx
@@ -3667,13 +3675,19 @@ def run_statistics(ctx: RuntimeContext):
             ctx.browser.chrome_options.add_argument("--headless")
         
         docxfile_table_number_of_lines = numrows
-        if ctx.flags.use_api or ctx.flags.splitonly:
+        # Same MTD_SKIP_STATS_BROWSER guard as the earlier branch (~line
+        # 1756). Skipping stats Chrome here when re-running --splitonly
+        # for a cache replay shaves another ~10 seconds.
+        # Pre-existing bug fix: `service` was previously assigned AFTER
+        # webdriver.Chrome(service=service, …) ran, so any exception
+        # before this point would crash with NameError. Moved the
+        # Service() construction to the top of the block.
+        _skip_stats_browser2 = os.environ.get("MTD_SKIP_STATS_BROWSER", "").strip() == "1"
+        if (ctx.flags.use_api or ctx.flags.splitonly) and not _skip_stats_browser2:
             print("\nCreating a new browser for stats")
-            
-                                                               
+            service = Service()
             driver = webdriver.Chrome(service=service, options=ctx.browser.chrome_options)
             ctx.browser.driver = driver  # mirror new handle back into ctx
-            service = Service()
         
         query_params = {
             "program_version" : PROGRAM_VERSION,
