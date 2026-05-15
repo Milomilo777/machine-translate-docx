@@ -173,12 +173,56 @@ The prompt iteration files in this branch:
 - `prompts/*_proposal_v3.txt` — v3 (PHASE_0_BASE, SA, LOCKED/MN split)
 - `prompts/*_proposal_v4.txt` — v4 (ALLOWED_LATIN, LS-11, MN-9, SA-10/11, idiom-aware)
 - `prompts/*_proposal_v5.txt` — v5 (MASTER_SPEECH fidelity tier, MN-10 NUMBER_FORMAT moved into PHASE_0_BASE, SA-12 LOGICAL_CONNECTOR, SA-13 COMPARISON_SCOPE, comma-before-number precedence, ambiguous-date Persianisation, Month D YYYY, quote title punctuation exception, URL punctuation attachment ban, SVU soft heuristic, ACRONYM-IN-PARENS pattern-bound, blank-policy reconciled with SA-11, [EN]-blank policy, idiom example "spill the beans → راز را فاش کردن")
-- `prompts/*_proposal_v6.txt` — v6 — FINAL prompt iteration (MASTER EDIT ①–⑤ all skip explicit, W1–W4 → ALLOWED_LATIN consistency sweep, "start directly with translation" wording fix, SA-11 example preserves FA structure, Terminal punct example shows [FA]→BASE hygiene, locked Persian month names table, SL_TEXT sole-exception clause, reverse acronym pattern ACRONYM (Full Name), Oxford-comma clause exception, HARAKAT clarity split, MN-5 MASTER prepositional preference, SA-12/13 anchor-only constraint, MN-10 protected-span exemption)
+- `prompts/*_proposal_v6.txt` — v6 (MASTER EDIT ①–⑤ all skip explicit, W1–W4 → ALLOWED_LATIN consistency sweep, "start directly with translation" wording fix, SA-11 example preserves FA structure, Terminal punct example shows [FA]→BASE hygiene, locked Persian month names table, SL_TEXT sole-exception clause, reverse acronym pattern ACRONYM (Full Name), Oxford-comma clause exception, HARAKAT clarity split, MN-5 MASTER prepositional preference, SA-12/13 anchor-only constraint, MN-10 protected-span exemption)
+- `prompts/*_proposal_v7.txt` — v7-lite (selective legacy injection per GPT-5.5 ACCEPT/MODIFY list, ~15–20% growth)
+
+## v7-lite Changes (legacy injection)
+
+Selective re-injection of features from older iterations (v17 through v71), evaluated by GPT-5.5. The evaluator advised against bulk injection ("attention dilution") and approved a curated subset. See `docs/v7-additions-proposal.md` for the full proposal and `docs/v7-additions-decisions.md` (if created) for the evaluator's verdicts.
+
+Translate v7 additions (vs v6):
+- ID block: subtitle-grade/line-stable/scope-safe qualifier (F2); Adaptive Triad label (F4); spiritual gravity/info rhythm in MISSION; new `[TARGET]`, `[GUARDRAILS]`, `[METHOD]` subfields (F3-mod, F5-mod, F9)
+- STYLE: COLLOQUIAL_NORMALIZE list (R13-mod), TENSE_SIMPLIFY (R25), COLLOCATION_FIT principle (R9-mod), NO_QUOTE list (R29-mod), DASH_NORMALIZE en/em forbidden (R28), ENGLISH_PARENTHETICAL preserve (R7-mod), WRITTEN_NUMBERS factual-only (R3-mod)
+- NATIVE_REGISTER: PERSONA_DETECTOR with linguistic triggers (F6), VOICE_SAFETY N8 (R24-mod), RHETORICAL_OVERRIDE SAGE non-Master (R15), N4 KE_SOFT_LIMIT (R17-mod)
+- NON_WHITELIST: LATIN_PHRASES item 8 (R5), HOMONYM_RULE item 9 (R12-mod), ACADEMIC_TERM_INLINE item 10 (R6-mod), INLINE_DEFINITION item 11 (R11-mod), FILLERS item 12 (R14-mod)
+- WORKFLOW Phase 1: FRICTION_RADAR (R21), TERMINOLOGY_TRACK (R22-mod), PERSONA_ANCHOR + ANTI-JITTER (R1), HONORIFIC_BLOCK_LOCK (R2)
+- WORKFLOW Phase 2: AUTO_LOCK check (R26), indirect speech grammar (R8), SPEAKER_TEST (R20), ROUND_TRIP (R27)
+
+Polish v7 additions (vs v6):
+- ID block: subtitle-grade qualifier, `[TARGET]`, `[GUARDRAILS]`, `[METHOD]` subfields
+- LS-7: HONORIFIC_BLOCK_LOCK (R2)
+- MN-1: NO_QUOTE list
+- MN-4: COLLOQUIAL_NORMALIZE + persona-aware FILLERS
+- MN-6: DASH_NORMALIZE en/em forbidden
+- MN-8: LATIN_PHRASES references
+- MN-10: WRITTEN_NUMBERS factual-only
+- SA-1: SCOPE_ATTACHMENT_GUARD example (R4)
+- SA-5: extended to SPEAKER + COREFERENCE (R23)
+- SA-14: ONTOLOGICAL_REPAIR new (R16-mod)
+- PHASE_0_BASE: TERMINOLOGY_CONSISTENCY note (R22-mod)
+- QA: Q16 ROUND_TRIP final (R27)
+
+Lexicon v7 additions:
+- ACRONYM PATTERNS reverse case clarification (already in v6 NON_WHITELIST, restated here)
+- NO_QUOTE list (cross-stage reference)
+- HONORIFIC_BLOCK_LOCK (cross-stage reference)
+- LATIN PHRASES section (R5 + bona fide / vice versa / in situ / pro bono)
+- DOMAIN MINI-GLOSSARY: news/legal + medical/scientific (R18-mod)
+- HOMONYM PRINCIPLE in COMMON_MT_PATTERNS (R12-mod)
+
+Rejected (per GPT-5.5):
+- F1 / F7 / F8 (multiple identity framings — "Elite Architect", "Cultural Architect", "Linguistic Guardian")
+- R10 (formulaic "I'm X / Welcome to X" — already covered by native syntax)
+- R30 (single-quote for unfamiliar names — conflicts with quote policy)
+- B1 (extra PHASE -1) — existing phases sufficient
+- B3 (Q1-Q5 boolean QA reframing) — v6 Q1-Q15 is more granular
+- "ISO-17100 Certified Auditor" claim — replaced with "ISO-17100-inspired"
+- "SOV Enforcer" → "Persian-first" (SOV-aware is implicit; flexibility for SAGE/Master)
 
 ## Next Step
 
-After v6 approval, the prompt iteration phase ends. Next milestones:
-1. Promote v6 → canonical `translate_PER.txt`, `polish_PER.txt`, `_smtv_locks.txt`.
+After v7 approval, the prompt iteration phase ends. Next milestones:
+1. Promote v7 → canonical `translate_PER.txt`, `polish_PER.txt`, `_smtv_locks.txt`.
 2. Build the validator layer (Section 1) — machine-deterministic post-pass.
 3. Build the regression test suite (Section 2) — 30 fixtures covering edge cases.
 Further prompt rules should NOT be added until regression baseline exists.
