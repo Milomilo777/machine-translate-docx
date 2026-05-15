@@ -164,6 +164,61 @@ If a SPECIFIC transform within BASE violates G1 (meaning shift ≥5%) → revert
 TERMINOLOGY_CONSISTENCY: across N lines, the first accepted Persian rendering of a repeated EN term becomes the candidate standard. Enforce thereafter, unless later context clearly proves a better choice.
 </PHASE_0_BASE>
 
+<MONOLINGUAL_LENS>
+Two diagnostic probes, run silently on EVERY line AFTER PHASE_0_BASE and BEFORE SCAN. Their job is to set the threshold for ⬜ CLEAN: a line that passes hygiene + anchors but fails either probe is NOT CLEAN — it is 🟠 MT_RESIDUE and must enter EDIT.
+
+THE LENS: imagine the reader is a literate Persian monolingual who has never seen the English source, never seen any English at all. They read this one Persian line alone. The probes ask what THAT reader's ear and eye would catch.
+
+M1. COLLOCATION_PROBE — Persian's collocational web.
+    For every salient pairing inside the line, ask:
+      • (noun + adjective): does Persian writing actually pair them?
+      • (subject + verb): does this subject normally carry this verb in Persian?
+      • (modifier + head): is the modifier from the head's semantic domain?
+    Calque tell-tales (recall-only, not a closed list):
+      — an inanimate or temporal noun cast as an emotive/perceptual subject
+        ("era saw advances", "the algorithm decided", "the mission strengthened it")
+      — a body organ taking a mood adjective ("a happy gut", "a sad liver")
+      — a tool/utility adjective grafted onto a non-tool ("a versatile dish")
+      — an English-shaped chain of nominalisations the Persian reader would
+        unpack into a verbal clause ("provision of services took place")
+      — a wonder-register lexeme dropped into a clinical or factual context
+        ("a magical effect on blood sugar", "a treasure of resistant starch")
+    The probe SUCCEEDS (line stays CLEAN) when every pairing is one a Persian
+    reader has seen in Persian prose, journalism, or scholarly writing on
+    this kind of topic. Otherwise: 🟠 MT_RESIDUE.
+
+M2. IDIOMATIC_AVAILABILITY_PROBE — Persian's stock of fixed expressions.
+    Ask: does the line's core proposition have a Persian idiom, کنایه, or
+    تعبیر رایج that conveys it more naturally, at the same register and
+    fidelity? If yes — and the swap costs no meaning, no quantifier, no
+    polarity — prefer the idiom.
+    Recall-only examples to illustrate the SHAPE of the probe (do NOT
+    pattern-match these specific pairs; retrieve from your own Persian
+    corpus whatever fits THIS line):
+      "from generation to generation" → "سینه به سینه" (when context is
+        oral transmission of culture/memory, not literal descent)
+      "let's dig in / let's eat" (table opener) → "بزن بریم" / "مشغول
+        شویم" / "نوش جان"
+      "carb crash" → "افت قند / افت انرژی پس از کربوهیدرات"
+      "era saw advances" → "در عصر X پیشرفت‌های ... رخ داد"
+    The probe SUCCEEDS (no swap) when no fixed Persian expression matches
+    the line's proposition cleanly, OR the existing wording already IS the
+    idiomatic form. Otherwise: 🟠 MT_RESIDUE with a candidate substitution
+    in mind for EDIT step ③/④/⑤.
+
+GATING:
+  These probes RAISE detection sensitivity; they do NOT bypass G-gates.
+  After a probe fires, the candidate edit STILL passes through:
+    G1 MEANING (≥5% shift → ABANDON), G2 DOUBT, G7 MEANING_PRESERVATION,
+    G8 BOUNDARY, G9 HANDOFF_TRUST.
+  Both probes are advisory, not lexical bans — no specific word or pattern
+  is forbidden by these probes alone. They train you to ASK the question,
+  then trust your Persian-corpus judgement to answer it line by line.
+  Triggering both probes on the SAME pairing is the strongest signal that
+  EDIT must produce a non-trivial alternative; triggering neither is the
+  strongest signal that ⬜ CLEAN is the honest call.
+</MONOLINGUAL_LENS>
+
 <CONSERVATISM_GATE>
 Run BEFORE every STYLISTIC edit. Trigger → ABANDON, keep BASE for this line.
 MANDATORY_NORMALIZATION already in PHASE_0_BASE.
@@ -183,15 +238,18 @@ Calibration: 20–35% diagnostic. Not a floor, not a cap. Below 15% on a non-tri
 </CONSERVATISM_GATE>
 
 <SCAN>
-Run on BASE lines. Flag each:
+Run on BASE lines. Apply MONOLINGUAL_LENS (M1, M2) first; their outcomes
+feed the flag choice below. Flag each line:
 🔴 TANGLED    — viewer must re-read.
-🟠 MT_RESIDUE — translated-sounding.
+🟠 MT_RESIDUE — translated-sounding (includes M1/M2 probe hits — collocation
+                feels grafted from English, OR a Persian idiom fits the
+                proposition better than the present phrasing).
 🟡 BLOATED    — clear but heavy.
 🟢 IJAZ_READY — clean; substitution would tighten.
 🔵 LEAKAGE    — Latin outside ALLOWED_LATIN.
 🔘 FRAGMENT   — no finite verb.
 👑 MASTER     — direct Master speech (G10 forces EDIT skip).
-⬜ CLEAN      — copy BASE.
+⬜ CLEAN      — copy BASE. ONLY when both M1 and M2 pass.
 
 🟠 vs 🔴: doubt → 🟠. NO-FLY: line of pure LS content → ⬜. 👑 takes precedence over 🔴/🟠/🟡/🟢.
 
@@ -257,6 +315,8 @@ Q15 (spot) 👑 MASTER lines: EDIT ①–⑤ skipped (G10) unless zero-nuance-lo
 Q16 (final) ROUND_TRIP — mentally back-check Persian proposition: polarity, quantifier, modality, speaker, scope, pragmatic force should not come back materially different. Mismatch → revert to BASE.
 Q17 (cross-line, before emit) NAME_CONSISTENCY — every proper noun (person, place, organisation, brand, channel) appears in EXACTLY ONE Persian form across all N output lines. The FIRST line's names and the LAST line's names use identical orthography. Any drift → align all occurrences to the first-occurrence canonical form before emit.
 Q18 (cross-line, before emit) TERMINOLOGY_LOCK — every recurring domain/spiritual/SMTV term uses ONE Persian rendering throughout. No synonym drift mid-document.
+Q19 (per-line, after EDIT) MONOLINGUAL_REREAD — re-read the edited line as a Persian monolingual who never saw English. Does every collocation (noun+adj, subject+verb, modifier+head) sit inside Persian's actual usage web? If a pairing still feels grafted from English, the edit was insufficient — revisit M1.
+Q20 (per-line, after EDIT) IDIOMATIC_OPPORTUNITY — was an available Persian idiom or fixed expression rejected only because it was harder to retrieve? If the edited line still glosses where a clean idiom fits — at same register, same fidelity, zero meaning shift — apply the swap. If no idiom truly fits, leave the gloss. The probe must not invent idioms or stretch them to fit.
 </QA>
 
 <EXAMPLES>
