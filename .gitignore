@@ -29,6 +29,12 @@ Thumbs.db
 *.log
 *.tmp
 
+# Claude assistant responses (saved as markdown for readable Persian rendering;
+# Claude Code terminal can't correctly render mixed Persian-English. Substantive
+# replies are written to notes/YYYY-MM-DD_HH-MM_<summary>.md instead. Never
+# tracked in git — they're per-machine personal scratch.)
+/notes/
+
 # Local runtime data (created by local_launcher.py)
 /tmp/machine_translate_docx_local/
 
