@@ -58,8 +58,9 @@
           <label for="docxFile" class="block mb-2 text-sm text-gray-600">Select DOCX File:</label>
           <input type="file" id="docxFile" accept=".docx" name="file" class="w-full mb-4 p-2 border rounded" onchange="validateFile()" />
 
-          <label for="xlsxFile" class="block mb-2 text-sm text-gray-600">Select XLSX File (Optional):<br/><i>Custom search-and-replace table. If empty, the default file in <code>src/configuration/</code> is used.</i></label>
-          <input type="file" id="xlsxFile" name="xlsxFile" accept=".xlsx" class="w-full mb-4 p-2 border rounded" />
+          <label for="xlsxFile" class="block mb-2 text-sm text-gray-600">Select XLSX File (Optional):<br/><i>Custom search-and-replace table. If empty, the default file in <code>src/configuration/</code> is used. The selected file is remembered in your browser (IndexedDB) and reused on the next visit until you Clear it.</i></label>
+          <input type="file" id="xlsxFile" name="xlsxFile" accept=".xlsx" class="w-full p-2 border rounded" />
+          <div id="xlsxFileHint" class="text-xs text-gray-600 mb-4 mt-1"></div>
 
           <label for="sourceLanguages" class="block mb-2 text-sm text-gray-600">Source Language:</label>
           <select id="sourceLanguages" class="w-full mb-4 p-2 border rounded" name="sourceLanguage"></select>
@@ -780,6 +781,149 @@
         });
       }
 
+      // ------- Persist XLSX selection across page reloads -------
+      // 2026-05-15: the xlsxFile input is a "set-once, use-many" affordance —
+      // users typically pick the same custom search-and-replace table over
+      // and over. Browsers cannot pre-populate <input type="file"> for
+      // security reasons, so we store the file BYTES in IndexedDB plus its
+      // metadata in localStorage. On page load we restore both the visible
+      // hint label and an in-memory File handle that `sendToServer()` falls
+      // back to when the input is empty.
+      //
+      // (Also fixes a long-standing bug: even when the user picks an XLSX,
+      // the previous `sendToServer()` never appended xlsxFile to FormData,
+      // so the launcher saw an empty `files.get("xlsxFile")` and silently
+      // fell back to the default table in src/configuration/. Both halves
+      // — restore-from-IndexedDB AND append-to-FormData — are needed for
+      // this to actually work end-to-end.)
+      const XLSX_DB_NAME      = 'mtd_xlsx_cache';
+      const XLSX_STORE        = 'files';
+      const XLSX_KEY          = 'last';
+      const XLSX_META_LS_KEY  = 'mtd.xlsxFile.meta';   // {name, size, savedAt}
+
+      let _persistedXlsxFile = null;
+
+      function _openXlsxDb() {
+        return new Promise((resolve, reject) => {
+          if (!('indexedDB' in window)) {
+            reject(new Error('IndexedDB unavailable'));
+            return;
+          }
+          const req = indexedDB.open(XLSX_DB_NAME, 1);
+          req.onupgradeneeded = () => {
+            const db = req.result;
+            if (!db.objectStoreNames.contains(XLSX_STORE)) {
+              db.createObjectStore(XLSX_STORE);
+            }
+          };
+          req.onsuccess = () => resolve(req.result);
+          req.onerror   = () => reject(req.error || new Error('IDB open failed'));
+        });
+      }
+
+      async function _saveXlsxToDb(file) {
+        // Stores the File as a Blob (browsers handle this natively in IDB).
+        const db = await _openXlsxDb();
+        return new Promise((resolve, reject) => {
+          const tx = db.transaction(XLSX_STORE, 'readwrite');
+          tx.objectStore(XLSX_STORE).put(file, XLSX_KEY);
+          tx.oncomplete = () => { db.close(); resolve(); };
+          tx.onerror    = () => { db.close(); reject(tx.error); };
+        });
+      }
+
+      async function _loadXlsxFromDb() {
+        const db = await _openXlsxDb();
+        return new Promise((resolve, reject) => {
+          const tx = db.transaction(XLSX_STORE, 'readonly');
+          const req = tx.objectStore(XLSX_STORE).get(XLSX_KEY);
+          req.onsuccess = () => { db.close(); resolve(req.result || null); };
+          req.onerror   = () => { db.close(); reject(req.error); };
+        });
+      }
+
+      async function _clearXlsxFromDb() {
+        try {
+          const db = await _openXlsxDb();
+          await new Promise((res, rej) => {
+            const tx = db.transaction(XLSX_STORE, 'readwrite');
+            tx.objectStore(XLSX_STORE).delete(XLSX_KEY);
+            tx.oncomplete = () => { db.close(); res(); };
+            tx.onerror    = () => { db.close(); rej(tx.error); };
+          });
+        } catch (_) { /* missing DB is fine */ }
+        try { localStorage.removeItem(XLSX_META_LS_KEY); } catch (_) {}
+      }
+
+      function _renderXlsxHint() {
+        const hintEl = document.getElementById('xlsxFileHint');
+        if (!hintEl) return;
+        let meta = null;
+        try { meta = JSON.parse(localStorage.getItem(XLSX_META_LS_KEY) || 'null'); } catch (_) {}
+        if (_persistedXlsxFile && meta) {
+          const kb = Math.max(1, Math.round(meta.size / 1024));
+          hintEl.innerHTML =
+            'Last file: <strong>' + (meta.name || 'unknown') + '</strong> ' +
+            '(' + kb + ' KB, saved in browser) ' +
+            '<button type="button" id="xlsxFileClearBtn" ' +
+            'class="ml-2 text-xs text-red-600 underline">Clear</button>';
+          const clearBtn = document.getElementById('xlsxFileClearBtn');
+          if (clearBtn) {
+            clearBtn.addEventListener('click', async () => {
+              _persistedXlsxFile = null;
+              await _clearXlsxFromDb();
+              const inp = document.getElementById('xlsxFile');
+              if (inp) inp.value = '';
+              _renderXlsxHint();
+            });
+          }
+        } else {
+          hintEl.innerHTML = '';
+        }
+      }
+
+      const _xlsxInputEl = document.getElementById('xlsxFile');
+      if (_xlsxInputEl) {
+        _xlsxInputEl.addEventListener('change', async () => {
+          if (_xlsxInputEl.files && _xlsxInputEl.files.length > 0) {
+            const f = _xlsxInputEl.files[0];
+            _persistedXlsxFile = f;
+            try {
+              await _saveXlsxToDb(f);
+              localStorage.setItem(XLSX_META_LS_KEY, JSON.stringify({
+                name:    f.name,
+                size:    f.size,
+                savedAt: Date.now(),
+              }));
+            } catch (e) {
+              console.warn('XLSX persist to IndexedDB failed:', e);
+            }
+            _renderXlsxHint();
+          }
+        });
+      }
+
+      // Hydrate from IndexedDB on page load — wrap the file blob back into a
+      // proper File so FormData treats it identically to a fresh user pick.
+      (async () => {
+        try {
+          const blob = await _loadXlsxFromDb();
+          if (!blob) return;
+          let meta = null;
+          try { meta = JSON.parse(localStorage.getItem(XLSX_META_LS_KEY) || 'null'); } catch (_) {}
+          const name = (meta && meta.name) || 'restored.xlsx';
+          _persistedXlsxFile = (blob instanceof File)
+            ? blob
+            : new File([blob], name, {
+                type: blob.type ||
+                      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+              });
+          _renderXlsxHint();
+        } catch (e) {
+          console.warn('XLSX hydrate from IndexedDB skipped:', e);
+        }
+      })();
+
       // ------- Upload & poll download -------
       async function sendToServer() {
         const docxFileInput = document.getElementById('docxFile');
@@ -797,6 +941,20 @@
         const formData = new FormData();
         const sanitizedFileName = docxFile.name.replace(/）/g, ')').replace(/（/g, '(').replace(/&/g, '');
         formData.append('file', docxFile, sanitizedFileName);
+
+        // 2026-05-15: attach xlsxFile if the user picked one this session
+        // OR if a previously-saved file was hydrated from IndexedDB.
+        // (Pre-2026-05-15 sendToServer never appended xlsxFile at all, so
+        // the launcher silently fell back to the default table. Both the
+        // pick path AND the hydrated-from-IDB path must funnel through
+        // here for the feature to actually reach the backend.)
+        const _xlsxInput = document.getElementById('xlsxFile');
+        const xlsxFile   = (_xlsxInput && _xlsxInput.files && _xlsxInput.files.length > 0)
+                            ? _xlsxInput.files[0]
+                            : _persistedXlsxFile;
+        if (xlsxFile) {
+          formData.append('xlsxFile', xlsxFile, xlsxFile.name || 'replacements.xlsx');
+        }
 
         const sourceLanguage    = document.getElementById('sourceLanguages').value;
         let   targetLanguage    = document.getElementById('targetLanguages').value;
