@@ -29,13 +29,17 @@ class OpenAIPolisher:
 
     # model="gpt-5.4-mini"  ← mini (cheaper, faster, lower quality)
     def __init__(self, model: str = _DEFAULT_AI_MODEL, dest_lang: str = "fa",
-                 prompt_path: str = None):
+                 source_lang: str = "en", prompt_path: str = None):
         self.model = model
         self.api_key = os.environ.get("OPENAI_API_KEY")
         if not self.api_key:
             raise ValueError("OPENAI_API_KEY not set in environment")
         self.client = OpenAI(api_key=self.api_key)
         self.dest_lang = _normalize_lang(dest_lang)
+        # 2026-05-15 (v7 STATIC + JOB_CONFIG): source language is stored
+        # at construction so polish() can build a JOB_CONFIG envelope
+        # in the user message. Backwards-compatible default is "en".
+        self.source_lang = source_lang
         self.system_prompt = self._load_prompt(dest_lang, prompt_path)
         self.last_call_data = {}
 
@@ -77,11 +81,45 @@ class OpenAIPolisher:
     # ── input / output formatting ─────────────────────────────────────────────
 
     def _build_user_content(self, src_lines: list, fa_lines: list) -> str:
+        """Build the bilingual <PAIRS> block (legacy [EN]/[FA] labels kept).
+
+        The Persian-specific polish prompt uses [EN]/[FA] markers since
+        it's hard-coded for that language pair. The universal polish
+        prompt uses [SRC]/[TGT] in its spec but understands [EN]/[FA]
+        as the concrete instance. Keeping a single emitter avoids a
+        branch in the user payload.
+        """
         parts = []
         for i, (en, fa) in enumerate(zip(src_lines, fa_lines), 1):
             parts.append(f"Line {i} [EN]: {en}")
             parts.append(f"Line {i} [FA]: {fa}")
         return "\n".join(parts)
+
+    def _build_user_envelope(self, src_lines: list, fa_lines: list) -> str:
+        """Return the JOB_CONFIG + PAIRS user payload for the polisher.
+
+        v7 STATIC + JOB_CONFIG layout: the user message starts with a
+        small <JOB_CONFIG> block (source language, target language,
+        line count N), then the bilingual <PAIRS> block. The system
+        prompt is byte-identical across calls — language identity
+        lives in this envelope.
+        """
+        from ._lang_descriptors import lang_descriptor
+        n = len(fa_lines)
+        src_desc = lang_descriptor(self.source_lang)
+        tgt_desc = lang_descriptor(self.dest_lang)
+        pairs = self._build_user_content(src_lines, fa_lines)
+        return (
+            "<JOB_CONFIG>\n"
+            f"SOURCE_LANGUAGE: {src_desc}\n"
+            f"TARGET_LANGUAGE: {tgt_desc}\n"
+            f"N: {n}\n"
+            "</JOB_CONFIG>\n"
+            "\n"
+            "<PAIRS>\n"
+            f"{pairs}\n"
+            "</PAIRS>"
+        )
 
     @staticmethod
     def _normalize_digits(s: str) -> str:
@@ -206,13 +244,14 @@ class OpenAIPolisher:
             }
             return translated_text
 
-        user_content = (
-            f"Lines to polish: {n}\n\n"
-            + self._build_user_content(src_lines, fa_lines)
-        )
+        # 2026-05-15 (v7 STATIC + JOB_CONFIG): the user message now
+        # carries a <JOB_CONFIG> envelope (language pair + N) before
+        # the bilingual <PAIRS> block. The system prompt stays
+        # byte-identical across calls so OpenAI prompt cache can hit.
+        user_content = self._build_user_envelope(src_lines, fa_lines)
 
-        # {N}/{lines_count} removed from system prompt substitution so the prompt
-        # stays identical across documents and benefits from prompt caching.
+        # The system prompt is loaded once at __init__ and reused
+        # verbatim. No per-call substitution.
         system = self.system_prompt
 
         _extra = {"prompt_cache_retention": "24h"}

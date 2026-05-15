@@ -6,6 +6,107 @@
 
 ---
 
+## 2026-05-15 — v7 prompts promoted: STATIC + JOB_CONFIG, legacy injections, code restructure
+
+Six iterations of round-trip critique between Claude and GPT-5.5
+landed as v7-final. Promoted v7 to canonical for both Persian-specific
+and universal prompt files, with the user-approved additions:
+
+**Persian v7 (canonical) — translate_PER.txt + polish_PER.txt + _smtv_locks.txt:**
+
+- Selective legacy injection per GPT-5.5 ACCEPT list (~15-20% growth):
+  - ID block: `[ROLE]` qualifier "subtitle-grade, line-stable, scope-safe", Adaptive Triad PERSONA, new `[TARGET]` / `[GUARDRAILS]` / `[METHOD]` subfields.
+  - STYLE: COLLOQUIAL_NORMALIZE, TENSE_SIMPLIFY, COLLOCATION_FIT, NO_QUOTE list, DASH_NORMALIZE en/em forbidden, ENGLISH_PARENTHETICAL preserve, WRITTEN_NUMBERS factual-only.
+  - NATIVE_REGISTER: PERSONA_DETECTOR fallback (1st/2nd/3rd person + spiritual/news/imperative markers), VOICE_SAFETY N8, RHETORICAL_OVERRIDE SAGE non-Master, KE_SOFT_LIMIT (soft, not hard).
+  - NON_WHITELIST: LATIN_PHRASES list (per capita / de facto / ...), HOMONYM_RULE, ACADEMIC_TERM_INLINE, INLINE_DEFINITION ("واژهٔ X یعنی"), FILLERS persona-aware.
+  - WORKFLOW Phase 1: FRICTION_RADAR, TERMINOLOGY_TRACK, ANTI-JITTER, HONORIFIC_BLOCK_LOCK.
+  - WORKFLOW Phase 2: AUTO_LOCK markup/code, Persian indirect-speech grammar (گفت که خواهد آمد), SPEAKER_TEST broadcast prosody, ROUND_TRIP back-check.
+
+- Polish-only additions (corrective):
+  - SA-1 SCOPE_ATTACHMENT_GUARD ("not eating → روزه‌داری" trap).
+  - SA-5 extended to SPEAKER + COREFERENCE.
+  - SA-14 ONTOLOGICAL_REPAIR (narrow EN-compass repair like "اعتکاف یخچال → عقب‌نشینی").
+  - Q16 ROUND_TRIP final back-check.
+
+- New v7.1 user-requested additions:
+  - LS-12 BROADCAST_OPENING_PATTERNS: canonical SMTV opening/closing
+    forms locked for cross-episode consistency. "Welcome to X" →
+    "خوش آمدید به X" (deliberately non-idiomatic; downstream editors
+    lose time fixing variations). Covers Welcome / Welcome back /
+    I'm <Name> / You're watching / Stay tuned / Thanks for watching /
+    See you next time.
+  - LS-13 FOREIGN_SCRIPT_AUTHENTIC_VOICE: non-EN, non-FA script
+    tokens (Lao ສະບາຍດີ, Chinese 你好, Sanskrit नमस्ते, Arabic السلام
+    علیکم, etc.) used as authentic-voice greetings — preserved byte-id
+    in translation, corrective-restored in polish.
+
+- Rejected per GPT-5.5 verdict:
+  - F1 / F7 / F8 (multiple identity framings).
+  - R10 (formulaic patterns — covered by native syntax).
+  - R30 (single-quote for unfamiliar names — conflicts with quote policy).
+  - B1, B3 (extra phases / Q1-Q5 reframing).
+  - "ISO-17100 Certified Auditor" claim → replaced with "inspired".
+  - "SOV Enforcer" → softened to "Persian-first".
+
+**Universal v7 (canonical) — translate_universal.txt + polish_universal.txt:**
+
+Major restructure into STATIC + JOB_CONFIG layout per GPT-5.5
+recommendation for OpenAI prompt cache reuse:
+
+- System prompt is now BYTE-IDENTICAL across all documents and
+  language pairs. Uses generic "source language" / "target language"
+  references; no `{SOURCE_LANG}` / `{DEST_LANG}` substitution.
+- Language identity, line count N, and input lines now live in the
+  user message via a `<LANGUAGE_BINDING>` + `<JOB_CONFIG>` + `<LINES>` /
+  `<PAIRS>` envelope.
+- Same legacy-injection set as Persian, generalised: PERSONA_DETECTOR,
+  WRITTEN_NUMBERS, ROUND_TRIP, AUTO_LOCK, SCRIPT_PURITY (LS-6 in
+  polish), FOREIGN_SCRIPT_AUTHENTIC_VOICE (LS-9 in polish, item 13
+  in translate NON_WHITELIST).
+- Why this matters: prior universal used `{SOURCE_LANG}` /
+  `{DEST_LANG}` placeholders inside the system prompt body, which
+  broke the prompt cache prefix the moment either changed. The new
+  layout keeps the system prompt's first ≥1024 tokens identical for
+  any language pair, so OpenAI's automatic prompt caching hits.
+
+**Code changes (translator.py + polisher.py + runner.py):**
+
+- `src/machine_translate_docx/openai_tools/_lang_descriptors.py` (NEW)
+  — curated language-code → rich descriptor table (~80 locales).
+  Falls back to `google_translate_lang_codes` then raw code. Used
+  by both translator and polisher to populate JOB_CONFIG.
+- `OpenAITranslator._load_system_prompt`: no longer substitutes
+  `{SOURCE_LANG}` / `{DEST_LANG}`; returns template verbatim.
+- `OpenAITranslator._build_user_message(source_lang, dest_lang, text)`:
+  emits a `<JOB_CONFIG>` block (SOURCE_LANGUAGE, TARGET_LANGUAGE, N)
+  followed by `<LINES>` block with numbered input.
+- `OpenAIPolisher.__init__`: new `source_lang` parameter (default "en")
+  stored on instance. `_build_user_envelope(src_lines, fa_lines)`
+  emits `<JOB_CONFIG>` + `<PAIRS>` block (legacy [EN]/[FA] labels
+  preserved inside <PAIRS> for backward parser compatibility).
+- `runner.py`: passes `source_lang=ctx.language.src_lang` to
+  `OpenAIPolisher` construction.
+
+**Persian-specific prompts (translate_PER.txt, polish_PER.txt, _smtv_locks.txt):**
+
+Already cacheable (no placeholders). For consistency they also
+receive a JOB_CONFIG envelope in the user message — harmless extra
+context that confirms FA target. Cache behaviour unchanged.
+
+**Iteration trail in branch (`claude/blissful-pasteur-dcab73`):**
+
+All v1 through v7 proposal files retained in `prompts/*_proposal_v*.txt`
+plus `docs/v7-additions-proposal.md` (legacy-feature evaluation
+matrix) and `docs/prompt-architecture-followups.md` (validator +
+regression suite roadmap). The proposal files are kept for audit;
+the canonical files are the production-active set.
+
+Validator layer and regression test suite are the next milestone
+(both deferred to a follow-up branch — to be built with a single
+on/off env var per user request).
+
+---
+
 ## 2026-05-14 — Mac .app bundle + .dmg recipe (upstream comparison)
 
 User asked how the upstream repo (`translation-robot/machine-translate-

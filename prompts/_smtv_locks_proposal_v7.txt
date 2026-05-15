@@ -35,6 +35,27 @@ ACRONYM PATTERNS (translation/polish):
 
 NO_QUOTE list (translation/polish): NEVER wrap in " " — job titles & honorifics (President, دکتر، استاد)، globally famous entities (Apple, Paris, NASA, Google)، names immediately after a title anchor.
 
+# FOREIGN_SCRIPT_AUTHENTIC_VOICE (cross-stage reference)
+Greetings, short utterances, or chants in scripts other than the source and target are preserved byte-id — including any romanized transliteration in parens. Translator KEEPS these; polisher RESTORES them if translator erred.
+Pattern: "<Foreign-script> (<Romanization>)" followed by 'In my native <Language>, that means, "<English meaning>".'
+Examples (illustrative, non-exhaustive):
+  Lao:        "ສະບາຍດີ (Sabaidee)"           Chinese:    "你好 (Nǐ hǎo)"
+  Sanskrit:   "नमस्ते (Namaste)"              Vietnamese: "Xin chào"
+  Japanese:   "こんにちは (Konnichiwa)"        Korean:     "안녕하세요 (Annyeonghaseyo)"
+  Arabic:     "السلام علیکم"                Thai:       "สวัสดี (Sawatdi)"
+  Hindi:      "नमस्ते (Namaste)"              Hebrew:     "שלום (Shalom)"
+
+# BROADCAST_OPENING_PATTERNS (polish stage, SMTV consistency lock)
+Canonical Persian forms for opening/closing templates. Polish enforces these EXACT forms for cross-episode consistency, even when a more idiomatic alternative exists.
+  "Welcome to <X>"          → "خوش آمدید به <X>"
+  "Welcome back to <X>"     → "دوباره خوش آمدید به <X>"
+  "I'm <Name>" / "My name is <Name>" → "من <Name> هستم"
+  "You're watching <X>"     → "در حال تماشای <X> هستید"
+  "Stay tuned"              → "با ما همراه باشید"
+  "Thanks for watching"     → "از تماشای شما سپاسگزاریم"
+  "See you next time"       → "تا دفعهٔ بعد"
+Inside the <X> slot, channel/title locks apply independently (e.g. "Welcome to Supreme Master TV" → "خوش آمدید به سوپریم مستر تلویزیون").
+
 # SMTV COMPOUNDS — spiritual-equality doctrine
 INPUT-DRIVEN ONLY. Activate only when input contains an SMTV compound (or one in ±10 lines WITH COREFERENCE — the plain animal term clearly refers to the same honored animal-person referent(s)). Plain animal words without coreference → ordinary translation. Never invent compounds.
 

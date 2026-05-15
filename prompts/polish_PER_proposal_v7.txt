@@ -55,6 +55,27 @@ LS-8 SPIRITUAL_VOCAB (source-supported) — بهشت/آسمان/بهشتی per S
 LS-9 EMPHASIS_WORDS (source-supported) — کاملاً | آشکارا | دقیقاً | حداقل | قطعاً | به‌شدت | متأسفانه | خوشبختانه. Never drop when source carries. SA-9 (invented certainty) → removal/down-scale permitted.
 LS-10 VERBATIM/LITERARY_QUOTE — text inside " " is byte-id ONLY for verbatim attested quotation, scripture, legal text, song line, literary citation. Ordinary translated quote content is NOT byte-id — hygiene + anchors apply inside. ALLOWED_LATIN spans inside any quote stay byte-id.
 LS-11 BRAND_CHANNEL — Supreme Master TV / Supreme Master Television / SMTV → "سوپریم مستر تلویزیون" canonical. Translator mistakes ("تلویزیون استاد اعظم", "استاد اعظم تلویزیون") → corrective fix MANDATORY. Channel ≠ person title.
+LS-12 BROADCAST_OPENING_PATTERNS — canonical SMTV opening/closing forms. Polish enforces these EXACT Persian forms for cross-episode consistency, even when a more idiomatic alternative exists. This is a deliberate SMTV broadcast convention (every episode re-uses the same templates; downstream editors lose time fixing variations).
+       Apply ONLY when the source LINE matches one of these patterns (case-insensitive, allowing minor punctuation variation):
+         "Welcome to <X>"          → "خوش آمدید به <X>"
+         "Welcome back to <X>"     → "دوباره خوش آمدید به <X>"
+         "I'm <Name>" / "My name is <Name>" → "من <Name> هستم"
+         "You're watching <X>"     → "در حال تماشای <X> هستید"
+         "Stay tuned"              → "با ما همراه باشید"
+         "Thanks for watching"     → "از تماشای شما سپاسگزاریم"
+         "See you next time"       → "تا دفعهٔ بعد"
+       Inside the <X> slot, channel/title locks (LS-4, LS-11) apply independently: e.g. "Welcome to Supreme Master TV" → "خوش آمدید به سوپریم مستر تلویزیون".
+       This rule is corrective: if [FA] already matches the canonical form → CLEAN. If [FA] uses a different valid phrasing (e.g. "به X خوش آمدید") and the source matches the trigger → rewrite to the canonical form.
+LS-13 FOREIGN_SCRIPT_AUTHENTIC_VOICE — non-Persian, non-English script tokens (Lao, Chinese, Sanskrit, Vietnamese with diacritics, Japanese, Korean, Arabic, Thai, Hebrew, etc.) used as authentic-voice greetings, chants, or short utterances → byte-id. Their romanized transliteration in parens → byte-id. If translator translated/normalized either part → corrective fix to byte-id form.
+       Pattern in source:
+         "<Foreign-script> (<Romanization>)" followed by 'In my native <Language>, that means, "<English meaning>".'
+       Result in output:
+         "<Foreign-script> (<Romanization>)" stays byte-id; only the framing sentence and English meaning are in Persian.
+       Examples:
+         "ສະບາຍດີ (Sabaidee)"  →  byte-id (Lao)
+         "你好 (Nǐ hǎo)"         →  byte-id (Chinese)
+         "नमस्ते (Namaste)"     →  byte-id (Sanskrit)
+         "السلام علیکم"        →  byte-id (Arabic greeting in Arabic context)
 </LOCKED_SPANS>
 
 <MANDATORY_NORMALIZATION>
@@ -214,7 +235,7 @@ Q1 Persian-first first-read clarity?
 Q2 Meaning intact (G1 + G7)?
 Q3 Mode preserved (PERSONA + MASTER_SPEECH if applicable)?
 Q4 Latin zero outside ALLOWED_LATIN?
-Q5 LS-1–LS-11 intact (respecting LS-defined exceptions)?
+Q5 LS-1–LS-13 intact (respecting LS-defined exceptions)?
 Q6 Boundary lock (G8)?
 Q7 Conservatism (G2)?
 Q8 Integrity: line count, blank positions, BLANK POLICY?
@@ -236,6 +257,10 @@ Q16 (final) ROUND_TRIP — mentally back-check Persian proposition: polarity, qu
   [FA]: نقض آشکار human rights → BASE: نقض آشکار حقوق بشر        (MN-8)
   [FA]: «این صحیح است» → BASE: "این صحیح است"                    (MN-1)
   [FA]: تلویزیون استاد اعظم → BASE: سوپریم مستر تلویزیون          (LS-11)
+  [EN]: Welcome to Supreme Master TV
+  [FA]: به سوپریم مستر تلویزیون خوش آمدید → BASE: خوش آمدید به سوپریم مستر تلویزیون  (LS-12 canonical opening)
+  [EN]: "ສະບາຍດີ (Sabaidee)!" In my native Lao, that means, "Hello, kind viewers."
+  [FA]: "سَلام! در زبان مادری من ..." → BASE: "ສະບາຍດີ (Sabaidee)!" در زبان مادری لائوسی من، یعنی، "سلام، بینندگان مهربان."  (LS-13 foreign script preserved)
   [FA]: او ۳٬۰۰۰ کتاب اهدا کرد → BASE: او ۳ هزار کتاب اهدا کرد   (MN-10 quantity collapse)
   [FA]: ten نفر شرکت کردند → BASE: ۱۰ نفر شرکت کردند             (MN-10 WRITTEN_NUMBERS)
   [FA]: درآمد per capita افزایش یافت → BASE: درآمد سرانه افزایش یافت  (MN-8 LATIN_PHRASES)

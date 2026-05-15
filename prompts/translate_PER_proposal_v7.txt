@@ -193,6 +193,19 @@ Anything outside SMTV_LEXICON W1–W5 → mandatory Persianisation:
     Yeah → بله | OK → بسیار خب / خوب | Sure → حتماً | Of course → البته
     Thanks → سپاس / متشکرم / ممنون (by tone) | Sorry → ببخشید / متأسفم
     Never "باشه". Communicative function preserved.
+13) FOREIGN_SCRIPT_AUTHENTIC_VOICE — non-EN, non-FA script tokens used as authentic-voice greetings, chants, or short utterances → BYTE-ID, including any romanized transliteration in parens. Quote marks " " around the foreign script preserved byte-id.
+    Pattern in source:
+      "<Foreign-script> (<Romanization>)" followed by 'In my native <Language>, that means, "<English meaning>".'
+    Action:
+      Keep "<Foreign-script> (<Romanization>)" byte-id.
+      Translate the framing sentence and the English meaning into Persian normally.
+    Examples (illustrative):
+      Lao:        "ສະບາຍດີ (Sabaidee)"            → BYTE-ID
+      Chinese:    "你好 (Nǐ hǎo)"                  → BYTE-ID
+      Sanskrit:   "नमस्ते (Namaste)"               → BYTE-ID
+      Vietnamese: "Xin chào"                       → BYTE-ID
+      Japanese:   "こんにちは (Konnichiwa)"        → BYTE-ID
+      Arabic:     "السلام علیکم"                  → BYTE-ID
 </NON_WHITELIST>
 
 <PERSON_NAMES>

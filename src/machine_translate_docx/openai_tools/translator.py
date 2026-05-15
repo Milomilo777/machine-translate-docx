@@ -158,15 +158,22 @@ class OpenAITranslator:
         """
         Load the translation system prompt for *dest_lang*.
         Falls back to translate_universal.txt when no language-specific file exists.
-        Does NOT substitute {N} here — N goes into the user message so the system
-        prompt stays identical across documents and benefits from prompt caching.
-        Substitutes {SOURCE_LANG} and {DEST_LANG} only (these are stable per session).
 
-        2026-05-12 (phase-1 prompt rewrite): for Persian, the SMTV brand
-        lexicon is held in a shared `_smtv_locks.txt` block. Both
-        translator and polisher prepend it to their own system prompt
-        so the spec is edited in one place. The combined string stays
-        byte-identical across calls and the prompt cache hits it.
+        2026-05-15 (v7 STATIC + JOB_CONFIG): the system prompt is now
+        byte-identical across all documents and language pairs. Language
+        identity, line count, and input text are all supplied in the
+        user message via a <JOB_CONFIG> + <LINES> envelope. This keeps
+        the system prompt cacheable (OpenAI prompt cache needs the
+        first ≥1024 tokens of the prefix to match byte-for-byte).
+
+        For Persian (translate_PER.txt), the SMTV brand lexicon is
+        prepended from a shared `_smtv_locks.txt` block. The combined
+        string stays byte-identical across calls and the cache hits it.
+        For other languages, translate_universal.txt is used standalone.
+
+        The `source_lang` / `dest_lang` arguments are kept on the
+        signature for API stability but are NO LONGER substituted into
+        the prompt body; they are placed in the user message instead.
         """
         prompts_dir = _find_prompts_dir(Path(__file__).parent)
         lang_code   = _prompt_lang_code(dest_lang)
@@ -181,19 +188,43 @@ class OpenAITranslator:
             if shared.exists():
                 template = shared.read_text(encoding="utf-8") + "\n\n" + template
 
-        return (
-            template
-            .replace("{SOURCE_LANG}", source_lang)
-            .replace("{DEST_LANG}", dest_lang)
-        )
+        # v7 contract: no template substitution. Both Persian-specific
+        # prompts and the universal prompt are written without
+        # `{SOURCE_LANG}` / `{DEST_LANG}` / `{N}` placeholders. The
+        # template is returned verbatim so the cache prefix is stable.
+        return template
 
     @staticmethod
-    def _build_user_message(text: str) -> str:
-        """Return the numbered-line user payload with line count header."""
+    def _build_user_message(source_lang: str, dest_lang: str, text: str) -> str:
+        """Return the JOB_CONFIG + LINES user payload.
+
+        v7 STATIC + JOB_CONFIG layout: the user message starts with a
+        small <JOB_CONFIG> block (source language, target language,
+        line count N), followed by a <LINES> block containing the
+        numbered input lines. The system prompt is generic; this
+        envelope binds the per-job language pair to the static policy.
+
+        Putting language identity in the user message (not the system
+        prompt) is the GPT-5.5-recommended layout for maximum prompt
+        cache reuse across language pairs.
+        """
+        from ._lang_descriptors import lang_descriptor
         lines = text.split("\n")
         n = len(lines)
+        src_desc = lang_descriptor(source_lang)
+        tgt_desc = lang_descriptor(dest_lang)
         numbered = "\n".join(f"Line {i + 1}: {line}" for i, line in enumerate(lines))
-        return f"Lines to translate: {n}\n\n{numbered}"
+        return (
+            "<JOB_CONFIG>\n"
+            f"SOURCE_LANGUAGE: {src_desc}\n"
+            f"TARGET_LANGUAGE: {tgt_desc}\n"
+            f"N: {n}\n"
+            "</JOB_CONFIG>\n"
+            "\n"
+            "<LINES>\n"
+            f"{numbered}\n"
+            "</LINES>"
+        )
 
     # ── token / cost helpers ───────────────────────────────────────────────────
 
@@ -270,7 +301,7 @@ class OpenAITranslator:
         lines         = text_to_translate.split("\n")
         n             = len(lines)
         system_prompt = self._load_system_prompt(source_lang, dest_lang)
-        user_message  = self._build_user_message(text_to_translate)
+        user_message  = self._build_user_message(source_lang, dest_lang, text_to_translate)
 
         # B5 (audit 2026-05-13): full user payload only goes to stdout when
         # `MTD_DEBUG_PAYLOADS=1` is set. By default we emit a redacted summary

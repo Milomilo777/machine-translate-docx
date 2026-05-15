@@ -130,7 +130,9 @@ def selenium_chrome_translate_maxchar_blocks(
         if ctx.flags.with_polish:
             try:
                 ctx.openai.polisher = OpenAIPolisher(
-                    model=ai_model, dest_lang=ctx.language.dest_lang
+                    model=ai_model,
+                    dest_lang=ctx.language.dest_lang,
+                    source_lang=ctx.language.src_lang or "en",
                 )
                 print(f"[INFO] Polish pass enabled (model={ai_model}, lang={ctx.language.dest_lang})")
             except FileNotFoundError as _e:
