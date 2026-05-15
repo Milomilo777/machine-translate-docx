@@ -1608,28 +1608,35 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
     ) -> Path:
         engine, extra_flags = self._map_engine(translation_engine)
 
-        # B1-guard (2026-05-15 raw-cache rewrite): for the chatgpt-polish
-        # FA path, ALWAYS force splitTranslate=False so the subprocess
-        # emits the raw "single-blob-per-phrase" docx (one polished FA
-        # blob per phrase head row, every other row blank). That raw
-        # output is then split in the launcher post-process by
-        # _apply_splitter: basic → subprocess --splitonly,
-        # persian_double_lines → FASubtitleAligner. The cache stores
-        # only the raw docx, so a single cached entry serves both
-        # split methods on the same source file — switching split
-        # methods on a cached file is a sub-second re-split instead of
-        # a full translation + polish replay.
+        # B1-guard (2026-05-15 raw-cache rewrite, generalized 2026-05-16):
+        # For ALL cached API translation engines (chatgpt + chatgpt-polish)
+        # on ALL languages, force splitTranslate=False so the subprocess
+        # emits the raw "single-blob-per-phrase" docx. That raw output
+        # is then split in the launcher post-process by _apply_splitter:
+        #   basic / openai / null → subprocess --splitonly
+        #   persian_double_lines (FA only) → FASubtitleAligner
+        # The cache stores ONLY the raw docx, so a single cached entry
+        # serves every split method on the same source file — switching
+        # split methods on a cached file is a sub-second re-split
+        # instead of a full translation+polish replay.
         #
-        # Earlier versions of this guard (pre-2026-05-15) varied
-        # splitTranslate by split_engine; that variation forced the
-        # cache key to include split_engine, which then broke cache
-        # reuse across split methods. The new architecture pushes ALL
-        # splitting into the launcher so the cache key is split-engine
-        # independent.
-        if (
-            translation_engine == "chatgpt-polish"
-            and target_language.lower().startswith("fa")
-        ):
+        # Why "ALL cached engines, ALL languages":
+        #   - chatgpt + de/ar/fr/… also benefit: switching basic ↔ openai
+        #     splitter on a cached German translation now skips the
+        #     translator entirely.
+        #   - chatgpt-polish + non-FA: same — switching split methods
+        #     skips both translator + polisher.
+        # Earlier versions of this guard varied splitTranslate by
+        # split_engine; that variation forced the cache key to include
+        # split_engine, which then broke cache reuse across split
+        # methods. The new architecture pushes ALL splitting into the
+        # launcher so the cache key is split-engine independent.
+        #
+        # Non-API engines (DeepL, Google) keep their original behaviour:
+        # they don't use the cache (`_API_ENGINES` is the gate), so
+        # there's no benefit to changing splitTranslate for them, and
+        # the original Selenium pipelines do their own row distribution.
+        if translation_engine.lower() in _API_ENGINES:
             split_translate = False
 
         # 2026-05-11 src-layout migration: invoke the CLI as a *module*
