@@ -235,6 +235,22 @@
               <option value="persian_double_lines">Persian Double Lines</option>
             </select>
           </label>
+
+          <!-- 2026-05-15: Persian Double Lines MAX_CHARS slider. Visible only
+               when splitEngine == persian_double_lines. Range 24..70, default
+               45, persisted in localStorage('mtd.alignerMaxChars'). -->
+          <label class="form-field hidden" id="alignerMaxCharsField" for="alignerMaxChars">
+            <span class="form-label">
+              Max chars per chunk (CPL):
+              <span id="alignerMaxCharsValue" class="form-mono">45</span>
+            </span>
+            <input type="range" id="alignerMaxChars" class="form-range"
+                   min="24" max="70" step="1" value="45" />
+            <span class="form-hint">
+              24 = tight chunks · 45 = default · 70 = loose chunks.
+              Setting is remembered across sessions.
+            </span>
+          </label>
         </div>
 
         <!-- Translate button + status -->

@@ -446,6 +446,24 @@ code {
 }
 .form-input { padding: 8px 12px; background-image: none; }
 
+/* ── Range slider (Persian Double Lines MAX_CHARS, etc.) ─────────────── */
+.form-range {
+  width: 100%;
+  accent-color: var(--color-brand-500);
+}
+.form-mono {
+  font-family: var(--font-mono, "Cascadia Code", "Fira Code", Consolas, monospace);
+  font-weight: 600;
+  margin-left: 6px;
+}
+.form-hint {
+  font-size: 11px;
+  color: var(--color-text-muted, #888);
+  margin-top: 4px;
+  display: block;
+  line-height: 1.45;
+}
+
 /* ── Action row ───────────────────────────────────────────────────────── */
 .action-row {
   display: flex;

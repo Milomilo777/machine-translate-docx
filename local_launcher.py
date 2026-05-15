@@ -130,13 +130,24 @@ def _sanitize_filename(name: str) -> str:
 # ── 36-hour cache for API-translated outputs ─────────────────────────────────
 
 def _cache_key(payload: bytes, target_lang: str, engine: str,
-               ai_model: str | None) -> str:
-    """SHA-256 over payload + lang + engine + ai_model.
+               ai_model: str | None, split_engine: str | None = None) -> str:
+    """SHA-256 over payload + lang + engine + ai_model + split_engine.
 
     Two requests collide ONLY when the uploaded bytes are byte-identical AND
-    the language/engine/model triple matches. A one-byte difference in the
-    docx zip (e.g. different metadata, different timestamp) yields a
-    different key — by design.
+    the language/engine/model/split_engine quadruple matches. A one-byte
+    difference in the docx zip (e.g. different metadata, different
+    timestamp) yields a different key — by design.
+
+    2026-05-15 — `split_engine` added to the key. The launcher routes
+    Persian Double Lines and Basic through different CLI flag combinations
+    (B1-guard forces `splitTranslate=false` for persian_double_lines, true
+    for basic), so the cached ``main_path`` file has a different row
+    shape depending on which split method ran first. Without
+    `split_engine` in the key, a Persian-Double-Lines-first run would
+    cache a raw "everything in row 1" docx, and a subsequent Basic run
+    would replay that wrong-shape cache (bug observed on MOS 3148,
+    2026-05-15). Including `split_engine` forces a cache miss on switch,
+    which re-runs the engine with the correct flags for the new method.
     """
     h = hashlib.sha256()
     h.update(payload)
@@ -146,6 +157,8 @@ def _cache_key(payload: bytes, target_lang: str, engine: str,
     h.update(engine.encode("utf-8", errors="replace"))
     h.update(b"\x00")
     h.update((ai_model or "").encode("utf-8", errors="replace"))
+    h.update(b"\x00")
+    h.update((split_engine or "").encode("utf-8", errors="replace"))
     return h.hexdigest()
 
 
@@ -1372,7 +1385,10 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
         # are stateful (cookie consent, login) and not worth caching.
         cache_key: str | None = None
         if translation_engine.lower() in _API_ENGINES:
-            cache_key = _cache_key(payload, target_language, translation_engine, ai_model)
+            cache_key = _cache_key(
+                payload, target_language, translation_engine, ai_model,
+                split_engine,
+            )
             cached = self.state.cache_lookup(cache_key)
             if cached:
                 # Materialise the cached engine output back into uploads/

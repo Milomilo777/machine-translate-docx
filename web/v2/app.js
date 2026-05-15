@@ -155,6 +155,7 @@
     syncDocumentDir();
     wireDropZone();
     wireFormControls();
+    wireAlignerMaxChars();   // 2026-05-15 — PDL CPL slider + localStorage
     wireTranslateButton();
     wireCancelButton();      // U-1
     wireNewsletter();
@@ -286,6 +287,53 @@
       pdl.hidden = true;
       pdl.disabled = true;
     }
+    syncAlignerMaxCharsField();
+  }
+
+  // 2026-05-15 — Persian Double Lines MAX_CHARS slider. Visible only when
+  // splitEngine == persian_double_lines. Persisted in localStorage so the
+  // user's preferred CPL ceiling survives page reloads.
+  const MAX_CHARS_LS_KEY = 'mtd.alignerMaxChars';
+
+  function syncAlignerMaxCharsField() {
+    const field = $('alignerMaxCharsField');
+    const sel   = $('splitEngine');
+    if (!field || !sel) return;
+    const isPDL = sel.value === 'persian_double_lines';
+    field.classList.toggle('hidden', !isPDL);
+  }
+
+  function wireAlignerMaxChars() {
+    const slider   = $('alignerMaxChars');
+    const valueEl  = $('alignerMaxCharsValue');
+    const splitSel = $('splitEngine');
+    if (!slider || !valueEl) return;
+
+    // Hydrate from localStorage on first paint.
+    try {
+      const stored = window.localStorage.getItem(MAX_CHARS_LS_KEY);
+      if (stored !== null) {
+        const v = parseInt(stored, 10);
+        if (Number.isFinite(v) && v >= 24 && v <= 70) {
+          slider.value = String(v);
+          valueEl.textContent = String(v);
+        }
+      }
+    } catch (_e) { /* private mode — fall back to default */ }
+
+    slider.addEventListener('input', () => {
+      valueEl.textContent = String(slider.value);
+    });
+    slider.addEventListener('change', () => {
+      // Persist after the user releases the slider, not on every drag tick.
+      try {
+        window.localStorage.setItem(MAX_CHARS_LS_KEY, String(slider.value));
+      } catch (_e) { /* private mode — silently ignore */ }
+    });
+    if (splitSel) {
+      splitSel.addEventListener('change', syncAlignerMaxCharsField);
+    }
+    syncAlignerMaxCharsField();
   }
 
   // ── Drop zone + file input ───────────────────────────────────────────────
@@ -480,6 +528,16 @@
     }
     if (splitVal && splitVal !== 'basic') {
       fd.append('splitEngine', splitVal);
+    }
+    // 2026-05-15: when Persian Double Lines is the active Split Method,
+    // forward the user-tunable MAX_CHARS (broadcast CPL ceiling). Clamp
+    // to 24..70 defense-in-depth — backend clamps again.
+    if (splitVal === 'persian_double_lines') {
+      const mcEl = $('alignerMaxChars');
+      let mc = mcEl ? Number(mcEl.value) : 45;
+      if (!Number.isFinite(mc)) mc = 45;
+      mc = Math.max(24, Math.min(70, Math.round(mc)));
+      fd.append('alignerMaxChars', String(mc));
     }
 
     const upRes = await fetch('/upload', { method: 'POST', body: fd });
