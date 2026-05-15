@@ -1010,7 +1010,10 @@ class FASubtitleAligner:
                         {"role": "system", "content": self._LLM_SYSTEM},
                         {"role": "user",   "content": user},
                     ],
-                    extra_body={"prompt_cache_retention": "24h"},
+                    extra_body={
+                        "prompt_cache_retention": "24h",
+                        "prompt_cache_key": "mtd-aligner-v7",
+                    },
                     reasoning={"effort": "low"},
                     timeout=120,
                 ),

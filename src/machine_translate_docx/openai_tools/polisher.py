@@ -254,7 +254,14 @@ class OpenAIPolisher:
         # verbatim. No per-call substitution.
         system = self.system_prompt
 
-        _extra = {"prompt_cache_retention": "24h"}
+        # 2026-05-15 (cache reliability fix): pair prompt_cache_retention with
+        # a stable prompt_cache_key. See translator.py for the full rationale.
+        # Bump the version suffix whenever polish_PER.txt / _smtv_locks.txt
+        # change in a non-backwards-compatible way.
+        _extra = {
+            "prompt_cache_retention": "24h",
+            "prompt_cache_key": "mtd-polisher-v7",
+        }
         if "mini" in self.model.lower():
             _extra["reasoning_effort"] = "medium"
 
@@ -266,7 +273,10 @@ class OpenAIPolisher:
         )
         # reasoning_effort is a chat.completions extra — omit it for Responses API
         # (Responses API accepts reasoning via the `reasoning` parameter, not extra_body).
-        _extra_responses = {"prompt_cache_retention": "24h"}
+        _extra_responses = {
+            "prompt_cache_retention": "24h",
+            "prompt_cache_key": "mtd-polisher-v7",
+        }
         # Reasoning effort policy (per model class):
         #   mini       → medium  (was "high"; 2026-05-12 user lowered to medium
         #                          — high cost ~3× wall-clock for diminishing
@@ -463,14 +473,17 @@ class OpenAIPolisher:
                 1 for a, b in zip(fa_lines, polished_lines) if a != b
             )
 
+        # 2026-05-15 (log compaction): mirror the translator's lean form.
+        # By default we drop system_prompt / user_prompt / response_raw /
+        # input_fa_text (the last is byte-identical to translation.output_text
+        # in the same block, so storing it twice doubled log size for no
+        # audit benefit). Set MTD_LOG_VERBOSE=1 to restore the legacy
+        # fields when debugging a single call.
+        _verbose = os.environ.get("MTD_LOG_VERBOSE", "").strip() == "1"
         self.last_call_data = {
             "type":           "polish",
             "model":          self.model,
             "prompt_hash":    prompt_hash(system),
-            "system_prompt":  system,
-            "user_prompt":    user_content,
-            "response_raw":   response_json,
-            "input_fa_text":  translated_text,
             "output_text":    "\n".join(polished_lines),
             "en_residue":     residue_lines,
             "lines_processed":  n,
@@ -485,6 +498,16 @@ class OpenAIPolisher:
             "cost_usd":        self._estimate_cost(response_json),
             "elapsed_seconds": round(elapsed, 3),
         }
+        if _verbose:
+            self.last_call_data["system_prompt"] = system
+            self.last_call_data["user_prompt"]   = user_content
+            self.last_call_data["response_raw"]  = response_json
+            self.last_call_data["input_fa_text"] = translated_text
+
+        # Always remember the latest user envelope so the run_info section
+        # of the sidecar can carry one canonical sample. self.system_prompt
+        # is already populated at __init__.
+        self.last_user_prompt = user_content
 
         # Warn when polish was effectively a no-op on a real document.
         # Threshold 2 % of lines is generous — anything lower is unusual

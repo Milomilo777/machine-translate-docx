@@ -328,7 +328,20 @@ class OpenAITranslator:
             {"role": "user",   "content": user_message},
         ]
 
-        _extra = {"prompt_cache_retention": "24h"}
+        # 2026-05-15 (cache reliability fix): pair prompt_cache_retention with
+        # a stable prompt_cache_key. Without a stable key, OpenAI derives the
+        # cache identity from request metadata (SDK version, headers, IP),
+        # which can vary call-to-call and silently miss the cached prefix
+        # even when the system prompt is byte-identical. A fixed key per
+        # logical pipeline + prompt-version pins the cache lookup so every
+        # translator call hits the same archived prefix.
+        # Bump the version suffix whenever translate_PER.txt / _smtv_locks.txt
+        # change in a non-backwards-compatible way; otherwise old/new prompts
+        # collide on the same key and confuse the cache.
+        _extra = {
+            "prompt_cache_retention": "24h",
+            "prompt_cache_key": "mtd-translator-v7",
+        }
 
         # GPT-5.x models have broken prompt-caching via chat.completions (known
         # OpenAI bug — community.openai.com/t/caching-is-borked-for-gpt-5-models).
@@ -460,13 +473,17 @@ class OpenAITranslator:
                 try: cursor.close(); conn.close()
                 except Exception: pass
 
+        # 2026-05-15 (log compaction): by default the sidecar records the
+        # *metadata* of each API call (hash, tokens, cost, timing) but not
+        # the prompt bodies — those are written ONCE at the run_info level
+        # by cli.write_translation_log(), since they are byte-identical
+        # across blocks. To audit a specific call's payload, set
+        # MTD_LOG_VERBOSE=1 — that restores the legacy per-block fields.
+        _verbose = os.environ.get("MTD_LOG_VERBOSE", "").strip() == "1"
         self.last_call_data = {
             "type":            "translate",
             "model":           self.model,
             "prompt_hash":     prompt_hash(system_prompt),
-            "system_prompt":   system_prompt,
-            "user_prompt":     user_message,
-            "response_raw":    response_json,
             "output_text":     translated_text,
             "tokens": {
                 "prompt":      cost_info.get("prompt_tokens", 0),
@@ -479,6 +496,18 @@ class OpenAITranslator:
             "cost_usd":        cost_info.get("total_cost_usd", 0.0),
             "elapsed_seconds": round(elapsed_time, 3),
         }
+        if _verbose:
+            self.last_call_data["system_prompt"] = system_prompt
+            self.last_call_data["user_prompt"]   = user_message
+            self.last_call_data["response_raw"]  = response_json
+
+        # Always remember the latest system prompt so the run_info section
+        # of the sidecar can carry it ONCE per run, regardless of how many
+        # blocks were translated. The full user-message envelope is also
+        # cached so an auditor can see the JOB_CONFIG/LINES shape without
+        # turning on verbose mode.
+        self.last_system_prompt = system_prompt
+        self.last_user_prompt   = user_message
 
         # 2026-05-15 (v7 follow-up): post-translation validator gate.
         # Disabled by default; opt in with MTD_VALIDATOR_ENABLED=1. The

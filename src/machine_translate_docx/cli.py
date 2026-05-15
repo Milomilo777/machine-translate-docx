@@ -1084,6 +1084,7 @@ def write_translation_log(log_path: str):
     """Write translation_log as formatted JSON next to the output DOCX."""
     import json as _json
     import datetime as _dt
+    from .openai_tools._retry import prompt_hash
 
     blocks = translation_log.get("blocks", [])
 
@@ -1115,22 +1116,57 @@ def write_translation_log(log_path: str):
         _out_docx = log_path.replace("_log.json", ".docx")
     translation_log["run_info"]["output_file"] = _out_docx
 
+    # 2026-05-15 (log compaction): persist the translator + polisher system
+    # prompts ONCE at the run_info level instead of repeating them inside
+    # every block's translation/polish dict. The bodies are byte-identical
+    # across blocks (v7 STATIC + JOB_CONFIG layout), so per-block storage
+    # multiplied log size by `len(blocks)` for zero audit benefit. The
+    # canonical user-prompt envelope is also captured here as a single
+    # sample — block-level source_text + output_text already reflect the
+    # per-call payload.
+    _ctx = _get_ctx()
+    try:
+        _tr = getattr(_ctx.openai, "translator", None)
+        if _tr is not None and getattr(_tr, "last_system_prompt", None):
+            translation_log["run_info"]["translation_prompts"] = {
+                "system_prompt":         _tr.last_system_prompt,
+                "user_prompt_sample":    getattr(_tr, "last_user_prompt", "") or "",
+                "prompt_hash":           prompt_hash(_tr.last_system_prompt),
+            }
+    except Exception as _e:
+        print(f"[WARN] Could not stash translator prompts in run_info: {_e!r}")
+    try:
+        _po = getattr(_ctx.openai, "polisher", None)
+        if _po is not None and getattr(_po, "system_prompt", None):
+            translation_log["run_info"]["polish_prompts"] = {
+                "system_prompt":      _po.system_prompt,
+                "user_prompt_sample": getattr(_po, "last_user_prompt", "") or "",
+                "prompt_hash":        prompt_hash(_po.system_prompt),
+            }
+    except Exception as _e:
+        print(f"[WARN] Could not stash polisher prompts in run_info: {_e!r}")
+
     # 2026-05-11 (#1 backlog) — enrich the summary with row counts +
     # polish-touched count so the v2 frontend's run-summary card and
     # quality-warning system have everything they need without doing a
     # second pass over the docx.
-    _ctx = _get_ctx()
     _src_rows = _ctx.docx.from_text_table or []
     _tgt_rows = _ctx.docx.to_text_by_phrase_separator_table or []
     _src_n    = sum(1 for v in _src_rows if v and v.strip())
     _tgt_n    = sum(1 for v in _tgt_rows if v and v.strip())
 
-    # Polish-touched lines: how many polish output lines differed from the
-    # raw translator output. Used by the "polish over-rewrote" warning.
+    # Polish-touched lines: prefer the polisher's own lines_modified count
+    # (an honest pre-reconcile figure). The legacy fallback to comparing
+    # translation.output_text vs polish.output_text remains for verbose
+    # logs that still carry the redundant input_fa_text field.
     _polish_touched_total = 0
     _polish_input_total   = 0
     for b in blocks:
         polish = b.get("polish") or {}
+        if "lines_processed" in polish:
+            _polish_input_total   += polish.get("lines_processed", 0) or 0
+            _polish_touched_total += polish.get("lines_modified",  0) or 0
+            continue
         before = (polish.get("input_fa_text") or "").split("\n")
         after  = (polish.get("output_text")  or "").split("\n")
         if not before or not after:

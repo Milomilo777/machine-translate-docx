@@ -86,7 +86,10 @@ def test_first_attempt_reconciles_successfully():
     assert len(client.chat.completions.calls) == 1
     call = client.chat.completions.calls[0]
     assert call["model"] == RECONCILER_MODEL
-    assert call["extra_body"] == {"prompt_cache_retention": "24h"}
+    assert call["extra_body"] == {
+        "prompt_cache_retention": "24h",
+        "prompt_cache_key": "mtd-reconciler-v7",
+    }
     # The candidate (collapsed translation) is in the user message.
     user_msg = call["messages"][1]["content"]
     assert "uno dos tres" in user_msg

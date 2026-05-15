@@ -238,7 +238,10 @@ def reconcile_line_count(
                     messages=_build_messages(
                         source_lines, last_attempt, src_lang_name, dest_lang_name,
                     ),
-                    extra_body={"prompt_cache_retention": PROMPT_CACHE_RETENTION},
+                    extra_body={
+                        "prompt_cache_retention": PROMPT_CACHE_RETENTION,
+                        "prompt_cache_key": "mtd-reconciler-v7",
+                    },
                 ),
                 label=f"reconciler.attempt{attempt}",
             )

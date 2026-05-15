@@ -236,7 +236,10 @@ class OpenAISubtitleSplitter:
             )
         print(f"Estimated number of input tokens: {input_tokens}")
 
-        _cache_extra = {"prompt_cache_retention": "24h"}
+        _cache_extra = {
+            "prompt_cache_retention": "24h",
+            "prompt_cache_key": "mtd-splitter-v7",
+        }
         start_time = time.time()
         _messages = [
             {"role": "system", "content": self._SYSTEM_PROMPT},
