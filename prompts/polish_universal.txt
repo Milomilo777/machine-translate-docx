@@ -140,31 +140,108 @@ If a SPECIFIC transform within BASE violates G1 (meaning shift ≥5%) → revert
 TERMINOLOGY_CONSISTENCY: across N lines, the first accepted target rendering of a repeated source term becomes the candidate standard. Enforce thereafter unless later context proves a better choice.
 </PHASE_0_BASE>
 
+<MONOLINGUAL_LENS>
+Two diagnostic probes, run silently on EVERY line AFTER PHASE_0_BASE and BEFORE SCAN. Target-language agnostic; the probes train the model to ask the right question and then trust its corpus judgement for THIS specific target language.
+
+THE LENS — REFLECTIVE LAYER 1: imagine the reader is a literate monolingual in the target language, who has never seen the source and never seen any source-language at all. They read this one target line alone. The probes ask what THAT reader's ear and eye would catch.
+
+M1. COLLOCATION_PROBE — the target language's collocational web.
+    For every salient pairing inside the line, ask:
+      • (noun + adjective): does the target's written corpus actually pair them?
+      • (subject + verb): does this subject normally carry this verb in the target?
+      • (modifier + head): is the modifier from the head's semantic domain in the target?
+    Cross-linguistic calque tell-tales (recall-only, not a closed list — the
+    specific surface form varies by target; the SHAPE of the error is universal):
+      — an inanimate or temporal noun cast as an emotive/perceptual subject
+        in a language where that personification is not native
+      — a body organ paired with a mood/emotion adjective in a language where
+        body parts do not normally carry such adjectives
+      — a tool/utility adjective grafted onto a non-tool head where the target
+        does not extend that adjective to abstract or organic heads
+      — a source-shaped chain of nominalisations the target reader would
+        unpack into a verbal clause
+      — a wonder/wonder-register lexeme dropped into a clinical or factual
+        context where the target prefers neutral register
+    REFLECTIVE LAYER 2 — silent self-question before flagging: "Is this
+    pairing common in the target language's news, scholarly, or broadcast
+    writing on this kind of topic? If I had to find three target-language
+    examples of this pairing, would they come easily?"
+    Probe SUCCEEDS (line stays CLEAN) when every pairing is one the target
+    reader has met in target-language prose, journalism, or scholarly writing
+    on this kind of topic. Otherwise: 🟠 MT_RESIDUE.
+
+M2. IDIOMATIC_AVAILABILITY_PROBE — the target language's stock of fixed expressions.
+    Ask: does the line's core proposition have a target-language idiom,
+    fixed expression, or stock phrase that conveys it more naturally — at the
+    same register, with the same fidelity, no meaning shift?
+    Examples are recall-only, language-agnostic in SHAPE:
+      • A source-language idiom often has a target-language equivalent with
+        a different image but the same communicative meaning (the equivalent
+        of "break a leg" exists across many languages).
+      • A source-language oral-tradition phrase ("from generation to
+        generation") often has a target-language fixed expression for the
+        same proposition. The fixed expression usually fits informal/oral
+        register, NOT formal/legal/historical register.
+      • A source-language idiom-of-personification ("the era saw advances")
+        usually has a target-language equivalent that names the period as a
+        temporal frame, not as an experiencer.
+      • A source-language compound metaphor ("carb crash") often has a
+        domain-conventional target equivalent in nutrition/medical writing.
+    REFLECTIVE LAYER 2 — silent self-question before swap: "If the target
+    equivalent exists, does it preserve register? An informal idiom in a
+    formal-register line is the wrong swap. A formal idiom in a casual line
+    is the wrong swap." Register match is mandatory.
+    Probe SUCCEEDS (no swap) when no fixed target expression matches the
+    line's proposition cleanly, OR the existing wording IS the idiomatic
+    form, OR the available idiom would break register. Otherwise: 🟠
+    MT_RESIDUE with a candidate substitution in mind for EDIT step ③/④/⑤.
+
+GATING — REFLECTIVE LAYER 3:
+  These probes RAISE detection sensitivity; they do NOT bypass G-gates.
+  After a probe fires, the candidate edit STILL passes through:
+    G1 MEANING (≥5% shift → ABANDON), G2 DOUBT, G6 MEANING_PRESERVATION,
+    G7 BOUNDARY, G8 HANDOFF_TRUST.
+  Both probes are advisory, not lexical bans — no specific word or pattern
+  is forbidden by these probes alone. They train you to ASK the question,
+  then trust your target-language-corpus judgement to answer it line by line.
+  Triggering both probes on the SAME pairing is the strongest signal that
+  EDIT must produce a non-trivial alternative; triggering neither is the
+  strongest signal that ⬜ CLEAN is the honest call.
+
+  Reflective self-check before flagging: "If I imagine three native
+  speakers of the target language reading this line independently, would
+  any of them feel the friction I just felt? If the answer is no, my
+  probe was a false positive — accept BASE."
+</MONOLINGUAL_LENS>
+
 <CONSERVATISM_GATE>
 Run BEFORE every STYLISTIC edit. Trigger → ABANDON, keep BASE for this line.
 MANDATORY_NORMALIZATION already in PHASE_0_BASE.
 
 G1 [CRITICAL] MEANING — semantic shift ≥5% → ABANDON.
-G2 [STRONG] DOUBT — "native clearly prefers edited" → proceed. "Both acceptable" → ABANDON.
+G2 [STRONG] DOUBT — proceed if edited is even mildly preferred by a native target-language ear OR removes a calque OR tightens to ijaz. ABANDON only if BOTH variants read equally native AND original carries no MT residue.
 G3 [STRONG] LENGTH — broadcast CPL on PAYLOAD only (excluding ⟨⟨N⟩⟩ tag). ABANDON if edited payload >120% of BASE payload char count AND exceeds local CPL convention.
 G4 [STRONG] FRAGMENT_ORDER — fragment + clause-level word order → ABANDON.
 G5 [STRONG] SHORT_LINE — 1–3 content words → skip STYLISTIC rewrites only.
 G6 [STRONG] MEANING_PRESERVATION — Lexical substitution PERMITTED if it preserves meaning + speaker + polarity + quantity + tense within same line.
 G7 [CRITICAL] BOUNDARY — content word moved to different line → ABANDON.
-G8 [STRONG] HANDOFF_TRUST — BASE reads native → BLOCKS RESTRUCTURING/REPHRASING. Does NOT block whitelisted same-meaning ijaz substitutions when G2/G3 permit.
+G8 [STRONG] HANDOFF_TRUST — BASE reads native → BLOCKS clause/sentence RESTRUCTURING. Does NOT block: same-meaning ijaz substitutions, calque cleanups, near-synonym upgrades, verb-precision swaps, formality alignment within the line. These are MANDATED whenever they apply, not optional.
 
-Calibration: 15–25% diagnostic. Not a floor, not a cap.
+Calibration: 20–35% diagnostic. Not a floor, not a cap. Below 15% on a non-trivial document = re-scan, you are over-applying G2.
 </CONSERVATISM_GATE>
 
 <SCAN>
-Run on BASE lines. Flag each:
+Run on BASE lines. Apply MONOLINGUAL_LENS (M1, M2) first; their outcomes
+feed the flag choice below. Flag each line:
 🔴 TANGLED    — viewer must re-read.
-🟠 MT_RESIDUE — translated-sounding.
+🟠 MT_RESIDUE — translated-sounding (includes M1/M2 probe hits — collocation
+                feels grafted from source, OR a target idiom fits the
+                proposition better than the present phrasing).
 🟡 BLOATED    — clear but heavy.
 🟢 IJAZ_READY — clean; substitution would tighten (G8 still permits substitution).
 🔵 LEAKAGE    — Latin/source outside ALLOWED_LATIN.
 🔘 FRAGMENT   — no finite verb.
-⬜ CLEAN      — copy BASE.
+⬜ CLEAN      — copy BASE. ONLY when both M1 and M2 pass.
 
 🟠 vs 🔴: doubt → 🟠. NO-FLY: line of pure LS content → ⬜.
 </SCAN>
@@ -173,6 +250,15 @@ Run on BASE lines. Flag each:
 Run on flagged BASE lines. Priority (stylistic — hygiene + numbers already in PHASE_0_BASE):
 ① Word-order repair — within the current line only. Never move a content word to a different line.
 ② Break unnatural noun chains → verbal/prepositional structures (same line).
+   Trigger: a chain of 3+ ezafe-joined or genitive-joined nouns that the
+   target reader would naturally unpack into a verbal clause. Apply only when
+   the active/verbal form is grammatically valid in the target and fits the
+   line. Examples are language-agnostic in SHAPE:
+     ✗ "the provision of services took place"  → ✓ "services were provided"
+     ✗ "review of the matter by the commission was conducted"  → ✓ "the commission reviewed the matter"
+     ✗ "initiation of the production of the vaccine"  → ✓ "vaccine production began"
+   Universal principle: a nominal chain that hides an action verb, where the
+   verbal form is more natural in the target.
 ③ Replace calques with native target-language equivalents — only when certain. Common calque shapes to scan for:
    a) Abstract-adjective literalism.
    b) Vague-noun literalism.
@@ -183,7 +269,29 @@ Run on flagged BASE lines. Priority (stylistic — hygiene + numbers already in 
 ④ NATIVE_REGISTER repairs — ONLY when visible source-shape remains. G8 entry gate.
    a) NATIVE_SYNTAX | b) DOWNGRADE_LITERARY (when source is plain) | c) DOWNGRADE_INFLATION (±10%; don't flatten expressive) | d) NATIVE_CADENCE.
    Respect CONSERVATISM_GATE. Uncertain → ABANDON.
-⑤ Tighten bloated phrasing — substitution (G6 permits). Replace heavy verb phrases with simple verbs. Bureaucratic connectors → short equivalents. Drop zero-weight fillers ONLY if meaning fully preserved.
+⑤ Tighten bloated phrasing — substitution (G6 permits), apply on EVERY line that admits one:
+   Replace heavy verb phrases with simple verbs (target-language-specific
+   forms; do not borrow Persian-specific lists).
+   Bureaucratic connectors → short equivalents.
+   Light-verb constructions → single verbs where the target prefers.
+   Drop zero-weight fillers ONLY if meaning fully preserved.
+   Pronoun drop only if antecedent unmistakable on SAME line AND the target
+   language permits pro-drop in this context.
+   ⑤b NEAR-SYNONYM upgrade — when one synonym is more idiomatic in the
+       line's context than the synonym the translator chose. Apply target-
+       language judgement, not a closed list. Domain register decides:
+       a medical context wants the medical synonym; a literary context wants
+       the literary synonym. Reflective check: "Among 2-3 synonyms I could
+       pick, which one does target-language writing on THIS topic actually
+       prefer?"
+   ⑤c CALQUE cleanup — visible source-shape remnant in BASE that the target
+       reader would rewrite. Reflective check: "Is there a target-shaped
+       bridge that does this job without the source's nominalisation?"
+       Universal patterns (language-agnostic SHAPE; specifics vary):
+         - Source nominalisation that target prefers as a verb
+         - Source "the fact that X" bridges where target idiom drops the bridge
+         - Source "shown by / demonstrated by" frames where target reframes
+           affirmatively
 
 FORBIDDEN in EDIT:
   Drop LS-7 source-supported emphasis.
@@ -209,6 +317,8 @@ Q12 (spot) MT-pattern sweep?
 Q13 (final) ROUND_TRIP — mentally back-check target proposition: polarity, quantifier, modality, speaker, scope, pragmatic force should not come back materially different. Mismatch → revert to BASE.
 Q14 (cross-line, before emit) NAME_CONSISTENCY — every proper noun (person, place, organisation, brand, channel) appears in EXACTLY ONE target-language form across all N output lines. The FIRST line's names and the LAST line's names use identical orthography. Any drift → align all occurrences to the first-occurrence canonical form before emit.
 Q15 (cross-line, before emit) TERMINOLOGY_LOCK — every recurring domain term uses ONE target-language rendering throughout. No synonym drift mid-document.
+Q16 (per-line, after EDIT) MONOLINGUAL_REREAD — re-read the edited line as a target-language monolingual who never saw the source. Does every collocation (noun+adj, subject+verb, modifier+head) sit inside the target's actual usage web? If a pairing still feels grafted from the source, the edit was insufficient — revisit M1.
+Q17 (per-line, after EDIT) IDIOMATIC_OPPORTUNITY — was an available target idiom or fixed expression rejected only because it was harder to retrieve? If the edited line still glosses where a clean idiom fits — at same register, same fidelity, zero meaning shift — apply the swap. If no idiom truly fits, leave the gloss. The probe must not invent idioms or stretch them to fit.
 </QA>
 
 <OUT>

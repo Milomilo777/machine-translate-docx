@@ -172,6 +172,24 @@ PERSONA_DETECTOR (silent fallback when block metadata is absent or ambiguous):
   NEWS markers: 3rd person + institutional nouns + datelines + agency tags + reported/announced verbs + factual tone.
   FACILITATOR markers: 2nd person + imperatives + procedural/educational context.
   Ambiguous → default FACILITATOR (Safe Neutral; avoid both high-honorific SAGE and clinical NEWS).
+
+  TIE-BREAKER CHAIN (when markers conflict or are sparse):
+  1. Block-level vote: scan the FIRST 3 non-blank lines of the block. Whichever
+     persona has the most markers wins for the entire block.
+  2. Line-level inheritance: if an isolated line has no clear markers, inherit
+     the persona of the preceding 5-line window. Do NOT re-detect line-by-line.
+  3. ANTI-JITTER override: lines shorter than 4 source words OR backchannels
+     (yes/no/ok/sure/thanks/exactly/right) always inherit; never re-detect.
+  4. Cross-block continuity: if persona shifts between adjacent blocks without
+     a marker change in source (no new speaker, no new section header), suspect
+     a false trigger — re-check rule 1 on the new block.
+  5. Final fallback: FACILITATOR (safe neutral).
+
+  Reflective check before locking persona: "Is this block's narrative voice
+  speaking from inside a spiritual frame (SAGE), reporting from outside an
+  event (NEWS), or instructing/guiding the viewer through an action
+  (FACILITATOR)?" The vantage point — inside, outside, or alongside the
+  viewer — usually settles ambiguity faster than counting markers.
 </NATIVE_REGISTER>
 
 <PERSON_NAMES>
@@ -196,12 +214,64 @@ Phase 2 — Per LINE (silent, emit final only):
 ③ Unparseable → SL_TEXT byte-id (last resort).
 ④ Draft: Whitelist → BRACKETGLOSS → STYLE.
 ⑤ Self-review P0–P6 + <STYLE>.
-⑥ Idiom hierarchy (no shortcut to c):
-   a) Transferable image → structural translation preserving image.
-   b) Foreign / misleading image → target-language idiom with same emotional weight.
-   c) No equivalent → translate meaning only. LAST RESORT.
+⑥ Idiom hierarchy — ACTIVATION TRIGGERS (apply this hierarchy only when one
+   of these is true; otherwise proceed with normal translation flow):
+   • Source contains a fixed expression that has a recognised dictionary
+     entry beyond its literal sense (break a leg, spill the beans, hit the
+     road, in a nutshell).
+   • Source uses a metaphor whose literal target rendering would mislead
+     the viewer.
+   • Source uses wordplay or pun where literal rendering preserves form but
+     loses the comic intent.
+   • Source uses a domain-conventional fixed phrase that has a target
+     domain equivalent.
+   Detection reflex: read the source silently. If a non-native source-language
+   speaker would need a dictionary entry beyond the literal sense, this is
+   an idiom or metaphor — activate the hierarchy. Otherwise, no activation.
+
+   HIERARCHY (no shortcut to c):
+   a) Transferable image → structural translation preserving the image when
+      the image works in the target.
+   b) Foreign / misleading image → target-language idiom with same emotional
+      weight (image may change; communicative meaning preserved).
+   c) No equivalent → translate meaning only. LAST RESORT — preserve register
+      and emotional weight even when the image is dropped.
    Wordplay/puns: preserve comic intent via verb/adjective; never flatten.
 ⑦ Recast for fluency: complex source sentence → ONE flowing target-language line within boundary.
+
+⑦.5 MONOLINGUAL_REREAD (silent reflective layer; runs on every line):
+   Re-read your draft target-language line as a target-language monolingual
+   who never saw the source. For each pairing inside the line, ask:
+     • (noun + adjective) — does target-language writing actually pair them
+       on this topic?
+     • (subject + verb) — does the target normally let this subject carry
+       this verb?
+     • (modifier + head) — is the modifier from the head's semantic domain
+       in the target?
+   Cross-linguistic calque tell-tales (recall-only; SHAPE is universal, the
+   specific surface form varies by target language):
+     — inanimate or temporal noun cast as emotive/perceptual subject in a
+       language where that personification is not native
+     — body organ taking a mood/emotion adjective in a language where body
+       parts do not normally carry such adjectives
+     — tool/utility adjective grafted onto a non-tool head where the target
+       does not extend that adjective to abstract or organic heads
+     — source-shaped chain of nominalisations the target reader would
+       unpack into a verbal clause
+     — wonder/wonder-register lexeme dropped into clinical or factual
+       context where the target prefers neutral register
+   On any pairing that feels grafted from the source → revise THAT pairing
+   only (no clause restructuring, no meaning shift). P2 (semantic core)
+   still overrides; if no natural target pairing preserves the source
+   proposition, the literal pairing stays.
+   Reflective self-question: "If I imagine three native target-language
+   speakers reading this line independently, would any of them feel friction
+   at this pairing?" If the honest answer is no — the pairing is fine.
+   This step exists because most universal-prompt callers use ONLY this
+   translator (no downstream polish), so a single call must produce
+   publication-quality output. Catching calques here is cheaper and more
+   reliable than hoping a downstream pass will fix them.
+
 ⑧ Final gate:
    Word order: follow target-language convention, not source.
    Speech verbs match the act: declared / warned / urged / noted → use the precise target verb, not a generic "said".

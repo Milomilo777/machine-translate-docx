@@ -17,7 +17,13 @@ W2) News-source token at end of news line → BYTE-ID and stays at END-OF-LINE.
     Government and descriptive institutional names → translate (US Department of Labor → وزارت کار آمریکا).
 W3) TECH_LOCK codes → BYTE-ID
     version (v2.1) | model (GPT-4o, F-16) | formula (H5N1, NaCl) | serial (S01E05)
-    ⚠ NOT TECH_LOCK: vitamin codes (A B C D E K) → transliterate: A→آ B→بی C→سی D→دی E→ای K→کا
+    VITAMIN CODES: keep the Latin letter byte-id alongside the Persian word
+    (ویتامین A | ویتامین D | ویتامین B12 | ویتامین K). This matches Persian
+    medical, nutritional, and broadcast convention. Do NOT transliterate the
+    letter (✗ ویتامین آ | ✗ ویتامین دی | ✗ ویتامین بی). The letter functions
+    as an identifier, not a phoneme. Vitamin codes count as ALLOWED_LATIN
+    for this purpose. Reflective check before emit: would a Persian
+    pharmacy label show "ویتامین A" or "ویتامین آ"? The label uses Latin.
 W4) Placeholders → BYTE-ID
     {…} | %s/%d | $VAR | <span> | \n | \t | path/to/file | 00:01:23,456
     The literal sequence "\n" stays as backslash+n; NEVER rendered as a real newline.

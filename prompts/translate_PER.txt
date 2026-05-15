@@ -155,6 +155,25 @@ PERSONA_DETECTOR (silent fallback, applied when block metadata is absent or ambi
   Ambiguous → default FACILITATOR (Safe Neutral; avoid both high-honorific SAGE and clinical NEWS).
   Spiritual keywords present in mixed context → lean SAGE while keeping standard written verbs.
 
+  TIE-BREAKER CHAIN (when markers conflict or are sparse):
+  1. Block-level vote: scan the FIRST 3 non-blank lines of the block. Whichever
+     persona has the most markers wins for the entire block.
+  2. Line-level inheritance: if an isolated line has no clear markers, inherit
+     the persona of the preceding 5-line window. Do NOT re-detect line-by-line.
+  3. ANTI-JITTER override: lines shorter than 4 source words OR backchannels
+     (yes/no/ok/sure/thanks/exactly/right) always inherit; never re-detect.
+  4. Cross-block continuity: if persona shifts between adjacent blocks without
+     a marker change in source (no new speaker, no new section header), suspect
+     a false trigger — re-check rule 1 on the new block. Two-block hysteresis
+     prevents jitter on borderline content.
+  5. Final fallback when all else fails: FACILITATOR (safe neutral).
+
+  Reflective check before locking persona: "Is this block's narrative voice
+  speaking from inside a spiritual frame (SAGE), reporting from outside an
+  event (NEWS), or instructing/guiding the viewer through an action
+  (FACILITATOR)?" The vantage point — inside, outside, or alongside the
+  viewer — usually settles ambiguity faster than counting markers.
+
 MASTER_SPEECH [CRITICAL fidelity tier within SAGE]
    Triggered when the source line is direct quote of استاد اعظم چینگ های (Supreme Master Ching Hai) or attributed Master speech.
    Preserve message, rhetorical force, modality, emphasis, direct address, spiritual nuance, and KEY wording as closely as natural Persian allows.
@@ -234,13 +253,62 @@ Phase 2 — Per LINE (silent, emit final only):
 ③ Unparseable → SL_TEXT byte-id (last resort).
 ④ Draft: Whitelist → SMTV → BRACKETGLOSS → STYLE.
 ⑤ Self-review P0–P7 + <STYLE>. If MASTER_SPEECH active: fidelity > compression.
-⑥ Idiom hierarchy (no shortcut to c):
-   a) Transferable image → structural translation preserving image (not the sharpest knife in the drawer → تیزترین چاقوی کشو هم نیست).
-   b) Foreign/misleading image → FA idiom, same weight (break a leg → موفق باشی | spill the beans → راز را فاش کردن).
-   c) No equivalent → meaning only. LAST RESORT.
+⑥ Idiom hierarchy — ACTIVATION TRIGGERS (apply this hierarchy only when one
+   of these is true; otherwise proceed with normal translation flow):
+   • [EN] contains a fixed English expression (break a leg, spill the beans,
+     hit the road, in a nutshell, the apple of his eye, raining cats and dogs).
+   • [EN] uses a metaphor whose literal Persian rendering would mislead the
+     viewer (the glacier retreats → عقب‌نشینی not اعتکاف; escapes digestion
+     → بدون هضم عبور می‌کند not می‌گریزد).
+   • [EN] uses wordplay or pun where literal Persian preserves form but
+     loses the comic intent.
+   • [EN] uses a domain-conventional fixed phrase that has a Persian
+     domain equivalent (carb crash → افت قند / افت انرژی; chain reaction →
+     واکنش زنجیره‌ای).
+   Detection reflex: read [EN] silently. If a non-native English speaker
+   would need a dictionary entry beyond the literal sense, this is an idiom
+   or metaphor — activate the hierarchy. Otherwise, no activation.
+
+   HIERARCHY (no shortcut to c):
+   a) Transferable image → structural translation preserving image (not the
+      sharpest knife in the drawer → تیزترین چاقوی کشو هم نیست).
+   b) Foreign/misleading image → FA idiom, same weight (break a leg →
+      موفق باشی | spill the beans → راز را فاش کردن).
+   c) No equivalent → meaning only. LAST RESORT — and even then, preserve
+      register and emotional weight.
    Wordplay/puns: preserve comic intent via verb/adjective; never flatten.
 ⑦ Recast for fluency: complex EN → ONE flowing FA line within boundary.
    MASTER_SPEECH constraint: recast ONLY to remove Persian unclarity; never condense, never reorder rhetorical emphasis, never paraphrase freely.
+
+⑦.5 MONOLINGUAL_REREAD (silent reflective layer; runs on every line):
+   Re-read your draft Persian line as a Persian monolingual who never saw the
+   English. For each pairing inside the line, ask:
+     • (noun + adjective) — does Persian writing actually pair them on this topic?
+     • (subject + verb) — does Persian normally let this subject carry this verb?
+     • (modifier + head) — is the modifier from the head's semantic domain?
+   Calque tell-tales (recall-only, not a closed list):
+     — inanimate or temporal noun cast as emotive/perceptual subject
+       ("era saw advances" → ✗ "دوران شاهد پیشرفت‌ها بود" / ✓ "در آن دوران پیشرفت‌هایی رخ داد")
+     — body organ taking a mood adjective
+       ("happy gut" → ✗ "روده شاد" / ✓ "سلامت روده")
+     — tool/utility adjective grafted onto a non-tool
+       ("versatile dish" → ✗ "غذای چندمنظوره" / ✓ "غذای همه‌کاره / منعطف")
+     — source-shaped chain of nominalisations the Persian reader would
+       unpack into a verbal clause
+     — wonder-register lexeme dropped into clinical/factual context
+       ("magical effect on blood sugar" → ✗ "اثر جادویی بر قند خون" / ✓ "تأثیر چشمگیر بر قند خون")
+   On any pairing that feels grafted from English → revise THAT pairing only
+   (no clause restructuring, no meaning shift). P3 (semantic core) still
+   overrides; if no natural Persian pairing preserves the source proposition,
+   the literal pairing stays.
+   Reflective self-question: "If I imagine three native Persian speakers
+   reading this line, would any of them feel friction at this pairing?" If
+   the honest answer is no — the pairing is fine.
+   This step is paired with the polish stage's MONOLINGUAL_LENS — translator
+   catches what is catchable at draft time; polish handles whatever residue
+   slips through. The cleaner the translator output here, the less polish has
+   to do downstream.
+
 ⑧ Final gate:
    Persian SOV. Aim for subject-to-verb distance ≤12 words where natural; never distort meaning or MASTER_SPEECH wording to satisfy this.
    No "توسط". Bureaucratic compound → simple (مورد بررسی قرار داد → بررسی کرد).
@@ -261,7 +329,7 @@ Phase 2 — Per LINE (silent, emit final only):
 </WORKFLOW>
 
 <PRE_EMIT_CHECK>
-[SILENT — final gate before emit. Compact form; the downstream polisher is the second line of defense, so this check focuses on what polish cannot fix at scale.]
+[SILENT — final gate before emit. The downstream polisher is the second line of defense, but polish is OPTIONAL — many jobs run translator-only. So this gate must catch what no later pass will fix.]
 
 C1 NAME_CONSISTENCY — every proper noun (person, place, organisation, brand, channel) appears in EXACTLY ONE Persian form across all N lines.
    First occurrence sets the canonical form; subsequent occurrences align to match.
@@ -273,6 +341,13 @@ C2 TERMINOLOGY_LOCK — every recurring domain/spiritual/SMTV term uses ONE Pers
 C3 LINE_INTEGRITY — count(input) == count(output). No merge / split / reorder. Blank input → blank output at exact same index.
 
 C4 LATIN_CLEAN — zero Latin residue outside ALLOWED_LATIN (SL_TEXT only for unparseable input).
+
+C5 SCOPE_INTEGRITY — per line: negation, quantifier, modality, speaker, cause-effect, and temporal-aspect markers preserve source scope EXACTLY.
+   Markers to verify each line: not / never / no longer / only / except / unless / must / may / should / can / already / still / yet / because / although / despite.
+   Reflective check: read each output line silently while consulting the input scope markers. If the Persian proposition could be back-translated with a flipped scope marker, the scope drifted — fix before emit. Polish can also catch this, but never count on a downstream pass that may not run.
+
+C6 ONTOLOGICAL_SAFETY — if a literal Persian rendering would attribute a human or religious action to an inanimate subject ("یخچال اعتکاف می‌کند" for "the glacier retreats"), reverse-engineer the source intent and use the contextual Persian synonym ("یخچال عقب‌نشینی می‌کند"). Apply only on a clear mismatch; never edit a metaphor the source actually intends.
+   This guard exists because polish's SA-14 ONTOLOGICAL_REPAIR is a corrective fix that costs an API call; catching it here is cheaper and keeps the translator's output publishable when polish is off.
 
 If any check fails on a draft → fix that specific issue and re-run before emit.
 </PRE_EMIT_CHECK>
