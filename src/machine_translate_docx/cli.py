@@ -518,19 +518,16 @@ def _sync_globals_from_ctx(ctx: RuntimeContext) -> None:
     if getattr(ctx.browser, "driver", None) is not None:
         setattr(_mod, "driver", ctx.browser.driver)
     # ── ctx.openai ──────────────────────────────────────────────────
-    # OpenAI handles — read by bare name in legacy translate / polish helpers.
-    if getattr(ctx.openai, "translator", None) is not None:
-        setattr(_mod, "oai_translator", ctx.openai.translator)
-    if getattr(ctx.openai, "polisher", None) is not None:
-        setattr(_mod, "oai_polisher", ctx.openai.polisher)
-    # Translation log is populated on ``ctx.openai.translation_log`` by
-    # the runner / chatgpt_api single-call paths, but ``write_translation_log``
-    # reads from the module-level ``translation_log`` global. Without this
-    # mirror the JSON sidecar is always empty (run_info has only output_file,
-    # blocks=[], summary all zeros) — observed during the 2026-05-10 real-engine
-    # test pass while trying to verify 24-h prompt-cache hits.
-    if isinstance(getattr(ctx.openai, "translation_log", None), dict):
-        setattr(_mod, "translation_log", ctx.openai.translation_log)
+    # The oai_translator / oai_polisher / translation_log module-level
+    # globals are no longer read by any function in cli.py: their
+    # historical reader ``write_translation_log`` was extracted to
+    # ``translation_log_writer.py`` in 2026-05-16 phase 3 of the
+    # cli.py shrink and now reads ``ctx.openai.translation_log``
+    # directly via the shim. The mirror setattr calls that used to live
+    # here (verified dead by grep on 2026-05-16 Sprint D-C audit) have
+    # been removed. The module-level inits at cli.py:1077-1079 + the
+    # initial ctx-push at cli.py:294-302 are kept so the dataclass
+    # defaults are properly hydrated on first ``_get_ctx()`` call.
 
 
 # Track the child processes
@@ -917,16 +914,16 @@ if dest_lang == 'fa':
 
 
 valid_online_json = validate_json_string(json_online_configuration)
-if not valid_online_json == True:
+if not valid_online_json:
     print(f"json_online_configuration={json_online_configuration}")
     print(f"Warning: Json file at {json_configuration_url} is not valid. Ignoring this configuration file.")
 else:
     #print(f"Using JSON configuration file at {json_configuration_url} : OK")
     pass
-    
+
 valid_local_json = validate_json_string(local_json_contents)
 if os.path.isfile(configuration_file_full_path):
-    if not valid_local_json == True:
+    if not valid_local_json:
         print(f"Warning: Json file at {configuration_file_full_path} is not valid. Ignoring this configuration file.")
     else:
         print(f"Using JSON configuration file at {configuration_file_full_path}")
@@ -1836,6 +1833,18 @@ def translate_from_phrasesblock(ctx: RuntimeContext):
 def translate_docx(ctx: RuntimeContext):
     translation_succeded = True
 
+    # Splitonly mode = "only run document_split_phrases, do NOT translate".
+    # Without this guard the chatgpt branch of use_phrasesblock() fires
+    # (it always returns True for chatgpt regardless of method), and the
+    # runner is invoked with engine_method='' (cleared by the splitonly
+    # gate at line ~983) — which fails immediately with
+    # `chatgpt method '' not supported (supported: api)`.
+    # Added 2026-05-16 to unblock launcher._apply_basic_split (raw-cache
+    # refactor): the spec'd `--splitonly --engine chatgpt --enginemethod
+    # api` re-spawn relies on this short-circuit.
+    if ctx.flags.splitonly:
+        return translation_succeded
+
     # ------------------------------------------------------------------
     # Engine-method specific translators
     # ------------------------------------------------------------------
@@ -2634,12 +2643,19 @@ def main() -> int:
             time.sleep(version_checker_sleep_seconds_on_update)
         print("Program ended")
     
-    # Suppress any error message from undetected_chromedriver cleanup
-    devnull = open(os.devnull, 'w')
-    sys.stderr = devnull
-    sys.__stderr__ = devnull
-    
-    
+    # Suppress any error message from undetected_chromedriver's
+    # __del__ — it writes to stderr AFTER main() returns (during
+    # process teardown), so a normal context manager wouldn't cover
+    # the window. The legacy approach opened ``os.devnull`` and
+    # leaked the file descriptor across process exit, plus
+    # reassigned ``sys.__stderr__`` (a frozen reference debuggers
+    # rely on) — both anti-patterns. Use an in-memory discard
+    # stream instead: no fd allocated, no immutable-reference
+    # mutation, GC reclaims it cleanly on process exit. Chrome
+    # itself is already silenced via ``--log-level=3`` (set in
+    # chrome_options at module setup) — this only catches the
+    # post-main destructor noise.
+    sys.stderr = io.StringIO()
     return 0
 
 if __name__ == '__main__':

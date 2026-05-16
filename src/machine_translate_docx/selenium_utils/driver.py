@@ -96,6 +96,17 @@ def create_webdriver(ctx: RuntimeContext) -> None:
             )
         return
 
+    # 2026-05-16 (raw-cache refactor companion): splitonly never runs an
+    # engine — the only work in splitonly mode is document_split_phrases
+    # on already-translated cells. No Chrome needed for any engine.
+    # Without this bypass the launcher's _apply_basic_split spawn pays
+    # for a Chrome launch (~30 s) it never uses. The chatgpt+api branch
+    # above already skips Chrome, but only when method='api'; the
+    # splitonly gate at cli.py ~983 clears method to '', so that branch
+    # doesn't fire for splitonly subprocesses spawned by the launcher.
+    if ctx.flags.splitonly:
+        return
+
     webdriver = ctx.browser.webdriver_module
 
     if not ctx.flags.splitonly:

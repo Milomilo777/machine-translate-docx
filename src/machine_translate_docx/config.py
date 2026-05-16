@@ -12,6 +12,7 @@ the optional online + local override files.
 """
 from __future__ import annotations
 
+import sys
 import traceback
 from typing import Any, Final
 
@@ -88,8 +89,14 @@ def validate_json_string(json_string: str | bytes) -> bool:
             return False
         return True
     except Exception:
-        var = traceback.format_exc()
-        print(var)
+        # 2026-05-16 (P2.7 from master audit): route traceback to stderr.
+        # ``local_launcher.py``'s stdout parser watches stdout for
+        # ``Saved file name:`` and ``PROGRESS:N`` markers; bare
+        # traceback text leaking into stdout could be mistaken for an
+        # incomplete line (some lines start with ``"  File ..."`` which
+        # technically matches "no marker yet" — harmless today, but a
+        # future regex tweak could trip on it).
+        print(traceback.format_exc(), file=sys.stderr)
         return False
 
 
