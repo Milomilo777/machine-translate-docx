@@ -6,6 +6,110 @@
 
 ---
 
+## 2026-05-16 — Cache refactor + Sprint D-C partial + P2/P3 hygiene + matrix smoke
+
+Continuation on `refactor/cli-py-sprint-d-final` (branch already
+ahead by 5 Sprint D-A/B commits merged to master at `44c9f76`).
+Seven new commits, NOT merged to master yet.
+
+**Numbers:**
+
+| File | Before this pass | After | Delta |
+|---|---:|---:|---:|
+| `local_launcher.py` | 2,645 | 2,827 | +182 |
+| `src/machine_translate_docx/cli.py` | 2,670 | 2,686 | +16 |
+| `src/machine_translate_docx/translation_log_writer.py` | 178 | 178 | (signature change) |
+| `src/machine_translate_docx/config.py` | (unchanged size, +1 line) | — | +1 |
+
+**Commits in order:**
+
+- `1ec1859` — **Phase 1: raw-cache refactor.** Implements the
+  cache architecture from the three commit messages on
+  `origin/claude/raw-cache-refactor` (used as written spec, not
+  cherry-picked). `_cache_key` drops `split_engine` from the
+  SHA-256; B1-guard generalised to all `_API_ENGINES` + all
+  langs; new `_apply_basic_split` method spawns CLI `--splitonly`
+  subprocess with `MTD_SKIP_STATS_BROWSER=1`; `_apply_splitter`
+  routes basic/openai/null → `_apply_basic_split`; reordered
+  `_process_job` so `cache_store` happens BEFORE `_apply_splitter`
+  (because `_apply_basic_split` overwrites `output_path` in
+  place). Cache replay for same-bytes, different-splitter now
+  takes ~10-30 s instead of ~5 min full re-translate. Two
+  drive-by CLI fixes (translate_docx splitonly guard +
+  create_webdriver splitonly bypass) needed to make the spec
+  command actually work end-to-end. Isolated integration test
+  passed; full HTTP cache-replay test left to user's pre-merge
+  smoke.
+
+- `cda1467` — **Phase 2 partial: Sprint D-C.** Cannot land in
+  full this session (176 bare-name occurrences across 41 names).
+  Removed the smallest verified-dead branch: the 3 setattr calls
+  that mirror `ctx.openai.{translator,polisher,translation_log}`
+  back to module globals — empirically dead by grep after the
+  Sprint D phase 3 extraction of `write_translation_log`. Full
+  bridge deletion documented as deferred in
+  `docs/session-state-2026-05-16-cache-d-c-p2.md` with a ranked
+  threading order (start with `dest_lang`, 55 occurrences).
+
+- `3b97fcc` — **P2.6: fd leak in cli.py stderr suppression.**
+  End-of-main() opened os.devnull, leaked the fd across process
+  exit, and reassigned `sys.__stderr__` (a frozen reference).
+  Replaced with `sys.stderr = io.StringIO()` — in-memory discard,
+  no fd, no immutable-ref mutation, destructor noise still
+  suppressed.
+
+- `ded9d7e` — **P2.7: route validate_json_string traceback to
+  stderr.** `print(traceback.format_exc())` was going to stdout
+  where the launcher's structured parser watches for
+  `Saved file name:` / `PROGRESS:N`. Re-routed via
+  `file=sys.stderr`.
+
+- `b073290` — **P2.3: mask Telegram bot token in exception text.**
+  Three Telegram URL sites embed the bot token in the URL.
+  `urllib.HTTPError.__str__` can include the URL on some Python
+  builds, leaking the token via tracebacks. Added
+  `_mask_telegram_token(text, token)` helper; wrapped each
+  urlopen with try/except that masks before re-raising. The
+  `except RuntimeError: raise` short-circuit preserves
+  intentional "telegram rejected" messages for the existing
+  test contract.
+
+- `588a2cf` — **P2.2: `write_translation_log` adds
+  `strip_prompts` flag.** Sidecar JSON bundles full
+  translator + polisher system prompts — risky if the launcher
+  ever serves them publicly. Added keyword-only
+  `strip_prompts: bool = False`. When True, omits
+  `system_prompt` and `user_prompt_sample` from each entry,
+  keeping only `prompt_hash`. Default False preserves legacy
+  behaviour. cli.py shim still calls 2-positional; future
+  config.toml wiring left to a follow-up.
+
+- `e8b7062` — **P3.3: simplify `not foo == True` to `not foo`**
+  in cli.py:917 and :926. Same logic, less noise.
+
+**Phase 4 — Real multi-engine matrix smoke (9 cases, all PASS):**
+
+| # | engine × lang × split | Result |
+|---|---|---|
+| 1 | chatgpt-api × fa × basic | PASS — col 2 has 37/42 Persian rows |
+| 2 | chatgpt-polish × fa × basic | PASS |
+| 3 | chatgpt-polish × fa × persian_double_lines | PASS (CLI level — same as basic; aligner is launcher-level) |
+| 4 | chatgpt-api × vi × basic | PASS — col 2 has 37/42 Vietnamese rows |
+| 5 | chatgpt-polish × vi × basic | PASS |
+| 6 | google × fa × basic | PASS — Persian via translate.google.com |
+| 7 | google × vi × basic | PASS — Vietnamese via translate.google.com |
+| 8 | deepl × fa × basic | PASS — DeepL web (no creds needed for public path) |
+| 9 | deepl × vi × basic | PASS |
+
+C13 source-column lock intact on every case. Engine suffix
+(`_PER_chatGPT` / `_PER_Polish` / `_PER_Google` / `_PER_Deepl`
+and `_VIE` variants) correct on every case.
+
+Full handoff lives in
+`docs/session-state-2026-05-16-cache-d-c-p2.md`.
+
+---
+
 ## 2026-05-16 — Sprint D final (cli.py shrink continuation)
 
 Continuation of the cli.py shrink on
