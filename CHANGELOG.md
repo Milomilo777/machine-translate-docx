@@ -6,6 +6,39 @@
 
 ---
 
+## 2026-05-16a — cli.py 3-phase shrink — Phase 1 (dead-code removal)
+
+First phase of a planned 3-phase shrink of `src/machine_translate_docx/cli.py`
+(the 4,395-line god file that survived the src/ layout migration). Phase 1
+is the lowest-risk pass: delete functions that are demonstrably never called
+and a function that is fully duplicated by a module helper.
+
+### Deletions
+
+- `lineno()` — 3-line helper, never called anywhere in the repo.
+- `reverse_string()` — 2-line helper, never called anywhere.
+- `remove_span_tag()` — 24-line DeepL HTML-clean helper. Never called from
+  cli.py and fully duplicated by `engines/deepl.py::_remove_span_tag` (which
+  is the version DeepL actually uses).
+- `create_translation_split_prompts()` + `print_prompt_block()` +
+  `MAX_CHARS = 750` — orphan demo function (~80 lines) that printed AI
+  prompts to stdout. No call site existed.
+- `print_html_program_result()` — 18-line HTML debug dumper, never called.
+
+### Result
+
+- `cli.py`: 4,395 → 4,257 lines (-138, -3.1%).
+- Test suite: 154 passed / 8 skipped (live) / 8 deselected. Zero failures.
+- No production behaviour change — every removed function had zero call
+  sites (verified by repo-wide grep).
+
+Branch: `refactor/cli-py-3-phase-shrink`. Phase 2 (extract OS info /
+network / statistics / TMX / Google file-mode workers into dedicated
+modules) and phase 3 (collapse `_sync_globals_from_ctx` + cell shims)
+follow.
+
+---
+
 ## 2026-05-15c — Validator layer + prompt-regression suite (env-gated)
 
 Follow-up to the v7 promote. Two new code modules deliver the

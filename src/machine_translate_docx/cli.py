@@ -1065,10 +1065,6 @@ else:
 # sees the right module.
 _get_ctx().browser.webdriver_module = webdriver
 
-def lineno():
-    """Returns the current line number in our program."""
-    return inspect.currentframe().f_back.f_lineno
-    
 def linux_distribution():
     try:
         return platform.linux_distribution()
@@ -1977,33 +1973,6 @@ def selenium_chrome_google_translate_xlsx_file(ctx: RuntimeContext, xlsx_file_pa
 
 
 
-def remove_span_tag(text):
-    search_opening_html_span_tag = r'(?i)<span class="[a-zA-Z]+">'
-    search_replace_opening_span = re.compile(search_opening_html_span_tag)
-                
-    subn_result = search_replace_opening_span.subn("", text)
-    subn_count = subn_result[1]
-    if subn_count > 0:
-        #print ("Replaced '%s' by '%s' %d times." % (search_opening_html_span_tag, "", subn_count))
-        text = subn_result[0]
-        #if subn_count > 0:
-        #    print ("Replaced span %d times" % (subn_count))
-            
-    search_closing_html_span_tag = r'(?i)</span>'
-    search_replace_closing_span = re.compile(search_closing_html_span_tag)
-                
-    subn_result = search_replace_closing_span.subn("", text)
-    subn_count = subn_result[1]
-    if subn_count > 0:
-        #print ("Replaced '%s' by '%s' %d times." % (search_opening_html_span_tag, "", subn_count))
-        text = subn_result[0]
-        #if subn_count > 0:
-        #    input ("Replaced span %d times" % (subn_count))
-                
-    return text
-
-
-
 # module, and every dispatch / runner / config reference were all
 # deleted in the same pass. The only remaining mentions in the tree
 # are historical CHANGELOG and PROJECT_MEMORY notes.
@@ -2441,9 +2410,6 @@ def cell_add_paragraph(ctx: RuntimeContext, row_n, paragraph_text):
 # `is_*_line` predicates plus `prepare_and_clear_cell_for_writing` and
 # `split_phrases` from this module to avoid an import cycle.
 from .docx_io.parse import read_and_parse_docx_document  # noqa: E402,F401
-
-def reverse_string(s):
-    return s[::-1]
 
 
 def generate_html_file_from_phrases_for_google_translate_javascript(ctx: RuntimeContext):
@@ -3277,110 +3243,6 @@ def document_split_phrases(ctx: RuntimeContext):
                 var = traceback.format_exc()
                 print("  ERROR:%s<br>" % (var))
 
-
-MAX_CHARS = 750
-
-def create_translation_split_prompts():
-    """
-    Groups source phrases into blocks of max 750 characters (without breaking phrases)
-    and prints AI prompts in the requested subtitle format.
-    """
-
-    current_block = []
-    current_length = 0
-    block_index = 1
-
-    for phrase in from_text_table:
-        phrase = phrase.strip()
-        if not phrase:
-            continue
-
-        phrase_length = len(phrase)
-
-        # If adding this phrase would exceed the max size, finalize current block
-        if current_length + phrase_length > MAX_CHARS and current_block:
-            print_prompt_block(block_index, current_block)
-            block_index += 1
-            current_block = []
-            current_length = 0
-
-        current_block.append(phrase)
-        current_length += phrase_length
-
-    # Print last block if any
-    if current_block:
-        print_prompt_block(block_index, current_block)
-
-
-def print_prompt_block(block_index, block_phrases):
-    """
-    Prints a single AI prompt for one block of phrases in the desired format.
-    """
-
-    # Prepare source text lines with numbering
-    source_lines = "\n".join([f"Input {i+1}:{line}" for i, line in enumerate(block_phrases)])
-    num_lines = len(block_phrases)
-
-    prompt = f"""
-You are given subtitle text in a source language and its translation in a destination language.
-
-Source Text ({num_lines} lines):
-{source_lines}
-
-Destination Text (translation):
-# Insert your translation here, line by line
-
-Task:
-
-Reformat the translated text so that it has exactly the same number of lines as the source text, preserving the line structure of the source.
-
-Rules:
-
-- Each line in the source corresponds in order to the translated text.
-- If a source sentence is split across multiple lines, the translation must also be split naturally across the same number of lines.
-- Do not change any words or punctuation in the translation.
-- Each phrase ending with a full stop in the source should preserve its line count in the translation.
-- In case the target language grammar is different from the input language grammar, the lines do not need to match the source, but the phrase full stop should determine the number of lines to be split for a phrase(s) from the input.
-- Output only the translated text, line by line, with no numbers or labels.
-
-Example:
-
-Source sample (English):
-
-I’ve always had a terrible  
-aversion to bullfighting.
-
-Translation sample (French):
-
-J'ai toujours eu une aversion terrible
-pour la corrida.
-"""
-
-    print(f"\n{'=' * 80}")
-    print(f"PROMPT BLOCK #{block_index}")
-    print(f"{'=' * 80}")
-    print(prompt.strip())
-
-
-    
-def print_html_program_result():
-    if use_html :
-        print("<table border=1 bgcolor=""#EEEEEE"">")
-
-    for i, line in enumerate(from_text_table):
-        Identical_with_without_separators = 'DIFFERENT<BR>'
-        if to_text_by_phrase_separator_removed_table[i] == to_text_by_phrase_table[i]:
-            Identical_with_without_separators = 'SAME<BR>'
-        #print "<tr><td>%s<td>%s<td>%s<td>%s<td>%s%s" % (i, from_text_table[i], from_text_by_phrase_separator_table[i].encode('utf8'), to_text_by_phrase_separator_table[i].encode('utf8'), Identical_with_without_separators.encode('utf8'), to_text_by_phrase_separator_removed_table[i].encode('utf8') )
-        if len(from_text_by_phrase_separator_table[i]) == 0:
-            Identical_with_without_separators = ''
-        if use_html :
-            print("<tr><td>%d<td>'%s'<td>%s<td>%s<td>%s<td>%s%s" % (i, from_text_table[i], translation_result_using_separator[i].encode('utf8'), to_text_by_phrase_separator_table[i].encode('utf8'), to_text_by_phrase_table[i].encode('utf8'), Identical_with_without_separators.encode('utf8'), to_text_by_phrase_table[i].encode('utf8') ))
-        #sys.exit(0)
-
-    if use_html :
-        print("</table><br>elapsedtime = ", elapsedtime)
-        print("</span>")
 
 def write_destination_language_in_docx_cell():
     if not splitonly:
