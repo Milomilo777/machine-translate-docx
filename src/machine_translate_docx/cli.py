@@ -1295,20 +1295,21 @@ elif platform.system() == "Linux":  # Linux
 #driver.get("https://translate.google.com/#%s/%s/" % (src_lang,dest_lang))
 #driver = uc.Firefox()
 
-def get_translated_cells_content(lineno, to_translate):
+def get_translated_cells_content(ctx: RuntimeContext, lineno, to_translate):
     print("get_translation for line %d" % (lineno))
-    print("from_text_nb_lines_in_phrase %d" % (from_text_nb_lines_in_phrase[lineno]))
+    print("from_text_nb_lines_in_phrase %d" % (ctx.docx.from_text_nb_lines_in_phrase[lineno]))
     translation = ""
 
-    if dest_lang.lower() == 'ja' or dest_lang.lower() == 'zh-cn' or dest_lang.lower() == 'zh-tw' or dest_lang.lower() == 'ko':
+    _dest_lang = ctx.language.dest_lang
+    if _dest_lang.lower() == 'ja' or _dest_lang.lower() == 'zh-cn' or _dest_lang.lower() == 'zh-tw' or _dest_lang.lower() == 'ko':
         cell_space = ''
     else:
         cell_space = ' '
 
-    last_row_n = from_text_nb_lines_in_phrase[lineno] + lineno
+    last_row_n = ctx.docx.from_text_nb_lines_in_phrase[lineno] + lineno
     for row_n in range(lineno, last_row_n):
         #cell_text = docxdoc.tables[0].cell(row_n, 2).text
-        cell_text = table_cells[row_n][2].text
+        cell_text = ctx.docx.table_cells[row_n][2].text
         cell_text = cell_text.strip()
         if cell_text != "":
             print("adding cell %s " % (cell_text))
@@ -1455,7 +1456,7 @@ from .docx_io import (
 def change_cell_font(ctx: RuntimeContext, cell):
     _change_cell_font_impl(cell, ctx.language.dest_font)
 
-def tokenize_text_to_array(text, lang_code):
+def tokenize_text_to_array(ctx: RuntimeContext, text, lang_code):
     lang_code = lang_code + ""
     lang_code = lang_code.lower()
 
@@ -1469,15 +1470,15 @@ def tokenize_text_to_array(text, lang_code):
         words = word_tokenize(text)
     # In other languages, just use spaces
     else:
-        #xtm.tokenize_phrase(text, dest_lang)
+        #ctx.docx.xtm.tokenize_phrase(text, dest_lang)
 
         # search do not split here
-        #xtm.pprint_translation_memory_list()
+        #ctx.docx.xtm.pprint_translation_memory_list()
 
         # Old simple split method replaced by tokenize_phrase method having do not split
         # words = text.split()
 
-        words = xtm.tokenize_phrase(text, lang_code)
+        words = ctx.docx.xtm.tokenize_phrase(text, lang_code)
         #input("Wait, remove tokenize_phrase here..")
 
 
@@ -1599,7 +1600,7 @@ def split_phrases(ctx: RuntimeContext):
                 nb_lines_in_phrase += 1
                 docx.from_text_nb_lines_in_phrase[cur_row_n] += docx.from_text_nb_lines_in_cell[n_last_row_phrase]
                 docx.from_text_by_phrase_table[cur_row_n] = docx.from_text_by_phrase_table[cur_row_n] + ' ' + docx.from_text_table[n_last_row_phrase]
-            if use_html:
+            if docx.use_html:
                 print("(%d)from_text_by_phrase_table[%d]=%s<br>" % (n_last_row_phrase, cur_row_n, docx.from_text_by_phrase_table[cur_row_n]))
             nb_lines_in_phrase_str = "[%s]" % (nb_lines_in_phrase)
 
@@ -1949,7 +1950,7 @@ def get_translation_and_replace_after(ctx: RuntimeContext):
                         if item_searched_and_replaced_before.strip() == '' or item_searched_and_replaced_before is None:
                             continue
                 if ctx.flags.splitonly:
-                    web_translation_separators = get_translated_cells_content (i, item_searched_and_replaced_before)
+                    web_translation_separators = get_translated_cells_content(ctx, i, item_searched_and_replaced_before)
                 elif ctx.flags.use_api:
                     try:
                         web_translation_separators = ""
@@ -2176,7 +2177,7 @@ def document_split_phrases(ctx: RuntimeContext):
                     if local_avg > MAX_LINE_SIZE:
                         local_avg = math.ceil(local_avg)
 
-                    tokens = tokenize_text_to_array(current_line, ctx.language.dest_lang)
+                    tokens = tokenize_text_to_array(ctx, current_line, ctx.language.dest_lang)
                     lines = divide_array(tokens, ctx.language.dest_lang, local_avg + 4)
 
                     divide_max_try = MAX_LINE_SIZE
@@ -2285,12 +2286,12 @@ from .docx_io.metadata import (
 )  # noqa: E402
 
 
-def write_destination_language_in_docx_cell():
+def write_destination_language_in_docx_cell(ctx: RuntimeContext):
     _write_dest_lang_impl(
-        docxdoc,
-        splitonly=splitonly,
-        dest_lang_name=dest_lang_name,
-        dest_lang=dest_lang,
+        ctx.docx.docxdoc,
+        splitonly=ctx.flags.splitonly,
+        dest_lang_name=ctx.language.dest_lang_name,
+        dest_lang=ctx.language.dest_lang,
     )
 
 
@@ -2396,7 +2397,7 @@ def print_console_docx_file_translated(ctx: RuntimeContext):
 
 def set_docx_properties_comment_for_history(ctx: RuntimeContext):
     _set_docx_history_impl(
-        docxdoc, program_version=PROGRAM_VERSION, engine=ctx.engine.engine,
+        ctx.docx.docxdoc, program_version=PROGRAM_VERSION, engine=ctx.engine.engine,
     )
 
 
@@ -2470,8 +2471,8 @@ def save_docx_file(ctx: RuntimeContext):
     print("PROGRESS:90", flush=True)
     _save_docx_file_impl(
         ctx,
-        docxdoc,
-        silent=silent,
+        ctx.docx.docxdoc,
+        silent=ctx.flags.silent,
         write_translation_log_fn=write_translation_log,
     )
 
@@ -2604,7 +2605,7 @@ def main() -> int:
     document_split_phrases(ctx)
     _sync_globals_from_ctx(ctx)  # translation_result_phrase_array populated by split helper
 
-    write_destination_language_in_docx_cell()
+    write_destination_language_in_docx_cell(ctx)
 
     print_console_docx_file_translated(ctx)
     set_docx_properties_comment_for_history(ctx)
