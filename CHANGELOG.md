@@ -6,6 +6,84 @@
 
 ---
 
+## 2026-05-14 — Server deployment (`feat/server-deploy` branch)
+
+User asked for a one-command server deploy on the cheapest possible
+VPS. Built the full stack: single config file, interactive wizard
+for secrets, HTTP Basic auth on the web UI, systemd unit with
+resource limits, Caddy reverse-proxy recipe, log rotation, daily
+backups, full deploy guide.
+
+New module `src/machine_translate_docx/server_config.py`:
+  - Loads `config.toml` (default `runtime_dir/config.toml`, override
+    via `MTD_CONFIG_PATH`).
+  - Pushes `[telegram]`, `[smtp]`, `[failure_alerts]`, `[server]`
+    values into the corresponding `MTD_*` env vars at boot. Real
+    env vars override the file (operator wins).
+  - Round-trip helpers: `write_config(cfg, path)` writes mode 0600
+    on POSIX. `get_auth` / `get_server` return typed subsections.
+  - `generate_session_secret()` for cookie signing seeds.
+
+New scripts (`scripts/`):
+  - `setup_wizard.py` — interactive prompts collect OpenAI API key,
+    Telegram token + chat id + test message, web-UI password
+    (bcrypt-hashed, PBKDF2 fallback if bcrypt absent), SMTP, failure
+    alert sinks. Validates formats (`sk-`, `digits:chars`). Idempotent.
+  - `install_server.sh` — one-shot Ubuntu 22.04+ / Debian 12+
+    installer. Creates `mtd` user, sets up venv from
+    `requirements-server.txt`, runs the wizard, installs the
+    systemd unit, enables + starts. ~2 minutes on a fresh VPS.
+  - `mtd-server.service` — systemd unit with `User=mtd`,
+    `MemoryMax=512M`, `CPUQuota=80%`, hardened (`ProtectSystem=strict`,
+    `NoNewPrivileges`, `RestrictNamespaces`, etc.).
+  - `Caddyfile.example` — TLS-terminating reverse proxy with
+    auto-Let's Encrypt, 600 s timeouts for long translations,
+    `/health` log skipping.
+  - `mtd-logrotate` — **weekly** rotation + **90-day** retention
+    (per operator preference) for `Log json file/*.json` and Caddy
+    access log.
+  - `mtd-backup.sh` — daily cron archive of `config.toml` + JSON
+    sidecars + cache + subscribers list to `/var/backups/mtd/`,
+    30-day local retention.
+
+`local_launcher.py` changes:
+  - `--setup` flag invokes the wizard and exits.
+  - `_check_auth(path)` middleware on every `do_GET` / `do_POST`.
+    `/health`, `/static/*`, `/favicon.ico` are explicitly public.
+  - `_verify_password` supports bcrypt (`$2b$...`) and stdlib
+    PBKDF2-SHA256 fallback (`pbkdf2_sha256$iters$salt$digest`).
+  - `_handle_health()` returns `{status, version, uptime}` — no
+    secrets, no auth.
+  - `main()` bootstraps `server_config.bootstrap()` before parsing
+    args so `[server]` overrides the built-in defaults; adds
+    `src/` to `sys.path` so the package import works when invoked
+    as a top-level script.
+
+New deps file: `requirements-server.txt` (~30 MB install, no
+Chrome/chromedriver, no heavy NLP, optional `bcrypt`).
+
+New doc: `docs/server-deploy.md` — start-to-finish guide with
+prerequisites, install command, config schema walkthrough, HTTPS
+setup, monitoring, troubleshooting, resource budget table.
+
+Validated locally on Windows (smoke test via mock backend):
+  · `/` no auth      → 401 ✓
+  · `/` good creds   → 200 ✓
+  · `/` bad creds    → 401 ✓
+  · `/health`        → 200 ✓ + JSON payload
+  · `/static/*`      → 200 (public, as designed)
+  · config.toml load logs "loaded ... → N env var(s) populated"
+  · auth status logs "[auth] HTTP Basic enabled for user 'X'"
+
+Constraints added: C27 (single config.toml), C28 (auth-gated
+routes), C29 (/health always public), C30 (non-root + /opt/mtd),
+C31 (backups daily + logrotate weekly 90-day).
+
+Tests: 239/239 pass (no regressions). Total: 10 new files, ~1100
+new lines.
+
+---
+
 ## 2026-05-16i — Sprint D attempt 1: statistics.py scaffold + local_time_offset
 
 Beginning of the cli.py shrink continuation (`docs/cli-shrink-phase3-handoff.md`).

@@ -903,8 +903,46 @@ def _parse_multipart(headers, body: bytes) -> tuple[dict[str, str], dict[str, tu
     return fields, files
 
 
+def _verify_password(candidate: str, stored_hash: str) -> bool:
+    """Constant-time-ish password check for HTTP Basic auth.
+
+    Supports bcrypt (``$2b$...``) and PBKDF2-SHA256 hashes written by
+    ``scripts/setup_wizard.py``. Returns False on any error.
+    """
+    if not stored_hash or not candidate:
+        return False
+    try:
+        if stored_hash.startswith("$2"):
+            try:
+                import bcrypt  # type: ignore
+                return bool(bcrypt.checkpw(
+                    candidate.encode("utf-8"),
+                    stored_hash.encode("ascii"),
+                ))
+            except ImportError:
+                return False
+        if stored_hash.startswith("pbkdf2_sha256$"):
+            import hashlib
+            import hmac as _hmac
+            _, iters_s, salt_hex, digest_hex = stored_hash.split("$", 3)
+            iters = int(iters_s)
+            salt = bytes.fromhex(salt_hex)
+            expected = bytes.fromhex(digest_hex)
+            actual = hashlib.pbkdf2_hmac(
+                "sha256", candidate.encode("utf-8"), salt, iters
+            )
+            return _hmac.compare_digest(expected, actual)
+    except Exception:
+        return False
+    return False
+
+
 class MockTranslatorHandler(BaseHTTPRequestHandler):
     server_version = "LocalDocxTranslator/1.0"
+
+    # feat/server-deploy (2026-05-14): public paths bypass HTTP Basic.
+    _PUBLIC_PATHS = frozenset({"/health", "/favicon.ico"})
+    _PUBLIC_PREFIXES = ("/static/",)
 
     @property
     def state(self) -> LocalState:
@@ -917,6 +955,56 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         # Keep the console readable. The launcher prints its own status lines.
         print(f"[http] {self.address_string()} - {fmt % args}")
+
+    def _is_public_path(self, path: str) -> bool:
+        if path in self._PUBLIC_PATHS:
+            return True
+        return any(path.startswith(p) for p in self._PUBLIC_PREFIXES)
+
+    def _check_auth(self, path: str) -> bool:
+        """Return True if request may proceed; False if a 401 was sent."""
+        if self._is_public_path(path):
+            return True
+        creds = getattr(self.server, "_mtd_auth", None) or {}
+        if not creds.get("password_hash"):
+            return True  # workstation mode — no auth configured
+        import base64
+        import hmac
+        header = self.headers.get("Authorization", "")
+        if not header.lower().startswith("basic "):
+            self._send_auth_challenge()
+            return False
+        try:
+            raw = base64.b64decode(header[6:].strip()).decode("utf-8")
+            user, _sep, pwd = raw.partition(":")
+        except Exception:
+            self._send_auth_challenge()
+            return False
+        if (hmac.compare_digest(user, creds.get("username", ""))
+                and _verify_password(pwd, creds.get("password_hash", ""))):
+            return True
+        self._send_auth_challenge()
+        return False
+
+    def _send_auth_challenge(self) -> None:
+        self.send_response(HTTPStatus.UNAUTHORIZED)
+        self.send_header("WWW-Authenticate", 'Basic realm="mtd"')
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.end_headers()
+        try:
+            self.wfile.write(b"401 - authentication required\n")
+        except Exception:
+            pass
+
+    def _handle_health(self) -> None:
+        """Liveness probe — no auth. Used by Caddy / UptimeRobot."""
+        import time as _time
+        boot_ts = getattr(self.server, "_mtd_boot_time", _time.time())
+        self._send_json({
+            "status":  "ok",
+            "version": getattr(self.server, "_mtd_version", "unknown"),
+            "uptime":  int(_time.time() - boot_ts),
+        })
 
     def _send_security_headers(self) -> None:
         """B14 (audit 2026-05-13): defence-in-depth response headers.
@@ -1034,6 +1122,14 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
         path = parsed.path
+
+        # feat/server-deploy (2026-05-14): public health probe first,
+        # auth gate next.
+        if path == "/health":
+            self._handle_health()
+            return
+        if not self._check_auth(path):
+            return
 
         if path == "/":
             # 2026-05-13: re-read index.ejs from disk on every request
@@ -1246,6 +1342,10 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         parsed = urlparse(self.path)
+
+        # feat/server-deploy (2026-05-14): all POSTs require auth.
+        if not self._check_auth(parsed.path):
+            return
 
         # Cancel a running job. The frontend Cancel button hits this.
         # We kill the subprocess; the job thread observes the broken
@@ -2430,13 +2530,41 @@ def _find_free_port(start_port: int) -> int:
 
 
 def main() -> int:
+    # feat/server-deploy (2026-05-14): load config.toml first so its
+    # `[server]` section can override the built-in defaults below.
+    # Ensure src/ is on sys.path BEFORE the package import — the
+    # launcher is usually invoked via `python local_launcher.py` from
+    # the repo root, where the package is at `src/machine_translate_docx`.
+    _src_for_cfg = str(ROOT / "src")
+    if _src_for_cfg not in sys.path:
+        sys.path.insert(0, _src_for_cfg)
+    try:
+        from machine_translate_docx.server_config import (
+            bootstrap as _bootstrap_cfg,
+            get_auth as _get_auth,
+            get_server as _get_server,
+        )
+        _cfg = _bootstrap_cfg()
+        _srv = _get_server(_cfg)
+        _auth = _get_auth(_cfg)
+    except Exception as _exc:
+        print(f"[server_config] WARNING: bootstrap failed ({_exc!r}); using defaults.")
+        _cfg, _srv, _auth = {}, {"host": "127.0.0.1", "port": 3000, "max_concurrent_jobs": 1}, {}
+
     parser = argparse.ArgumentParser(description="Run a local browser-ready simulator for the DOCX translator UI.")
-    parser.add_argument("--port", type=int, default=3000, help="Preferred port to use. Falls back to the next free port if busy.")
+    parser.add_argument("--port", type=int, default=_srv["port"], help="Preferred port to use. Falls back to the next free port if busy.")
     parser.add_argument("--no-browser", action="store_true", help="Do not open the browser automatically.")
-    parser.add_argument("--host", default="127.0.0.1", help="Host interface to bind.")
+    parser.add_argument("--host", default=_srv["host"], help="Host interface to bind.")
     parser.add_argument("--backend", choices=["real", "mock"], default="real", help="Use the real Python backend or the local placeholder mode.")
     parser.add_argument("--python-exe", default="", help="Python interpreter to use for the real backend. Defaults to the current interpreter.")
+    parser.add_argument("--setup", action="store_true", help="Run the interactive setup wizard and exit.")
     args = parser.parse_args()
+
+    if args.setup:
+        # Delegate to scripts/setup_wizard.py
+        import runpy
+        runpy.run_path(str(ROOT / "scripts" / "setup_wizard.py"), run_name="__main__")
+        return 0
 
     runtime_dir = Path(tempfile.gettempdir()) / "machine_translate_docx_local"
     if runtime_dir.exists():
@@ -2480,6 +2608,20 @@ def main() -> int:
     server = ThreadingHTTPServer((args.host, port), MockTranslatorHandler)
     server.state = state  # type: ignore[attr-defined]
     server.index_html = _inject_client_patch(_load_index_html())  # type: ignore[attr-defined]
+    # feat/server-deploy: stash auth creds + boot time + version so the
+    # handler can serve /health without auth and gate other routes.
+    import time as _time_now
+    server._mtd_auth = _auth                          # type: ignore[attr-defined]
+    server._mtd_boot_time = _time_now.time()          # type: ignore[attr-defined]
+    try:
+        from machine_translate_docx import __version__ as _mtd_ver  # type: ignore
+    except Exception:
+        _mtd_ver = "dev"
+    server._mtd_version = _mtd_ver                    # type: ignore[attr-defined]
+    if _auth.get("password_hash"):
+        print(f"[auth] HTTP Basic enabled for user '{_auth.get('username', '')}'.")
+    else:
+        print("[auth] disabled (no [auth] section in config.toml — workstation mode).")
 
     url = f"http://{args.host}:{port}/"
     print(f"Local launcher ready: {url}")

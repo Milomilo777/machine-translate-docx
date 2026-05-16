@@ -1,0 +1,82 @@
+# Caddyfile — TLS-terminating reverse proxy for the mtd-server backend.
+#
+# Why Caddy over nginx for this project:
+#   · single-file config (vs nginx's /etc/nginx/sites-enabled dance)
+#   · automatic Let's Encrypt cert acquisition + renewal — no certbot
+#   · sane defaults (HTTP→HTTPS redirect, modern TLS suite, HSTS)
+#   · ~30 MB resident memory; happy on a 1 GB VPS alongside mtd
+#
+# Install:
+#     curl -fsSL https://get.caddyserver.com | sh
+#     sudo cp scripts/Caddyfile.example /etc/caddy/Caddyfile
+#     sudo nano /etc/caddy/Caddyfile         # replace the placeholders
+#     sudo systemctl enable --now caddy
+#
+# Prerequisites:
+#   · DNS A record for mtd.example.com → your server's public IP
+#   · Ports 80 + 443 reachable (no firewall blocking inbound HTTPS)
+#   · mtd-server bound to 127.0.0.1:3000 (the default)
+#
+# After this, `https://mtd.example.com/` serves the v2 SPA, with the
+# Basic Auth challenge from local_launcher.py guarding every route
+# except `/health` and `/static/*`.
+
+mtd.example.com {
+    # Reverse-proxy to the locally-bound launcher.
+    reverse_proxy localhost:3000 {
+        # Pass-through client IP so the launcher's logs are useful.
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+
+        # Caddy's default 60 s timeout drops long translations.
+        # Persian polish + aligner can take 4-5 minutes on a large
+        # file. Allow up to 10 min before Caddy gives up.
+        transport http {
+            response_header_timeout 600s
+            dial_timeout 10s
+            read_timeout 600s
+            write_timeout 600s
+        }
+    }
+
+    # File upload size — match the launcher's internal limit
+    # (currently 25 MiB; bump both if you change it).
+    request_body {
+        max_size 25MiB
+    }
+
+    # Security headers on top of what the launcher already sends.
+    # Caddy applies these to every response, including 401s.
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options    "nosniff"
+        Referrer-Policy           "no-referrer"
+        # Caddy adds X-Frame-Options=DENY automatically.
+    }
+
+    # Compress text responses — saves bandwidth on a slow link.
+    encode gzip zstd
+
+    # Caddy logs to stdout by default; pipe to a file for log rotation.
+    log {
+        output file /var/log/caddy/mtd.access.log {
+            roll_size     10MiB
+            roll_keep     7
+            roll_keep_for 720h
+        }
+        format json
+        # Drop /health lines from the access log — monitoring tools
+        # would otherwise drown out real traffic.
+        @health path /health
+        log_skip @health
+    }
+}
+
+# Optional: redirect the bare apex domain to the www-style hostname,
+# or vice versa. Caddy auto-detects this if you list both names with
+# a comma.
+#
+# mtd.example.com, www.mtd.example.com {
+#     ...
+# }

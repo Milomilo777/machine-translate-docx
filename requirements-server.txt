@@ -1,0 +1,58 @@
+# Server-deployment dependency set — OpenAI API path only.
+#
+# Excludes the Selenium / Chrome stack (Google + DeepL web engines)
+# so the install footprint fits on a 1 vCPU / 1 GB RAM VPS. The CLI
+# still accepts --engine google but will fail at the WebDriver launch.
+#
+# Install:
+#     python3.11 -m venv .venv
+#     . .venv/bin/activate
+#     pip install -r requirements-server.txt
+#
+# Total disk footprint: ~30 MB. Compare to ~120 MB with Chrome.
+
+# OpenAI API + token accounting
+openai>=2.0
+tiktoken>=0.10
+
+# DOCX I/O
+python-docx>=1.0
+lxml>=4.9
+
+# HTTP / JSON utilities used by the launcher + engines
+httpx>=0.27
+requests>=2.32
+certifi
+beautifulsoup4
+json5
+regex
+PyYAML
+
+# Persian text + bidi rendering used by cli.py top-level imports.
+# python-bidi is a tiny pure-python package (~50 KB); keeping it in
+# the server build lets cli.py boot without a try/except dance.
+python-bidi
+
+# Auxiliary helpers cli.py reaches for at import time. The .exe build
+# proved these are the minimum set needed for a successful boot.
+chardet
+clipboard
+langcodes
+progressbar2
+psutil
+screeninfo
+openpyxl
+newmm-tokenizer
+tinysegmenter
+
+# `selenium` is listed because cli.py imports `from selenium import
+# webdriver` at module top. The chatgpt+api path NEVER calls into
+# the driver (see create_webdriver NO-OP in selenium_utils/driver.py),
+# but the import itself must resolve. Pulling in selenium WITHOUT
+# Chrome/chromedriver is fine — selenium itself is a ~5 MB pure-py
+# package. Just don't install chromedriver on the server.
+selenium>=4.0
+
+# Password hashing for HTTP Basic auth (`[auth]` section of config.toml).
+# Falls back to stdlib PBKDF2 if absent; bcrypt is the preferred algo.
+bcrypt>=4.0

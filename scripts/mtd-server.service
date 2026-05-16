@@ -1,0 +1,60 @@
+[Unit]
+Description=Machine Translate DOCX — local launcher (mtd-server)
+Documentation=https://github.com/Milomilo777/machine-translate-docx
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# Placeholders replaced by scripts/install_server.sh on install.
+Type=simple
+User=@@MTD_USER@@
+Group=@@MTD_USER@@
+WorkingDirectory=@@MTD_REPO_DIR@@
+
+# Where local_launcher.py finds its config + writes its runtime data.
+Environment="MTD_CONFIG_PATH=@@MTD_CONFIG_PATH@@"
+Environment="MTD_RUNTIME_DIR=@@MTD_RUNTIME_DIR@@"
+Environment="PYTHONUNBUFFERED=1"
+
+# Use the venv's interpreter directly. --no-browser is mandatory on a
+# headless server — without it the launcher tries to xdg-open the URL.
+ExecStart=@@MTD_VENV_DIR@@/bin/python @@MTD_REPO_DIR@@/local_launcher.py --no-browser
+
+# Restart policy: come back on any unclean exit, but back off if it
+# crashes in a loop so we don't burn the CPU on a misconfig.
+Restart=on-failure
+RestartSec=10s
+StartLimitInterval=120s
+StartLimitBurst=5
+
+# Resource limits — generous enough for two concurrent OpenAI API
+# translations on a 1 GB VPS, tight enough to keep the box healthy
+# if something goes haywire. Adjust upward when scaling.
+MemoryMax=512M
+MemoryHigh=384M
+CPUQuota=80%
+TasksMax=128
+
+# Hardening — none of these are strictly required for the app to work,
+# but they make a compromised process much less useful to an attacker.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=@@MTD_RUNTIME_DIR@@ @@MTD_REPO_DIR@@
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictRealtime=true
+LockPersonality=true
+RestrictSUIDSGID=true
+
+# Logging — let journald capture stdout/stderr. View with:
+#   journalctl -u mtd-server -f
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mtd-server
+
+[Install]
+WantedBy=multi-user.target

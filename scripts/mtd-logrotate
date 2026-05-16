@@ -1,0 +1,51 @@
+# logrotate rules for the mtd-server runtime data.
+#
+# Install:
+#     sudo cp scripts/mtd-logrotate /etc/logrotate.d/mtd-server
+#     sudo logrotate -d /etc/logrotate.d/mtd-server   # dry-run
+#
+# What it covers:
+#   1. The central `Log json file/` sidecar JSONs (one per translation
+#      run). The launcher already trims files older than 10 days
+#      internally (`log_paths.cleanup_old_logs`), but a fresh box
+#      that has never booted the launcher still benefits from a
+#      cron-driven sweep; logrotate's `delaycompress` + `dateformat`
+#      give us a paper trail.
+#   2. Caddy's access log (if you're running the reverse proxy from
+#      the same box). The Caddyfile.example already writes there.
+#
+# User cadence: weekly compression, 90-day retention (matches the
+# operator's preference set on 2026-05-14).
+
+/opt/mtd/runtime_dir/Log\ json\ file/*.json {
+    weekly
+    rotate 90
+    compress
+    delaycompress
+    missingok
+    notifempty
+    nocreate
+    su mtd mtd
+    dateext
+    dateformat -%Y%m%d
+}
+
+# Caddy ships its own logrotate rules when you install via the official
+# package; this stanza is here as a fallback for hand-installed setups.
+/var/log/caddy/mtd.access.log {
+    weekly
+    rotate 90
+    compress
+    delaycompress
+    missingok
+    notifempty
+    sharedscripts
+    postrotate
+        # Caddy reopens its log files on USR1.
+        if systemctl is-active --quiet caddy; then
+            systemctl reload caddy
+        fi
+    endscript
+    dateext
+    dateformat -%Y%m%d
+}

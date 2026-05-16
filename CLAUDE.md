@@ -86,6 +86,15 @@ diagrams in [`docs/diagrams/`](docs/diagrams/) for the full picture.
 | `packaging/mtd.spec` | PyInstaller config (onedir, ~65 MB output) |
 | `packaging/README.md` | Clean-venv build instructions |
 | `src/machine_translate_docx/log_paths.py` | Central `Log json file/` resolver + 10-day retention; honours `MTD_FROZEN_ROOT` |
+| `src/machine_translate_docx/server_config.py` | Server-side `config.toml` loader (single source of truth for OpenAI key, Telegram, SMTP, auth, server bind) |
+| `scripts/setup_wizard.py` | Interactive first-run wizard — collects every secret, writes `config.toml` (mode 0600) |
+| `scripts/install_server.sh` | One-shot Ubuntu/Debian installer — creates `mtd` user, venv, runs wizard, drops systemd unit |
+| `scripts/mtd-server.service` | systemd unit template (`@@MTD_VENV_DIR@@` etc. substituted at install) |
+| `scripts/Caddyfile.example` | TLS reverse-proxy config with Let's Encrypt auto-renewal |
+| `scripts/mtd-logrotate` | Weekly rotation, 90-day retention for `Log json file/` + Caddy logs |
+| `scripts/mtd-backup.sh` | Daily backup of config + logs + cache to `/var/backups/mtd/` |
+| `requirements-server.txt` | Minimal dep set for OpenAI-API server deployment (~30 MB) |
+| `docs/server-deploy.md` | Start-to-finish VPS deployment guide |
 
 ---
 
@@ -119,6 +128,16 @@ python -m venv .venv-build && .venv-build/Scripts/python.exe -m pip install \
     newmm-tokenizer tinysegmenter httpx certifi
 .venv-build/Scripts/python.exe -m PyInstaller packaging/mtd.spec --clean --noconfirm
 # Output: dist/mtd/mtd.exe
+
+# Server deployment (one-shot installer on Ubuntu 22.04+/Debian 12+):
+curl -fsSL https://raw.githubusercontent.com/Milomilo777/machine-translate-docx/master/scripts/install_server.sh | sudo bash
+# After install:
+#   systemctl status mtd-server
+#   journalctl -u mtd-server -f
+#   curl http://127.0.0.1:3000/health
+# Re-run the setup wizard later to rotate keys:
+sudo -u mtd /opt/mtd/.venv/bin/python /opt/mtd/app/scripts/setup_wizard.py
+# Full guide: docs/server-deploy.md
 
 # Run pytest (154 tests, ~2 s) — `live` marker is deselected by default
 E:\Python311\python.exe -m pytest tests/ --ignore=tests/test_v2_e2e.py
