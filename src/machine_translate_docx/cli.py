@@ -1328,9 +1328,15 @@ def selenium_chrome_translate_get_from_text_array(to_translate, index):
     # (off-by-one or alignment mismatch). Returning '' instead lets the
     # caller log "Error translating='…'" and continue, rather than
     # killing the whole job.
-    if 0 < index <= len(translation_array):
-        return translation_array[index - 1]
-    print(f"[WARN] translation_array index out of range: index={index}, len={len(translation_array)}")
+    #
+    # 2026-05-16 Sprint D-C: signature is dictated by the dispatcher
+    # contract (`ctx.engine.dispatcher(to_translate, index)`), so we
+    # cannot take ``ctx`` as a positional arg. Resolve the singleton
+    # via ``_get_ctx()`` and read the canonical array off it.
+    ta = _get_ctx().docx.translation_array
+    if 0 < index <= len(ta):
+        return ta[index - 1]
+    print(f"[WARN] translation_array index out of range: index={index}, len={len(ta)}")
     return ""
     
 # method to get the downloaded file name
@@ -1724,8 +1730,8 @@ from .engines.deepl import deepl_double_linefeed_between_phrases  # noqa: E402
 def generate_char_blocks_array_from_phrases(ctx: RuntimeContext, text_file_path):
     ctx.docx.docxfile_table_number_of_phrases = 0
     print("Generating %d character blocks for translation..." % (ctx.config.max_translation_block_size))
-    #if xtm.wb is not None:
-    if xtm is not None:
+    #if ctx.docx.xtm.wb is not None:
+    if ctx.docx.xtm is not None:
         print("Replacing text before using excel file...\n")
     text_to_translate = ''
     text_to_translate_array = []
@@ -1740,19 +1746,19 @@ def generate_char_blocks_array_from_phrases(ctx: RuntimeContext, text_file_path)
             phrase_separator = "\n\n"
             phrase_separator_len = 2
     
-    for i, line in enumerate(from_text_table):
+    for i, line in enumerate(ctx.docx.from_text_table):
         item = ctx.docx.from_text_by_phrase_separator_table[i]
         item = item.strip()
-        
+
         item_searched_and_replaced_before = item
-        
+
         if item_searched_and_replaced_before != '':
             if xlsxreplacefile is not None:
-                #if xtm.wb is not None:
-                if xtm.wb is not None:
+                #if ctx.docx.xtm.wb is not None:
+                if ctx.docx.xtm.wb is not None:
                     #print("%d/%d" % (i, word_translation_table_length))
                     #print("Phrase to translate :'%s'\n" % (item.strip()))
-                    item_searched_and_replaced_before, nb_searched_and_replaced_before = xtm.search_and_replace_text('before', item)
+                    item_searched_and_replaced_before, nb_searched_and_replaced_before = ctx.docx.xtm.search_and_replace_text('before', item)
                     if item_searched_and_replaced_before.strip() == '' or item_searched_and_replaced_before is None:
                         continue
         
@@ -1924,7 +1930,7 @@ def get_translation_and_replace_after(ctx: RuntimeContext):
     p_remove_double_spaces = re.compile(' +')
     p_remove_parenthesis_spaces = re.compile('\( +')
 
-    for i, line in enumerate(from_text_table):
+    for i, line in enumerate(ctx.docx.from_text_table):
         item = ctx.docx.from_text_by_phrase_separator_table[i]
         item = item.strip()
         from_language = ctx.language.src_lang
@@ -1939,14 +1945,14 @@ def get_translation_and_replace_after(ctx: RuntimeContext):
             web_translation_separators = ''
             if item.strip() != '':
                 phrase_no = phrase_no + 1
-                print("\n%d/%d" % (i, word_translation_table_length))
+                print("\n%d/%d" % (i, ctx.docx.word_translation_table_length))
                 print("Phrase to translate :'%s'\n" % (item.strip()))
                 item = item.strip()
 
                 item_searched_and_replaced_before = item
                 if xlsxreplacefile is not None:
-                    if xtm.wb is not None:
-                        item_searched_and_replaced_before, nb_searched_and_replaced_before = xtm.search_and_replace_text('before', item)
+                    if ctx.docx.xtm.wb is not None:
+                        item_searched_and_replaced_before, nb_searched_and_replaced_before = ctx.docx.xtm.search_and_replace_text('before', item)
                         if item_searched_and_replaced_before.strip() == '' or item_searched_and_replaced_before is None:
                             continue
                 if ctx.flags.splitonly:
@@ -2001,7 +2007,7 @@ def get_translation_and_replace_after(ctx: RuntimeContext):
                 #print("Google translation='%s'" % (phrase_separator_removed_str.encode('utf8')))
                 if xlsxreplacefile is not None:
                     nb_searched_and_replaced = 0
-                    web_translation_separators_searched_and_replaced, nb_searched_and_replaced = xtm.search_and_replace_text('after', phrase_separator_removed_str)
+                    web_translation_separators_searched_and_replaced, nb_searched_and_replaced = ctx.docx.xtm.search_and_replace_text('after', phrase_separator_removed_str)
                     if nb_searched_and_replaced > 0:
                         #print("\nPhrase %d replacements :\n'%s'" % (nb_searched_and_replaced, web_translation_separators))
                         #print("Replaced phrase :\n'%s'" % (web_translation_separators_searched_and_replaced))
@@ -2026,14 +2032,14 @@ def get_translation_and_replace_after(ctx: RuntimeContext):
                 ctx.docx.to_text_by_phrase_separator_table[i] = phrase_separator_removed_str
                 phrase_separator_removed_str = p_remove_separator.sub(' ', phrase_separator_removed_str)
                 phrase_separator_removed_str.strip()
-                to_text_by_phrase_separator_removed_table[i] = phrase_separator_removed_str
+                ctx.docx.to_text_by_phrase_separator_removed_table[i] = phrase_separator_removed_str
         except Exception:
             var = traceback.format_exc()
             ctx.browser.numerrors_deepl = ctx.browser.numerrors_deepl + 1
             web_translation_separators = var
             print("ERROR:%s" % (var))
 
-        item = from_text_by_phrase_table[i]
+        item = ctx.docx.from_text_by_phrase_table[i]
         try:
             web_translation_no_separators = ''
             if item.strip() != '':
@@ -2042,7 +2048,7 @@ def get_translation_and_replace_after(ctx: RuntimeContext):
                 #web_translation_no_separators = pydeepl.translate(item, to_language)
                 phrase_separator_removed_str = p_remove_double_spaces.sub(' ', web_translation_no_separators)
                 phrase_separator_removed_str = p_remove_parenthesis_spaces.sub('(', phrase_separator_removed_str)
-                to_text_by_phrase_table[i] = phrase_separator_removed_str
+                ctx.docx.to_text_by_phrase_table[i] = phrase_separator_removed_str
         except Exception:
             var = traceback.format_exc()
             numerrors_googletranslate = numerrors_googletranslate + 1
