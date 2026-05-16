@@ -6,6 +6,122 @@
 
 ---
 
+## 2026-05-16 — Sprint D final (cli.py shrink continuation)
+
+Continuation of the cli.py shrink on
+`refactor/cli-py-sprint-d-final`. Four atomic commits, no merge to
+master yet — the user runs their own end-to-end smoke before
+merging.
+
+**Numbers:**
+
+| Metric | Before | After | Delta |
+|---|---:|---:|---:|
+| `cli.py` lines | 3,947 | 2,670 | **−1,277 (−32.4 %)** |
+| `statistics.py` lines | 42 | 754 | +712 |
+| `engines/google_file_modes.py` lines | — | 857 | +857 (new) |
+| Pytest pass | 239 | 239 | (stable) |
+
+Combined with the prior 3-phase shrink (4,395 → 3,947), cli.py is
+now **down 1,725 lines from its 2026-05-15 peak (−39.3 %).**
+
+**Commits in dependency order:**
+
+- `260a351` — **Phase 1 — pre-extract fixup.** Fixed the latent
+  `UnboundLocalError` in `run_statistics` where line ~3226
+  `driver = webdriver.Chrome(service=service, …)` ran *before*
+  line ~3228 `service = Service()`. The outer `except Exception`
+  masked it — `run_statistics` was effectively dead code in the
+  use_api / splitonly branch. Reorder, +3/−4 lines.
+
+- `69bb2c5` — **Phase 2 — D-A.4: extract `run_statistics`.**
+  Moved the 228-line stats-form-submission body into
+  `statistics.py`. Mirrors the `docx_io/parse.py:88` lazy-import
+  pattern (selenium + psutil + cli module globals imported inside
+  the function body). Added native `MTD_SKIP_STATS_BROWSER` env-var
+  guard as the very first statement — the cache refactor's
+  launcher basic-split spawn will set this to opt out of a Chrome
+  launch (the original translate already submitted stats). Two
+  smokes verified: default behaviour unchanged; with the env var
+  set, `"Creating a new browser for stats"` and `"Warning failed
+  to update stats"` are absent. cli.py: 3,947 → 3,726.
+
+- `0bcbdfd` — **Phase 3 — D-A.5: extract
+  `get_robot_usage_comment`.** Moved the 363-line "available
+  updates" check body into `statistics.py`. Same lazy-import
+  pattern + same `MTD_SKIP_STATS_BROWSER` short-circuit. Legacy
+  body has a long-standing `return 0;` mid-function leaving the
+  second half (forms.gle form-fill) unreachable — extracted
+  verbatim so a future un-deadening lands as an exact restore.
+  cli.py: 3,726 → 3,368.
+
+- `468e11e` — **Phase 4 — D-B: Google file-mode workers.**
+  Created `src/machine_translate_docx/engines/google_file_modes.py`
+  with all 10 functions of the file-mode sub-system:
+  - 3 top-level dispatchers (`google_translate_from_text_file`,
+    `_html_javascript`, `_html_xlsxfile`)
+  - 3 selenium workers (`selenium_chrome_google_translate_*`)
+  - 1 download poller (`get_last_downloaded_file_path`)
+  - 3 file generators (`generate_text_file_from_phrases`,
+    `_html_file_…`, `_xlsx_file_…`)
+
+  The 3 dispatchers are re-exported from `engines/__init__.py`
+  so `cli.translate_docx` imports them via
+  `from .engines import google_translate_from_*`. The 7 internal
+  helpers are private to the new module — their only callers are
+  the dispatchers. Lazy import of cli globals matches the
+  statistics.py pattern.
+
+  **Drive-by improvement (P2 from 2026-05-16 master audit):**
+  `sys.exit(7)` in `selenium_chrome_google_translate_text_file`'s
+  except is replaced with `raise TranslationFailure(reason=
+  "google_file_mode_error", …)` so the launcher's structured-
+  failure stdout parser picks it up. Sibling `sys.exit(8)` /
+  `sys.exit(13)` left as-is — non-zero-exit detection still
+  covers them.
+
+  Three latent bugs preserved verbatim and documented in the new
+  module docstring: (1) `generate_xlsx_file_from_phrases` sets
+  `self.wb = None` in a module-level function (NameError,
+  masked by `sys.exit(13)`); (2) `get_last_downloaded_file_path`
+  reads `driver` as bare name in nested scopes — resolved via
+  lazy import of `cli.driver`; (3)
+  `google_translate_from_html_javascript` reads `html_file_path`
+  as bare name immediately after a helper that only sets it
+  locally, so it resolves to cli's module-level default of `''`.
+  cli.py: 3,368 → 2,670.
+
+**Phase 5 deferred (Sprint D-C, `_sync_globals_from_ctx` collapse):**
+Audit found **176 bare-name occurrences across 41 names** in cli.py
+that `_sync_globals_from_ctx` still mirrors. Each requires a
+signature change (caller + callee) plus full pytest + smoke. That's
+~6 hours of careful work at one occurrence per 2 minutes. Deferred
+to a follow-up session to preserve "better partial than broken"
+discipline. Full map and recommended threading order live in
+`docs/session-state-2026-05-16-sprint-d-complete.md`.
+
+**Latent bug discovered (not fixed):**
+`run_statistics` (and `get_robot_usage_comment`) read `end_time`
+and `elapsed_time` as bare names, but neither is ever bound at
+cli's module scope — only `_end_time` / `_elapsed_time` exist as
+`main()` locals. The reads raise `NameError`, caught by the outer
+`except Exception` → "Warning failed to update stats" → no form
+submission. The stats form has been silently broken on the
+chatgpt-API path for the lifetime of the C25 fast-path. Preserved
+verbatim in the extraction. Documented in the new module
+docstring and in
+`docs/session-state-2026-05-16-sprint-d-complete.md`.
+
+**Tests:** 239 pytest pass on every commit (8 skipped live, 6
+deselected). End-to-end smoke (`chatgpt-polish FA` on
+`tests/fixtures/sample_hyperlink.docx`) green on every commit,
+with C13 source-column lock intact and col 2 populated for 18 / 42
+rows. The launcher / v2 frontend / cache layer are untouched —
+this branch is scoped strictly to cli.py and its extracted
+modules.
+
+---
+
 ## 2026-05-14 — Server deployment (`feat/server-deploy` branch)
 
 User asked for a one-command server deploy on the cheapest possible
