@@ -3221,12 +3221,11 @@ def run_statistics(ctx: RuntimeContext):
         docxfile_table_number_of_lines = numrows
         if ctx.flags.use_api or ctx.flags.splitonly:
             print("\nCreating a new browser for stats")
-            
-                                                               
+
+            service = Service()
             driver = webdriver.Chrome(service=service, options=ctx.browser.chrome_options)
             ctx.browser.driver = driver  # mirror new handle back into ctx
-            service = Service()
-        
+
         query_params = {
             "program_version" : PROGRAM_VERSION,
             "engine" : ctx.engine.engine,
