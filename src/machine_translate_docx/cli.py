@@ -2643,12 +2643,19 @@ def main() -> int:
             time.sleep(version_checker_sleep_seconds_on_update)
         print("Program ended")
     
-    # Suppress any error message from undetected_chromedriver cleanup
-    devnull = open(os.devnull, 'w')
-    sys.stderr = devnull
-    sys.__stderr__ = devnull
-    
-    
+    # Suppress any error message from undetected_chromedriver's
+    # __del__ — it writes to stderr AFTER main() returns (during
+    # process teardown), so a normal context manager wouldn't cover
+    # the window. The legacy approach opened ``os.devnull`` and
+    # leaked the file descriptor across process exit, plus
+    # reassigned ``sys.__stderr__`` (a frozen reference debuggers
+    # rely on) — both anti-patterns. Use an in-memory discard
+    # stream instead: no fd allocated, no immutable-reference
+    # mutation, GC reclaims it cleanly on process exit. Chrome
+    # itself is already silenced via ``--log-level=3`` (set in
+    # chrome_options at module setup) — this only catches the
+    # post-main destructor noise.
+    sys.stderr = io.StringIO()
     return 0
 
 if __name__ == '__main__':
