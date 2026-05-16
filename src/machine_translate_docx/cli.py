@@ -471,78 +471,15 @@ import atexit as _atexit
 _atexit.register(_atexit_cleanup_driver)
 
 
-def _sync_globals_from_ctx(ctx: RuntimeContext) -> None:
-    """Mirror populated ctx attributes onto this module's namespace so
-    legacy helpers that still read by bare name see the populated state.
-
-    Phase H bridge: rather than threading ~40 remaining functions one
-    at a time, we re-export the same objects under their historical
-    module-level names. Lists and dicts on ``ctx.docx`` are referenced
-    by identity, so any in-place mutation by a downstream helper is
-    visible through both names. After a full replacement (e.g.
-    ``ctx.docx.translation_array = new_list``), call this helper again
-    to refresh the module-level alias.
-
-    Called from ``main()`` at pipeline boundaries: after
-    ``read_and_parse_docx_document``, after ``translate_docx``, and
-    after the polish/aligner step. Cheap (one ``setattr`` per attr).
-
-    Coverage policy (W-1, 2026-05-10)
-    ---------------------------------
-    The function operates as a *whitelist* per sub-context, **with one
-    exception**: every public field of ``ctx.docx`` is mirrored
-    automatically because the parallel arrays there are the canonical
-    place legacy helpers read from, and adding one means risking a
-    silent miss. For every other sub-context the mirror is explicit:
-
-      - The dispatcher and a few session flags on ``ctx.engine`` /
-        ``ctx.browser`` are *intentionally* not mirrored to module
-        scope because the legacy code already reads them via
-        ``ctx.*`` paths or via ``_get_ctx()``.
-      - CLI-derived booleans on ``ctx.flags`` (``silent``,
-        ``splitonly``, etc.) live as module-level globals from the
-        argparse step at the top of this file. They are *snapshotted*
-        into ``ctx.flags`` by ``_get_ctx()``; mirroring them back here
-        would risk overwriting a freshly-set CLI value with a stale
-        default. So we only mirror flags that ``main()`` itself
-        mutates (none today).
-
-    When a new ctx field is added that any legacy helper reads by
-    bare name, add an entry below — and ideally a unit test in
-    ``tests/test_runtime_threading.py``. This was the failure mode
-    that produced B-003 in ``docs/real-engine-test-findings.md``:
-    ``ctx.openai.translation_log`` was mutated by the runner but
-    ``write_translation_log()`` read the unmirrored module global,
-    so every JSON sidecar was empty.
-    """
-    import sys as _sys
-    _mod = _sys.modules[__name__]
-    # Mirror every public dataclass field on ctx.docx.
-    for _name, _value in vars(ctx.docx).items():
-        if _name.startswith("_"):
-            continue
-        setattr(_mod, _name, _value)
-    # ── ctx.language ─────────────────────────────────────────────────
-    if getattr(ctx.language, "dest_lang", None) is not None:
-        setattr(_mod, "dest_lang", ctx.language.dest_lang)
-    if getattr(ctx.language, "src_lang", None) is not None:
-        setattr(_mod, "src_lang", ctx.language.src_lang)
-    # ── ctx.browser ─────────────────────────────────────────────────
-    # the recovery branches inside the Selenium engines) read `driver` as
-    # a bare name. Mirror the active handle so they reach the live session.
-    if getattr(ctx.browser, "driver", None) is not None:
-        setattr(_mod, "driver", ctx.browser.driver)
-    # ── ctx.openai ──────────────────────────────────────────────────
-    # The oai_translator / oai_polisher / translation_log module-level
-    # globals are no longer read by any function in cli.py: their
-    # historical reader ``write_translation_log`` was extracted to
-    # ``translation_log_writer.py`` in 2026-05-16 phase 3 of the
-    # cli.py shrink and now reads ``ctx.openai.translation_log``
-    # directly via the shim. The mirror setattr calls that used to live
-    # here (verified dead by grep on 2026-05-16 Sprint D-C audit) have
-    # been removed. The module-level inits at cli.py:1077-1079 + the
-    # initial ctx-push at cli.py:294-302 are kept so the dataclass
-    # defaults are properly hydrated on first ``_get_ctx()`` call.
+# _sync_globals_from_ctx (Phase-H mirror bridge) was deleted on
+# 2026-05-16 in Sprint D-C slice 6. Every previously-bare-name read in
+# cli.py's helper functions has been threaded through ctx; the
+# `RuntimeContext` dataclass is now the SOLE canonical state surface for
+# downstream pipeline steps. Module-level globals at the top of this
+# file remain authoritative only for argparse-time CLI inputs (silent,
+# splitonly, viewdocx, etc.) and one-shot import-time setup (rtlstyle,
+# docxdoc); these are snapshotted into ctx by `_get_ctx()` and never
+# read by name from any function body.
 
 
 # Track the child processes
@@ -1082,10 +1019,11 @@ else:
 # `_get_ctx()` runtime call below, otherwise the lazy snapshot inside
 # `_get_ctx()` hits NameError on these names and ctx.openai.translation_log
 # ends up as the dataclass empty {} default instead of pointing at this
-# module-global dict. `_sync_globals_from_ctx` repairs the divergence on
-# its first run inside main(), but only because the runner mutates the
-# same dict by reference — pre-2026-05-16 the names were declared AFTER
-# the snapshot fired, leaving the seed dict orphaned at startup.
+# module-global dict. (Until 2026-05-16 the Phase-H mirror
+# `_sync_globals_from_ctx` papered over this; with the mirror deleted
+# in Sprint D-C slice 6 the seed dict MUST exist before _get_ctx() runs,
+# and the runner mutates it by reference so subsequent reads on
+# ctx.openai.translation_log stay in sync.)
 oai_translator = None
 oai_polisher = None
 translation_log = {"run_info": {}, "blocks": [], "summary": {}}
@@ -1399,9 +1337,12 @@ def initialize_translation_memory_xlsx(ctx: RuntimeContext):
     else:
         xtm = xlsx_translation_memory.xlsx_translation_memory(None)
     # 2026-05-16 Sprint D-C — mirror the newly-created XTM instance onto
-    # ctx.docx so the next _sync_globals_from_ctx call does not overwrite
-    # the module-level `xtm` back to None (the dataclass default
-    # snapshotted by _get_ctx before this function ran).
+    # ctx.docx. The module-level `xtm` is kept in sync so the
+    # `print_replaced_items_*` calls in main() that go through ctx.docx.xtm
+    # see the populated handle. (Pre-slice-6 the Phase-H mirror would have
+    # stomped this from the snapshot's default None; the mirror is gone now,
+    # but threading every reader through ctx.docx still requires this explicit
+    # write.)
     ctx.docx.xtm = xtm
 
 
@@ -1688,27 +1629,26 @@ def prepare_and_clear_cell_for_writing(ctx: RuntimeContext, row_n, translation_c
 # new implementations take their dependencies as explicit kwargs so
 # they can be unit-tested without RuntimeContext.
 def cell_set_1st_paragraph(ctx: RuntimeContext, row_n, paragraph_text):
-    current_cell = ctx.docx.table_cells[row_n][2]
+    # Docx Cell objects are mutable, so we don't need to extract+reassign:
+    # the impl mutates the cell in place and ctx.docx.table_cells already
+    # references the same object.
     _cell_set_first_paragraph_impl(
-        current_cell,
+        ctx.docx.table_cells[row_n][2],
         paragraph_text,
         dest_lang=ctx.language.dest_lang,
         dest_font=ctx.language.dest_font,
         rtlstyle=ctx.docx.rtlstyle,
     )
-    ctx.docx.table_cells[row_n][2] = current_cell
 
 
 def cell_add_paragraph(ctx: RuntimeContext, row_n, paragraph_text):
-    current_cell = ctx.docx.table_cells[row_n][2]
     _cell_add_paragraph_impl(
-        current_cell,
+        ctx.docx.table_cells[row_n][2],
         paragraph_text,
         dest_lang=ctx.language.dest_lang,
         dest_font=ctx.language.dest_font,
         rtlstyle=ctx.docx.rtlstyle,
     )
-    ctx.docx.table_cells[row_n][2] = current_cell
 
 
 # read_and_parse_docx_document was extracted to ``src/docx_io/parse.py``
@@ -2539,7 +2479,6 @@ def main() -> int:
     initialize_translation_memory_xlsx(ctx)
 
     read_and_parse_docx_document(ctx)
-    _sync_globals_from_ctx(ctx)  # Phase H bridge — see helper docstring
 
     # B-001: fail fast on a docx with no translatable text. Without this
     # guard, the pipeline finishes "successfully" with an empty output
@@ -2547,13 +2486,11 @@ def main() -> int:
     assert_source_has_content(ctx)
 
     create_webdriver(ctx)
-    _sync_globals_from_ctx(ctx)  # mirror ctx.browser.driver to module-level so legacy helpers see it
 
     if ctx.engine.engine == 'deepl':
         ctx.browser.logged_into_deepl = selenium_chrome_deepl_log_in(ctx)
 
     translation_succeded = translate_docx(ctx)
-    _sync_globals_from_ctx(ctx)  # refresh module-level after translation_array etc. populated
 
     if ctx.browser.logged_into_deepl:
         selenium_chrome_deepl_log_off(ctx)
@@ -2578,7 +2515,6 @@ def main() -> int:
         create_webdriver(ctx)
 
     get_translation_and_replace_after(ctx)
-    _sync_globals_from_ctx(ctx)  # to_text_by_phrase_separator_table fields just populated
 
     # B-001: fail with a structured reason if the engine returned
     # nothing usable. Catches the "all rows empty" + "single-row dump"
@@ -2604,12 +2540,10 @@ def main() -> int:
     # loops don't TypeError.
     if ctx.docx.translation_array is None:
         ctx.docx.translation_array = []
-        _sync_globals_from_ctx(ctx)
 
     minimize_browser(ctx)
 
     document_split_phrases(ctx)
-    _sync_globals_from_ctx(ctx)  # translation_result_phrase_array populated by split helper
 
     write_destination_language_in_docx_cell(ctx)
 
