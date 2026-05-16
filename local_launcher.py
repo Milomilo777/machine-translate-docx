@@ -134,6 +134,22 @@ def _sanitize_filename(name: str) -> str:
 
 # ── 5-day cache for API-translated outputs (CACHE_TTL_SEC above) ─────────────
 
+def _mask_telegram_token(text: str, token: str) -> str:
+    """Replace a Telegram bot token within a string with ``***`` so it
+    cannot leak into tracebacks, log files, or stdout.
+
+    Token format is ``digits:chars`` (e.g. ``"123456789:ABCdef..."``).
+    When ``token`` is empty the input is returned unchanged.
+
+    Used to wrap any urllib exception we re-raise from a Telegram
+    ``sendMessage`` / ``sendDocument`` call — ``urllib.HTTPError``'s
+    string form can include the full URL on some Python builds.
+    """
+    if not token:
+        return text
+    return text.replace(token, "***")
+
+
 def _cache_key(payload: bytes, target_lang: str, engine: str,
                ai_model: str | None) -> str:
     """SHA-256 over payload + lang + engine + ai_model.
@@ -868,12 +884,21 @@ class LocalState:
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        with _ur.urlopen(req, timeout=10) as resp:
-            data = resp.read()
-            if b'"ok":true' not in data:
-                raise RuntimeError(
-                    f"telegram rejected sendMessage: {data[:200].decode(errors='replace')}"
-                )
+        try:
+            with _ur.urlopen(req, timeout=10) as resp:
+                data = resp.read()
+                if b'"ok":true' not in data:
+                    raise RuntimeError(
+                        f"telegram rejected sendMessage: {data[:200].decode(errors='replace')}"
+                    )
+        except RuntimeError:
+            # Intentional rejection — our own message; no token to mask.
+            raise
+        except Exception as exc:
+            # P2.3 (master audit 2026-05-16): only urllib-side exceptions
+            # (HTTPError, URLError) can leak the request URL with the
+            # bot token via ``str(exc)``. Mask before re-raising.
+            raise RuntimeError(_mask_telegram_token(repr(exc), token)) from None
 
 
 def _parse_multipart(headers, body: bytes) -> tuple[dict[str, str], dict[str, tuple[str, bytes]]]:
@@ -2264,11 +2289,17 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
                     return
             print(f"[telegram] alert text sent to chat {chat_id[:6]}…")
         except _ue.HTTPError as exc:
-            print(f"[telegram] message HTTP error: {exc.code} {exc.reason}",
+            # P2.3: `exc.reason` doesn't include URL but defensively
+            # mask the token in case any HTTPError subclass embeds it.
+            print(f"[telegram] message HTTP error: {exc.code} "
+                  f"{_mask_telegram_token(str(exc.reason), token)}",
                   file=sys.stderr, flush=True)
             return
         except Exception as exc:
-            print(f"[telegram] message skipped: {exc!r}",
+            # P2.3 (master audit 2026-05-16): `exc!r` formatting of an
+            # urllib URLError can embed the request URL — which includes
+            # the bot token. Mask it before printing.
+            print(f"[telegram] message skipped: {_mask_telegram_token(repr(exc), token)}",
                   file=sys.stderr, flush=True)
             return
 
@@ -2349,12 +2380,21 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
             headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
             method="POST",
         )
-        with _ur.urlopen(req, timeout=30) as resp:
-            data = resp.read()
-            if b'"ok":true' not in data:
-                raise RuntimeError(
-                    f"telegram rejected sendDocument: {data[:200].decode(errors='replace')}"
-                )
+        try:
+            with _ur.urlopen(req, timeout=30) as resp:
+                data = resp.read()
+                if b'"ok":true' not in data:
+                    raise RuntimeError(
+                        f"telegram rejected sendDocument: {data[:200].decode(errors='replace')}"
+                    )
+        except RuntimeError:
+            # Intentional rejection — our own message; no token to mask.
+            raise
+        except Exception as exc:
+            # P2.3 (master audit 2026-05-16): only urllib-side exceptions
+            # can leak the request URL with the bot token via
+            # ``str(exc)``. Mask before re-raising.
+            raise RuntimeError(_mask_telegram_token(repr(exc), token)) from None
 
     def _strip_timestamp(self, path: Path) -> Path:
         """Rename file to remove leading timestamp prefix (e.g. 1778036666789-).
