@@ -30,12 +30,38 @@ if TYPE_CHECKING:
 __all__ = ["write_translation_log"]
 
 
-def write_translation_log(ctx: "RuntimeContext", log_path: str) -> None:
+def write_translation_log(
+    ctx: "RuntimeContext",
+    log_path: str,
+    *,
+    strip_prompts: bool = False,
+) -> None:
     """Write ``ctx.openai.translation_log`` as pretty-printed JSON next to the docx.
 
     Idempotent: re-running with the same ``log_path`` overwrites the
     sidecar. The ``translation_log`` dict is mutated in place (summary
     + run_info enrichment).
+
+    Parameters
+    ----------
+    ctx : RuntimeContext
+        Live runtime context. Reads ``ctx.openai.translation_log`` (the
+        mutated dict), ``ctx.openai.translator`` and ``.polisher`` (for
+        their ``last_system_prompt`` / ``system_prompt`` fields),
+        ``ctx.docx.from_text_table`` and ``.to_text_by_phrase_separator_table``
+        (for row counts), and ``ctx.flags.word_file_to_translate_save_as_path``
+        (for the docx pointer in ``run_info.output_file``).
+    log_path : str
+        Output path. Sidecars live alongside the docx by convention.
+    strip_prompts : bool, default False
+        2026-05-16 (P2 from master audit): when True, the
+        ``run_info.translation_prompts.system_prompt`` and
+        ``run_info.polish_prompts.system_prompt`` bodies are omitted
+        from the written JSON; only the ``prompt_hash`` is kept
+        (enough to confirm "two runs used identical prompts" without
+        leaking the prompt bodies). Use this when the sidecar may be
+        served publicly. Default False preserves legacy local-dev
+        behaviour: full prompts in the log.
     """
     translation_log = ctx.openai.translation_log
     blocks = translation_log.get("blocks", [])
@@ -76,21 +102,25 @@ def write_translation_log(ctx: "RuntimeContext", log_path: str) -> None:
     try:
         _tr = getattr(ctx.openai, "translator", None)
         if _tr is not None and getattr(_tr, "last_system_prompt", None):
-            translation_log["run_info"]["translation_prompts"] = {
-                "system_prompt":         _tr.last_system_prompt,
-                "user_prompt_sample":    getattr(_tr, "last_user_prompt", "") or "",
-                "prompt_hash":           prompt_hash(_tr.last_system_prompt),
+            _entry: dict = {
+                "prompt_hash": prompt_hash(_tr.last_system_prompt),
             }
+            if not strip_prompts:
+                _entry["system_prompt"]      = _tr.last_system_prompt
+                _entry["user_prompt_sample"] = getattr(_tr, "last_user_prompt", "") or ""
+            translation_log["run_info"]["translation_prompts"] = _entry
     except Exception as _e:
         print(f"[WARN] Could not stash translator prompts in run_info: {_e!r}")
     try:
         _po = getattr(ctx.openai, "polisher", None)
         if _po is not None and getattr(_po, "system_prompt", None):
-            translation_log["run_info"]["polish_prompts"] = {
-                "system_prompt":      _po.system_prompt,
-                "user_prompt_sample": getattr(_po, "last_user_prompt", "") or "",
-                "prompt_hash":        prompt_hash(_po.system_prompt),
+            _entry = {
+                "prompt_hash": prompt_hash(_po.system_prompt),
             }
+            if not strip_prompts:
+                _entry["system_prompt"]      = _po.system_prompt
+                _entry["user_prompt_sample"] = getattr(_po, "last_user_prompt", "") or ""
+            translation_log["run_info"]["polish_prompts"] = _entry
     except Exception as _e:
         print(f"[WARN] Could not stash polisher prompts in run_info: {_e!r}")
 
