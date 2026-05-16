@@ -240,26 +240,14 @@ class OpenAITranslator:
         prompt_tokens = usage.get("prompt_tokens", 0)
         completion_tokens = usage.get("completion_tokens", 0)
 
-        PRICES = {
-            # Official API pricing — April 2026
-            # Format: {"input": $/1M, "cached": $/1M cached input, "output": $/1M}
-            "gpt-5.5":      {"input": 5.00,  "cached": 0.50,  "output": 30.00},
-            "gpt-5.4":      {"input": 2.50,  "cached": 0.25,  "output": 15.00},
-            "gpt-5.4-mini": {"input": 0.75,  "cached": 0.075, "output": 4.50},
-            "gpt-5.4-nano": {"input": 0.20,  "cached": 0.02,  "output": 1.25},
-            "gpt-5.2":      {"input": 1.75,  "cached": 0.175, "output": 14.00},
-            "gpt-5.1":      {"input": 1.25,  "cached": 0.125, "output": 10.00},
-            "gpt-5":        {"input": 1.25,  "cached": 0.125, "output": 10.00},
-            "gpt-5-mini":   {"input": 0.25,  "cached": 0.025, "output": 2.00},
-            "gpt-5-nano":   {"input": 0.05,  "cached": 0.005, "output": 0.40},
-            "gpt-4o":       {"input": 2.50,  "cached": 0.25,  "output": 10.00},
-            "gpt-4o-mini":  {"input": 0.15,  "cached": 0.015, "output": 0.60},
-        }
+        # 2026-05-16 (P2.8): pricing table consolidated to
+        # openai_tools._pricing.PRICES so future model adds touch one place.
+        from ._pricing import get_price
 
         cached_tokens = (usage.get("prompt_tokens_details") or {}).get("cached_tokens", 0)
         non_cached_tokens = max(0, prompt_tokens - cached_tokens)
 
-        price = next((v for k, v in PRICES.items() if k in model), None)
+        price = get_price(model)
 
         if price is None:
             print(f"[WARN] No known pricing for model '{model}'. Cost will be set to 0.")
@@ -382,20 +370,11 @@ class OpenAITranslator:
         elapsed_time  = time.time() - start_time
         response_json = response.model_dump()
 
-        # Normalize Responses API usage fields to Chat Completions format so the
-        # rest of the code (cost calc, cached-token logging) works unchanged.
-        # Responses API uses input_tokens / output_tokens / input_tokens_details;
-        # Chat Completions uses prompt_tokens / completion_tokens / prompt_tokens_details.
-        _raw_usage = response_json.get("usage") or {}
-        if "input_tokens" in _raw_usage and "prompt_tokens" not in _raw_usage:
-            response_json = dict(response_json)
-            response_json["usage"] = {
-                "prompt_tokens":             _raw_usage.get("input_tokens", 0),
-                "completion_tokens":         _raw_usage.get("output_tokens", 0),
-                "total_tokens":              _raw_usage.get("total_tokens", 0),
-                "prompt_tokens_details":     _raw_usage.get("input_tokens_details", {}),
-                "completion_tokens_details": _raw_usage.get("output_tokens_details", {}),
-            }
+        # Normalize Responses-API usage shape -> Chat-Completions shape so
+        # downstream cost calc + JSON sidecar work unchanged. Consolidated
+        # to _retry.normalize_usage 2026-05-16 (P2.9).
+        from ._retry import normalize_usage
+        response_json = normalize_usage(response_json)
 
         # B5 (audit 2026-05-13): full response JSON only when explicitly
         # asked for. Default: usage + cost summary only.

@@ -185,7 +185,7 @@ def selenium_chrome_google_translate_text_file(ctx: "RuntimeContext", text_file_
             pass
         else:
             print("oups ! we got %s translated lines out of %s" % (text_translated_document_str_nb_lines, ctx.docx.docxfile_table_number_of_phrases))
-            translation_succeded = False
+            translation_succeeded = False
 
         #print("text_translated_document_str:")
         #print(text_translated_document_str)
@@ -537,7 +537,7 @@ def selenium_chrome_google_translate_xlsx_file(ctx: "RuntimeContext", xlsx_file_
             pass
         else:
             print("oups ! we got %s translated lines out of %s" % (text_translated_document_str_nb_lines, ctx.docx.docxfile_table_number_of_phrases))
-            translation_succeded = False
+            translation_succeeded = False
 
         #print("text_translated_document_str:")
         #print(text_translated_document_str)
@@ -546,7 +546,13 @@ def selenium_chrome_google_translate_xlsx_file(ctx: "RuntimeContext", xlsx_file_
         print("Error getting google translation from text file.")
         var = traceback.format_exc()
         print(var)
-        sys.exit(8)
+        # 2026-05-16 (P2.5 follow-on): bypassing atexit + structured-failure
+        # path via raw sys.exit(8) made this look like "engine returned no
+        # rows" to the launcher; surface it as a real failure instead.
+        raise TranslationFailure(
+            f"Selenium error in google text-file engine: {var}",
+            reason="google_text_file_mode_error",
+        )
     return ctx.docx.translation_array
 
 
@@ -773,11 +779,14 @@ def generate_xlsx_file_from_phrases(ctx: "RuntimeContext", xlsx_file_path):
         print("ERROR: %s" % (var))
         self.wb = None
         self.ws = None
-        if not silent:
-            input("Enter to close program")
-        else:
-            print("Program ended with errors")
-        sys.exit(13)
+        # 2026-05-16 (P2.5 follow-on): raise the structured failure so the
+        # launcher flags status=error with a useful reason. The legacy
+        # interactive-pause `input(...)` is gone with the structured-exit
+        # pattern — the launcher always passes --silent anyway.
+        raise TranslationFailure(
+            f"Failed to create empty xlsx workbook for translation memory: {var}",
+            reason="xlsx_workbook_init_error",
+        )
 
     index_current_row = 1
     max_col_length = 0

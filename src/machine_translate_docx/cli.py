@@ -651,7 +651,10 @@ docxfile_table_number_of_words = 0
 numrows = 0
 numcols = 0
 
-E_mail_str = 'sm' + 'tv' + '.' + 'bot' + '@g' + 'mail' + '.' + 'c' + 'o' + 'm'
+# 2026-05-16 (P3.2): canonical name is ``config.SUPPORT_EMAIL``. This
+# module-level alias is kept for the three local prints + any operator
+# scripts that grep for the legacy spelling.
+from .config import SUPPORT_EMAIL as E_mail_str
 
 
 cf = currentframe()
@@ -1785,21 +1788,21 @@ def translate_from_phrasesblock(ctx: RuntimeContext):
     #generate_text_file_from_phrases(ctx, text_file_full_path)
     generate_char_blocks_array_from_phrases(ctx, text_file_full_path)
 
-    translation_succeded = True
+    translation_succeeded = True
 
     #input("phrasesblock")
     print("Starting translation in %s using phrase blocks of %d characters..." % (ctx.engine.engine, ctx.config.max_translation_block_size))
 
-    translation_succeded, ctx.docx.translation_array = _runner_translate_maxchar_blocks(ctx)
+    translation_succeeded, ctx.docx.translation_array = _runner_translate_maxchar_blocks(ctx)
     try:
         os.remove(text_file_path)
         pass
     except Exception:
         pass
-    return translation_succeded
+    return translation_succeeded
 
 def translate_docx(ctx: RuntimeContext):
-    translation_succeded = True
+    translation_succeeded = True
 
     # Splitonly mode = "only run document_split_phrases, do NOT translate".
     # Without this guard the chatgpt branch of use_phrasesblock() fires
@@ -1811,14 +1814,14 @@ def translate_docx(ctx: RuntimeContext):
     # refactor): the spec'd `--splitonly --engine chatgpt --enginemethod
     # api` re-spawn relies on this short-circuit.
     if ctx.flags.splitonly:
-        return translation_succeded
+        return translation_succeeded
 
     # ------------------------------------------------------------------
     # Engine-method specific translators
     # ------------------------------------------------------------------
     if engine_method == "textfile":
         google_translate_from_text_file(ctx)
-        return translation_succeded
+        return translation_succeeded
 
     if engine_method == "javascript":
         google_translate_from_html_javascript(ctx)
@@ -1834,11 +1837,11 @@ def translate_docx(ctx: RuntimeContext):
             print("[ERROR] file:// URLs (CORS / sandboxing). This engine path")
             print("[ERROR] cannot complete in current Chrome versions.")
             print("[INFO] Use the OpenAI API engine (chatgpt) or DeepL instead.")
-        return translation_succeded
+        return translation_succeeded
 
     if engine_method == "xlsxfile":
         google_translate_from_html_xlsxfile(ctx)
-        return translation_succeded
+        return translation_succeeded
 
     # ------------------------------------------------------------------
     # Phrase-block logic — predicate lives in src/dispatch.py so it
@@ -1847,9 +1850,9 @@ def translate_docx(ctx: RuntimeContext):
     # the per-engine policy.
     # ------------------------------------------------------------------
     if _dispatch_use_phrasesblock(translation_engine, engine_method):
-        translation_succeded = translate_from_phrasesblock(ctx)
+        translation_succeeded = translate_from_phrasesblock(ctx)
 
-    return translation_succeded
+    return translation_succeeded
 
 
 
@@ -1937,7 +1940,7 @@ def get_translation_and_replace_after(ctx: RuntimeContext):
                         web_translation_separators = selenium_chrome_machine_translate(ctx, item_searched_and_replaced_before, phrase_no)
                 else:
                     if ctx.engine.method == "singlephrase" and ctx.engine.engine == 'deepl':
-                        translation_succeded, web_translation_separators  = selenium_chrome_machine_translate(ctx, item_searched_and_replaced_before, phrase_no)
+                        translation_succeeded, web_translation_separators  = selenium_chrome_machine_translate(ctx, item_searched_and_replaced_before, phrase_no)
                     else:
                         web_translation_separators = selenium_chrome_machine_translate(ctx, item_searched_and_replaced_before, phrase_no)
                         
@@ -2473,7 +2476,7 @@ def main() -> int:
         print(f"[WARN] Log retention sweep failed: {_exc!r}")
 
     ctx = _get_ctx()
-    translation_succeded = False
+    translation_succeeded = False
 
     set_translation_function(ctx)
     initialize_translation_memory_xlsx(ctx)
@@ -2490,7 +2493,7 @@ def main() -> int:
     if ctx.engine.engine == 'deepl':
         ctx.browser.logged_into_deepl = selenium_chrome_deepl_log_in(ctx)
 
-    translation_succeded = translate_docx(ctx)
+    translation_succeeded = translate_docx(ctx)
 
     if ctx.browser.logged_into_deepl:
         selenium_chrome_deepl_log_off(ctx)
@@ -2502,7 +2505,7 @@ def main() -> int:
     # `test_engine_method_flip_via_ctx`,
     # `test_driver_rebuild_via_ctx`, and
     # `test_dispatcher_refresh_drops_stale_driver_reference` cover this.
-    if (translation_succeded is False
+    if (translation_succeeded is False
             and ctx.engine.engine == 'deepl'
             and ctx.engine.method == 'phrasesblock'):
         ctx.engine.method = 'singlephrase'

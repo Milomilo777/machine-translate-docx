@@ -1947,7 +1947,26 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
             )
             raise RuntimeError(f"Backend exited with code {code}")
 
-        output_path = Path(saved_filename) if saved_filename else self._fallback_output_path(source_file, target_language, translation_engine)
+        # 2026-05-16 (P2.1 from master audit): confine ``saved_filename``
+        # to ``uploads_dir`` so a malformed / hostile CLI output cannot
+        # steer the launcher into reading from outside its working area.
+        # The CLI ALWAYS writes the output docx next to the input source
+        # (the uploads folder), so any resolved path that escapes
+        # ``uploads_dir`` is a strong signal of a malformed line and we
+        # should fall back to the deterministic ``_fallback_output_path``.
+        if saved_filename:
+            try:
+                _candidate = Path(saved_filename).resolve()
+                _candidate.relative_to(self.state.uploads_dir.resolve())
+                output_path = _candidate
+            except (ValueError, OSError):
+                print(
+                    f"[job {job_id}] [WARN] saved_filename escaped uploads_dir: "
+                    f"{saved_filename!r} — falling back to deterministic path"
+                )
+                output_path = self._fallback_output_path(source_file, target_language, translation_engine)
+        else:
+            output_path = self._fallback_output_path(source_file, target_language, translation_engine)
         deadline = time.time() + 120
         while time.time() < deadline:
             if output_path.exists():

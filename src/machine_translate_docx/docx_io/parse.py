@@ -58,8 +58,10 @@ __all__ = [
 
 
 # Author contact + program version — used only by the error-exit branches.
-# Kept here as module constants so this module has zero entry-script reads.
-E_MAIL_STR = "smtv.bot@gmail.com"
+# Kept here as module-level aliases for back-compat with operator scripts
+# that grep for them; the canonical name lives at
+# config.SUPPORT_EMAIL since 2026-05-16 (P3.2).
+from ..config import SUPPORT_EMAIL as E_MAIL_STR
 PROGRAM_VERSION = "1.0.0"
 
 

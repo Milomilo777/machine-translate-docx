@@ -88,24 +88,12 @@ class OpenAISubtitleSplitter:
             "cached_tokens", 0
         )
 
-        # Per-1M-token rates. ``cached`` is the discounted rate for
-        # tokens that re-used the 24-h prompt cache.
-        PRICES = {
-            "gpt-5.5":       {"input": 5.00, "cached": 0.50,  "output": 30.00},
-            "gpt-5.4":       {"input": 2.50, "cached": 0.25,  "output": 15.00},
-            "gpt-5.4-mini":  {"input": 0.75, "cached": 0.075, "output": 4.50},
-            "gpt-5.4-nano":  {"input": 0.20, "cached": 0.02,  "output": 1.25},
-            "gpt-5.2":       {"input": 1.75, "cached": 0.175, "output": 14.00},
-            "gpt-5.1":       {"input": 1.25, "cached": 0.125, "output": 10.00},
-            "gpt-5":         {"input": 1.25, "cached": 0.125, "output": 10.00},
-            "gpt-5-mini":    {"input": 0.25, "cached": 0.025, "output": 2.00},
-            "gpt-5-nano":    {"input": 0.05, "cached": 0.005, "output": 0.40},
-            "gpt-4o":        {"input": 2.50, "cached": 0.25,  "output": 10.00},
-            "gpt-4o-mini":   {"input": 0.15, "cached": 0.015, "output": 0.60},
-        }
+        # 2026-05-16 (P2.8): pricing consolidated to
+        # openai_tools._pricing.PRICES.
+        from ._pricing import get_price
 
         # Find matching model price tier (partial match supported).
-        price = next((v for k, v in PRICES.items() if k in model), None)
+        price = get_price(model)
 
         if price is None:
             print(f"[WARN] No known pricing for model '{model}'. Cost will be set to 0.")
@@ -245,17 +233,28 @@ class OpenAISubtitleSplitter:
             {"role": "system", "content": self._SYSTEM_PROMPT},
             {"role": "user",   "content": prompt},
         ]
+        # 2026-05-16 (P2.4): wrap with call_with_retry so a single transient
+        # 5xx / rate-limit doesn't kill an entire split pass. The two prior
+        # OpenAI callers (translator, polisher) already use this helper;
+        # splitting was the lone outlier.
+        from ._retry import call_with_retry
         if "pro" in self.model:
-            response = self.client.responses.create(
-                model=self.model,
-                input=_messages,
-                extra_body=_cache_extra,
+            response = call_with_retry(
+                lambda: self.client.responses.create(
+                    model=self.model,
+                    input=_messages,
+                    extra_body=_cache_extra,
+                ),
+                label="splitter.responses",
             )
         else:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=_messages,
-                extra_body=_cache_extra,
+            response = call_with_retry(
+                lambda: self.client.chat.completions.create(
+                    model=self.model,
+                    messages=_messages,
+                    extra_body=_cache_extra,
+                ),
+                label="splitter.chat",
             )
         elapsed_time = time.time() - start_time
         response_json = response.model_dump()

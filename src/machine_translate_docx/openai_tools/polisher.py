@@ -349,17 +349,10 @@ class OpenAIPolisher:
         elapsed       = time.time() - t0
         response_json = response.model_dump()
 
-        # Normalize Responses API usage fields to Chat Completions format.
-        _raw_usage = response_json.get("usage") or {}
-        if "input_tokens" in _raw_usage and "prompt_tokens" not in _raw_usage:
-            response_json = dict(response_json)
-            response_json["usage"] = {
-                "prompt_tokens":             _raw_usage.get("input_tokens", 0),
-                "completion_tokens":         _raw_usage.get("output_tokens", 0),
-                "total_tokens":              _raw_usage.get("total_tokens", 0),
-                "prompt_tokens_details":     _raw_usage.get("input_tokens_details", {}),
-                "completion_tokens_details": _raw_usage.get("output_tokens_details", {}),
-            }
+        # Normalize Responses-API usage shape -> Chat-Completions shape.
+        # Consolidated to _retry.normalize_usage 2026-05-16 (P2.9).
+        from ._retry import normalize_usage
+        response_json = normalize_usage(response_json)
 
         if _use_responses_api and hasattr(response, "output_text") and response.output_text is not None:
             raw = response.output_text
@@ -568,18 +561,14 @@ class OpenAIPolisher:
         return "\n".join(polished_lines)
 
     def _estimate_cost(self, response_json: dict) -> float:
-        PRICES = {
-            # Official API pricing — April 2026
-            "gpt-5.5":      {"input": 5.00,  "cached": 0.50,  "output": 30.00},
-            "gpt-5.4":      {"input": 2.50,  "cached": 0.25,  "output": 15.00},
-            "gpt-5.4-mini": {"input": 0.75,  "cached": 0.075, "output": 4.50},
-            "gpt-5.4-nano": {"input": 0.20,  "cached": 0.02,  "output": 1.25},
-            "gpt-4o":       {"input": 2.50,  "cached": 0.25,  "output": 10.00},
-            "gpt-4o-mini":  {"input": 0.15,  "cached": 0.015, "output": 0.60},
-        }
+        # 2026-05-16 (P2.8): pricing consolidated. The previous local
+        # PRICES table here was missing 5 models (gpt-5, gpt-5-mini,
+        # gpt-5-nano, gpt-5.1, gpt-5.2) compared to translator.py.
+        from ._pricing import get_price
+
         model = response_json.get("model", self.model)
         usage = response_json.get("usage") or {}
-        price = next((v for k, v in PRICES.items() if k in model), None)
+        price = get_price(model)
         if not price:
             return 0.0
         p_tok      = usage.get("prompt_tokens", 0)

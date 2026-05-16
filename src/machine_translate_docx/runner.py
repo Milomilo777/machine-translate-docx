@@ -46,12 +46,12 @@ def selenium_chrome_translate_maxchar_blocks(
 ):
     """Run the block-loop pipeline over ``ctx.docx.blocks_nchar_max_to_translate_array``.
 
-    Returns ``(translation_succeded, translation_array)``.
+    Returns ``(translation_succeeded, translation_array)``.
 
     The legacy ``selenium_webservice_perplexity_translate`` kwarg is
     silently ignored on 2026-05-13 (Perplexity engine fully removed).
     """
-    translation_succeded = True
+    translation_succeeded = True
     translated_blocks = []
 
     # ── engine-agnostic single attempt ──────────────────────────────────────
@@ -262,6 +262,6 @@ def selenium_chrome_translate_maxchar_blocks(
             f"Line count mismatch: {len(ctx.docx.translation_array)} != "
             f"{ctx.docx.docxfile_table_number_of_phrases}"
         )
-        translation_succeded = False
+        translation_succeeded = False
 
-    return translation_succeded, ctx.docx.translation_array
+    return translation_succeeded, ctx.docx.translation_array

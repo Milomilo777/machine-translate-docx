@@ -10,7 +10,7 @@ R15 — DeepL phrasesblock → singlephrase fallback
 ------------------------------------------------
 The fallback dance lives in main():
 
-    if translation_succeded is False
+    if translation_succeeded is False
        and ctx.engine.engine == 'deepl'
        and ctx.engine.method == 'phrasesblock':
 
