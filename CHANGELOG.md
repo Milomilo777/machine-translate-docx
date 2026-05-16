@@ -6,6 +6,42 @@
 
 ---
 
+## 2026-05-16i — Sprint D attempt 1: statistics.py scaffold + local_time_offset
+
+Beginning of the cli.py shrink continuation (`docs/cli-shrink-phase3-handoff.md`).
+Scope was intentionally narrowed mid-session:
+
+- ✅ Created `src/machine_translate_docx/statistics.py` and moved
+  `local_time_offset` (14 lines, fully stateless) into it. cli.py
+  imports it back so call sites are unchanged.
+- ⏸ `run_statistics` (232 lines) and `get_robot_usage_comment` (370
+  lines) deferred. Each reads 10+ module-level globals (`xtm`,
+  `xlsxreplacefile`, `start_time`, `end_time`, `elapsed_time`,
+  `docx_file_name`, `numrows`, `dest_font`, `split_translation`, plus
+  Selenium imports). Threading them safely needs a dedicated session
+  with full pytest + multi-engine smoke after every extraction.
+- ⏸ Sprint D-B (Google file-mode workers) deferred for the same
+  reason — `selenium_chrome_google_translate_*_file` workers each
+  carry per-row state through `ctx.docx.table_cells`.
+- ⏸ Sprint D-C (`_sync_globals_from_ctx` collapse) deferred until
+  D-A and D-B drain the bare-name reads.
+
+**Correction in the handoff doc:** `print_console_docx_file_translated`
+was previously listed as extractable, but it writes into
+`ctx.docx.table_cells[*][2]` via the cell-write shims — it's the
+non-split write path, not a reporting helper. Removed from the
+extraction list.
+
+Result: cli.py 3,957 → 3,947 lines (-10). New `statistics.py` (42
+lines) is the scaffold for future extractions. Test suite still 239
+passed / 8 skipped (live) / 6 deselected. End-to-end smoke
+(chatgpt-polish, sample_hyperlink.docx, fa): exit 0.
+
+Branch: `refactor/cli-py-sprint-d` — merged to master, tagged
+`archive/2026-05-16-cli-shrink-sprint-d-attempt1`, deleted.
+
+---
+
 ## 2026-05-16h — Docs: UML diagrams + detailed module architecture SVG
 
 Documentation-only landing — no source changes.
