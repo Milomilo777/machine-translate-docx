@@ -6,6 +6,78 @@
 
 ---
 
+## 2026-05-16b — cli.py 3-phase shrink — Phase 2 (low-risk extractions)
+
+Second phase of the cli.py shrink. Moves four free-standing helper
+clusters out of the entry script into dedicated modules and deletes
+three more orphan functions discovered in the process.
+
+### New module — `src/machine_translate_docx/network_utils.py`
+
+Owns the four startup-time region/connectivity helpers:
+
+- `test_internet(host, port, timeout)` — TCP probe against Google DNS.
+- `fetch_country_data(url, *, http_timeout)` — region detection.
+- `check_mirror_url(url, *, http_timeout)` — driver-mirror reachability.
+- `set_se_driver_mirror_url_if_needed(country_name, mirror_url, *,
+  restricted_countries, http_timeout)` — env-var setter for restricted
+  regions. Renamed from `set_SE_DRIVER_MIRROR_URL_if_needed` to follow
+  the rest of the repo's snake_case convention.
+
+Every dependency that the historical bodies read from module globals
+(`location_http_query_timeout`, `chrome_driver_restricted_countries`)
+is now an explicit keyword argument. The module imports only `socket`,
+`os`, `json`, and `requests` so adding it to the package costs almost
+nothing at startup.
+
+### New module — `src/machine_translate_docx/docx_io/metadata.py`
+
+Owns the two output-side DOCX metadata writers:
+
+- `write_destination_language_in_docx_cell(docxdoc, *, splitonly,
+  dest_lang_name, dest_lang)` — fills cell (1, 2) of the first table
+  with the human-readable destination language name (fallback to ISO).
+- `set_docx_properties_comment_for_history(docxdoc, *, program_version,
+  engine)` — stamps a one-line audit comment into core properties.
+
+Thin shims in `cli.py` preserve the historical zero-argument signatures
+so existing call sites keep working without churn.
+
+### Moved to existing modules
+
+- `deepl_double_linefeed_between_phrases(dest_lang)` →
+  `engines/deepl.py`. Inline tuple turned into a module-level frozen
+  set (`_DEEPL_SINGLE_LINEFEED_LANGS`).
+- `delete_paragraph(paragraph)` → `docx_io/cells.py`. Documented as
+  the "cell-clearing helper" with a one-line rationale.
+
+### Deletions (orphans)
+
+- `generate_tmx_file()` — 62-line TMX exporter. Only caller was a
+  commented-out `#generate_tmx_file ()` line. Removed.
+- `linux_distribution()` — wrapped `platform.linux_distribution()`
+  (deprecated and removed in Python 3.8+). Only caller was the
+  also-orphan `print_os_info()`. Removed.
+- `print_os_info()` — startup OS-info dump that called the removed
+  `platform.dist()` (also gone in 3.8+). Never called from anywhere.
+  Removed.
+
+### Result
+
+- `cli.py`: 4,257 → 4,129 lines (-128, total -266 from the 4,395 start).
+- New code: `network_utils.py` (119 lines) + `docx_io/metadata.py`
+  (74 lines) + small additions to `engines/deepl.py` and
+  `docx_io/cells.py`.
+- Test suite: 154 passed / 8 skipped (live) / 8 deselected. Zero
+  failures.
+
+Phase 3 will tackle the remaining big block — the statistics +
+log-writer cluster (~900 lines) and the Google file-mode workers
+(~800 lines) — plus the eventual cell-shim collapse once globals are
+moved onto `RuntimeContext`.
+
+---
+
 ## 2026-05-16a — cli.py 3-phase shrink — Phase 1 (dead-code removal)
 
 First phase of a planned 3-phase shrink of `src/machine_translate_docx/cli.py`

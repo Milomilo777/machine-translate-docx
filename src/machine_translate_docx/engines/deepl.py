@@ -65,6 +65,26 @@ from ..config import (
 )
 
 
+# DeepL's textarea separates one phrase from the next with a single newline
+# for most CJK + European source/target pairs, but for languages outside
+# the list below it doubles the separator (``\n\n``). The block-loop
+# helper consults this predicate to decide which separator to emit when
+# packing multiple phrases into one DeepL request.
+_DEEPL_SINGLE_LINEFEED_LANGS = frozenset({
+    "ar", "bg", "cs", "da", "de", "el", "en", "en-us", "en-gb",
+    "es", "et", "fi", "fr", "he", "hu", "id", "it", "ja", "ko",
+    "lt", "lv", "nb", "nl", "pl", "pt", "pt-br", "pt-pt",
+    "ro", "ru", "sk", "sl", "sv", "tr", "uk", "vi", "zh-hant", "zh-hans",
+})
+
+
+def deepl_double_linefeed_between_phrases(dest_lang: str) -> bool:
+    """Return True when DeepL's textarea separates phrases with ``\\n\\n``
+    for ``dest_lang`` (i.e. dest_lang is *not* in the single-linefeed list).
+    """
+    return dest_lang not in _DEEPL_SINGLE_LINEFEED_LANGS
+
+
 def _remove_span_tag(text: str) -> str:
     """Strip ``<span class="…">`` and ``</span>`` from a DeepL HTML snippet.
 

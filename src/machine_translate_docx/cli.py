@@ -582,19 +582,15 @@ my_hazm_normalizer = None
 # now live in src/config.py.
 
 
-def test_internet(host="8.8.8.8", port=53, timeout=3):
-    """
-    Host: 8.8.8.8 (google-public-dns-a.google.com)
-    OpenPort: 53/tcp
-    Service: domain (DNS/TCP)
-    """
-    try:
-        socket.setdefaulttimeout(timeout)
-        socket.socket(socket.AF_INET, socket.SOCK_STREAM).connect((host, port))
-        return True
-    except socket.error as ex:
-        print(ex)
-        return False
+# test_internet was extracted to ``src/machine_translate_docx/network_utils.py``
+# in the 2026-05-16 cli.py shrink phase 2. The free-standing helper lives
+# there now; this entry script just imports it.
+from .network_utils import (
+    test_internet,
+    fetch_country_data,
+    check_mirror_url,
+    set_se_driver_mirror_url_if_needed,
+)
 
 try:
     json_online_configuration = requests.get(json_configuration_url).content
@@ -1065,12 +1061,6 @@ else:
 # sees the right module.
 _get_ctx().browser.webdriver_module = webdriver
 
-def linux_distribution():
-    try:
-        return platform.linux_distribution()
-    except Exception:
-        return "N/A"
-
 oai_translator = None
 oai_polisher = None
 translation_log = {"run_info": {}, "blocks": [], "summary": {}}
@@ -1198,29 +1188,6 @@ def write_translation_log(log_path: str):
     print(f"[INFO] Translation log saved → {log_path}")
 
 
-def print_os_info():
-
-    print("""Python version: %s
-    dist: %s
-    linux_distribution: %s
-    system: %s
-    machine: %s
-    platform: %s
-    uname: %s
-    version: %s
-    mac_ver: %s
-    """ % (
-    sys.version.split('\n'),
-    str(platform.dist()),
-    linux_distribution(),
-    platform.system(),
-    platform.machine(),
-    platform.platform(),
-    platform.uname(),
-    platform.version(),
-    platform.mac_ver(),
-    ))
-
 if not os.path.exists(word_file_to_translate) :
     print("ERROR: File not found: %s" % (word_file_to_translate))
     sys.exit(1)
@@ -1335,62 +1302,30 @@ chrome_driver_mirror_url = get_nested_value_from_json_array(json_configuration_a
 #print(f"chrome_driver_restricted_countries = {chrome_driver_restricted_countries}")
 #print(f"chrome_driver_mirror_url = {chrome_driver_mirror_url}")
 
-def fetch_country_data(url):
-    """Fetch country data from the specified URL."""
-    try:
-        response = requests.get(url, timeout=location_http_query_timeout)
-        response.raise_for_status()  # Check if the request was successful (status code 200)
-        
-        # Parse the JSON response
-        data = response.json()
-        
-        # Check if the status is success and return the country name
-        if data.get("status") == "success":
-            return data.get('country')
-        else:
-            print(f"Failed to retrieve IP information: {data.get('message')}")
-            return None
-            
-    except requests.exceptions.RequestException as e:
-        print(f"HTTP request failed: {e}")
-    except json.JSONDecodeError:
-        print("Failed to parse the JSON response.")
-    return None
-
-def check_mirror_url(url):
-    """Check if the mirror URL responds with HTTP 200 or 400 status codes."""
-    try:
-        response = requests.get(url, timeout=location_http_query_timeout)
-        return response.status_code in [200, 400]
-    except requests.exceptions.RequestException as e:
-        print(f"Mirror URL check failed: {e}")
-        return False
-
-def set_SE_DRIVER_MIRROR_URL_if_needed(country_name, mirror_url):
-    """Set the SE_DRIVER_MIRROR_URL environment variable if the country is restricted and mirror URL is valid."""
-    if country_name in chrome_driver_restricted_countries:
-        print(f"The host country ({country_name}) is restricted from downloading Google Chrome Driver, using proxy to bypass restrictions...")
-        
-        # Check the mirror URL and set environment variable if it responds with HTTP 200 or 400
-        if check_mirror_url(mirror_url):
-            os.environ['SE_DRIVER_MIRROR_URL'] = mirror_url
-            print(f"SE_DRIVER_MIRROR_URL set to: {os.environ['SE_DRIVER_MIRROR_URL']}")
-        else:
-            print(f"Mirror URL ({mirror_url}) did not respond with HTTP 200 or 400.")
-    else:
-        print(f"Using Google Chrome Driver from {country_name}...")
-
+# fetch_country_data / check_mirror_url / set_se_driver_mirror_url_if_needed
+# were extracted to ``src/machine_translate_docx/network_utils.py``
+# in the 2026-05-16 cli.py shrink phase 2. The thin module-level startup
+# sequence below drives them via the already-loaded JSON config values.
 
 # Set chrome driver download proxy URL for restricted countries
-country_name = fetch_country_data(location_primary_country_checker_url)
+country_name = fetch_country_data(
+    location_primary_country_checker_url, http_timeout=location_http_query_timeout,
+)
 
 # If primary URL fails or does not return a valid country name, fallback to the secondary URL
 if not country_name:
     print("Falling back to secondary URL...")
-    country_name = fetch_country_data(location_secondary_country_checker_url)
+    country_name = fetch_country_data(
+        location_secondary_country_checker_url, http_timeout=location_http_query_timeout,
+    )
 
 # Set environment variable if needed
-set_SE_DRIVER_MIRROR_URL_if_needed(country_name, chrome_driver_mirror_url)
+set_se_driver_mirror_url_if_needed(
+    country_name,
+    chrome_driver_mirror_url,
+    restricted_countries=chrome_driver_restricted_countries or [],
+    http_timeout=location_http_query_timeout,
+)
 
 # Set up Chrome options
 # Set the user-data-dir to the parent of the profiles
@@ -2244,72 +2179,9 @@ def split_phrases(ctx: RuntimeContext):
 
     return 0
 
-def delete_paragraph(paragraph):
-    p = paragraph._element
-    p.getparent().remove(p)
-    p._p = p._element = None
-
-def generate_tmx_file():
-    print("In generate_tmx_file")
-
-    try:
-        f = open(tmx_file_path, 'w', encoding='utf-8')
-
-        # Writing TMX Header
-        username = getpass.getuser()
-        datenow = datetime.datetime.now()
-        creation_date = "%s%0.2d%0.2dT%0.2d%0.2d%0.2dZ" % (datenow.year, datenow.month, datenow.day, datenow.hour, datenow.minute,
- datenow.second)
-        header = """<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE tmx PUBLIC "-//LISA OSCAR:1998//DTD for Translation Memory eXchange//EN" "tmx14.dtd" >
-<tmx version="1.4">
-<header
-	creationtool="SMTV translation robot"
-	creationtoolversion="1.0"
-	srclang="%s"
-	adminlang=%s
-	datatype="unknown"
-	o-tmf="unknown"
-	segtype="sentence"
-	creationid="%s"
-	creationdate="%s">
-</header>
-<body>\n""" % (src_lang, src_lang, username,creation_date)
-        f.write(header)
-
-        for i, line in enumerate(from_text_table):
-            item = from_text_by_phrase_separator_table[i]
-            item.strip()
-            from_language = src_lang
-            phrase_separator_removed_str = ''
-
-            p_remove_separator = re.compile(line_separator_regex_str)
-            p_remove_double_spaces = re.compile(' +')
-            p_remove_parenthesis_spaces = re.compile('\( +')
-
-            item = from_text_by_phrase_table[i]
-            item_escaped = from_text_by_phrase_table[i].replace("&", "&amp;")
-            item_escaped = item_escaped.replace("<", "&lt;")
-            item_escaped = item_escaped.replace(">", "&gt;")
-
-            item_translation = to_text_by_phrase_separator_table[i].replace("&", "&amp;")
-            item_translation = item_translation.replace("<", "&lt;")
-            item_translation = item_translation.replace(">", "&gt;")
-            if item_escaped.strip() != "":
-                segment = """<tu changeid="french user 1" changedate="%s" creationid="Black Mamba RS7" creationdate="%s" creationtool="SMTV translation robot" creationtoolversion="1.0.0">
-<tuv xml:lang="en-US"><seg>%s</seg></tuv>
-<tuv xml:lang="%s"><seg>%s</seg></tuv>
-</tu>""" % (creation_date, creation_date, item_escaped, dest_lang, item_translation)
-                f.write(segment)
-                f.write("\n")
-
-        # Writing TMX Footer
-        footer = """</body>
-</tmx>\n"""
-        f.write(footer)
-    except Exception:
-        var = traceback.format_exc()
-        print(var)
+# delete_paragraph was extracted to ``docx_io/cells.py`` in the
+# 2026-05-16 cli.py shrink phase 2.
+from .docx_io.cells import delete_paragraph  # noqa: E402
 
 
 def prepare_and_clear_cell_for_writing(ctx: RuntimeContext, row_n, translation_cell_text):
@@ -2644,12 +2516,10 @@ def generate_xlsx_file_from_phrases(ctx: RuntimeContext, xlsx_file_path):
                 time.sleep(2)
         
 
-def deepl_double_linefeed_between_phrases(dest_lang):
-    single_linefeed_phrase_separator_langs = ('ar', 'bg', 'cs', 'da', 'de', 'el', 'en', 'en-us', 'en-gb',
-                       'es', 'et', 'fi', 'fr', 'he', 'hu', 'id', 'it', 'ja', 'ko',
-                       'lt', 'lv', 'nb', 'nl', 'pl', 'pt', 'pt-br', 'pt-pt',
-                       'ro', 'ru', 'sk', 'sl', 'sv', 'tr', 'uk', 'vi', 'zh-hant', 'zh-hans')
-    return dest_lang not in single_linefeed_phrase_separator_langs
+# deepl_double_linefeed_between_phrases was extracted to
+# ``engines/deepl.py`` in the 2026-05-16 cli.py shrink phase 2.
+from .engines.deepl import deepl_double_linefeed_between_phrases  # noqa: E402
+
 
 def generate_char_blocks_array_from_phrases(ctx: RuntimeContext, text_file_path):
     ctx.docx.docxfile_table_number_of_phrases = 0
@@ -3244,15 +3114,22 @@ def document_split_phrases(ctx: RuntimeContext):
                 print("  ERROR:%s<br>" % (var))
 
 
+# write_destination_language_in_docx_cell was extracted to
+# ``docx_io/metadata.py`` in the 2026-05-16 cli.py shrink phase 2.
+# Thin shim — reads the entry-script globals and delegates.
+from .docx_io.metadata import (
+    write_destination_language_in_docx_cell as _write_dest_lang_impl,
+    set_docx_properties_comment_for_history as _set_docx_history_impl,
+)  # noqa: E402
+
+
 def write_destination_language_in_docx_cell():
-    if not splitonly:
-        try:
-            docxdoc.tables[0].cell(1, 2).text = dest_lang_name
-        except Exception:
-            try:
-                docxdoc.tables[0].cell(1, 2).text = dest_lang
-            except Exception:
-                pass
+    _write_dest_lang_impl(
+        docxdoc,
+        splitonly=splitonly,
+        dest_lang_name=dest_lang_name,
+        dest_lang=dest_lang,
+    )
 
 
 def print_console_docx_file_translated(ctx: RuntimeContext):
@@ -3355,15 +3232,10 @@ def print_console_docx_file_translated(ctx: RuntimeContext):
             print("  ERROR:%s<br>" % (var))
 
 
-#print("Generating TMX file for translation comparison")
-#generate_tmx_file ()
-#word.Application.ActiveWindow.Close()
-#word.Application.Quit()
-
 def set_docx_properties_comment_for_history(ctx: RuntimeContext):
-    now = datetime.datetime.now()
-    dt_string = now.strftime("%d/%m/%Y %H:%M:%S")
-    docxdoc.core_properties.comments = "Document translated by SMTV Robot version %s using %s engine on %s." % (PROGRAM_VERSION, ctx.engine.engine, dt_string)
+    _set_docx_history_impl(
+        docxdoc, program_version=PROGRAM_VERSION, engine=ctx.engine.engine,
+    )
 
 
 

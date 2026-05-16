@@ -43,8 +43,25 @@ __all__ = [
     "change_cell_font",
     "set_first_paragraph",
     "add_paragraph",
+    "delete_paragraph",
     "get_cell_data",
 ]
+
+
+def delete_paragraph(paragraph) -> None:
+    """Detach ``paragraph`` from its parent ``<w:tc>`` and null out its
+    internal element references.
+
+    Used while clearing a target-language cell before writing the
+    translation: the cell may carry multiple ``<w:p>`` elements from the
+    source document, and writing into ``paragraphs[0]`` only — without
+    removing the rest — would leave stale source text below the
+    translation. The body matches the historical entry-script helper
+    byte-for-byte.
+    """
+    p = paragraph._element
+    p.getparent().remove(p)
+    p._p = p._element = None
 
 
 # ── shading colour detection (private) ───────────────────────────────────────
