@@ -1452,8 +1452,8 @@ from .docx_io import (
 # change_cell_font was extracted to ``src/docx_io/cells.py`` in the
 # 2026-05-10 docx_io extraction pass. Thin shim — reads the entry-script
 # global ``dest_font`` and delegates to the new implementation.
-def change_cell_font(cell):
-    _change_cell_font_impl(cell, dest_font)
+def change_cell_font(ctx: RuntimeContext, cell):
+    _change_cell_font_impl(cell, ctx.language.dest_font)
 
 def tokenize_text_to_array(text, lang_code):
     lang_code = lang_code + ""
@@ -1617,10 +1617,11 @@ from .docx_io.cells import delete_paragraph  # noqa: E402
 def prepare_and_clear_cell_for_writing(ctx: RuntimeContext, row_n, translation_cell_text):
     """Clear and re-init a target-language cell.
 
-    Threaded in Phase F1.3: reads ``ctx.docx.table_cells`` in place of the
-    historical ``table_cells`` global. ``dest_lang`` and ``rtlstyle`` are
-    not yet on ctx; they remain as ambient module reads (closed over by
-    Python's name lookup) and will be threaded in a later sub-phase.
+    Threaded in Phase F1.3 + Sprint D-C slice 2 (2026-05-16): reads
+    ``ctx.docx.table_cells``, ``ctx.language.dest_lang`` /
+    ``ctx.language.dest_font``, and ``ctx.docx.rtlstyle`` in place of
+    the historical module-level globals. All four are mirrored back to
+    module scope by the Phase-H bridge until it is deleted in slice 6.
     """
     paragraph_no = 0
     # Skip rows that don't have a third cell (footer / single-column notes
@@ -1647,9 +1648,9 @@ def prepare_and_clear_cell_for_writing(ctx: RuntimeContext, row_n, translation_c
         cell_paragraph = current_cell.paragraphs[0]
 
     # Add orientation for Right-to-Left (RTL) languages
-    if dest_lang in right_to_left_languages_list.keys():
+    if ctx.language.dest_lang in right_to_left_languages_list.keys():
         run = cell_paragraph.add_run(translation_cell_text)
-        run.style = rtlstyle  # Ensure `rtlstyle` exists in the document
+        run.style = ctx.docx.rtlstyle  # Ensure `rtlstyle` exists in the document
         font = run.font
         font.rtl = True
         cell_paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
@@ -1668,8 +1669,8 @@ def prepare_and_clear_cell_for_writing(ctx: RuntimeContext, row_n, translation_c
         cell_paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
 
     # Apply font changes if necessary
-    if dest_font != "":
-        change_cell_font(current_cell)
+    if ctx.language.dest_font != "":
+        change_cell_font(ctx, current_cell)
 
     ctx.docx.table_cells[row_n][2] = current_cell
 
@@ -1684,9 +1685,9 @@ def cell_set_1st_paragraph(ctx: RuntimeContext, row_n, paragraph_text):
     _cell_set_first_paragraph_impl(
         current_cell,
         paragraph_text,
-        dest_lang=dest_lang,
-        dest_font=dest_font,
-        rtlstyle=rtlstyle,
+        dest_lang=ctx.language.dest_lang,
+        dest_font=ctx.language.dest_font,
+        rtlstyle=ctx.docx.rtlstyle,
     )
     ctx.docx.table_cells[row_n][2] = current_cell
 
@@ -1696,9 +1697,9 @@ def cell_add_paragraph(ctx: RuntimeContext, row_n, paragraph_text):
     _cell_add_paragraph_impl(
         current_cell,
         paragraph_text,
-        dest_lang=dest_lang,
-        dest_font=dest_font,
-        rtlstyle=rtlstyle,
+        dest_lang=ctx.language.dest_lang,
+        dest_font=ctx.language.dest_font,
+        rtlstyle=ctx.docx.rtlstyle,
     )
     ctx.docx.table_cells[row_n][2] = current_cell
 
