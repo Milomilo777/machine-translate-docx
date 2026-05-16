@@ -518,19 +518,16 @@ def _sync_globals_from_ctx(ctx: RuntimeContext) -> None:
     if getattr(ctx.browser, "driver", None) is not None:
         setattr(_mod, "driver", ctx.browser.driver)
     # ── ctx.openai ──────────────────────────────────────────────────
-    # OpenAI handles — read by bare name in legacy translate / polish helpers.
-    if getattr(ctx.openai, "translator", None) is not None:
-        setattr(_mod, "oai_translator", ctx.openai.translator)
-    if getattr(ctx.openai, "polisher", None) is not None:
-        setattr(_mod, "oai_polisher", ctx.openai.polisher)
-    # Translation log is populated on ``ctx.openai.translation_log`` by
-    # the runner / chatgpt_api single-call paths, but ``write_translation_log``
-    # reads from the module-level ``translation_log`` global. Without this
-    # mirror the JSON sidecar is always empty (run_info has only output_file,
-    # blocks=[], summary all zeros) — observed during the 2026-05-10 real-engine
-    # test pass while trying to verify 24-h prompt-cache hits.
-    if isinstance(getattr(ctx.openai, "translation_log", None), dict):
-        setattr(_mod, "translation_log", ctx.openai.translation_log)
+    # The oai_translator / oai_polisher / translation_log module-level
+    # globals are no longer read by any function in cli.py: their
+    # historical reader ``write_translation_log`` was extracted to
+    # ``translation_log_writer.py`` in 2026-05-16 phase 3 of the
+    # cli.py shrink and now reads ``ctx.openai.translation_log``
+    # directly via the shim. The mirror setattr calls that used to live
+    # here (verified dead by grep on 2026-05-16 Sprint D-C audit) have
+    # been removed. The module-level inits at cli.py:1077-1079 + the
+    # initial ctx-push at cli.py:294-302 are kept so the dataclass
+    # defaults are properly hydrated on first ``_get_ctx()`` call.
 
 
 # Track the child processes
