@@ -1054,16 +1054,24 @@ if translation_engine == 'chatgpt' and engine_method != "webservice":
 else:
     from selenium import webdriver  # regular selenium webdriver
 
+# OpenAI handles + translation log dict must exist BEFORE the first
+# `_get_ctx()` runtime call below, otherwise the lazy snapshot inside
+# `_get_ctx()` hits NameError on these names and ctx.openai.translation_log
+# ends up as the dataclass empty {} default instead of pointing at this
+# module-global dict. `_sync_globals_from_ctx` repairs the divergence on
+# its first run inside main(), but only because the runner mutates the
+# same dict by reference — pre-2026-05-16 the names were declared AFTER
+# the snapshot fired, leaving the seed dict orphaned at startup.
+oai_translator = None
+oai_polisher = None
+translation_log = {"run_info": {}, "blocks": [], "summary": {}}
+
 # Mirror the webdriver module onto ctx now that it has been chosen.
 # `_get_ctx()`'s lazy snapshot may have fired earlier (e.g. from the
 # G2 shading-color mirror at line ~570) when this name did not yet
 # exist; re-set it explicitly so create_webdriver(ctx) downstream
 # sees the right module.
 _get_ctx().browser.webdriver_module = webdriver
-
-oai_translator = None
-oai_polisher = None
-translation_log = {"run_info": {}, "blocks": [], "summary": {}}
 
 
 # write_translation_log was extracted to
