@@ -6,6 +6,84 @@
 
 ---
 
+## 2026-05-16f — Sprint C: cover the previously-untested orchestration core
+
+Third audit-follow-up sprint. Six new test files for the orchestration
+layer modules the leaf-test suite was skipping over. Test suite grows
+from 190 → **239** (+49).
+
+Modules now covered:
+
+- `tests/test_docx_io_parse.py` — 5 tests for
+  `read_and_parse_docx_document` (the single biggest pure function in
+  the package, ~384 lines). Uses a stub-cli technique to avoid
+  importing the heavy entry script's module-level work. Covers basic
+  array population, C13 source-column snapshotting, hyperlink-run
+  inclusion, empty-docx EmptyDocxError, idempotency.
+- `tests/test_docx_io_save.py` — 9 tests for `engine_suffix`,
+  `_resolve_output_path` (collision avoidance per C6),
+  `_write_minimal_sidecar`, `_restore_source_column` (the C13 lock
+  restore), and `save_docx_file` orchestrator.
+- `tests/test_dispatch.py` — 12 tests for `set_translation_function`,
+  `use_phrasesblock`, `set_array_dispatcher`. Pins the R15 method-flip
+  + DeepL fallback behaviour at the dispatch layer.
+- `tests/test_log_paths.py` — 9 tests for `resolve_log_dir`,
+  `resolve_log_path`, `cleanup_old_logs` (retention boundary including
+  zero), and `_find_project_root` (PyInstaller `MTD_FROZEN_ROOT` path).
+- `tests/test_retry.py` — 7 tests for `call_with_retry` (success first
+  try, retry then succeed, max retries exhausted raises, non-retryable
+  errors propagate immediately) + `prompt_hash` (deterministic, 8 hex
+  chars, distinct outputs).
+- `tests/test_get_ctx_snapshot.py` — 3 regression tests for commit
+  `4c36183` (the snapshot-ordering bug). Asserts `cli.translation_log
+  is _get_ctx().openai.translation_log` immediately after import, and
+  the equivalent for `oai_translator` and `oai_polisher`. Handles
+  cross-test isolation against `test_docx_io_parse.py`'s stub-cli
+  installation in `sys.modules`.
+- `tests/test_docx_io_runs.py` — 4 tests for `_iter_paragraph_runs`
+  including the critical `<w:hyperlink>`-child traversal (this is the
+  iterator behind the "hyperlink anchor text must reach the translated
+  cell" invariant that was previously only smoke-tested live).
+
+### Adjustments made during writing
+
+- `test_docx_io_parse.py` had to stub `machine_translate_docx.cli` in
+  `sys.modules` to avoid the heavy entry-script module-level work.
+  Stub exposes six predicates the lazy import inside parse needs.
+- `test_get_ctx_snapshot.py::_import_cli` now detects if a stub is
+  cached under the cli module path (via `hasattr(cached, "_get_ctx")`)
+  and evicts it before importing the real module — keeps the tests
+  in either order: stub-first or real-first.
+- `test_docx_io_save.py` discovered that `_resolve_output_path` writes
+  back into `ctx.flags.word_file_to_translate_save_as_path` rather
+  than returning a path, and that `_write_minimal_sidecar` resolves
+  its own log path via a lazy import of `resolve_log_path`. Tests
+  adjusted to mirror real behaviour, not the task spec's guess.
+- `test_dispatch.py` confirmed an interesting subtlety:
+  `use_phrasesblock("chatgpt", "api")` returns True (chatgpt always
+  uses the array dispatcher regardless of method).
+
+### Verification
+
+- `pytest tests/ --ignore=tests/test_v2_e2e.py`: **239 passed,
+  8 skipped (live), 6 deselected**.
+- End-to-end smoke chatgpt-polish on sample_hyperlink.docx: exit 0.
+
+### What's left from the audit
+
+- **Sprint D** — original phase-3 continuation work
+  (`docs/cli-shrink-phase3-handoff.md`): statistics extraction
+  (~900 lines), Google file-mode workers (~800 lines),
+  `_sync_globals_from_ctx` collapse.
+- P2 / P3 polish items (translation-log prompt-stripping flag,
+  Telegram-token masking, sundry stale comments) tracked in the
+  audit report but not critical-path.
+
+After Sprint C the test suite covers every module in
+`src/machine_translate_docx/` that has any user-visible behaviour.
+
+---
+
 ## 2026-05-16e — Sprint B: P0 + P1 fixes from master audit + 36 new tests
 
 Second half of the master-audit follow-up
