@@ -2068,7 +2068,7 @@ def document_split_phrases(ctx: RuntimeContext):
         else:
             oai_sub_splitter = OpenAISubtitleSplitter()
     
-    for i, line in enumerate(from_text_table):
+    for i, line in enumerate(ctx.docx.from_text_table):
         if ctx.docx.to_text_by_phrase_separator_table[i] != '':
             #ctx.docx.docxfile_table_number_of_phrases = ctx.docx.docxfile_table_number_of_phrases + 1
             ctx.docx.docxfile_table_number_of_characters = ctx.docx.docxfile_table_number_of_characters + len(ctx.docx.from_text_by_phrase_separator_table[i])
@@ -2090,7 +2090,7 @@ def document_split_phrases(ctx: RuntimeContext):
                     if str_translation_len <= 0:
                         str_phrase_stats = ""
                     else:
-                        str_nb_lines = from_text_nb_lines_in_phrase[i]
+                        str_nb_lines = ctx.docx.from_text_nb_lines_in_phrase[i]
                         if str_nb_lines > 0:
                             str_line_average = str_translation_len / str_nb_lines
                             str_phrase_stats = "[%d/%d=%d] " % (str_translation_len, str_nb_lines, str_line_average)
@@ -2106,7 +2106,7 @@ def document_split_phrases(ctx: RuntimeContext):
                 # --- Step 1: Build input safely ---
                 if str_nb_lines > 1:
                     input_phrase_lines = "\n".join(
-                        from_text_table[i + idx] for idx in range(str_nb_lines)
+                        ctx.docx.from_text_table[i + idx] for idx in range(str_nb_lines)
                     )
                 else:
                     input_phrase_lines = current_line
@@ -2247,15 +2247,15 @@ def document_split_phrases(ctx: RuntimeContext):
 
 
                 # --- Step 6: Store results ---
-                translation_result_phrase_array[i] = lines_divided
+                ctx.docx.translation_result_phrase_array[i] = lines_divided
 
                 number_lines = len(lines_divided)
                 for line_no in range(number_lines):
                     try:
-                        translation_result_using_separator[line_no + i] = lines_divided[line_no]
+                        ctx.docx.translation_result_using_separator[line_no + i] = lines_divided[line_no]
                         print(f"{line_no} -> {lines_divided[line_no]}")
                     except Exception:
-                        translation_result_using_separator[line_no + i] = "Error"
+                        ctx.docx.translation_result_using_separator[line_no + i] = "Error"
 
 
                 # --- Step 7: Logging ---
@@ -2303,8 +2303,8 @@ def write_destination_language_in_docx_cell(ctx: RuntimeContext):
 
 def print_console_docx_file_translated(ctx: RuntimeContext):
     print("\nTranslated text:\n")
-    numrows = len(table.rows)
-    numcols = len(table.columns)
+    numrows = len(ctx.docx.table.rows)
+    numcols = len(ctx.docx.table.columns)
     current_cell_row = 2
     for row_n in range(2, (numrows)):
 
@@ -2321,11 +2321,11 @@ def print_console_docx_file_translated(ctx: RuntimeContext):
         # (e.g. its own to_text guard), the translation would never reach
         # the cell. By keying on to_text_by_phrase_separator_table directly
         # we write whatever the translation engine returned.
-        if not split_translation:
+        if not ctx.flags.split_translation:
             translation_cell_text = ctx.docx.to_text_by_phrase_separator_table[row_n]
             if translation_cell_text:
                 prepare_and_clear_cell_for_writing(ctx, row_n, translation_cell_text)
-                if dest_lang in right_to_left_languages_list.keys():
+                if ctx.language.dest_lang in right_to_left_languages_list.keys():
                     translation_cell_aligned_text = get_display(translation_cell_text)
                 else:
                     translation_cell_aligned_text = translation_cell_text
@@ -2354,7 +2354,7 @@ def print_console_docx_file_translated(ctx: RuntimeContext):
                         and translation_phrase_line_pos < translation_phrase_lines_len:
 
                         translation_phrase_line_str = ctx.docx.translation_result_phrase_array[row_n][translation_phrase_line_pos]
-                        if dest_lang in right_to_left_languages_list.keys():
+                        if ctx.language.dest_lang in right_to_left_languages_list.keys():
                             #translation_cell_aligned_text = reverse_string (translation_phrase_line_str)
                             #translation_cell_aligned_text = "\u202B" + translation_phrase_line_str + "\u202C"
                             translation_cell_aligned_text = get_display(translation_phrase_line_str)
@@ -2366,7 +2366,7 @@ def print_console_docx_file_translated(ctx: RuntimeContext):
                             print("%d : %s" % (current_cell_row, translation_cell_aligned_text))
                         if cell_line_pos == 0:
                             #print("cell_line_pos=%d" % cell_line_pos)
-                            if splitonly:
+                            if ctx.flags.splitonly:
                                 prepare_and_clear_cell_for_writing(ctx, current_cell_row, translation_phrase_line_str)
                             else:
                             #prepare_and_clear_cell_for_writing(current_cell_row, translation_phrase_line_str)
@@ -2387,8 +2387,8 @@ def print_console_docx_file_translated(ctx: RuntimeContext):
             if str_translation_len <= 0:
                 str_phrase_stats = ""
             else:
-                str_translation_len = len(translation_result_using_separator[row_n])
-                str_nb_lines = from_text_nb_lines_in_phrase[row_n]
+                str_translation_len = len(ctx.docx.translation_result_using_separator[row_n])
+                str_nb_lines = ctx.docx.from_text_nb_lines_in_phrase[row_n]
                 if str_nb_lines > 0:
                     str_line_average = str_translation_len / str_nb_lines
                     str_phrase_stats = "[%d/%d=%d] " % (str_translation_len, str_nb_lines, str_line_average)
@@ -2622,16 +2622,16 @@ def main() -> int:
     run_statistics(ctx)
     save_docx_file(ctx)
 
-    if viewdocx:
+    if ctx.flags.viewdocx:
         print(f"Opening document : {ctx.flags.word_file_to_translate_save_as_path}")
         open_app_docx_file(ctx)
     _end_time = datetime.datetime.now()
     _elapsed_time = _end_time - start_time
 
     if ctx.flags.xlsxreplacefile is not None:
-        xtm.print_replaced_items_number_of_replacements('before')
-        xtm.print_replaced_items_number_of_replacements('after')
-        xtm.print_do_not_split_number_of_matches('keep_on_same_line')
+        ctx.docx.xtm.print_replaced_items_number_of_replacements('before')
+        ctx.docx.xtm.print_replaced_items_number_of_replacements('after')
+        ctx.docx.xtm.print_do_not_split_number_of_matches('keep_on_same_line')
 
     if ctx.browser.driver is not None:
         clean_up_previous_chrome_selenium_drivers(ctx.browser.driver.service.path)
@@ -2663,7 +2663,7 @@ def main() -> int:
 
     print("\nDeveloper: %s" % (E_mail_str))
     print("Program version: %s\n" % (PROGRAM_VERSION))
-    if not exitonsuccess and not silent:
+    if not ctx.flags.exitonsuccess and not ctx.flags.silent:
         input("Enter to close program")
     else:
         if str_needs_update == "1":
