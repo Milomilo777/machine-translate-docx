@@ -1,0 +1,1947 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- ─── Anti-indexing block ───
+       Keep this private tool out of every search engine. Mirrors the
+       legacy index.ejs robots meta and adds explicit directives for
+       every major crawler. The X-Robots-Tag HTTP header and a static
+       robots.txt are still required server-side — see
+       docs/v2-backend-todo.md §2 for the launcher-side changes. -->
+  <meta name="robots"      content="noindex, nofollow, noarchive, nosnippet, noimageindex, nocache, notranslate" />
+  <meta name="googlebot"   content="noindex, nofollow, noarchive, nosnippet, noimageindex, notranslate" />
+  <meta name="googlebot-news" content="noindex, nofollow, noarchive, nosnippet" />
+  <meta name="bingbot"     content="noindex, nofollow, noarchive, nosnippet, noimageindex" />
+  <meta name="slurp"       content="noindex, nofollow, noarchive" />
+  <meta name="duckduckbot" content="noindex, nofollow" />
+  <meta name="yandex"      content="noindex, nofollow, noarchive" />
+  <meta name="baiduspider" content="noindex, nofollow, noarchive" />
+  <meta name="yeti"        content="noindex, nofollow" />
+  <meta name="sogou"       content="noindex, nofollow" />
+  <meta name="AdsBot-Google" content="noindex, nofollow" />
+  <meta name="referrer"    content="no-referrer" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate, private" />
+  <meta http-equiv="Pragma"  content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+
+  <title>Doc Translate</title>
+  <style id="claude-tokens">
+/* ============================================================
+   Claude Design System — Tokens
+   Inspired by Anthropic / claude.com
+   Copernicus serif + StyreneB sans (substituted with
+   Cormorant Garamond + Inter via Google Fonts)
+   ============================================================ */
+
+@import url("https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap");
+
+:root {
+  /* ---------- Brand & Accent ---------- */
+  --color-primary: #cc785c;          /* coral — signature CTA */
+  --color-primary-active: #a9583e;   /* coral pressed */
+  --color-primary-disabled: #e6dfd8; /* desaturated cream */
+  --color-accent-teal: #5db8a6;
+  --color-accent-amber: #e8a55a;
+
+  /* ---------- Surface ---------- */
+  --color-canvas: #faf9f5;             /* tinted cream — page floor */
+  --color-surface-soft: #f5f0e8;
+  --color-surface-card: #efe9de;       /* feature cards */
+  --color-surface-cream-strong: #e8e0d2;
+  --color-surface-dark: #181715;       /* dominant dark */
+  --color-surface-dark-elevated: #252320;
+  --color-surface-dark-soft: #1f1e1b;
+  --color-hairline: #e6dfd8;
+  --color-hairline-soft: #ebe6df;
+
+  /* ---------- Text ---------- */
+  --color-ink: #141413;
+  --color-body-strong: #252523;
+  --color-body: #3d3d3a;
+  --color-muted: #6c6a64;
+  --color-muted-soft: #8e8b82;
+  --color-on-primary: #ffffff;
+  --color-on-dark: #faf9f5;
+  --color-on-dark-soft: #a09d96;
+
+  /* ---------- Semantic ---------- */
+  --color-success: #5db872;
+  --color-warning: #d4a017;
+  --color-error: #c64545;
+
+  /* ---------- Type families ---------- */
+  /* Copernicus is unavailable; using Cormorant Garamond as serif display.
+     StyreneB is unavailable; using Inter as sans body. */
+  --font-display: "Cormorant Garamond", "Tiempos Headline", Garamond,
+    "Times New Roman", serif;
+  --font-body: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* ---------- Type scale ---------- */
+  --type-display-xl: 64px;
+  --type-display-lg: 48px;
+  --type-display-md: 36px;
+  --type-display-sm: 28px;
+  --type-title-lg: 22px;
+  --type-title-md: 18px;
+  --type-title-sm: 16px;
+  --type-body-md: 16px;
+  --type-body-sm: 14px;
+  --type-caption: 13px;
+  --type-caption-up: 12px;
+  --type-code: 14px;
+  --type-button: 14px;
+  --type-nav: 14px;
+
+  /* ---------- Spacing (4px base) ---------- */
+  --space-xxs: 4px;
+  --space-xs: 8px;
+  --space-sm: 12px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-xxl: 48px;
+  --space-section: 96px;
+
+  /* ---------- Radius ---------- */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-pill: 9999px;
+  --radius-full: 9999px;
+
+  /* ---------- Elevation ---------- */
+  --shadow-soft: 0 1px 3px rgba(20, 20, 19, 0.08);
+  --shadow-hover: 0 4px 14px rgba(20, 20, 19, 0.10);
+
+  /* ---------- Layout ---------- */
+  --container-max: 1200px;
+  --nav-height: 64px;
+}
+
+/* ============================================================
+   Semantic element styles
+   ============================================================ */
+
+html,
+body {
+  background: var(--color-canvas);
+  color: var(--color-body);
+  font-family: var(--font-body);
+  font-size: var(--type-body-md);
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-display);
+  color: var(--color-ink);
+  font-weight: 400; /* never bold the serif */
+  margin: 0;
+}
+
+h1 {
+  font-size: var(--type-display-xl);
+  line-height: 1.05;
+  letter-spacing: -1.5px;
+}
+
+h2 {
+  font-size: var(--type-display-lg);
+  line-height: 1.1;
+  letter-spacing: -1px;
+}
+
+h3 {
+  font-size: var(--type-display-md);
+  line-height: 1.15;
+  letter-spacing: -0.5px;
+}
+
+h4 {
+  font-size: var(--type-display-sm);
+  line-height: 1.2;
+  letter-spacing: -0.3px;
+}
+
+p {
+  margin: 0 0 var(--space-md);
+  color: var(--color-body);
+}
+
+a {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+a:active {
+  text-decoration: underline;
+}
+
+code,
+pre {
+  font-family: var(--font-mono);
+  font-size: var(--type-code);
+  line-height: 1.6;
+}
+
+small,
+.caption {
+  font-size: var(--type-caption);
+  color: var(--color-muted);
+}
+
+/* ============================================================
+   Utility primitives
+   ============================================================ */
+
+.cs-container {
+  max-width: var(--container-max);
+  margin-inline: auto;
+  padding-inline: var(--space-lg);
+}
+
+.cs-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 20px;
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+  font: 500 var(--type-button) / 1 var(--font-body);
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+.cs-btn-primary:active {
+  background: var(--color-primary-active);
+}
+
+.cs-btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 20px;
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font: 500 var(--type-button) / 1 var(--font-body);
+  border: 1px solid var(--color-hairline);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+.cs-badge-pill {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 12px;
+  background: var(--color-surface-card);
+  color: var(--color-ink);
+  font: 500 var(--type-caption) / 1 var(--font-body);
+  border-radius: var(--radius-pill);
+}
+
+.cs-badge-coral {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 12px;
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+  font: 500 var(--type-caption-up) / 1 var(--font-body);
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  border-radius: var(--radius-pill);
+}
+
+</style>
+  <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    /* ─────────────────────────────────────────────────────────
+       Single-viewport redesign of web/v2/
+       — same three-column layout, same content
+       — fits in 100vh, no page scroll
+       — announcements & stories collapse to title + date,
+         click expands inline
+       ───────────────────────────────────────────────────────── */
+
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0; overflow: hidden;
+      background: var(--color-canvas);
+      color: var(--color-body);
+      font-family: var(--font-body);
+      font-size: 14px;
+    }
+    body[data-theme="dark"] {
+      background: var(--color-surface-dark);
+      color: var(--color-on-dark-soft);
+    }
+
+    .shell {
+      display: grid;
+      grid-template-rows: 56px 1fr 36px;
+      height: 100vh;
+      max-width: 1440px; margin: 0 auto;
+      padding: 0 28px;
+    }
+
+    /* ─── header ─────────────────────────────────────────── */
+    .topbar {
+      display: flex; align-items: center; justify-content: space-between;
+      border-bottom: 1px solid var(--color-hairline);
+    }
+    body[data-theme="dark"] .topbar { border-color: rgba(250,249,245,0.08); }
+
+    .brand {
+      display: inline-flex; align-items: center; gap: 10px;
+      font-family: var(--font-display); font-size: 19px;
+      letter-spacing: -0.3px; color: var(--color-ink);
+    }
+    body[data-theme="dark"] .brand { color: var(--color-on-dark); }
+    .brand .glyph {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 28px; height: 28px; background: var(--color-primary);
+      color: var(--color-on-primary); border-radius: 7px;
+      font: 700 13px/1 var(--font-body); letter-spacing: -0.3px;
+    }
+    .brand small {
+      font-family: var(--font-body); font-size: 11px;
+      color: var(--color-muted); letter-spacing: 1.2px;
+      text-transform: uppercase; margin-left: 4px;
+    }
+
+    .topbar-right {
+      display: flex; align-items: center; gap: 14px;
+    }
+
+    /* version pill switch */
+    .ui-switch {
+      display: inline-flex; position: relative;
+      background: var(--color-surface-card);
+      border: 1px solid var(--color-hairline); border-radius: 9999px;
+      padding: 3px;
+    }
+    body[data-theme="dark"] .ui-switch {
+      background: var(--color-surface-dark-elevated);
+      border-color: rgba(250,249,245,0.08);
+    }
+    .ui-switch button {
+      position: relative; z-index: 1; appearance: none;
+      background: transparent; border: none; cursor: pointer;
+      padding: 6px 14px; border-radius: 9999px;
+      font: 500 12px/1 var(--font-body); color: var(--color-muted);
+      transition: color 120ms;
+    }
+    .ui-switch button.is-on { color: var(--color-on-primary); }
+    .ui-switch .knob {
+      position: absolute; top: 3px; bottom: 3px; left: 3px;
+      width: calc(50% - 3px); background: var(--color-primary);
+      border-radius: 9999px;
+      transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .ui-switch[data-on="v2"] .knob { transform: translateX(100%); }
+
+    .icon-btn {
+      width: 32px; height: 32px;
+      display: inline-flex; align-items: center; justify-content: center;
+      background: transparent; border: 1px solid var(--color-hairline);
+      border-radius: 8px; cursor: pointer; color: var(--color-ink);
+      font-size: 14px;
+    }
+    body[data-theme="dark"] .icon-btn {
+      border-color: rgba(250,249,245,0.1); color: var(--color-on-dark);
+    }
+    .icon-btn:hover { background: var(--color-surface-card); }
+    body[data-theme="dark"] .icon-btn:hover { background: var(--color-surface-dark-elevated); }
+
+    /* ─── main grid ──────────────────────────────────────── */
+    main {
+      display: grid;
+      grid-template-columns: 280px 1fr 280px;
+      gap: 22px;
+      padding: 18px 0;
+      min-height: 0;
+    }
+
+    .col {
+      min-height: 0;
+      display: flex; flex-direction: column;
+      gap: 12px;
+    }
+
+    .panel {
+      background: var(--color-surface-card);
+      border-radius: 12px;
+      padding: 18px;
+      display: flex; flex-direction: column;
+      min-height: 0;
+    }
+    body[data-theme="dark"] .panel {
+      background: var(--color-surface-dark-elevated);
+    }
+    .panel.scroll { overflow-y: auto; }
+    .panel.scroll::-webkit-scrollbar { width: 6px; }
+    .panel.scroll::-webkit-scrollbar-thumb {
+      background: var(--color-hairline); border-radius: 99px;
+    }
+
+    .panel-head {
+      display: flex; align-items: baseline; justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    .panel-title {
+      font-family: var(--font-display); font-size: 18px;
+      letter-spacing: -0.3px; color: var(--color-ink);
+      font-weight: 400; margin: 0;
+    }
+    body[data-theme="dark"] .panel-title { color: var(--color-on-dark); }
+    .panel-meta {
+      font-family: var(--font-mono); font-size: 10px;
+      letter-spacing: 1px; color: var(--color-muted);
+      text-transform: uppercase;
+    }
+
+    /* ─── announcements — collapsible ───────────────────── */
+    .announce {
+      list-style: none; padding: 0; margin: 0;
+      display: flex; flex-direction: column; gap: 4px;
+    }
+    .announce li {
+      border-radius: 8px;
+      transition: background 140ms;
+    }
+    .announce details { padding: 0; }
+    .announce summary {
+      list-style: none; cursor: pointer; user-select: none;
+      padding: 10px 12px;
+      display: grid; grid-template-columns: 1fr auto; align-items: baseline;
+      gap: 8px; border-radius: 8px;
+    }
+    .announce summary::-webkit-details-marker { display: none; }
+    .announce summary:hover { background: var(--color-canvas); }
+    body[data-theme="dark"] .announce summary:hover { background: var(--color-surface-dark-soft); }
+    .announce details[open] > summary { background: var(--color-canvas); }
+    body[data-theme="dark"] .announce details[open] > summary { background: var(--color-surface-dark-soft); }
+    .announce details[open] > summary .caret { transform: rotate(90deg); }
+
+    .a-title {
+      font-size: 13px; font-weight: 500; color: var(--color-body-strong);
+      line-height: 1.4; display: flex; align-items: center; gap: 6px;
+    }
+    body[data-theme="dark"] .a-title { color: var(--color-on-dark); }
+    .a-title .caret {
+      display: inline-block; color: var(--color-muted);
+      font-size: 10px; transition: transform 180ms; flex-shrink: 0;
+    }
+    .a-date {
+      font-family: var(--font-mono); font-size: 10px;
+      color: var(--color-muted); white-space: nowrap;
+    }
+    .a-body {
+      padding: 2px 14px 14px 26px;
+      font-size: 12.5px; line-height: 1.6;
+      color: var(--color-body);
+      animation: slideDown 240ms cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    body[data-theme="dark"] .a-body { color: var(--color-on-dark-soft); }
+    @keyframes slideDown {
+      from { opacity: 0; transform: translateY(-4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ─── center column ──────────────────────────────────── */
+    .center { gap: 14px; }
+
+    /* hero strip */
+    .hero {
+      display: flex; align-items: baseline; justify-content: space-between;
+      gap: 16px;
+    }
+    .hero-title {
+      font-family: var(--font-display); font-size: 32px;
+      letter-spacing: -0.6px; line-height: 1.1; margin: 0;
+      color: var(--color-ink); font-weight: 400;
+    }
+    .hero-title em { font-style: italic; color: var(--color-primary); }
+    body[data-theme="dark"] .hero-title { color: var(--color-on-dark); }
+    .hero-status {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 11px; color: var(--color-muted);
+      font-family: var(--font-mono); letter-spacing: 0.8px;
+    }
+    .hero-status .pulse {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--color-success);
+      box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-success) 50%, transparent);
+      animation: pulse 2.2s infinite;
+    }
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-success) 50%, transparent); }
+      70% { box-shadow: 0 0 0 7px transparent; }
+      100% { box-shadow: 0 0 0 0 transparent; }
+    }
+
+    /* pinned ribbon */
+    .ribbon {
+      display: grid; grid-template-columns: 24px 1fr 20px;
+      gap: 10px; align-items: center;
+      background: var(--color-primary);
+      color: var(--color-on-primary);
+      padding: 8px 12px; border-radius: 8px;
+      font-size: 12px; line-height: 1.45;
+    }
+    .ribbon-icon {
+      width: 22px; height: 22px; border-radius: 50%;
+      background: rgba(255,255,255,0.18);
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 12px;
+    }
+    .ribbon-x {
+      background: transparent; border: none; color: var(--color-on-primary);
+      cursor: pointer; font-size: 13px; opacity: 0.8;
+    }
+    .ribbon-x:hover { opacity: 1; }
+
+    /* tool card — the translator */
+    .tool {
+      flex: 1;
+      background: var(--color-surface-soft);
+      border-radius: 14px;
+      padding: 20px;
+      display: flex; flex-direction: column; gap: 14px;
+      min-height: 0;
+    }
+    body[data-theme="dark"] .tool {
+      background: var(--color-surface-dark-elevated);
+    }
+
+    /* drop zone */
+    .drop {
+      display: grid; grid-template-columns: 36px 1fr auto;
+      align-items: center; gap: 14px;
+      padding: 14px 16px;
+      background: var(--color-surface-cream-strong);
+      border: 1.5px dashed color-mix(in srgb, var(--color-primary) 35%, var(--color-hairline));
+      border-radius: 10px;
+      cursor: pointer; transition: border-color 140ms, background 140ms;
+    }
+    body[data-theme="dark"] .drop {
+      background: var(--color-surface-dark-soft);
+      border-color: rgba(204,120,92,0.35);
+    }
+    .drop:hover, .drop.is-over {
+      border-color: var(--color-primary);
+      background: color-mix(in srgb, var(--color-primary) 9%, var(--color-surface-cream-strong));
+    }
+    body[data-theme="dark"] .drop:hover {
+      background: color-mix(in srgb, var(--color-primary) 7%, var(--color-surface-dark-soft));
+    }
+    .drop.has-file {
+      border-style: solid;
+      border-color: var(--color-success);
+      background: color-mix(in srgb, var(--color-success) 6%, var(--color-surface-cream-strong));
+    }
+    .drop-icon {
+      width: 36px; height: 36px; border-radius: 8px;
+      background: var(--color-surface-card);
+      display: inline-flex; align-items: center; justify-content: center;
+      color: var(--color-primary);
+    }
+    body[data-theme="dark"] .drop-icon { background: var(--color-surface-dark-elevated); }
+    .drop-text {
+      font-size: 13px; color: var(--color-body-strong);
+      line-height: 1.45;
+    }
+    body[data-theme="dark"] .drop-text { color: var(--color-on-dark); }
+    .drop-text b { font-weight: 600; color: var(--color-ink); }
+    body[data-theme="dark"] .drop-text b { color: var(--color-on-dark); }
+    .drop-text small { display: block; font-size: 11px; color: var(--color-muted); margin-top: 2px; }
+    .drop-link {
+      color: var(--color-primary); font-weight: 500; text-decoration: underline;
+      text-decoration-color: color-mix(in srgb, var(--color-primary) 30%, transparent);
+      text-underline-offset: 3px;
+    }
+    .drop-hint {
+      font-family: var(--font-mono); font-size: 10px;
+      color: var(--color-muted); letter-spacing: 0.5px;
+    }
+
+    /* form */
+    .form {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 12px;
+    }
+    .field { display: flex; flex-direction: column; gap: 5px; }
+    .field-label {
+      font-family: var(--font-mono); font-size: 10px;
+      letter-spacing: 1px; text-transform: uppercase;
+      color: var(--color-muted);
+    }
+    .field-control {
+      position: relative;
+      background: var(--color-canvas);
+      border: 1px solid var(--color-hairline);
+      border-radius: 8px;
+      transition: border-color 140ms, box-shadow 140ms;
+    }
+    body[data-theme="dark"] .field-control {
+      background: var(--color-surface-dark-soft);
+      border-color: rgba(250,249,245,0.1);
+    }
+    .field-control:focus-within {
+      border-color: var(--color-primary);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 15%, transparent);
+    }
+    .field select {
+      width: 100%; appearance: none;
+      background: transparent; border: none; outline: none;
+      padding: 10px 30px 10px 12px;
+      font: 500 13px/1 var(--font-body); color: var(--color-ink);
+      cursor: pointer;
+    }
+    body[data-theme="dark"] .field select { color: var(--color-on-dark); }
+    .field select option { background: var(--color-canvas); color: var(--color-ink); }
+    body[data-theme="dark"] .field select option { background: var(--color-surface-dark); color: var(--color-on-dark); }
+    .field-control::after {
+      content: "▾"; position: absolute; right: 12px; top: 50%;
+      transform: translateY(-50%); pointer-events: none;
+      color: var(--color-muted); font-size: 10px;
+    }
+
+    /* action row */
+    .actions {
+      display: flex; align-items: center; gap: 14px;
+    }
+    .btn-translate {
+      display: inline-flex; align-items: center; gap: 9px;
+      background: var(--color-primary); color: var(--color-on-primary);
+      border: none; padding: 11px 22px;
+      border-radius: 9px; cursor: pointer;
+      font: 500 14px/1 var(--font-body);
+      transition: background 140ms;
+    }
+    .btn-translate:hover { background: color-mix(in srgb, var(--color-primary) 92%, black); }
+    .btn-translate:active { background: var(--color-primary-active); }
+    .btn-translate svg { transition: transform 180ms; }
+    .btn-translate:hover svg { transform: translateX(2px); }
+
+    .cost-chip {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 6px 12px; border-radius: 9999px;
+      background: var(--color-surface-card); color: var(--color-ink);
+      font: 500 12px/1 var(--font-body);
+      border: 1px solid var(--color-hairline);
+    }
+    body[data-theme="dark"] .cost-chip {
+      background: var(--color-surface-dark-soft); color: var(--color-on-dark);
+      border-color: rgba(250,249,245,0.08);
+    }
+    .cost-chip small { color: var(--color-muted); font-size: 10.5px; font-family: var(--font-mono); }
+
+    .shortcut-hint {
+      margin-left: auto;
+      font-family: var(--font-mono); font-size: 10.5px;
+      color: var(--color-muted); letter-spacing: 0.5px;
+    }
+    .shortcut-hint kbd {
+      background: var(--color-canvas); border: 1px solid var(--color-hairline);
+      padding: 1px 5px; border-radius: 3px;
+      font-family: var(--font-mono); font-size: 10px;
+      color: var(--color-ink);
+    }
+    body[data-theme="dark"] .shortcut-hint kbd {
+      background: var(--color-surface-dark-soft); border-color: rgba(250,249,245,0.1);
+      color: var(--color-on-dark);
+    }
+
+    /* stories — horizontal collapsed chips */
+    .stories-row {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
+    }
+    .story {
+      background: var(--color-canvas);
+      border: 1px solid var(--color-hairline);
+      border-radius: 10px; padding: 12px 14px;
+      cursor: pointer; transition: border-color 140ms, transform 140ms;
+      display: flex; flex-direction: column; gap: 4px;
+      overflow: hidden;
+    }
+    body[data-theme="dark"] .story {
+      background: var(--color-surface-dark-soft);
+      border-color: rgba(250,249,245,0.08);
+    }
+    .story:hover { border-color: var(--color-primary); }
+    .story .badge {
+      align-self: flex-start;
+      font: 600 9.5px/1 var(--font-body); letter-spacing: 1.1px;
+      text-transform: uppercase; color: var(--color-primary);
+    }
+    .story .s-title {
+      font-size: 12.5px; font-weight: 500; color: var(--color-ink);
+      line-height: 1.4;
+    }
+    body[data-theme="dark"] .story .s-title { color: var(--color-on-dark); }
+    .story .s-body {
+      max-height: 0; opacity: 0; overflow: hidden;
+      transition: max-height 280ms cubic-bezier(0.16, 1, 0.3, 1), opacity 200ms, margin-top 200ms;
+      font-size: 11.5px; line-height: 1.55; color: var(--color-body);
+    }
+    body[data-theme="dark"] .story .s-body { color: var(--color-on-dark-soft); }
+    .story.is-open .s-body {
+      max-height: 200px; opacity: 1; margin-top: 4px;
+    }
+
+    /* ─── right column — info cards ─────────────────────── */
+    .info-list {
+      list-style: none; padding: 0; margin: 0;
+      display: flex; flex-direction: column; gap: 4px;
+    }
+    .info-list li {
+      border-radius: 8px;
+    }
+    .info-list details { padding: 0; }
+    .info-list summary {
+      list-style: none; cursor: pointer; user-select: none;
+      padding: 9px 12px; border-radius: 8px;
+      display: grid; grid-template-columns: 1fr 12px; align-items: center;
+      gap: 8px; font-size: 12.5px; color: var(--color-body-strong);
+    }
+    body[data-theme="dark"] .info-list summary { color: var(--color-on-dark); }
+    .info-list summary::-webkit-details-marker { display: none; }
+    .info-list summary:hover { background: var(--color-canvas); }
+    body[data-theme="dark"] .info-list summary:hover { background: var(--color-surface-dark-soft); }
+    .info-list .caret {
+      font-size: 10px; color: var(--color-muted);
+      transition: transform 180ms;
+    }
+    .info-list details[open] .caret { transform: rotate(90deg); }
+    .info-list details[open] > summary { background: var(--color-canvas); }
+    body[data-theme="dark"] .info-list details[open] > summary { background: var(--color-surface-dark-soft); }
+    .info-body {
+      padding: 4px 14px 12px 14px;
+      font-size: 12px; line-height: 1.6; color: var(--color-body);
+      animation: slideDown 240ms cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    body[data-theme="dark"] .info-body { color: var(--color-on-dark-soft); }
+    .info-body strong { color: var(--color-primary); font-weight: 500; }
+
+    /* mini newsletter card */
+    .news {
+      margin-top: auto; /* push to bottom of column */
+      padding: 14px 16px 16px;
+      /* warm medium-dark — ~3 levels lighter than surface-dark for legibility */
+      background: color-mix(in srgb, var(--color-surface-dark) 70%, var(--color-canvas) 30%);
+      color: var(--color-on-dark);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .news h4 {
+      font-family: var(--font-display); font-size: 17px;
+      letter-spacing: -0.2px; margin: 0 0 10px;
+      color: var(--color-on-dark); font-weight: 400;
+    }
+    .news p {
+      margin: 0 0 10px; font-size: 11.5px;
+      color: var(--color-on-dark-soft); line-height: 1.5;
+    }
+    .news-row {
+      display: flex; gap: 6px; min-width: 0;
+    }
+    .news input {
+      flex: 1; min-width: 0;
+      background: var(--color-surface-dark-elevated);
+      border: 1px solid rgba(250,249,245,0.08);
+      color: var(--color-on-dark);
+      border-radius: 7px; padding: 8px 10px;
+      font: 13px var(--font-body); outline: none;
+    }
+    .news input::placeholder { color: var(--color-on-dark-soft); opacity: 0.6; }
+    .news input:focus { border-color: var(--color-primary); }
+    .news button {
+      flex-shrink: 0;
+      background: var(--color-primary); color: var(--color-on-primary);
+      border: none; padding: 8px 14px; border-radius: 7px;
+      font: 500 12px/1 var(--font-body); cursor: pointer;
+      white-space: nowrap;
+    }
+
+    /* ─── footer ─────────────────────────────────────────── */
+    .footer {
+      display: flex; align-items: center; justify-content: space-between;
+      border-top: 1px solid var(--color-hairline);
+      font-family: var(--font-mono); font-size: 10.5px;
+      color: var(--color-muted); letter-spacing: 0.5px;
+    }
+    body[data-theme="dark"] .footer { border-color: rgba(250,249,245,0.08); }
+    .footer .meta { display: flex; align-items: center; gap: 16px; }
+    .footer-dot { color: var(--color-hairline); }
+
+    /* ─── last-run panel (real metrics + bilingual sample) ── */
+    .last-run {
+      margin-top: 4px;
+      background: var(--color-canvas);
+      border: 1px solid var(--color-hairline);
+      border-radius: 10px;
+      padding: 12px 14px;
+      display: flex; flex-direction: column; gap: 10px;
+    }
+    body[data-theme="dark"] .last-run {
+      background: var(--color-surface-dark-soft);
+      border-color: rgba(250,249,245,0.08);
+    }
+    .lr-head {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 10px;
+    }
+    .lr-dl {
+      display: flex; align-items: center; flex-wrap: wrap;
+      gap: 4px 8px;
+      padding: 6px 10px;
+      background: color-mix(in srgb, var(--color-primary) 6%, var(--color-canvas));
+      border: 1px dashed color-mix(in srgb, var(--color-primary) 35%, transparent);
+      border-radius: 7px;
+    }
+    body[data-theme="dark"] .lr-dl {
+      background: color-mix(in srgb, var(--color-primary) 12%, var(--color-surface-dark-soft));
+      border-color: rgba(204,120,92,0.35);
+    }
+    .lr-dl-help {
+      font-size: 11.5px; color: var(--color-body);
+    }
+    body[data-theme="dark"] .lr-dl-help { color: var(--color-on-dark-soft); }
+    .lr-label {
+      display: inline-flex; align-items: center; gap: 8px;
+      font-family: var(--font-mono); font-size: 10.5px;
+      letter-spacing: 0.8px; color: var(--color-muted);
+      text-transform: uppercase;
+    }
+    .lr-label::before {
+      content: ""; width: 6px; height: 6px; border-radius: 50%;
+      background: var(--color-success);
+    }
+    .lr-download {
+      display: inline-flex; align-items: center; gap: 5px;
+      font: 500 12px/1 var(--font-body); color: var(--color-primary);
+      text-decoration: none;
+    }
+    .lr-download:hover { text-decoration: underline; text-underline-offset: 3px; }
+    .lr-grid {
+      display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px 16px;
+    }
+    .lr-grid > div { display: flex; flex-direction: column; gap: 1px; }
+    .lr-grid dt {
+      font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.6px;
+      color: var(--color-muted); text-transform: uppercase;
+    }
+    .lr-grid dd {
+      margin: 0; font-size: 13px; font-weight: 500;
+      color: var(--color-ink); font-variant-numeric: tabular-nums;
+    }
+    body[data-theme="dark"] .lr-grid dd { color: var(--color-on-dark); }
+    .lr-grid dd .muted { color: var(--color-muted); font-weight: 400; font-size: 11px; margin-left: 2px; }
+    .lr-preview {
+      border-top: 1px dashed var(--color-hairline);
+      padding-top: 9px;
+      display: grid; grid-template-columns: 1fr 1fr; gap: 14px;
+      font-size: 12px; line-height: 1.5;
+    }
+    body[data-theme="dark"] .lr-preview { border-color: rgba(250,249,245,0.1); }
+    .lr-en {
+      font-family: var(--font-display); font-style: italic;
+      color: var(--color-body); font-size: 13px;
+    }
+    body[data-theme="dark"] .lr-en { color: var(--color-on-dark-soft); }
+    .lr-fa {
+      direction: rtl; text-align: right;
+      font-family: "Vazirmatn", var(--font-body);
+      color: var(--color-ink); font-size: 12.5px;
+    }
+    body[data-theme="dark"] .lr-fa { color: var(--color-on-dark); }
+    .lr-en::before { content: "“"; color: var(--color-primary); margin-right: 2px; }
+    .lr-en::after { content: "”"; color: var(--color-primary); margin-left: 2px; }
+    .lr-fa::before { content: "»"; color: var(--color-primary); margin-left: 2px; }
+    .lr-fa::after { content: "«"; color: var(--color-primary); margin-right: 2px; }
+
+    /* recent runs list (right column) — flag · model → lang · elapsed · ago */
+    .runs {
+      list-style: none; padding: 0; margin: 0;
+      display: flex; flex-direction: column; gap: 4px;
+    }
+    .runs li {
+      padding: 8px 11px; background: var(--color-canvas);
+      border-radius: 7px;
+      display: grid; grid-template-columns: 18px 1fr;
+      gap: 2px 10px; align-items: center;
+      cursor: pointer; transition: background 140ms;
+    }
+    body[data-theme="dark"] .runs li { background: var(--color-surface-dark-soft); }
+    .runs li:hover { background: var(--color-surface-cream-strong); }
+    body[data-theme="dark"] .runs li:hover { background: var(--color-surface-dark-elevated); }
+    .run-flag { font-size: 14px; line-height: 1; align-self: center; grid-row: span 2; }
+    .run-line-1 {
+      display: flex; gap: 6px; align-items: baseline;
+      font-family: var(--font-mono); font-size: 12px;
+      color: var(--color-ink); font-weight: 500;
+    }
+    body[data-theme="dark"] .run-line-1 { color: var(--color-on-dark); }
+    .run-target {
+      color: var(--color-primary); font-weight: 400;
+      letter-spacing: 0.3px;
+    }
+    .run-line-2 {
+      font-family: var(--font-mono); font-size: 10.5px;
+      color: var(--color-muted); letter-spacing: 0.4px;
+    }
+
+    /* counter chip (translated docs total + currently processing) */
+    .counter-chip {
+      display: inline-flex; align-items: center; gap: 10px;
+      background: var(--color-surface-card);
+      padding: 6px 12px 6px 10px; border-radius: 9999px;
+      border: 1px solid var(--color-hairline);
+      font: 500 12px/1 var(--font-body); color: var(--color-ink);
+    }
+    body[data-theme="dark"] .counter-chip {
+      background: var(--color-surface-dark-elevated); color: var(--color-on-dark);
+      border-color: rgba(250,249,245,0.08);
+    }
+    .counter-chip .num {
+      font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+      font-size: 13px; color: var(--color-primary); font-weight: 600;
+    }
+    .counter-chip .sep { width: 1px; height: 12px; background: var(--color-hairline); }
+    body[data-theme="dark"] .counter-chip .sep { background: rgba(250,249,245,0.15); }
+    .counter-chip .lbl { font-size: 11px; color: var(--color-muted); letter-spacing: 0.3px; }
+
+    /* transient status: progress / result / error */
+    .hidden { display: none !important; }
+
+    .progress-box {
+      margin-top: 4px;
+      padding: 12px 14px;
+      background: var(--color-canvas);
+      border: 1px solid var(--color-hairline);
+      border-radius: 10px;
+    }
+    body[data-theme="dark"] .progress-box {
+      background: var(--color-surface-dark-soft);
+      border-color: rgba(250,249,245,0.08);
+    }
+    .progress-meta {
+      display: flex; justify-content: space-between; align-items: baseline;
+      font: 500 12px/1 var(--font-body); margin-bottom: 8px;
+    }
+    .progress-meta .progress-label { color: var(--color-body-strong); }
+    body[data-theme="dark"] .progress-meta .progress-label { color: var(--color-on-dark); }
+    .progress-meta .progress-pct {
+      font-family: var(--font-mono); color: var(--color-primary);
+      font-variant-numeric: tabular-nums;
+    }
+    .progress-track {
+      height: 6px; background: var(--color-hairline); border-radius: 99px; overflow: hidden;
+    }
+    body[data-theme="dark"] .progress-track { background: rgba(250,249,245,0.1); }
+    .progress-fill {
+      height: 100%; width: 0%; background: var(--color-primary);
+      border-radius: 99px;
+      transition: width 400ms cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .result-box {
+      margin-top: 4px;
+      display: flex; align-items: center; gap: 10px;
+      padding: 11px 14px;
+      background: color-mix(in srgb, var(--color-success) 9%, var(--color-canvas));
+      border: 1px solid color-mix(in srgb, var(--color-success) 35%, transparent);
+      border-radius: 10px;
+      font-size: 13px;
+    }
+    body[data-theme="dark"] .result-box {
+      background: color-mix(in srgb, var(--color-success) 12%, var(--color-surface-dark-soft));
+    }
+    .result-box svg { color: var(--color-success); flex-shrink: 0; }
+    .result-box a {
+      color: var(--color-primary); font-weight: 500; text-decoration: none;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .result-box a:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+    .error-box {
+      margin-top: 4px;
+      display: flex; align-items: flex-start; gap: 10px;
+      padding: 11px 14px;
+      background: color-mix(in srgb, var(--color-error) 7%, var(--color-canvas));
+      border: 1px solid color-mix(in srgb, var(--color-error) 35%, transparent);
+      border-radius: 10px;
+      font-size: 13px; color: var(--color-body-strong); line-height: 1.5;
+    }
+    body[data-theme="dark"] .error-box {
+      background: color-mix(in srgb, var(--color-error) 12%, var(--color-surface-dark-soft));
+      color: var(--color-on-dark);
+    }
+    .error-box::before {
+      content: "⚠"; color: var(--color-error); font-size: 16px; line-height: 1.2;
+    }
+
+    /* secondary cancel button */
+    .btn-cancel {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: transparent; color: var(--color-error);
+      border: 1px solid color-mix(in srgb, var(--color-error) 45%, transparent);
+      padding: 10px 16px; border-radius: 9px;
+      font: 500 13px/1 var(--font-body); cursor: pointer;
+    }
+    .btn-cancel:hover {
+      background: color-mix(in srgb, var(--color-error) 8%, transparent);
+    }
+
+    /* make recent-runs panel scrollable when it has many entries */
+    .runs-panel { flex: 1 1 auto; min-height: 80px; overflow: hidden; display: flex; flex-direction: column; }
+    .runs-panel .runs { overflow-y: auto; }
+    .runs-panel .runs::-webkit-scrollbar { width: 5px; }
+    .runs-panel .runs::-webkit-scrollbar-thumb { background: var(--color-hairline); border-radius: 99px; }
+
+    /* persian rtl flips on body level when language=fa */
+    body[dir="rtl"] {
+      direction: rtl;
+      font-family: "Vazirmatn", var(--font-body);
+    }
+
+    /* compact below 1100 */
+    @media (max-width: 1100px) {
+      main { grid-template-columns: 240px 1fr 240px; gap: 16px; }
+      .shell { padding: 0 18px; }
+    }
+    @media (max-width: 900px) {
+      main { grid-template-columns: 1fr; overflow-y: auto; }
+      body { overflow: auto; }
+      .shell { grid-template-rows: 56px auto 36px; height: auto; min-height: 100vh; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+
+    <!-- ─── header ─────────────────────────────────────── -->
+    <header class="topbar">
+      <a href="#" class="brand">
+        <span class="glyph">D</span>
+        Doc Translate
+        <small>v2</small>
+      </a>
+      <div class="topbar-right">
+        <div class="ui-switch" id="uiSwitch" data-on="v2" role="group" aria-label="Choose UI version">
+          <span class="knob" aria-hidden="true"></span>
+          <button type="button" data-go="v1">Classic</button>
+          <button type="button" data-go="v2" class="is-on">Modern</button>
+        </div>
+        <button class="icon-btn" id="themeBtn" aria-label="Toggle theme">🌙</button>
+        <a class="icon-btn" href="https://github.com/Milomilo777/machine-translate-docx" target="_blank" rel="noopener" title="GitHub" aria-label="GitHub">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .5C5.4.5 0 5.9 0 12.5c0 5.3 3.4 9.8 8.2 11.4.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.5-1.4-1.3-1.7-1.3-1.7-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1.1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.8-1.6-2.7-.3-5.5-1.3-5.5-6 0-1.3.5-2.4 1.2-3.2-.1-.3-.5-1.5.1-3.2 0 0 1-.3 3.3 1.2a11.4 11.4 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.7 1.7.3 2.9.1 3.2.8.8 1.2 1.9 1.2 3.2 0 4.6-2.8 5.6-5.5 5.9.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 24 12.5C24 5.9 18.6.5 12 .5z"/></svg>
+        </a>
+      </div>
+    </header>
+
+    <!-- ─── main 3-column grid ────────────────────────── -->
+    <main>
+
+      <!-- LEFT — announcements -->
+      <aside class="col">
+        <section class="panel scroll" style="flex: 1;">
+          <div class="panel-head">
+            <h2 class="panel-title">Updates &amp; info</h2>
+            <span class="panel-meta">click to expand</span>
+          </div>
+          <ul class="announce" id="announceList">
+            <li>
+              <details>
+                <summary>
+                  <span class="a-title"><span class="caret">▸</span>Source code on GitHub</span>
+                  <span class="a-date">info</span>
+                </summary>
+                <div class="a-body">The source code is available on the translation-robot account on GitHub: <a href="https://github.com/translation-robot/machine-translate-docx/" target="_blank" rel="noopener">github.com/translation-robot/machine-translate-docx</a>.</div>
+              </details>
+            </li>
+            <li>
+              <details>
+                <summary>
+                  <span class="a-title"><span class="caret">▸</span>Download the Machine Translator and run it on your computer</span>
+                  <span class="a-date">info</span>
+                </summary>
+                <div class="a-body">Mac OS X and Windows installers are available for <a href="https://github.com/translation-robot/machine-translate-docx/blob/main/download.md" target="_blank" rel="noopener">download</a>. This web site and the robot runs on Linux, but no Linux installers are provided for now.</div>
+              </details>
+            </li>
+            <li>
+              <details open>
+                <summary>
+                  <span class="a-title"><span class="caret">▸</span>Line splitting with OpenAI API — Persian only (testing)</span>
+                  <span class="a-date">Mar 29 …2026</span>
+                </summary>
+                <div class="a-body">It must be selected in the combo box instead of basic line splitting. It makes processing 5 times slower, but quality of subtitle phrase splitting is improved significantly. Other languages will be added later after it is optimized.</div>
+              </details>
+            </li>
+            <li>
+              <details>
+                <summary>
+                  <span class="a-title"><span class="caret">▸</span>OpenAI model selector added — default is GPT-5.5</span>
+                  <span class="a-date">May 2026</span>
+                </summary>
+                <div class="a-body">When using <strong>OpenAI API</strong> or <strong>OpenAI Translation + Polish</strong>, you can now select the model. Default is GPT-5.5.</div>
+              </details>
+            </li>
+            <li>
+              <details>
+                <summary>
+                  <span class="a-title"><span class="caret">▸</span>OpenAI (ChatGPT) using model 5.2 available for all languages</span>
+                  <span class="a-date">Jan 13 …2026</span>
+                </summary>
+                <div class="a-body">Please select <strong>OpenAI API</strong> when using GPT-5.2 as translation engine.</div>
+              </details>
+            </li>
+            <li>
+              <details>
+                <summary>
+                  <span class="a-title"><span class="caret">▸</span>Deepl added support for 70+ languages</span>
+                  <span class="a-date">Jan 13 …2026</span>
+                </summary>
+                <div class="a-body">All listed languages on this web site are now supported by Deepl except Thai, and now uses Deepl by default. We would like to receive your feedback and if you prefer having Google translate for your language.</div>
+              </details>
+            </li>
+            <li>
+              <details>
+                <summary>
+                  <span class="a-title"><span class="caret">▸</span>Fixed Deepl translation</span>
+                  <span class="a-date">Oct 23 …2025</span>
+                </summary>
+                <div class="a-body">Deepl translation only works after updating to the version 2025-10-23. Use the download link on this page to get the latest version.</div>
+              </details>
+            </li>
+            <li>
+              <details>
+                <summary>
+                  <span class="a-title"><span class="caret">▸</span>Fixed some slow Deepl translation cases</span>
+                  <span class="a-date">Oct 16 …2025</span>
+                </summary>
+                <div class="a-body">Deepl slow translation should mostly be fixed. The robot does not use phrase-by-phrase translation from the beginning in case of failure.</div>
+              </details>
+            </li>
+            <li>
+              <details>
+                <summary>
+                  <span class="a-title"><span class="caret">▸</span>Line splitting improvements</span>
+                  <span class="a-date">earlier</span>
+                </summary>
+                <div class="a-body">Short line splitting is now improved, fixing some empty lines in translation.</div>
+              </details>
+            </li>
+          </ul>
+        </section>
+      </aside>
+
+      <!-- CENTER — translator -->
+      <section class="col center">
+
+        <div class="hero">
+          <div>
+            <h1 class="hero-title">Translate Word <em>documents</em></h1>
+            <p style="margin: 4px 0 0; font-size: 13px; color: var(--color-muted); line-height: 1.45;">For broadcast subtitles and long documents.</p>
+          </div>
+          <span class="counter-chip" title="Total documents translated by the robot · currently running jobs">
+            <span class="num" id="docsCount">—</span>
+            <span class="lbl">translated</span>
+            <span class="sep"></span>
+            <span class="num" id="docsProcessing">—</span>
+            <span class="lbl">in progress</span>
+          </span>
+        </div>
+
+        <div class="ribbon">
+          <span class="ribbon-icon">✦</span>
+          <span>new: announcement reserved here.</span>
+          <button class="ribbon-x" aria-label="Dismiss">✕</button>
+        </div>
+
+        <div class="tool">
+          <div class="drop" id="drop" role="button" tabindex="0" aria-label="Choose a .docx file or drop one here">
+            <input type="file" id="docxFile" accept=".docx" hidden />
+            <span class="drop-icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                <path d="M12 16V4M12 4l-4 4M12 4l4 4M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </span>
+            <div class="drop-text" id="dropText">
+              <b>Drag &amp; drop</b> or <span class="drop-link">click to choose</span>
+              <small>.docx · max 2 files</small>
+            </div>
+            <span class="drop-hint">.docx</span>
+          </div>
+
+          <div class="form">
+            <label class="field" for="sourceLanguages">
+              <span class="field-label">Source</span>
+              <span class="field-control">
+                <select id="sourceLanguages" name="sourceLanguage"></select>
+              </span>
+            </label>
+            <label class="field" for="targetLanguages">
+              <span class="field-label">Target</span>
+              <span class="field-control">
+                <select id="targetLanguages" name="targetLanguage"></select>
+              </span>
+            </label>
+            <label class="field" for="translationEngine">
+              <span class="field-label">Engine</span>
+              <span class="field-control">
+                <select id="translationEngine" name="engine">
+                  <option value="chatgpt-polish">OpenAI Translation + Polish</option>
+                  <option value="deepl">DeepL</option>
+                  <option value="google">Google Translate</option>
+                  <option value="chatgpt">OpenAI API</option>
+                </select>
+              </span>
+            </label>
+            <label class="field" id="aiModelField" for="aiModel">
+              <span class="field-label">OpenAI model</span>
+              <span class="field-control">
+                <select id="aiModel" name="aiModel">
+                  <option value="gpt-5.5">GPT-5.5 — recommended</option>
+                  <option value="gpt-5.4-mini">GPT-5.4 mini — faster, cheaper</option>
+                </select>
+              </span>
+            </label>
+            <label class="field" for="splitEngine">
+              <span class="field-label">Split method</span>
+              <span class="field-control">
+                <select id="splitEngine" name="splitEngine">
+                  <option value="persian_double_lines">Persian Double Lines</option>
+                  <option value="basic">Basic with excel file</option>
+                  <option value="openai">OpenAI API</option>
+                </select>
+              </span>
+            </label>
+            <label class="field" id="alignerMaxCharsField" for="alignerMaxChars">
+              <span class="field-label">Max chars / chunk</span>
+              <span class="field-control">
+                <select id="alignerMaxChars" name="alignerMaxChars">
+                  <option value="45">45 — default</option>
+                  <option value="30">30 — tight</option>
+                  <option value="60">60 — loose</option>
+                </select>
+              </span>
+            </label>
+          </div>
+
+          <div class="actions">
+            <button class="btn-translate" type="button" id="translateBtn">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                <path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              <span id="translateBtnLabel">Translate document</span>
+            </button>
+            <button class="btn-cancel hidden" type="button" id="cancelBtn">Cancel</button>
+            <span class="shortcut-hint"><kbd>⌘</kbd> <kbd>↵</kbd> to run</span>
+          </div>
+
+          <!-- transient status: progress / result / error — hidden until a run starts -->
+          <section class="progress-box hidden" id="progressBox" aria-live="polite">
+            <div class="progress-meta">
+              <span class="progress-label" id="progressLabel">Starting…</span>
+              <span class="progress-pct" id="progressPct">0%</span>
+            </div>
+            <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+          </section>
+
+          <section class="result-box hidden" id="resultBox" aria-live="polite"></section>
+
+          <section class="error-box hidden" id="errorBox" role="alert">
+            <span id="errorText"></span>
+          </section>
+
+          <!-- last-run summary card, fed by _log.json sidecar -->
+          <section class="last-run" aria-label="Last successful run" id="lastRunCard">
+            <header class="lr-head">
+              <span class="lr-label">Last successful run · 14 min ago</span>
+            </header>
+            <div class="lr-dl">
+              <span class="lr-dl-help">If not automatically saved — download here:</span>
+              <a class="lr-download" href="#" download aria-label="Download translated file">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M12 4v12m0 0l-4-4m4 4l4-4M4 20h16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                ep-73-broadcast_PER_Polish.docx
+              </a>
+            </div>
+            <dl class="lr-grid">
+              <div><dt>Model</dt><dd>gpt-5.5</dd></div>
+              <div><dt>Elapsed</dt><dd>71<span class="muted">s</span></dd></div>
+              <div><dt>Tokens</dt><dd>8,432 <span class="muted">(92% cached)</span></dd></div>
+              <div><dt>Rows</dt><dd>42 / 42</dd></div>
+              <div><dt>Polish</dt><dd>18 <span class="muted">lines</span></dd></div>
+              <div><dt>Cost</dt><dd>$0.018</dd></div>
+            </dl>
+          </section>
+        </div>
+
+        <div class="stories-row" id="storiesRow">
+          <article class="story" data-story>
+            <span class="badge">Tip</span>
+            <span class="s-title">How phrase-grouping works</span>
+            <span class="s-body">DeepL and Google write the translation onto the first row of every phrase group, leaving the rest empty by design. ChatGPT with split-translation distributes per-row instead.</span>
+          </article>
+          <article class="story" data-story>
+            <span class="badge">Persian</span>
+            <span class="s-title">Persian Double Lines</span>
+            <span class="s-body">When the target language is Persian, the Split Method dropdown unlocks a second option that runs the FA mechanical aligner on top of the engine's translation and emits a bilingual two-line file ready for TV subtitles.</span>
+          </article>
+          <article class="story" data-story>
+            <span class="badge">OpenAI</span>
+            <span class="s-title">24-hour prompt cache</span>
+            <span class="s-body">Every OpenAI call sets prompt_cache_retention=24h. Re-running the same document in the same day cuts the prompt-token bill by ~92%. The sidecar logs cached_tokens so you can verify.</span>
+          </article>
+        </div>
+      </section>
+
+      <!-- RIGHT — engines / outputs / newsletter -->
+      <aside class="col">
+        <section class="panel" style="flex: 0 1 auto;">
+          <div class="panel-head">
+            <h2 class="panel-title">At a glance</h2>
+            <span class="panel-meta">click to expand</span>
+          </div>
+          <ul class="info-list">
+            <li>
+              <details open>
+                <summary><span>Engines</span><span class="caret">▸</span></summary>
+                <div class="info-body">
+                  <strong>OpenAI Translate + Polish</strong> — Persian only. Adds a quality polish pass and (with Persian Double Lines) a bilingual aligned <em>Double</em> file for TV subtitles.<br><br>
+                  <strong>DeepL</strong> — best for European languages.<br>
+                  <strong>Google</strong> — widest language coverage.<br>
+                  <strong>OpenAI API</strong> — single-call API translation.
+                </div>
+              </details>
+            </li>
+            <li>
+              <details>
+                <summary><span>Outputs &amp; cache</span><span class="caret">▸</span></summary>
+                <div class="info-body">
+                  One file per job. Persian + Polish writes <code>_PER_Polish.docx</code>; Persian Double Lines adds <code>_Double_Lines</code> before the extension. OpenAI results are cached server-side for 36&nbsp;h, then deleted. Per upload: max 2 files, 50&nbsp;MB each.
+                </div>
+              </details>
+            </li>
+            <li>
+              <details>
+                <summary><span>Validation</span><span class="caret">▸</span></summary>
+                <div class="info-body">
+                  Live-validated weekly across <strong>DeepL</strong>, <strong>Google</strong>, and <strong>OpenAI</strong> (with + without polish). Smoke test: DeepL <code>en→fr</code> in 27&nbsp;s, 0&nbsp;/&nbsp;42 column mismatches. Last pass: <code>2026-05-11</code>.
+                </div>
+              </details>
+            </li>
+            <li>
+              <details>
+                <summary><span>Privacy</span><span class="caret">▸</span></summary>
+                <div class="info-body">
+                  No telemetry. No analytics. Uploaded <code>.docx</code> files kept &le;&nbsp;5&nbsp;days for OpenAI cache, then permanently deleted. The newsletter list is plain text on the server.
+                </div>
+              </details>
+            </li>
+          </ul>
+        </section>
+
+        <section class="panel runs-panel">
+          <div class="panel-head">
+            <h2 class="panel-title">Recent runs</h2>
+            <span class="panel-meta">last 10</span>
+          </div>
+          <ol class="runs" id="runsList">
+            <li>
+              <span class="run-flag" data-flag>🌐</span>
+              <span class="run-line-1">gpt-5.5 <span class="run-target">→ fa</span></span>
+              <span class="run-line-2">71s · 14m ago</span>
+            </li>
+            <li>
+              <span class="run-flag" data-flag>🌐</span>
+              <span class="run-line-1">deepl <span class="run-target">→ fr</span></span>
+              <span class="run-line-2">24s · 2h ago</span>
+            </li>
+            <li>
+              <span class="run-flag" data-flag>🌐</span>
+              <span class="run-line-1">gpt-5.4-mini <span class="run-target">→ fa</span></span>
+              <span class="run-line-2">89s · yesterday</span>
+            </li>
+            <li>
+              <span class="run-flag" data-flag>🌐</span>
+              <span class="run-line-1">google <span class="run-target">→ es</span></span>
+              <span class="run-line-2">18s · 2 days ago</span>
+            </li>
+            <li>
+              <span class="run-flag" data-flag>🌐</span>
+              <span class="run-line-1">gpt-5.5 <span class="run-target">→ fa</span></span>
+              <span class="run-line-2">64s · 3 days ago</span>
+            </li>
+            <li>
+              <span class="run-flag" data-flag>🌐</span>
+              <span class="run-line-1">deepl <span class="run-target">→ de</span></span>
+              <span class="run-line-2">31s · 4 days ago</span>
+            </li>
+            <li>
+              <span class="run-flag" data-flag>🌐</span>
+              <span class="run-line-1">chatgpt <span class="run-target">→ ar</span></span>
+              <span class="run-line-2">42s · 5 days ago</span>
+            </li>
+            <li>
+              <span class="run-flag" data-flag>🌐</span>
+              <span class="run-line-1">gpt-5.5 <span class="run-target">→ fa</span></span>
+              <span class="run-line-2">78s · 1 week ago</span>
+            </li>
+            <li>
+              <span class="run-flag" data-flag>🌐</span>
+              <span class="run-line-1">gpt-5.4-mini <span class="run-target">→ fa</span></span>
+              <span class="run-line-2">56s · 9 days ago</span>
+            </li>
+            <li>
+              <span class="run-flag" data-flag>🌐</span>
+              <span class="run-line-1">deepl <span class="run-target">→ ru</span></span>
+              <span class="run-line-2">28s · 12 days ago</span>
+            </li>
+          </ol>
+        </section>
+
+        <div class="news">
+          <h4>Stay in the loop</h4>
+          <form class="news-row" onsubmit="event.preventDefault();">
+            <input type="email" placeholder="you@example.com" />
+            <button type="submit">Subscribe</button>
+          </form>
+        </div>
+      </aside>
+    </main>
+
+    <!-- ─── footer ─────────────────────────────────────── -->
+    <footer class="footer">
+      <span>Doc Translate · plain JS, no framework · 154 / 154 tests passing</span>
+      <span class="meta">
+        <span>Validated 2026-05-11</span>
+        <span class="footer-dot">·</span>
+        <span>Cumulative spend $0.18</span>
+        <span class="footer-dot">·</span>
+        <span>v2.3.1</span>
+      </span>
+    </footer>
+  </div>
+
+  <script>
+    /* ── version switch (persistent in localStorage + navigates) ── */
+    (function() {
+      const KEY = 'mtd.uiPref';
+      const sw = document.getElementById('uiSwitch');
+      sw.querySelectorAll('button').forEach(b => {
+        b.addEventListener('click', () => {
+          const go = b.dataset.go;
+          sw.dataset.on = go;
+          sw.querySelectorAll('button').forEach(x => x.classList.toggle('is-on', x.dataset.go === go));
+          try { localStorage.setItem(KEY, go); } catch (_) {}
+          if (go === 'v1') location.assign('/');
+          // Switches between legacy (/) and v2 (/v2/) — both served by local_launcher.py
+        });
+      });
+    })();
+
+    /* ── theme ── */
+    (function() {
+      const themeBtn = document.getElementById('themeBtn');
+      themeBtn.addEventListener('click', () => {
+        const next = document.body.dataset.theme === 'dark' ? 'light' : 'dark';
+        document.body.dataset.theme = next;
+        themeBtn.textContent = next === 'dark' ? '☀' : '🌙';
+      });
+    })();
+
+    /* ── stories: click to expand inline ── */
+    document.querySelectorAll('[data-story]').forEach(card => {
+      card.addEventListener('click', () => card.classList.toggle('is-open'));
+    });
+
+    /* ── country flag from IP ── */
+    (function() {
+      function isoToFlag(code) {
+        if (!code || code.length !== 2) return '🌐';
+        return String.fromCodePoint(...[...code.toUpperCase()].map(c => 0x1F1E6 - 65 + c.charCodeAt(0)));
+      }
+      fetch('https://api.country.is/')
+        .then(r => r.ok ? r.json() : null)
+        .then(d => {
+          if (!d || !d.country) return;
+          const flag = isoToFlag(d.country);
+          window.__flagChar = flag;
+          document.querySelectorAll('[data-flag]').forEach(el => el.textContent = flag);
+        })
+        .catch(() => { /* offline / blocked → keep globe */ });
+    })();
+
+    /* ───────────────────────────────────────────────────────────
+       Translator wiring — ported from web/index.ejs so the v2 UI talks
+       to the same backend (POST /upload, GET /status/:id, GET /download,
+       POST /cancel/:id, GET /count, GET /robotscount).
+       When served outside the launcher (file://, design preview), the
+       fetches will fail silently and the UI stays in idle state. Deploy
+       this file as web/v2/index.html for the wiring to be live.
+       ────────────────────────────────────────────────────────── */
+    (function() {
+      const $ = id => document.getElementById(id);
+
+      const dropZone        = $('drop');
+      const fileInput       = $('docxFile');
+      const dropText        = $('dropText');
+      const sourceSel       = $('sourceLanguages');
+      const targetSel       = $('targetLanguages');
+      const engineSel       = $('translationEngine');
+      const aiModelSel      = $('aiModel');
+      const aiModelField    = $('aiModelField');
+      const splitSel        = $('splitEngine');
+      const maxCharsSel     = $('alignerMaxChars');
+      const maxCharsField   = $('alignerMaxCharsField');
+      const translateBtn    = $('translateBtn');
+      const translateBtnLbl = $('translateBtnLabel');
+      const cancelBtn       = $('cancelBtn');
+      const progressBox     = $('progressBox');
+      const progressLabel   = $('progressLabel');
+      const progressPct     = $('progressPct');
+      const progressFill    = $('progressFill');
+      const resultBox       = $('resultBox');
+      const errorBox        = $('errorBox');
+      const errorText       = $('errorText');
+      const lastRunCard     = $('lastRunCard');
+      const docsCount       = $('docsCount');
+      const docsProcessing  = $('docsProcessing');
+
+      let currentJobId = null;
+      let pollController = null;
+
+      /* localStorage helpers (silent no-ops in private mode) */
+      const lsGet = k => { try { return localStorage.getItem(k); } catch (_) { return null; } };
+      const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (_) {} };
+      const lsDel = k => { try { localStorage.removeItem(k); } catch (_) {} };
+
+      /* language db — identical shape to legacy index.ejs */
+      const languageDb = [
+        { name: 'English',               value: 'en',    deepl: false },
+        { name: 'Arabic',                value: 'ar',    deepl: true  },
+        { name: 'Bulgarian',             value: 'bg',    deepl: true  },
+        { name: 'Chinese (Simplified)',  value: 'zh-CN', deepl: true  },
+        { name: 'Chinese (Traditional)', value: 'zh-TW', deepl: true  },
+        { name: 'Czech',                 value: 'cs',    deepl: true  },
+        { name: 'French',                value: 'fr',    deepl: true  },
+        { name: 'German',                value: 'de',    deepl: true  },
+        { name: 'Hindi',                 value: 'hi',    deepl: true  },
+        { name: 'Hungarian',             value: 'hu',    deepl: true  },
+        { name: 'Indonesian',            value: 'id',    deepl: true  },
+        { name: 'Italian',               value: 'it',    deepl: true  },
+        { name: 'Japanese',              value: 'ja',    deepl: true  },
+        { name: 'Korean',                value: 'ko',    deepl: true  },
+        { name: 'Malay',                 value: 'ms',    deepl: true  },
+        { name: 'Mongolian',             value: 'mn',    deepl: true  },
+        { name: 'Nepali',                value: 'ne',    deepl: true  },
+        { name: 'Persian',               value: 'fa',    deepl: true  },
+        { name: 'Polish',                value: 'pl',    deepl: true  },
+        { name: 'Punjabi',               value: 'pa',    deepl: true  },
+        { name: 'Romanian',              value: 'ro',    deepl: true  },
+        { name: 'Russian',               value: 'ru',    deepl: true  },
+        { name: 'Spanish',               value: 'es',    deepl: true  },
+        { name: 'Telugu',                value: 'te',    deepl: true  },
+        { name: 'Thai',                  value: 'th',    deepl: false },
+        { name: 'Ukrainian',             value: 'uk',    deepl: true  },
+        { name: 'Urdu',                  value: 'ur',    deepl: true  },
+        { name: 'Vietnamese',            value: 'vi',    deepl: true  },
+      ];
+      const deeplSupported = new Set([
+        'ar','bg','zh-CN','zh-TW','cs','fr','de','hu','id','it','ja','ko',
+        'pl','ro','ru','es','uk','vi','pa','fa','hi'
+      ]);
+
+      /* populate source */
+      sourceSel.innerHTML = languageDb
+        .map(l => `<option value="${l.value}">${l.name}</option>`)
+        .join('');
+
+      function setTargetLangs() {
+        const src = sourceSel.value;
+        const prevTgt = targetSel.value;
+        targetSel.innerHTML = languageDb
+          .filter(l => l.value !== src)
+          .map(l => `<option value="${l.value}" data-deepl="${l.deepl}">${l.name}</option>`)
+          .join('');
+        // restore previous target if still valid
+        if (prevTgt && targetSel.querySelector(`option[value="${prevTgt}"]`)) {
+          targetSel.value = prevTgt;
+        }
+        engineChecker(true);
+      }
+
+      /* engineChecker — ported from index.ejs.
+         setDefault=true → apply language-specific default engine.
+         setDefault=false → update UI only, never override user's choice. */
+      function engineChecker(setDefault) {
+        const targetLanguage = targetSel.value;
+        const tgtOpt = targetSel.selectedOptions[0];
+        const tgtDeeplOk = tgtOpt && tgtOpt.getAttribute('data-deepl') === 'true';
+
+        const polishOpt = engineSel.querySelector('option[value="chatgpt-polish"]');
+        const deeplOpt  = engineSel.querySelector('option[value="deepl"]');
+        const apiOpt    = engineSel.querySelector('option[value="chatgpt"]');
+
+        if (apiOpt) apiOpt.disabled = false;
+
+        if (polishOpt) {
+          polishOpt.disabled = targetLanguage !== 'fa';
+          if (setDefault && polishOpt.disabled && engineSel.value === 'chatgpt-polish') {
+            engineSel.value = 'google';
+          }
+        }
+        if (deeplOpt) {
+          const deeplOk = tgtDeeplOk && deeplSupported.has(targetLanguage);
+          deeplOpt.disabled = !deeplOk;
+          if (!deeplOk && setDefault && engineSel.value === 'deepl') {
+            engineSel.value = 'google';
+          }
+        }
+
+        /* Split: PDL only for Persian */
+        const pdlOpt = splitSel.querySelector('option[value="persian_double_lines"]');
+        if (pdlOpt) {
+          if (targetLanguage === 'fa') {
+            pdlOpt.hidden = false;
+            splitSel.disabled = false;
+            if (setDefault) splitSel.value = 'persian_double_lines';
+          } else {
+            pdlOpt.hidden = true;
+            if (splitSel.value === 'persian_double_lines') splitSel.value = 'basic';
+            splitSel.disabled = false;
+          }
+        }
+
+        if (setDefault) {
+          if (targetLanguage === 'fa' && polishOpt && !polishOpt.disabled) {
+            engineSel.value = 'chatgpt-polish';
+          } else if (deeplOpt && !deeplOpt.disabled) {
+            engineSel.value = 'deepl';
+          } else {
+            engineSel.value = 'google';
+          }
+        }
+
+        /* toggle visibility of conditional fields */
+        const eng = engineSel.value;
+        if (aiModelField) {
+          aiModelField.style.display = (eng === 'chatgpt' || eng === 'chatgpt-polish') ? '' : 'none';
+        }
+        if (maxCharsField) {
+          maxCharsField.style.display = splitSel.value === 'persian_double_lines' ? '' : 'none';
+        }
+      }
+
+      /* progress display */
+      function progressTextFor(pct) {
+        if (pct >= 100) return 'Finalizing…';
+        if (pct >= 90)  return 'Aligning…';
+        if (pct >= 75)  return 'Almost done…';
+        if (pct >= 65)  return 'Polishing…';
+        if (pct >= 15)  return 'Translating…';
+        if (pct >= 10)  return 'Backend started…';
+        if (pct >= 5)   return 'Job queued…';
+        return 'Starting…';
+      }
+      function updateProgress(pct) {
+        if (typeof pct !== 'number' || pct < 0) return;
+        progressFill.style.width = Math.min(100, pct) + '%';
+        progressPct.textContent   = Math.round(pct) + '%';
+        progressLabel.textContent = progressTextFor(pct);
+      }
+
+      /* poll loop — ported from index.ejs */
+      async function pollJobStatus(jobId, signal) {
+        const POLL_INTERVAL = 4000;
+        const MAX_WAIT      = 40 * 60 * 1000;
+        const start = Date.now();
+        while (Date.now() - start < MAX_WAIT) {
+          if (signal && signal.aborted) throw new Error('Cancelled');
+          await new Promise(r => setTimeout(r, POLL_INTERVAL));
+          try {
+            const r = await fetch('/status/' + jobId);
+            if (!r.ok) continue;
+            const d = await r.json();
+            if (typeof d.progress === 'number') updateProgress(d.progress);
+            if (d.status === 'done')      { updateProgress(100); return d; }
+            if (d.status === 'error')     throw new Error(d.error || 'Translation failed on server.');
+            if (d.status === 'cancelled') throw new Error('Cancelled by user.');
+          } catch (e) {
+            const m = e.message || '';
+            if (/Cancelled|Translation failed|not found|timed out/i.test(m)) throw e;
+            /* transient network error — keep polling */
+          }
+        }
+        throw new Error('Translation timed out after 40 minutes.');
+      }
+
+      /* file validation — zip magic check, matches legacy */
+      function validateDocx(file) {
+        return new Promise((resolve, reject) => {
+          const r = new FileReader();
+          r.onload = e => {
+            const u = new Uint8Array(e.target.result);
+            if (u[0] === 0x50 && u[1] === 0x4B) resolve();
+            else reject(new Error('Selected file is not a valid .docx (Word) file.'));
+          };
+          r.onerror = () => reject(new Error('Could not read file.'));
+          r.readAsArrayBuffer(file.slice(0, 4));
+        });
+      }
+
+      /* translate action */
+      async function translate() {
+        const file = fileInput.files[0];
+        errorBox.classList.add('hidden');
+        resultBox.classList.add('hidden');
+
+        if (!file) {
+          errorBox.classList.remove('hidden');
+          errorText.textContent = 'Please choose a .docx file first.';
+          return;
+        }
+        if (!/\.docx$/i.test(file.name)) {
+          errorBox.classList.remove('hidden');
+          errorText.textContent = 'Invalid file format — only .docx is supported.';
+          return;
+        }
+        try { await validateDocx(file); } catch (e) {
+          errorBox.classList.remove('hidden');
+          errorText.textContent = e.message;
+          return;
+        }
+
+        const fd = new FormData();
+        const safeName = file.name
+          .replace(/）/g, ')').replace(/（/g, '(').replace(/&/g, '');
+        fd.append('file', file, safeName);
+        fd.append('sourceLanguage',    sourceSel.value);
+        fd.append('targetLanguage',    targetSel.value);
+        fd.append('translationEngine', engineSel.value);
+        fd.append('splitTranslate',    'true');
+        fd.append('splitEngine',       splitSel.value);
+        if (splitSel.value === 'persian_double_lines') {
+          fd.append('alignerMaxChars',     String(maxCharsSel.value || 45));
+          fd.append('alignerLlmThreshold', '0');
+        }
+        const eng = engineSel.value;
+        if ((eng === 'chatgpt' || eng === 'chatgpt-polish') && aiModelSel) {
+          fd.append('aiModel', aiModelSel.value);
+        }
+
+        /* UI: enter running state */
+        progressBox.classList.remove('hidden');
+        lastRunCard.classList.add('hidden');
+        updateProgress(0);
+        translateBtn.disabled = true;
+        translateBtnLbl.textContent = 'Working…';
+        cancelBtn.classList.remove('hidden');
+
+        try {
+          const up = await fetch('/upload', { method: 'POST', body: fd });
+          if (!up.ok) throw new Error('Upload failed (HTTP ' + up.status + ')');
+          const upData = await up.json();
+          if (!upData.ok) throw new Error(upData.comment || 'Upload rejected by server.');
+          currentJobId = upData.jobId;
+
+          pollController = new AbortController();
+          const status = await pollJobStatus(currentJobId, pollController.signal);
+
+          /* success */
+          progressBox.classList.add('hidden');
+          resultBox.classList.remove('hidden');
+          const fname = status.filename || (safeName + '.translated.docx');
+          const downloadUrl = '/download/' + encodeURIComponent(fname);
+          resultBox.innerHTML =
+            '<svg width="16" height="16" viewBox="0 0 24 24" fill="none">' +
+            '<path d="M5 12l5 5L20 7" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
+            '<span>Done. If not automatically saved — ' +
+            '<a href="' + downloadUrl + '" download>download here: ' + fname + '</a></span>';
+          /* try to auto-trigger the download (browser may still gate it) */
+          try {
+            const a = document.createElement('a');
+            a.href = downloadUrl; a.download = fname; a.style.display = 'none';
+            document.body.appendChild(a); a.click(); a.remove();
+          } catch (_) {}
+
+          /* gentle bell */
+          try {
+            const a = new Audio('https://cdn.pixabay.com/download/audio/2025/05/06/audio_2fd68b9a9a.mp3?filename=bell-notification-337658.mp3');
+            a.volume = 0.4;
+            a.play().catch(() => {});
+          } catch (_) {}
+        } catch (e) {
+          progressBox.classList.add('hidden');
+          errorBox.classList.remove('hidden');
+          errorText.textContent = e.message || 'Translation failed.';
+          lastRunCard.classList.remove('hidden');
+        } finally {
+          translateBtn.disabled = false;
+          translateBtnLbl.textContent = 'Translate document';
+          cancelBtn.classList.add('hidden');
+          currentJobId = null;
+          pollController = null;
+        }
+      }
+
+      /* cancel button — POST /cancel/:jobId + abort the poll loop */
+      cancelBtn.addEventListener('click', () => {
+        if (currentJobId) {
+          try { fetch('/cancel/' + currentJobId, { method: 'POST' }); } catch (_) {}
+        }
+        if (pollController) pollController.abort();
+      });
+
+      /* counters — hero chip from /count and /robotscount */
+      (async function loadCounters() {
+        try {
+          const r = await fetch('/count');
+          if (r.ok) {
+            const d = await r.json();
+            if (typeof d.count !== 'undefined') {
+              docsCount.textContent = Number(d.count).toLocaleString();
+            }
+          }
+        } catch (_) {}
+        try {
+          const r = await fetch('/robotscount');
+          if (r.ok) {
+            const d = await r.json();
+            const n = d && d.count && d.count.all;
+            if (typeof n !== 'undefined') docsProcessing.textContent = n;
+          }
+        } catch (_) {}
+      })();
+
+      /* recent runs — try /history (TODO: implement in launcher, see
+         docs/v2-backend-todo.md). On failure, the static mock entries
+         baked into the HTML stay visible. */
+      (async function loadHistory() {
+        try {
+          const r = await fetch('/history?limit=10');
+          if (!r.ok) return;
+          const data = await r.json();
+          if (!Array.isArray(data.runs) || data.runs.length === 0) return;
+          const list = document.getElementById('runsList');
+          if (!list) return;
+          const now = Date.now();
+          list.innerHTML = data.runs.slice(0, 10).map(run => {
+            const fmtElapsed = (s) => s == null ? '—' : (s < 60 ? Math.round(s) + 's' : Math.floor(s / 60) + 'm ' + Math.round(s % 60) + 's');
+            const fmtAgo = (iso) => {
+              if (!iso) return '—';
+              const d = new Date(iso).getTime();
+              const ms = now - d;
+              if (ms < 60_000) return Math.round(ms/1000) + 's ago';
+              if (ms < 3600_000) return Math.round(ms/60_000) + 'm ago';
+              if (ms < 86_400_000) return Math.round(ms/3600_000) + 'h ago';
+              const days = Math.floor(ms/86_400_000);
+              return days === 1 ? 'yesterday' : days + ' days ago';
+            };
+            const target = run.target_lang || run.dest_lang || '—';
+            const elapsed = fmtElapsed(run.elapsed_seconds);
+            const ago = fmtAgo(run.completed_at);
+            const model = (run.model || run.engine || '—').replace(/<[^>]*>/g, '');
+            return '<li>'
+              + '<span class="run-flag" data-flag>🌐</span>'
+              + '<span class="run-line-1">' + model + ' <span class="run-target">→ ' + target + '</span></span>'
+              + '<span class="run-line-2">' + elapsed + ' · ' + ago + '</span>'
+              + '</li>';
+          }).join('');
+          /* re-apply the country flag we already fetched */
+          if (window.__flagChar) {
+            document.querySelectorAll('[data-flag]').forEach(el => el.textContent = window.__flagChar);
+          }
+        } catch (_) { /* endpoint missing or offline — keep static mock */ }
+      })();
+
+      /* drop zone interactions */
+      function onFileChosen() {
+        if (!fileInput.files.length) return;
+        const f = fileInput.files[0];
+        const kb = Math.max(1, Math.round(f.size / 1024));
+        const esc = document.createElement('div');
+        esc.textContent = f.name;
+        dropText.innerHTML = '<b>' + esc.innerHTML + '</b><small>' + kb.toLocaleString() + ' KB · ready</small>';
+        dropZone.classList.add('has-file');
+      }
+      dropZone.addEventListener('click', e => {
+        if (e.target.closest('.drop-link') || e.target === dropZone || dropText.contains(e.target) || e.target.closest('.drop-icon')) {
+          fileInput.click();
+        }
+      });
+      dropZone.addEventListener('keydown', e => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); }
+      });
+      ['dragenter','dragover'].forEach(e => dropZone.addEventListener(e, ev => {
+        ev.preventDefault(); dropZone.classList.add('is-over');
+      }));
+      dropZone.addEventListener('dragleave', () => dropZone.classList.remove('is-over'));
+      dropZone.addEventListener('drop', ev => {
+        ev.preventDefault();
+        dropZone.classList.remove('is-over');
+        if (ev.dataTransfer && ev.dataTransfer.files.length) {
+          fileInput.files = ev.dataTransfer.files;
+          onFileChosen();
+        }
+      });
+      fileInput.addEventListener('change', onFileChosen);
+      translateBtn.addEventListener('click', translate);
+
+      /* Cmd/Ctrl + Enter to run */
+      document.addEventListener('keydown', e => {
+        if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+          e.preventDefault();
+          if (!translateBtn.disabled) translate();
+        }
+      });
+
+      /* language persistence (language only — engine resets per session) */
+      const savedSrc = lsGet('savedSourceLang');
+      if (savedSrc && sourceSel.querySelector(`option[value="${savedSrc}"]`)) {
+        sourceSel.value = savedSrc;
+      }
+      setTargetLangs();
+      const savedTgt = lsGet('savedTargetLang');
+      if (savedTgt && targetSel.querySelector(`option[value="${savedTgt}"]`)) {
+        targetSel.value = savedTgt;
+        engineChecker(true);
+      }
+      sourceSel.addEventListener('change', () => {
+        setTargetLangs();
+        lsSet('savedSourceLang', sourceSel.value);
+        lsDel('savedEngine'); lsDel('savedAiModel');
+      });
+      targetSel.addEventListener('change', () => {
+        engineChecker(true);
+        lsSet('savedTargetLang', targetSel.value);
+      });
+      engineSel.addEventListener('change', () => engineChecker(false));
+      splitSel.addEventListener('change', () => {
+        if (maxCharsField) {
+          maxCharsField.style.display = splitSel.value === 'persian_double_lines' ? '' : 'none';
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
