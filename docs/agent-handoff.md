@@ -154,7 +154,7 @@ C6  file collision suffix: _1, _2, never overwrite.
 C7  both UIs (legacy / and v2 /v2/) keep working.
 C8  local_launcher.py changes additive only.
 C9  subprocess.Popen bufsize=1.
-C10 _sync_globals_from_ctx after parse / driver-create / translate / split.
+C10 RuntimeContext is the sole canonical state surface; no bare-name reads of mirrored globals (Phase-H bridge removed 2026-05-17 in Sprint D-C).
 C11 selenium helpers with reassigned `driver` must seed from ctx.browser.driver.
 C12 legacy frontend overlay-hide BEFORE await showAlert.
 C13 source-language column frozen (deepcopy snapshot + restore).

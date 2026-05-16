@@ -1,15 +1,20 @@
 # cli.py shrink — Sprint D handoff prompt for Claude Code Console
 
-> **Status update (2026-05-16 — Sprint D final, branch
-> `refactor/cli-py-sprint-d-final`):** Task A.4 (`run_statistics`),
-> Task A.5 (`get_robot_usage_comment`), and Task B (Google file-mode
-> workers) are **DONE** — 4 commits, NOT merged to master yet.
-> Task C (`_sync_globals_from_ctx` collapse) is **DEFERRED** to a
-> dedicated follow-up session: an audit found 176 bare-name
-> occurrences across 41 mirrored names in cli.py, more than fits in
-> one safe session under the pytest+smoke-per-change discipline. Full
-> handoff with the threading-priority map lives in
-> `docs/session-state-2026-05-16-sprint-d-complete.md`.
+> **Status (2026-05-17 — ALL SPRINT D TASKS COMPLETE, merged to master):**
+> Task A.4 (`run_statistics`), Task A.5 (`get_robot_usage_comment`),
+> Task B (Google file-mode workers), and Task C (`_sync_globals_from_ctx`
+> collapse) are all **DONE**. `_sync_globals_from_ctx` was deleted on
+> 2026-05-17 in Sprint D-C slice 6 after the 176 bare-name reads were
+> threaded through ctx across 6 atomic slices. Merge commits on master:
+> `44c9f76` (D-A/B), `28512c3` (cache refactor + D-C partial + P2/P3),
+> `5408f80` (D-C complete + P2/P3 round 2). Archive tags:
+> `archive/2026-05-16-cli-shrink-sprint-d-final`,
+> `archive/2026-05-16-cache-d-c-p2`,
+> `archive/2026-05-17-sprint-d-c-complete`.
+>
+> This document is preserved as a historical record of the planning
+> work. The threading-priority map and slice breakdown lives in
+> `docs/session-state-2026-05-16-bridge-collapse.md`.
 >
 > `cli.py` is now **2,670 lines** (down from 3,947 at the start of
 > this branch, and 4,395 since the original shrink began). Test
