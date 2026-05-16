@@ -6,6 +6,20 @@
 
 ---
 
+## 2026-05-16g — P2 quick win: drop dead cookie-cleanup branch
+
+Single targeted P2 fix from the master audit. In
+`src/machine_translate_docx/runner.py` the block loop carried a
+historical "every odd block, clean cookies for chatgpt / perplexity"
+branch — but `chatgpt --enginemethod api` never enters this loop
+(handled by the single-call path) and the two web engines were
+removed in the 2026-05-10 cleanup. On the surviving chatgpt API
+path, `ctx.browser.driver` is None, so this line would
+AttributeError on every odd block index if it ever did execute.
+Replaced with a one-paragraph history comment. Tests still 239/239.
+
+---
+
 ## 2026-05-16f — Sprint C: cover the previously-untested orchestration core
 
 Third audit-follow-up sprint. Six new test files for the orchestration

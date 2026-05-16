@@ -237,9 +237,11 @@ def selenium_chrome_translate_maxchar_blocks(
                         print(f"PROGRESS:{_m}", flush=True)
                         _progress_blk_emitted.add(_m)
 
-            if i % 2 == 1 and ctx.engine.engine in ("chatgpt", "perplexity"):
-                print("Cleaning up cookies...")
-                ctx.browser.driver.delete_all_cookies()
+            # P2-fix (2026-05-16): historical cookie-cleanup branch
+            # targeted the now-deleted web LLM engines (chatgpt-web,
+            # perplexity-web). On the surviving chatgpt+api path,
+            # ctx.browser.driver is None, so this branch would
+            # AttributeError on every odd block index. Removed.
 
     # ── Final validation ────────────────────────────────────────────────────
     full_text = "\n".join(translated_blocks)
