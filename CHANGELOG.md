@@ -6,6 +6,63 @@
 
 ---
 
+## 2026-05-16c — cli.py 3-phase shrink — Phase 3 (own work)
+
+Third phase of the cli.py shrink, executed directly. Pushes cli.py
+below 4,000 lines for the first time since the src/ migration.
+
+### New module — `src/machine_translate_docx/translation_log_writer.py`
+
+Owns the JSON-sidecar writer that the OpenAI engines emit at end of
+run. The historical `write_translation_log(log_path)` body lived in
+the entry script and read `translation_log` plus `_get_ctx()` from
+module scope. The new implementation takes `(ctx, log_path)` as
+explicit arguments — `translation_log` is read off
+`ctx.openai.translation_log` directly, removing one of the few
+remaining bare-name globals.
+
+`cli.py` keeps a 2-line shim with the historical 1-arg signature so
+the injected callback in `docx_io/save.py` (and the `[INFO]
+Translation log saved` line operators look for) is unchanged.
+
+### Deletion
+
+- `getDownLoadedFileNameChrome(waitTime)` — 22-line Chrome-downloads
+  scraper. The only "caller" was a commented-out line inside
+  `selenium_chrome_google_translate_xlsx_file`; the live code path
+  already uses `get_last_downloaded_file_path()` instead. Removed.
+
+### Result
+
+- `cli.py`: 4,129 → 3,994 lines (-135, total -401 from the 4,395
+  start, -9.1%). First time the entry script is under 4,000 lines
+  since the 2026-05-11 src/ migration.
+- New code: `translation_log_writer.py` (148 lines).
+- Test suite: 154 passed / 8 skipped (live) / 8 deselected.
+
+### Phase 3 (continued) — handoff prompt for the big blocks
+
+The remaining high-payoff work is captured in a Claude Code Console
+handoff prompt at
+[`notes/2026-05-16_cli-shrink-phase3-handoff.md`](notes/2026-05-16_cli-shrink-phase3-handoff.md):
+
+1. Extract the statistics + report cluster (`run_statistics`,
+   `get_robot_usage_comment`, `print_console_docx_file_translated`,
+   `local_time_offset`) — ~900 lines.
+2. Extract the Google file-mode workers
+   (`selenium_chrome_google_translate_{text,html_javascript,xlsx}_file`
+   + their `generate_*_from_phrases` + `google_translate_from_*`
+   wrappers) — ~800 lines, lower-priority because file modes are
+   rarely chosen over singlephrase / phrasesblock.
+3. Collapse `_sync_globals_from_ctx` once the remaining helpers read
+   from ctx directly.
+
+Each item carries documented globals, call sites, and verification
+steps so the work can resume in a separate session without
+re-discovering context.
+
+---
+
 ## 2026-05-16b — cli.py 3-phase shrink — Phase 2 (low-risk extractions)
 
 Second phase of the cli.py shrink. Moves four free-standing helper
