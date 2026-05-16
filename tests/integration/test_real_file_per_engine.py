@@ -1,25 +1,19 @@
 """End-to-end real-file integration tests — phase 10 / phase 13.
 
-Boots the entry script as a subprocess against
+Boots the entry module as a subprocess against
 ``tests/fixtures/sample_hyperlink.docx`` for every supported engine and
-verifies the contract from ``AGENT.md`` on the resulting output docx:
+verifies the contract on the resulting output docx:
 
   1. Source columns 0 + 1 byte-identical between input and output.
   2. Target column 2 non-empty for every translatable row.
   3. Hyperlinked source text reaches the translated cell.
   4. Output filename carries the correct engine suffix
-     (``_Google`` / ``_Deepl`` / ``_chatGPT`` / ``_Polish`` /
-     ``_web_chatGPT`` / ``_web_Perplexity``).
+     (``_Google`` / ``_Deepl`` / ``_chatGPT`` / ``_Polish``).
   5. If Persian Double Lines was selected, filename ends
      ``_Double_Lines.docx`` and every FA cell is ≤ 50 display chars.
   6. No ``Traceback`` in subprocess stdout.
   7. No ``[LOCK] Restored …`` line.
   8. Exit code 0.
-
-Web engines (``chatgpt-web`` / ``perplexity-web``) are smoke-tested
-only — selector breakage on the upstream UI converts to a ``skip`` so
-a guest-session change at chatgpt.com / perplexity.ai does not turn
-this into a blocking CI failure.
 
 Marker: ``@pytest.mark.live``. Excluded from default ``pytest`` runs
 via ``pytest.ini`` (``addopts = -m "not live"``). Run on demand with::
@@ -31,6 +25,9 @@ non-FA flow and ``fa`` for the FA-only Persian Double Lines flow. Set
 ``MTD_TEST_MODEL=gpt-5.4-mini`` in the environment so the OpenAI
 engines run cheaply; the project default model (``gpt-5.5``) is left
 unchanged.
+
+Web engines (``chatgpt-web`` / ``perplexity-web``) were removed in
+the 2026-05-10 cleanup pass and are no longer parametrized.
 """
 from __future__ import annotations
 
@@ -47,7 +44,8 @@ pytestmark = pytest.mark.live   # whole module is opt-in
 
 
 ROOT     = Path(__file__).resolve().parents[2]
-SCRIPT   = ROOT / "src" / "machine_translate_docx.py"
+SRC_DIR  = ROOT / "src"
+ENTRY_MODULE = "machine_translate_docx.cli"
 FIXTURE  = ROOT / "tests" / "fixtures" / "sample_hyperlink.docx"
 PYTHON   = os.environ.get("MTD_TEST_PYTHON", sys.executable)
 DEFAULT_MODEL = os.environ.get("MTD_TEST_MODEL", "gpt-5.4-mini")
@@ -58,11 +56,7 @@ ENGINE_SUFFIX = {
     "deepl":          "_Deepl",
     "chatgpt":        "_chatGPT",
     "chatgpt-polish": "_Polish",
-    "chatgpt-web":    "_web_chatGPT",
-    "perplexity-web": "_web_Perplexity",
 }
-
-WEB_ENGINES = frozenset({"chatgpt-web", "perplexity-web"})
 
 
 def _engine_cli_flags(engine: str) -> list[str]:
@@ -72,10 +66,6 @@ def _engine_cli_flags(engine: str) -> list[str]:
         flags.extend(["--engine", "chatgpt", "--enginemethod", "api", "--with-polish"])
     elif engine == "chatgpt":
         flags.extend(["--engine", "chatgpt", "--enginemethod", "api"])
-    elif engine == "chatgpt-web":
-        flags.extend(["--engine", "chatgpt", "--enginemethod", "web"])
-    elif engine == "perplexity-web":
-        flags.extend(["--engine", "perplexity", "--enginemethod", "web"])
     elif engine in ("google", "deepl"):
         flags.extend(["--engine", engine])
     else:
@@ -180,7 +170,7 @@ def _run_pipeline(
     split_engine: str | None = None,
 ) -> subprocess.CompletedProcess:
     cmd: list[str] = [
-        PYTHON, str(SCRIPT),
+        PYTHON, "-m", ENTRY_MODULE,
         "--docxfile", str(fixture),
         "--destlang", target_lang,
         "--silent",
@@ -198,6 +188,8 @@ def _run_pipeline(
         "PYTHONIOENCODING": "utf-8",
         "PYTHONUTF8":       "1",
         "MTD_TEST_MODEL":   DEFAULT_MODEL,
+        # PYTHONPATH=src so `python -m machine_translate_docx.cli` resolves.
+        "PYTHONPATH":       str(SRC_DIR),
     }
     return subprocess.run(
         cmd,
@@ -216,30 +208,12 @@ def _run_pipeline(
     "deepl",
     "chatgpt",
     "chatgpt-polish",
-    "chatgpt-web",
-    "perplexity-web",
 ])
 def test_engine_end_to_end_non_fa(engine: str, fixture_copy: Path):
     """en → mn for every engine. FA-specific behaviour is exercised in
     test_persian_double_lines_split below."""
     target_lang = "mn"
-    try:
-        proc = _run_pipeline(fixture_copy, engine, target_lang)
-    except subprocess.TimeoutExpired as exc:
-        if engine in WEB_ENGINES:
-            pytest.skip(
-                f"{engine} hung past {PER_ENGINE_TIMEOUT_SEC}s — upstream "
-                f"guest-session UI almost certainly changed."
-            )
-        # Non-web engines are not allowed to hang — re-raise so the test
-        # fails loudly and the run report records the timeout.
-        raise
-
-    if engine in WEB_ENGINES and proc.returncode != 0:
-        pytest.skip(
-            f"{engine} smoke failed (upstream guest-session UI may have changed):\n"
-            f"  exit={proc.returncode}\n  stderr (tail)={proc.stderr[-400:]}"
-        )
+    proc = _run_pipeline(fixture_copy, engine, target_lang)
 
     assert "Traceback" not in proc.stdout, f"Traceback in {engine} stdout:\n{proc.stdout[-800:]}"
     assert "[LOCK] Restored" not in proc.stdout, (

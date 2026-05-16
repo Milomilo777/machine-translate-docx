@@ -152,7 +152,16 @@ def selenium_chrome_deepl_log_in(ctx: RuntimeContext):
         deepl_account_enabled = _env_enabled.strip().lower() in {"1", "true", "yes", "on"}
     else:
         deepl_account_enabled = get_nested_value_from_json_array(ctx.config.json_configuration_array, deepl_account_enabled_key)
-    
+
+    # P1-3 (docs/master-audit-2026-05-16.md): seed local from ctx so the
+    # bare-name reads below (lines ~176, ~232) don't UnboundLocalError
+    # when Python pre-classifies the name as local because of the later
+    # reassigns at lines ~182, ~238. Without this, the cookie-banner
+    # closure was effectively dead code — masked only by the bare
+    # `try/except Exception: pass` wrappers around each read. Matches the
+    # C11 seed-pattern used for `driver` in every Selenium helper.
+    closed_cookies_accept_message_bool = ctx.browser.closed_cookies_accept_message_bool
+
     #ctx.browser.driver.maximize_window()
 
     try:

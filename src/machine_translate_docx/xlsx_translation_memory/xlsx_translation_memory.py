@@ -4,8 +4,11 @@ import timeit
 import re
 from typing import Any
 from typing import NamedTuple
-from newmm_tokenizer.tokenizer import word_tokenize
-import tinysegmenter
+# `newmm_tokenizer` and `tinysegmenter` are lazy-loaded inside the methods
+# that use them — constraint C24. Importing them at module top forced a
+# hard dependency on every CLI startup, breaking checkouts that didn't
+# install the Thai / CJK NLP toolkits. See docs/master-audit-2026-05-16.md
+# (P1-1).
 from pprint import pprint
 import traceback
 import os
@@ -246,7 +249,9 @@ class xlsx_translation_memory():
             words = self.cjk_segmenter.tokenize(text)
         # In other languages, just use spaces
         elif dest_lang.lower() == 'th':
-            # words = thai_segmenter(text)
+            # Lazy import — see header note. Only Thai targets pay the
+            # newmm_tokenizer import cost.
+            from newmm_tokenizer.tokenizer import word_tokenize
             words = word_tokenize(text)
         # In other languages, just use spaces
         else:
@@ -518,6 +523,11 @@ class xlsx_translation_memory():
         self.total_number_of_replacements = 0
         self.worksheets_search_and_replace_dictionary = {}
 
+        # Lazy import — see header note. The segmenter is only touched
+        # when the user actually translates CJK content; importing it at
+        # module load broke chatgpt-api-only startups on environments
+        # that don't ship the Thai/CJK NLP toolkit.
+        import tinysegmenter
         self.cjk_segmenter = tinysegmenter.TinySegmenter()
 
         print ("Init XLSXTranslationMemory")

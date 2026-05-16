@@ -28,6 +28,11 @@ function handleProcessCompletion(code) {
 }
 
 // ── Multer storage ─────────────────────────────────────────────────────────────
+// `fileFilter` and `limits` MUST live on the top-level `multer({...})`
+// options, NOT under `diskStorage({...})` — multer silently ignores them
+// there. The historical config had `fileFilter` nested incorrectly and
+// no `limits`, leaving the upload endpoint open to any extension and any
+// size. (P0-1 / P1 from docs/master-audit-2026-05-16.md.)
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
         cb(null, "uploads/");
@@ -41,16 +46,19 @@ const storage = multer.diskStorage({
         ).toString();
         cb(null, uniqueName);
     },
+});
+
+const upload = multer({
+    storage,
     fileFilter: (req, file, cb) => {
-        if (path.extname(file.originalname) === ".docx") {
+        if (path.extname(file.originalname).toLowerCase() === ".docx") {
             cb(null, true);
         } else {
             cb(new Error("Only .docx files are allowed."));
         }
     },
+    limits: { fileSize: 50 * 1024 * 1024 },   // 50 MB — matches local_launcher.py
 });
-
-const upload = multer({ storage });
 
 const uploadsDirectory = path.resolve(__dirname, "uploads");
 
@@ -479,13 +487,22 @@ app.get("/download/:fileName", (req, res) => {
         console.log("Download request:", fileName);
         console.log("Full URL:", req.url);
 
+        // Path-confine to uploadsDirectory — reject ../, absolute paths,
+        // null bytes, etc. (P0-1 from docs/master-audit-2026-05-16.md;
+        // local_launcher.py already does the equivalent.)
+        const candidate = path.resolve(path.join(uploadsDirectory, fileName));
+        if (!candidate.startsWith(uploadsDirectory + path.sep)
+                && candidate !== uploadsDirectory) {
+            console.warn(`[security] path-traversal rejected: ${fileName}`);
+            return res.status(403).send("Forbidden");
+        }
+
         const fileNameParts = fileName.split('-');
         fileNameParts.shift();
         const modifiedFileName = fileNameParts.join('-');
-        const filePath = path.join(uploadsDirectory, fileName);
 
         const encodedFileName = modifiedFileName.replace(/#/g, '%23');
-        res.download(filePath, encodedFileName);
+        res.download(candidate, encodedFileName);
     } catch (error) {
         console.error("Error downloading file", error);
         res.status(500).send("Internal Server Error");

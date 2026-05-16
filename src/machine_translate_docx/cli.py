@@ -580,11 +580,12 @@ my_hazm_normalizer = None
 # now live in src/config.py.
 
 
-# test_internet was extracted to ``src/machine_translate_docx/network_utils.py``
-# in the 2026-05-16 cli.py shrink phase 2. The free-standing helper lives
-# there now; this entry script just imports it.
+# Network helpers were extracted to ``src/machine_translate_docx/network_utils.py``
+# in the 2026-05-16 cli.py shrink phase 2. ``probe_internet`` was renamed
+# from the historical ``test_internet`` so pytest doesn't collect it as
+# a test function (Sprint B, 2026-05-16).
 from .network_utils import (
-    test_internet,
+    probe_internet,
     fetch_country_data,
     check_mirror_url,
     set_se_driver_mirror_url_if_needed,
@@ -594,7 +595,7 @@ try:
     json_online_configuration = requests.get(json_configuration_url).content
 except Exception:
     print("Warning, unable to get configuration from internet at {json_configuration_url}")
-    if not test_internet():
+    if not probe_internet():
         print("Warning, internet connection seems to be down, google name servers don't respond")
         time.sleep(1)
         
@@ -846,7 +847,14 @@ if dest_lang is not None:
 else:
     dest_lang = ""
     if not splitonly:
-        dest_lang = input ("Please enter language translation code (fr,de,ru,hi,etc.)")
+        # C16 + P1-2: respect --silent. The launcher always passes
+        # --silent --destlang, so this guard never triggers in production —
+        # but any caller that forgets --destlang would otherwise hang
+        # forever waiting on stdin. Fail fast with the structured marker.
+        if silent:
+            print("[FAIL] reason=missing_destlang message=--destlang is required in silent mode", flush=True)
+            sys.exit(20)
+        dest_lang = input("Please enter language translation code (fr,de,ru,hi,etc.)")
 
 # cjk_segmenter = None 
 # if dest_lang == 'zh':
