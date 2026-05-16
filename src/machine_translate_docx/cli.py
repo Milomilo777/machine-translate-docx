@@ -392,6 +392,21 @@ def _get_ctx() -> RuntimeContext:
             _ctx.config.shading_color_ignore_text = shading_color_ignore_text
         except NameError:
             pass
+        # 2026-05-16 Sprint D-C — xtm + rtlstyle snapshot. These were
+        # historically module globals (xtm initialised by
+        # initialize_translation_memory_xlsx; rtlstyle by the docx-load
+        # block at ~1146). Snapshotting them onto ctx.docx lets the
+        # cell-write helpers, generate_char_blocks_array_from_phrases,
+        # get_translation_and_replace_after and main() read via ctx,
+        # which paves the way for the bridge deletion in slice 6.
+        try:
+            _ctx.docx.xtm = xtm
+        except NameError:
+            pass
+        try:
+            _ctx.docx.rtlstyle = rtlstyle
+        except NameError:
+            pass
     return _ctx
 
 
@@ -1376,6 +1391,11 @@ def initialize_translation_memory_xlsx(ctx: RuntimeContext):
         print("")
     else:
         xtm = xlsx_translation_memory.xlsx_translation_memory(None)
+    # 2026-05-16 Sprint D-C — mirror the newly-created XTM instance onto
+    # ctx.docx so the next _sync_globals_from_ctx call does not overwrite
+    # the module-level `xtm` back to None (the dataclass default
+    # snapshotted by _get_ctx before this function ran).
+    ctx.docx.xtm = xtm
 
 
 def is_end_of_line(line):

@@ -212,6 +212,24 @@ class DocxCtx:
     translation_array:                   list = field(default_factory=list)
     blocks_nchar_max_to_translate_array: list = field(default_factory=list)
 
+    # ── Translation-memory (xlsx) handle + Right-to-Left style ──────────────
+    # Added 2026-05-16 (Sprint D-C bridge collapse). Previously read as bare
+    # module globals in cli.py; now canonical here so legacy helpers can be
+    # threaded one by one and the Phase-H mirror function (_sync_globals_from_ctx)
+    # can be deleted in slice 6.
+    #
+    # ``xtm`` is set exactly once by ``initialize_translation_memory_xlsx``
+    # — either an ``xlsx_translation_memory`` instance (when --xlsxreplacefile
+    # is given) or one with ``wb=None`` (no-op fallback). Readers must
+    # tolerate ``None`` for very early reads.
+    #
+    # ``rtlstyle`` is a python-docx ``Style`` object created (or fetched) at
+    # docx load time so cell-write helpers can apply RTL paragraph styling
+    # without re-looking-up the style on every call. Only meaningful when
+    # the destination language is RTL; readers must tolerate ``None``.
+    xtm:                                 Any = None
+    rtlstyle:                            Any = None
+
 
 # ── browser / Selenium ────────────────────────────────────────────────────────
 
