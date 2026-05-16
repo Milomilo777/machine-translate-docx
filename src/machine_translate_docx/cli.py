@@ -3069,18 +3069,8 @@ def set_docx_properties_comment_for_history(ctx: RuntimeContext):
 
 
 
-def local_time_offset(t=None):
-    """Return offset of local zone from GMT, either at present or at time t."""
-    localtimezone = 0
-    # python2.3 localtime() can't take None
-    if t is None:
-        t = time.time()
-    localtimezone = -time.altzone / 3600
-    if (localtimezone - int(localtimezone)) == 0:
-        localtimezone = int(localtimezone)
-    if time.localtime(t).tm_isdst == False or time.daylight != 1:
-        localtimezone = -localtimezone
-    return localtimezone
+# local_time_offset extracted to ``statistics.py`` in Sprint D (2026-05-16).
+from .statistics import local_time_offset  # noqa: E402
 
 
 def run_statistics(ctx: RuntimeContext):
