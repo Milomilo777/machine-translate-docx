@@ -914,16 +914,16 @@ if dest_lang == 'fa':
 
 
 valid_online_json = validate_json_string(json_online_configuration)
-if not valid_online_json == True:
+if not valid_online_json:
     print(f"json_online_configuration={json_online_configuration}")
     print(f"Warning: Json file at {json_configuration_url} is not valid. Ignoring this configuration file.")
 else:
     #print(f"Using JSON configuration file at {json_configuration_url} : OK")
     pass
-    
+
 valid_local_json = validate_json_string(local_json_contents)
 if os.path.isfile(configuration_file_full_path):
-    if not valid_local_json == True:
+    if not valid_local_json:
         print(f"Warning: Json file at {configuration_file_full_path} is not valid. Ignoring this configuration file.")
     else:
         print(f"Using JSON configuration file at {configuration_file_full_path}")
