@@ -61,9 +61,11 @@ diagrams in [`docs/diagrams/`](docs/diagrams/) for the full picture.
 | `src/machine_translate_docx/translation_health.py` | `assert_source_has_content`, `assert_translation_present` |
 | `src/machine_translate_docx/network_utils.py` | Startup-time region / connectivity / driver-mirror helpers (extracted 2026-05-16) |
 | `src/machine_translate_docx/translation_log_writer.py` | JSON sidecar writer for the OpenAI translation/polish log (extracted 2026-05-16) |
+| `src/machine_translate_docx/statistics.py` | End-of-run statistics cluster — `local_time_offset`, `run_statistics` (D-A.4), `get_robot_usage_comment` (D-A.5). Honours `MTD_SKIP_STATS_BROWSER` env var to short-circuit the Chrome launch from cache-replay re-runs |
 | `src/machine_translate_docx/docx_io/` | parse, cells (incl. `delete_paragraph`), runs, save, metadata |
 | `src/machine_translate_docx/docx_io/metadata.py` | Output-side DOCX metadata writers — language label + history comment (extracted 2026-05-16) |
-| `src/machine_translate_docx/engines/google.py` | Selenium-based Google Translate engine |
+| `src/machine_translate_docx/engines/google.py` | Selenium-based Google Translate engine (singlephrase + phrasesblock paths + shared cookies-consent helper) |
+| `src/machine_translate_docx/engines/google_file_modes.py` | Google file-mode workers — 3 dispatchers + 7 internal helpers for `--enginemethod textfile / htmljavascript / xlsxfile` (extracted 2026-05-16 in Sprint D-B) |
 | `src/machine_translate_docx/engines/deepl.py` | Selenium-based DeepL engine (incl. `deepl_double_linefeed_between_phrases`) |
 | `src/machine_translate_docx/engines/chatgpt_api.py` | OpenAI API engine bridge |
 | `src/machine_translate_docx/engines/inactive/` | Disabled web engines (perplexity_web, etc.) |

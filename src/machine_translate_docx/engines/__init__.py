@@ -23,11 +23,19 @@ from ..runtime import RuntimeContext
 from . import google
 from . import deepl
 from . import chatgpt_api
+from .google_file_modes import (
+    google_translate_from_text_file,
+    google_translate_from_html_javascript,
+    google_translate_from_html_xlsxfile,
+)
 
 __all__ = [
     "EngineName",
     "ACTIVE_ENGINES",
     "DISPATCH_TABLE",
+    "google_translate_from_text_file",
+    "google_translate_from_html_javascript",
+    "google_translate_from_html_xlsxfile",
 ]
 
 

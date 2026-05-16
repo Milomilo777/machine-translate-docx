@@ -1,18 +1,27 @@
 # cli.py shrink — Sprint D handoff prompt for Claude Code Console
 
-> **Status update (2026-05-16 — Sprint D attempt 1):** master has
-> already absorbed all of Sprints A + B + C plus the original 3-phase
-> shrink. `src/machine_translate_docx/cli.py` is **3,947 lines** (down
-> from 4,395 — a 10.2% net reduction). Test suite: 239 passed / 8
-> skipped (live) / 6 deselected. The pre-existing
-> `_get_ctx()` snapshot-ordering bug was fixed in master commit
-> `4c36183`. Sprint D was attempted on
-> `refactor/cli-py-sprint-d` but only the smallest helper
-> (`local_time_offset`, -10 lines) extracted cleanly in that session;
-> the rest is documented below for a future dedicated session because
-> `run_statistics` + `get_robot_usage_comment` + the Google file-mode
-> workers each carry 10+ module-level globals that need careful
-> state-threading, not one-shot copy-paste.
+> **Status update (2026-05-16 — Sprint D final, branch
+> `refactor/cli-py-sprint-d-final`):** Task A.4 (`run_statistics`),
+> Task A.5 (`get_robot_usage_comment`), and Task B (Google file-mode
+> workers) are **DONE** — 4 commits, NOT merged to master yet.
+> Task C (`_sync_globals_from_ctx` collapse) is **DEFERRED** to a
+> dedicated follow-up session: an audit found 176 bare-name
+> occurrences across 41 mirrored names in cli.py, more than fits in
+> one safe session under the pytest+smoke-per-change discipline. Full
+> handoff with the threading-priority map lives in
+> `docs/session-state-2026-05-16-sprint-d-complete.md`.
+>
+> `cli.py` is now **2,670 lines** (down from 3,947 at the start of
+> this branch, and 4,395 since the original shrink began). Test
+> suite: 239 passed / 8 skipped (live) / 6 deselected. Smoke
+> (chatgpt-polish FA on `sample_hyperlink.docx`) green on every
+> commit, C13 cols 0+1 byte-identical.
+>
+> **Previous status (Sprint D attempt 1, superseded):** Sprint D was
+> attempted on `refactor/cli-py-sprint-d` but only the smallest
+> helper (`local_time_offset`, −10 lines) extracted cleanly. The
+> material below the line ruled the section below originally; the
+> "pending" markers are now obsolete for A.4 / A.5 / B.
 
 The big-payoff blocks are deferred to a follow-up session because they
 need careful state-threading work that's not worth doing under time
@@ -33,9 +42,9 @@ pipeline. Extracting them collapses ~900 lines into a thin shim.
 
 | Function | Current line | Lines | What it does | Status |
 |---|---|---|---|---|
-| `local_time_offset` | ~3072 | 14 | tz-offset helper | ✅ extracted to `statistics.py` (Sprint D commit) |
-| `run_statistics(ctx)` | ~3076 | 232 | per-run stats dump + HTTP POST | ⏳ pending |
-| `get_robot_usage_comment(ctx)` | ~3306 | 370 | HTML report builder | ⏳ pending |
+| `local_time_offset` | ~3072 | 14 | tz-offset helper | ✅ extracted to `statistics.py` (Sprint D attempt 1) |
+| `run_statistics(ctx)` | ~3076 | 232 | per-run stats dump + HTTP POST | ✅ extracted to `statistics.py` (Sprint D-A.4, commit `69bb2c5`) |
+| `get_robot_usage_comment(ctx)` | ~3306 | 370 | HTML report builder | ✅ extracted to `statistics.py` (Sprint D-A.5, commit `0bcbdfd`) |
 | `print_console_docx_file_translated(ctx)` | ~2965 | 107 | save-time progress reporter | ❌ **DO NOT extract** — it writes to cells (cell_set_1st_paragraph + cell_add_paragraph), it's part of the write-path, not stats |
 
 (Line numbers approximate — file is mid-flux. Use Grep to find current
@@ -157,7 +166,13 @@ cli.py 3,100 → ~2,300 (-26% on top of Task A).
 
 ---
 
-## Task C — Collapse `_sync_globals_from_ctx`
+## Task C — Collapse `_sync_globals_from_ctx`  **(deferred 2026-05-16)**
+
+> Audit on `refactor/cli-py-sprint-d-final` found **176 bare-name
+> occurrences across 41 mirrored names** in cli.py — too large for
+> a single safe session under the pytest+smoke-per-change discipline.
+> The full count map and recommended threading order live in
+> `docs/session-state-2026-05-16-sprint-d-complete.md`.
 
 ### What it currently does
 

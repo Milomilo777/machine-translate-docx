@@ -101,6 +101,60 @@ local_launcher.py  ────────────────────�
   the injected callback in `docx_io/save.py` continues to see the
   historical 1-arg signature.
 
+### `src/machine_translate_docx/statistics.py` (2026-05-16, Sprint D-A.4 + D-A.5)
+- End-of-run reporting cluster — fire-and-forget helpers that never
+  abort a translation. The launcher only cares about the docx +
+  sidecar landing on disk, so failures here surface as a single
+  "Warning failed to update stats" / "Warning failed to get
+  available updates status" line and the run as a whole still
+  succeeds.
+- `local_time_offset(t=None)` — pure tz-offset helper (Sprint D
+  attempt 1 extraction).
+- `run_statistics(ctx)` — submits per-run state to the HTML stats
+  form via a short-lived Chrome session. Heavy deps (selenium,
+  psutil) lazy-imported inside the function body so callers of
+  `local_time_offset` don't pay for them.
+- `get_robot_usage_comment(ctx)` — navigates the active Selenium
+  driver to the version-checker page, scrapes the rendered
+  comment, and prints it. Same lazy-import shape.
+- Both submission helpers honour `MTD_SKIP_STATS_BROWSER`: when
+  set in the environment, the function short-circuits as the
+  first statement. The cache refactor's launcher basic-split
+  spawn will set this so cache-replay re-runs don't pay for a
+  Chrome launch — the original translate already reported stats.
+- `cli.py` keeps 3-line shims that delegate to the impl, so the
+  call sites in `main()` don't need to change.
+
+### `src/machine_translate_docx/engines/google_file_modes.py` (2026-05-16, Sprint D-B)
+- Google's "file-mode" translation paths
+  (`--enginemethod textfile / htmljavascript / xlsxfile`) —
+  upload the whole document to translate.google.com rather than
+  feeding phrases through the textarea one at a time. Rarely
+  used compared to the default `singlephrase` method, but
+  historically the only way to process very large docs.
+- 3 top-level dispatchers:
+  - `google_translate_from_text_file(ctx)`
+  - `google_translate_from_html_javascript(ctx)`
+  - `google_translate_from_html_xlsxfile(ctx)`
+  Re-exported from `engines/__init__.py` so
+  `cli.translate_docx` imports them via
+  `from .engines import google_translate_from_*` cleanly.
+- 7 internal helpers (3 selenium workers + 3 file generators +
+  the chrome-downloads poller `get_last_downloaded_file_path`)
+  — private to the module since their only callers are the
+  dispatchers.
+- Shares the cookies-consent helper with `engines/google.py` via
+  `from .google import selenium_chrome_google_click_cookies_consent_button`.
+- Lazy import of cli module globals (`xtm`, `xlsxreplacefile`,
+  `from_text_table`, `src_lang`, etc.) matches the
+  `docx_io/parse.py:88` pattern; selenium imports at module top
+  because the whole module is selenium-only.
+- Drive-by improvement (P2 from 2026-05-16 master audit):
+  `sys.exit(7)` in the textfile worker's exception path is
+  replaced with `raise TranslationFailure(reason=
+  "google_file_mode_error", …)` so the launcher's
+  structured-failure parser flips the job to `status=error`.
+
 ### `src/machine_translate_docx/docx_io/metadata.py` (2026-05-16)
 - Output-side DOCX metadata writers extracted from `cli.py`:
   - `write_destination_language_in_docx_cell(docxdoc, *, splitonly,
