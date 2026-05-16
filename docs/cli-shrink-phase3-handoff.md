@@ -1,10 +1,18 @@
-# cli.py shrink — Phase 3 handoff prompt for Claude Code Console
+# cli.py shrink — Sprint D handoff prompt for Claude Code Console
 
-**Branch state at handoff:** `refactor/cli-py-3-phase-shrink` at commit
-`bd65ea8`. `src/machine_translate_docx/cli.py` is **3,994 lines**
-(was 4,395; -9.1% so far). Test suite: 154 passed / 8 skipped (live) /
-8 deselected with `E:\Python311\python.exe -m pytest tests/
---ignore=tests/test_v2_e2e.py`.
+> **Status update (2026-05-16 — Sprint D attempt 1):** master has
+> already absorbed all of Sprints A + B + C plus the original 3-phase
+> shrink. `src/machine_translate_docx/cli.py` is **3,947 lines** (down
+> from 4,395 — a 10.2% net reduction). Test suite: 239 passed / 8
+> skipped (live) / 6 deselected. The pre-existing
+> `_get_ctx()` snapshot-ordering bug was fixed in master commit
+> `4c36183`. Sprint D was attempted on
+> `refactor/cli-py-sprint-d` but only the smallest helper
+> (`local_time_offset`, -10 lines) extracted cleanly in that session;
+> the rest is documented below for a future dedicated session because
+> `run_statistics` + `get_robot_usage_comment` + the Google file-mode
+> workers each carry 10+ module-level globals that need careful
+> state-threading, not one-shot copy-paste.
 
 The big-payoff blocks are deferred to a follow-up session because they
 need careful state-threading work that's not worth doing under time
@@ -23,15 +31,23 @@ cluster. They're print-heavy / log-write-heavy, run only after
 translation succeeds, and never feed back into the translation
 pipeline. Extracting them collapses ~900 lines into a thin shim.
 
-| Function | Current line | Lines | What it does |
-|---|---|---|---|
-| `local_time_offset` | ~3107 | 14 | tz-offset helper |
-| `run_statistics(ctx)` | ~3121 | 232 | per-run stats dump + HTTP POST |
-| `get_robot_usage_comment(ctx)` | ~3353 | 370 | HTML report builder |
-| `print_console_docx_file_translated(ctx)` | ~3000 | 107 | save-time progress reporter |
+| Function | Current line | Lines | What it does | Status |
+|---|---|---|---|---|
+| `local_time_offset` | ~3072 | 14 | tz-offset helper | ✅ extracted to `statistics.py` (Sprint D commit) |
+| `run_statistics(ctx)` | ~3076 | 232 | per-run stats dump + HTTP POST | ⏳ pending |
+| `get_robot_usage_comment(ctx)` | ~3306 | 370 | HTML report builder | ⏳ pending |
+| `print_console_docx_file_translated(ctx)` | ~2965 | 107 | save-time progress reporter | ❌ **DO NOT extract** — it writes to cells (cell_set_1st_paragraph + cell_add_paragraph), it's part of the write-path, not stats |
 
 (Line numbers approximate — file is mid-flux. Use Grep to find current
 positions.)
+
+**Important finding from Sprint D attempt 1:**
+`print_console_docx_file_translated` was previously listed as
+extraction-eligible, but reading the body shows it writes into
+`ctx.docx.table_cells[*][2]` via `cell_set_1st_paragraph` and
+`cell_add_paragraph`. It is not a reporting function despite the name —
+it's the non-split write path. Leave it in cli.py until D-C threads its
+remaining globals.
 
 ### Globals the historical bodies still read by bare name
 
