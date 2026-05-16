@@ -6,6 +6,41 @@
 
 ---
 
+## 2026-05-16h — Docs: UML diagrams + detailed module architecture SVG
+
+Documentation-only landing — no source changes.
+
+- New: [`docs/uml.md`](docs/uml.md) — five Mermaid-based UML diagrams
+  rendered natively by GitHub. Covers class composition
+  (RuntimeContext + 7 sub-dataclasses, Engine Protocol + 3
+  implementations, OpenAI tool surface, exception hierarchy,
+  validator types), sequence for the happy path, sequence for the
+  failure + alerting path (B-001 + B-002 + 3 alert channels),
+  activity diagram of the full job lifecycle with every decision
+  point, and a deployment diagram showing dev / prod / frozen-.exe
+  surfaces with a side-by-side comparison table. Opens with a
+  reflection section justifying which UML types are useful here and
+  which are intentionally absent (use-case, openai class diagram, …).
+- New: [`docs/diagrams/architecture-detailed-light.svg`](docs/diagrams/architecture-detailed-light.svg)
+  — module-level architecture map. Four horizontal layers (browser+HTTP,
+  CLI orchestrator, engines/docx_io/openai_tools/supporting, outputs)
+  with every package under `src/machine_translate_docx/` represented as
+  its own card. Useful as a single-page reference for new contributors.
+- Updated: [`docs/diagrams/architecture-light.svg`](docs/diagrams/architecture-light.svg)
+  — high-level SVG refreshed for the post-2026-05-11 layout
+  (`machine_translate_docx.cli` instead of `machine_translate_docx.py`,
+  5-day cache instead of 36-h).
+- New: `JVM_Migration_Analysis.docx` at repo root — Word document
+  with the Java + Kotlin migration analysis (verdict, blockers,
+  what's easy, real risks, alternative paths).
+- `docs/index.md` updated: links to `uml.md`,
+  `architecture-detailed-light.svg`, `master-audit-2026-05-16.md`,
+  and the JVM migration analysis.
+- `.gitignore` gains `~$*` pattern so Word's lock files never get
+  staged accidentally.
+
+---
+
 ## 2026-05-16g — P2 quick win: drop dead cookie-cleanup branch
 
 Single targeted P2 fix from the master audit. In

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 480" role="img" aria-labelledby="title desc" font-family="Inter, system-ui, sans-serif">
   <title id="title">machine-translate-docx — high-level architecture</title>
-  <desc id="desc">Two browser frontends (legacy EJS and v2 SPA) talk to a single Python launcher (or a Node express server) that spawns the machine_translate_docx.py CLI as a subprocess. The CLI fans out to four translation engines and writes a docx output plus a JSON log sidecar back through the launcher to the user's download.</desc>
+  <desc id="desc">Two browser frontends (legacy EJS and v2 SPA) talk to a single Python launcher (or a Node Express server) that spawns the machine_translate_docx.cli module as a subprocess. The CLI fans out to four translation engines and writes a docx output plus a JSON log sidecar back through the launcher to the user's download.</desc>
 
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -74,7 +74,7 @@
 
     <g transform="translate(8,28)">
       <rect class="card" width="252" height="60" rx="6"/>
-      <text class="h" x="126" y="22" text-anchor="middle">src/machine_translate_docx.py</text>
+      <text class="h" x="126" y="22" text-anchor="middle">machine_translate_docx.cli</text>
       <text class="t" x="126" y="40" text-anchor="middle">RuntimeContext threaded through</text>
       <text class="t" x="126" y="54" text-anchor="middle">parse · translate · split · save</text>
     </g>
@@ -101,7 +101,7 @@
     <g transform="translate(220,28)">
       <rect class="card" width="180" height="95" rx="6"/>
       <text class="h" x="90" y="24" text-anchor="middle">Google</text>
-      <text class="t" x="90" y="44" text-anchor="middle">src/engines/google.py</text>
+      <text class="t" x="90" y="44" text-anchor="middle">engines/google.py</text>
       <text class="t" x="90" y="60" text-anchor="middle">Selenium · Chrome</text>
       <text class="t" x="90" y="78" text-anchor="middle">widest lang coverage</text>
     </g>
@@ -109,7 +109,7 @@
     <g transform="translate(420,28)">
       <rect class="card" width="180" height="95" rx="6"/>
       <text class="h" x="90" y="24" text-anchor="middle">OpenAI API</text>
-      <text class="t" x="90" y="44" text-anchor="middle">src/engines/chatgpt_api.py</text>
+      <text class="t" x="90" y="44" text-anchor="middle">engines/chatgpt_api.py</text>
       <text class="t" x="90" y="60" text-anchor="middle">gpt-5.5 / gpt-5.4-mini</text>
       <text class="t" x="90" y="78" text-anchor="middle">24h prompt cache</text>
     </g>
@@ -141,7 +141,7 @@
     <g transform="translate(480,20)">
       <rect class="card" width="180" height="40" rx="6"/>
       <text class="h" x="90" y="18" text-anchor="middle">runtime_dir/cache/</text>
-      <text class="t" x="90" y="32" text-anchor="middle">36-h server cache</text>
+      <text class="t" x="90" y="32" text-anchor="middle">5-day server cache</text>
     </g>
     <g transform="translate(680,20)">
       <rect class="card" width="160" height="40" rx="6"/>

@@ -1,0 +1,458 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1480 1180" role="img" aria-labelledby="title desc" font-family="Inter, system-ui, sans-serif">
+  <title id="title">machine-translate-docx — detailed module architecture</title>
+  <desc id="desc">Module-level architecture: every Python package under src/machine_translate_docx/, the HTTP layer, the four translation engines, the OpenAI tooling, the docx I/O layer, validators, translation memory, and the prompts + log + cache + failure-archive surfaces.</desc>
+
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#6E6C66"/>
+    </marker>
+    <marker id="arr-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#D97757"/>
+    </marker>
+    <marker id="arr-d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#9B9B9B"/>
+    </marker>
+    <style>
+      .card        { fill:#FFFFFF; stroke:#E8E4D9; stroke-width:1.4; }
+      .group-bg    { fill:#FAF9F5; stroke:#E8E4D9; stroke-width:1; stroke-dasharray:4,3; }
+      .accent-card { fill:#FBEFE9; stroke:#E4A382; stroke-width:1.5; }
+      .infra-card  { fill:#EFEFE8; stroke:#C8C5BB; stroke-width:1.2; }
+      .output-card { fill:#F2F7EF; stroke:#A8C49A; stroke-width:1.4; }
+      .h           { fill:#1F1E1B; font-size:13.5px; font-weight:600; }
+      .sh          { fill:#1F1E1B; font-size:12px; font-weight:600; }
+      .t           { fill:#3F3E3A; font-size:10.5px; }
+      .tt          { fill:#6E6C66; font-size:9.5px; font-style:italic; }
+      .lbl         { fill:#6E6C66; font-size:10px; font-weight:600; letter-spacing:.07em; text-transform:uppercase; }
+      .lbl-acc     { fill:#D97757; font-size:10px; font-weight:600; letter-spacing:.07em; text-transform:uppercase; }
+      .link        { stroke:#6E6C66; stroke-width:1.4; fill:none; }
+      .link-a      { stroke:#D97757; stroke-width:1.7; fill:none; }
+      .link-d      { stroke:#9B9B9B; stroke-width:1.2; stroke-dasharray:3,3; fill:none; }
+      .file        { fill:#3F3E3A; font-size:10px; font-family:Menlo, Consolas, monospace; }
+    </style>
+  </defs>
+
+  <rect width="1480" height="1180" fill="#FAF9F5"/>
+
+  <!-- ╔═══════ LAYER 1: BROWSER + HTTP SERVER ═══════ -->
+  <g transform="translate(40,30)">
+    <text class="lbl" x="0" y="0">1 · Browser + HTTP server (entry point)</text>
+    <rect class="group-bg" x="-6" y="10" width="1400" height="135" rx="8"/>
+
+    <!-- Legacy frontend -->
+    <g transform="translate(20,30)">
+      <rect class="card" width="200" height="105" rx="6"/>
+      <text class="h" x="100" y="22" text-anchor="middle">Legacy frontend</text>
+      <text class="file" x="100" y="42" text-anchor="middle">index.ejs</text>
+      <text class="t" x="100" y="60" text-anchor="middle">EJS template, served at /</text>
+      <text class="t" x="100" y="76" text-anchor="middle">Preserved as-is for existing</text>
+      <text class="t" x="100" y="90" text-anchor="middle">users (no behaviour drift)</text>
+    </g>
+
+    <!-- v2 frontend -->
+    <g transform="translate(240,30)">
+      <rect class="card" width="240" height="105" rx="6"/>
+      <text class="h" x="120" y="22" text-anchor="middle">v2 frontend (SPA)</text>
+      <text class="file" x="120" y="42" text-anchor="middle">web/v2/index.html, app.js</text>
+      <text class="t" x="120" y="60" text-anchor="middle">Plain JS + Tailwind, no framework</text>
+      <text class="t" x="120" y="76" text-anchor="middle">i18n: en + fa · drag-drop · poll</text>
+      <text class="tt" x="120" y="92" text-anchor="middle">content.json drives 4 surfaces</text>
+    </g>
+
+    <!-- Local launcher -->
+    <g transform="translate(500,30)">
+      <rect class="card" width="280" height="105" rx="6"/>
+      <text class="h" x="140" y="22" text-anchor="middle">Local launcher (dev / Windows)</text>
+      <text class="file" x="140" y="42" text-anchor="middle">local_launcher.py</text>
+      <text class="t" x="140" y="60" text-anchor="middle">stdlib http.server · no Node</text>
+      <text class="t" x="140" y="76" text-anchor="middle">/upload · /status/&lt;id&gt; · /download</text>
+      <text class="t" x="140" y="90" text-anchor="middle">cache 5d · Telegram · cleanup thread</text>
+    </g>
+
+    <!-- Express server -->
+    <g transform="translate(800,30)">
+      <rect class="card" width="280" height="105" rx="6"/>
+      <text class="h" x="140" y="22" text-anchor="middle">Production server (Linux)</text>
+      <text class="file" x="140" y="42" text-anchor="middle">server.js</text>
+      <text class="t" x="140" y="60" text-anchor="middle">Express · multer · cron cleanup</text>
+      <text class="t" x="140" y="76" text-anchor="middle">spawn-via-shell · path-confined download</text>
+      <text class="tt" x="140" y="92" text-anchor="middle">50 MB upload cap · .docx filter</text>
+    </g>
+
+    <!-- Endpoints box -->
+    <g transform="translate(1100,30)">
+      <rect class="infra-card" width="290" height="105" rx="6"/>
+      <text class="sh" x="145" y="20" text-anchor="middle">HTTP endpoints</text>
+      <text class="t" x="20" y="38">POST /upload</text>
+      <text class="t" x="20" y="52">GET  /status/&lt;jobId&gt;</text>
+      <text class="t" x="20" y="66">GET  /download/&lt;file&gt;</text>
+      <text class="t" x="20" y="80">GET  /download-zip/&lt;jobId&gt;</text>
+      <text class="t" x="20" y="94">POST /subscribe (newsletter)</text>
+    </g>
+  </g>
+
+  <!-- ╔═══════ LAYER 2: PYTHON CLI + SUPPORT ═══════ -->
+  <g transform="translate(40,180)">
+    <text class="lbl-acc" x="0" y="0">2 · Python CLI orchestrator (src/machine_translate_docx/)</text>
+    <rect class="accent-card" x="-6" y="10" width="1400" height="200" rx="8"/>
+
+    <!-- cli.py centerpiece -->
+    <g transform="translate(20,30)">
+      <rect class="card" width="240" height="170" rx="6"/>
+      <text class="h" x="120" y="22" text-anchor="middle">cli.py</text>
+      <text class="tt" x="120" y="38" text-anchor="middle">entry point · ~3.9k lines</text>
+      <text class="t" x="120" y="58" text-anchor="middle">argparse · signal · atexit</text>
+      <text class="t" x="120" y="74" text-anchor="middle">main() pipeline orchestration</text>
+      <text class="t" x="120" y="90" text-anchor="middle">_sync_globals_from_ctx</text>
+      <text class="t" x="120" y="106" text-anchor="middle">read · translate · split · save</text>
+      <text class="tt" x="120" y="128" text-anchor="middle">PROGRESS:15/30/65/90 stdout</text>
+      <text class="tt" x="120" y="144" text-anchor="middle">[FAIL] reason=... on errors</text>
+      <text class="tt" x="120" y="160" text-anchor="middle">[INFO] Translation log saved</text>
+    </g>
+
+    <!-- runtime.py -->
+    <g transform="translate(280,30)">
+      <rect class="card" width="200" height="80" rx="6"/>
+      <text class="h" x="100" y="20" text-anchor="middle">RuntimeContext</text>
+      <text class="file" x="100" y="36" text-anchor="middle">runtime.py</text>
+      <text class="t" x="100" y="52" text-anchor="middle">flags · language · engine</text>
+      <text class="t" x="100" y="66" text-anchor="middle">openai · docx · browser · config</text>
+    </g>
+
+    <!-- dispatch.py -->
+    <g transform="translate(280,120)">
+      <rect class="card" width="200" height="80" rx="6"/>
+      <text class="h" x="100" y="20" text-anchor="middle">dispatch.py</text>
+      <text class="t" x="100" y="38" text-anchor="middle">set_translation_function(ctx)</text>
+      <text class="t" x="100" y="54" text-anchor="middle">use_phrasesblock predicate</text>
+      <text class="tt" x="100" y="70" text-anchor="middle">R15 DeepL fallback support</text>
+    </g>
+
+    <!-- runner.py -->
+    <g transform="translate(500,30)">
+      <rect class="card" width="200" height="80" rx="6"/>
+      <text class="h" x="100" y="20" text-anchor="middle">runner.py</text>
+      <text class="t" x="100" y="38" text-anchor="middle">block-loop orchestrator</text>
+      <text class="t" x="100" y="54" text-anchor="middle">single-call vs block mode</text>
+      <text class="tt" x="100" y="70" text-anchor="middle">PROGRESS:25/50/75 milestones</text>
+    </g>
+
+    <!-- translation_log_writer.py -->
+    <g transform="translate(500,120)">
+      <rect class="card" width="200" height="80" rx="6"/>
+      <text class="h" x="100" y="20" text-anchor="middle">translation_log_writer</text>
+      <text class="t" x="100" y="38" text-anchor="middle">JSON sidecar writer</text>
+      <text class="t" x="100" y="54" text-anchor="middle">tokens · cost · cached · rows</text>
+      <text class="tt" x="100" y="70" text-anchor="middle">added 2026-05-16 (phase 3)</text>
+    </g>
+
+    <!-- network_utils.py -->
+    <g transform="translate(720,30)">
+      <rect class="card" width="200" height="80" rx="6"/>
+      <text class="h" x="100" y="20" text-anchor="middle">network_utils.py</text>
+      <text class="t" x="100" y="38" text-anchor="middle">probe_internet · fetch_country</text>
+      <text class="t" x="100" y="54" text-anchor="middle">check_mirror · SE_DRIVER_URL</text>
+      <text class="tt" x="100" y="70" text-anchor="middle">SSRF allowlist + redirect-off</text>
+    </g>
+
+    <!-- log_paths.py -->
+    <g transform="translate(720,120)">
+      <rect class="card" width="200" height="80" rx="6"/>
+      <text class="h" x="100" y="20" text-anchor="middle">log_paths.py</text>
+      <text class="t" x="100" y="38" text-anchor="middle">Log json file/ resolver</text>
+      <text class="t" x="100" y="54" text-anchor="middle">10-day retention sweeper</text>
+      <text class="tt" x="100" y="70" text-anchor="middle">honours MTD_FROZEN_ROOT (exe)</text>
+    </g>
+
+    <!-- exceptions + translation_health -->
+    <g transform="translate(940,30)">
+      <rect class="card" width="200" height="80" rx="6"/>
+      <text class="h" x="100" y="20" text-anchor="middle">exceptions.py</text>
+      <text class="t" x="100" y="38" text-anchor="middle">TranslationFailure hierarchy</text>
+      <text class="tt" x="100" y="56" text-anchor="middle">reason= token in [FAIL] line</text>
+      <text class="tt" x="100" y="70" text-anchor="middle">structured launcher signal</text>
+    </g>
+
+    <g transform="translate(940,120)">
+      <rect class="card" width="200" height="80" rx="6"/>
+      <text class="h" x="100" y="20" text-anchor="middle">translation_health.py</text>
+      <text class="t" x="100" y="38" text-anchor="middle">assert_source_has_content</text>
+      <text class="t" x="100" y="54" text-anchor="middle">assert_translation_present</text>
+      <text class="tt" x="100" y="70" text-anchor="middle">B-001 fail-fast guards</text>
+    </g>
+
+    <!-- validators/ -->
+    <g transform="translate(1160,30)">
+      <rect class="card" width="220" height="170" rx="6"/>
+      <text class="h" x="110" y="20" text-anchor="middle">validators/</text>
+      <text class="tt" x="110" y="36" text-anchor="middle">env-gated diagnostic layer</text>
+      <text class="file" x="14" y="56">post_translate.py</text>
+      <text class="t" x="14" y="70">  LINE_COUNT, LATIN_LEAKAGE</text>
+      <text class="t" x="14" y="84">  PROTECTED_SPAN_MISSING…</text>
+      <text class="file" x="14" y="104">post_polish.py</text>
+      <text class="t" x="14" y="118">  TAG_FORMAT_INVALID</text>
+      <text class="t" x="14" y="132">  TAG_NUMBER_MISMATCH…</text>
+      <text class="tt" x="110" y="155" text-anchor="middle">MTD_VALIDATOR_ENABLED=1</text>
+    </g>
+  </g>
+
+  <!-- ╔═══════ LAYER 3: ENGINES + DOCX I/O + OPENAI TOOLS ═══════ -->
+  <g transform="translate(40,420)">
+    <text class="lbl" x="0" y="0">3 · Engines, DOCX I/O, OpenAI tooling, supporting helpers</text>
+    <rect class="group-bg" x="-6" y="10" width="1400" height="395" rx="8"/>
+
+    <!-- engines/ -->
+    <g transform="translate(20,30)">
+      <rect class="card" width="220" height="180" rx="6"/>
+      <text class="h" x="110" y="20" text-anchor="middle">engines/</text>
+      <text class="tt" x="110" y="36" text-anchor="middle">4 active · web engines retired</text>
+      <text class="file" x="14" y="58">google.py</text>
+      <text class="t" x="14" y="72">  Selenium textarea path</text>
+      <text class="file" x="14" y="92">deepl.py</text>
+      <text class="t" x="14" y="106">  login + translate · w/ alt fallback</text>
+      <text class="file" x="14" y="126">chatgpt_api.py</text>
+      <text class="t" x="14" y="140">  single-call full-doc translate</text>
+      <text class="file" x="14" y="158">__init__.py · _base.py · _timing.py</text>
+      <text class="tt" x="14" y="172">  DISPATCH_TABLE registry</text>
+    </g>
+
+    <!-- selenium_utils/ -->
+    <g transform="translate(20,225)">
+      <rect class="card" width="220" height="150" rx="6"/>
+      <text class="h" x="110" y="20" text-anchor="middle">selenium_utils/</text>
+      <text class="tt" x="110" y="36" text-anchor="middle">Chrome driver helpers</text>
+      <text class="file" x="14" y="58">driver.py</text>
+      <text class="t" x="14" y="72">  create_webdriver(ctx)</text>
+      <text class="tt" x="14" y="86">  no-op for chatgpt+api (C25)</text>
+      <text class="file" x="14" y="106">click.py</text>
+      <text class="t" x="14" y="120">  safe_click w/ stale-elem retry</text>
+      <text class="file" x="14" y="138">forms.py</text>
+    </g>
+
+    <!-- docx_io/ -->
+    <g transform="translate(260,30)">
+      <rect class="card" width="240" height="345" rx="6"/>
+      <text class="h" x="120" y="20" text-anchor="middle">docx_io/</text>
+      <text class="tt" x="120" y="36" text-anchor="middle">every .docx-shaped operation</text>
+      <text class="file" x="14" y="60">parse.py</text>
+      <text class="t" x="14" y="74">  read_and_parse_docx_document</text>
+      <text class="tt" x="14" y="88">  snapshots cols 0+1 (C13 lock)</text>
+      <text class="file" x="14" y="110">cells.py</text>
+      <text class="t" x="14" y="124">  get_cell_data · set_first_para</text>
+      <text class="t" x="14" y="138">  add_paragraph · delete_paragraph</text>
+      <text class="tt" x="14" y="152">  RTL handling for FA targets</text>
+      <text class="file" x="14" y="174">runs.py</text>
+      <text class="t" x="14" y="188">  _iter_paragraph_runs</text>
+      <text class="tt" x="14" y="202">  walks &lt;w:hyperlink&gt; children</text>
+      <text class="file" x="14" y="224">save.py</text>
+      <text class="t" x="14" y="238">  engine_suffix · save_docx_file</text>
+      <text class="t" x="14" y="252">  _resolve_output_path collision</text>
+      <text class="tt" x="14" y="266">  _restore_source_column lock</text>
+      <text class="file" x="14" y="290">metadata.py</text>
+      <text class="t" x="14" y="304">  write_destination_language</text>
+      <text class="t" x="14" y="318">  set_docx_properties_comment</text>
+      <text class="tt" x="14" y="332">  added 2026-05-16 (phase 2)</text>
+    </g>
+
+    <!-- openai_tools/ -->
+    <g transform="translate(520,30)">
+      <rect class="card" width="280" height="345" rx="6"/>
+      <text class="h" x="140" y="20" text-anchor="middle">openai_tools/</text>
+      <text class="tt" x="140" y="36" text-anchor="middle">gpt-5.5 / gpt-5.4-mini callers</text>
+      <text class="file" x="14" y="60">translator.py</text>
+      <text class="t" x="14" y="74">  single-call translate</text>
+      <text class="tt" x="14" y="88">  prompt_cache_retention=24h (C4)</text>
+      <text class="file" x="14" y="110">polisher.py</text>
+      <text class="t" x="14" y="124">  Persian polish pass</text>
+      <text class="t" x="14" y="138">  ⟨⟨N⟩⟩ tag parser · 4 fallbacks</text>
+      <text class="tt" x="14" y="152">  reasoning_effort iff "mini" model</text>
+      <text class="file" x="14" y="174">persian_double_lines.py</text>
+      <text class="t" x="14" y="188">  FASubtitleAligner · mechanical</text>
+      <text class="tt" x="14" y="202">  llm_threshold=0 · ZWNJ-aware</text>
+      <text class="file" x="14" y="224">_retry.py</text>
+      <text class="t" x="14" y="238">  call_with_retry · prompt_hash</text>
+      <text class="file" x="14" y="260">line_count_reconciler.py</text>
+      <text class="t" x="14" y="274">  gpt-5.4-mini re-emit on drift</text>
+      <text class="file" x="14" y="296">splitting.py</text>
+      <text class="t" x="14" y="310">  legacy per-phrase splitter</text>
+      <text class="file" x="14" y="332">fa_postprocess.py · _lang_descriptors.py</text>
+    </g>
+
+    <!-- xlsx_translation_memory/ -->
+    <g transform="translate(820,30)">
+      <rect class="card" width="220" height="180" rx="6"/>
+      <text class="h" x="110" y="20" text-anchor="middle">xlsx_translation_memory/</text>
+      <text class="tt" x="110" y="36" text-anchor="middle">glossary engine (optional)</text>
+      <text class="file" x="14" y="58">xlsx_translation_memory.py</text>
+      <text class="t" x="14" y="72">  Search · Replace · DoNotSplit</text>
+      <text class="t" x="14" y="88">  case-sensitive · regex · word-boundary</text>
+      <text class="tt" x="14" y="102">  3 sheets: before, after, keep_on_same_line</text>
+      <text class="t" x="14" y="124">CJK + Thai tokenizers</text>
+      <text class="tt" x="14" y="138">  lazy-loaded (P1-1 fix)</text>
+      <text class="t" x="14" y="158">activates via --xlsxreplacefile</text>
+    </g>
+
+    <!-- prompts/ -->
+    <g transform="translate(820,225)">
+      <rect class="card" width="220" height="150" rx="6"/>
+      <text class="h" x="110" y="20" text-anchor="middle">prompts/</text>
+      <text class="tt" x="110" y="36" text-anchor="middle">v7 STATIC + JOB_CONFIG layout</text>
+      <text class="file" x="14" y="58">translate_PER.txt</text>
+      <text class="file" x="14" y="74">polish_PER.txt</text>
+      <text class="file" x="14" y="90">translate_universal.txt</text>
+      <text class="file" x="14" y="106">polish_universal.txt</text>
+      <text class="tt" x="14" y="124">no {LANG} placeholders (C27)</text>
+      <text class="tt" x="14" y="138">cache prefix byte-identical</text>
+    </g>
+
+    <!-- config + tokenizers -->
+    <g transform="translate(1060,30)">
+      <rect class="card" width="320" height="180" rx="6"/>
+      <text class="h" x="160" y="20" text-anchor="middle">config.py · package roots</text>
+      <text class="t" x="14" y="42">DEFAULT_AI_MODEL = "gpt-5.5"</text>
+      <text class="t" x="14" y="58">ALIGNER_MODEL = "gpt-5.4-mini" (C1)</text>
+      <text class="t" x="14" y="74">VALID_AI_MODELS whitelist (C18)</text>
+      <text class="t" x="14" y="90">google_translate_lang_codes table</text>
+      <text class="t" x="14" y="106">deepl_translate_lang_codes table</text>
+      <text class="t" x="14" y="122">right_to_left_languages_list</text>
+      <text class="t" x="14" y="138">eol/bol regex arrays</text>
+      <text class="t" x="14" y="154">DefaultJsonConfiguration template</text>
+      <text class="tt" x="160" y="172" text-anchor="middle">single source of truth for constants</text>
+    </g>
+
+    <!-- packaging -->
+    <g transform="translate(1060,225)">
+      <rect class="card" width="320" height="150" rx="6"/>
+      <text class="h" x="160" y="20" text-anchor="middle">packaging/  (.exe distribution)</text>
+      <text class="file" x="14" y="42">mtd_entry.py</text>
+      <text class="t" x="14" y="56">  sets MTD_FROZEN_ROOT (C26)</text>
+      <text class="file" x="14" y="76">mtd.spec</text>
+      <text class="t" x="14" y="90">  PyInstaller onedir ~65 MB</text>
+      <text class="t" x="14" y="106">  bundles prompts, BPE, Thai words</text>
+      <text class="tt" x="14" y="124">  C24: no heavy top-level imports</text>
+      <text class="tt" x="14" y="138">  C25: webdriver no-op for api</text>
+    </g>
+  </g>
+
+  <!-- ╔═══════ LAYER 4: OUTPUTS + PERSISTENT STATE ═══════ -->
+  <g transform="translate(40,855)">
+    <text class="lbl" x="0" y="0">4 · Outputs, persistent state, alerting</text>
+    <rect class="group-bg" x="-6" y="10" width="1400" height="195" rx="8"/>
+
+    <!-- Output docx -->
+    <g transform="translate(20,30)">
+      <rect class="output-card" width="240" height="160" rx="6"/>
+      <text class="h" x="120" y="20" text-anchor="middle">Translated .docx</text>
+      <text class="tt" x="120" y="36" text-anchor="middle">{stem}_{LANG}_{engine}.docx</text>
+      <text class="t" x="14" y="58">  _PER_chatGPT  · _PER_Polish</text>
+      <text class="t" x="14" y="74">  _PER_Polish_Double_Lines</text>
+      <text class="t" x="14" y="90">  _PER_Google   · _PER_Deepl</text>
+      <text class="t" x="14" y="106">  _VIE_*  · _ARA_*  · _GER_*</text>
+      <text class="t" x="14" y="122">  …ISO 639-2/B suffixes</text>
+      <text class="tt" x="120" y="146" text-anchor="middle">collision-safe: _1, _2 suffix</text>
+    </g>
+
+    <!-- JSON sidecar -->
+    <g transform="translate(280,30)">
+      <rect class="output-card" width="240" height="160" rx="6"/>
+      <text class="h" x="120" y="20" text-anchor="middle">JSON log sidecar</text>
+      <text class="file" x="120" y="36" text-anchor="middle">Log json file/*_log.json</text>
+      <text class="t" x="14" y="58">run_info: timestamp · model · langs</text>
+      <text class="t" x="14" y="72">  + translation_prompts (hashed)</text>
+      <text class="t" x="14" y="86">  + polish_prompts (hashed)</text>
+      <text class="t" x="14" y="106">blocks: per-block token totals</text>
+      <text class="t" x="14" y="122">summary: cost · cache hit · rows</text>
+      <text class="tt" x="120" y="146" text-anchor="middle">v2 run-summary card source</text>
+    </g>
+
+    <!-- Cache -->
+    <g transform="translate(540,30)">
+      <rect class="output-card" width="200" height="160" rx="6"/>
+      <text class="h" x="100" y="20" text-anchor="middle">5-day cache</text>
+      <text class="file" x="100" y="36" text-anchor="middle">runtime_dir/cache/</text>
+      <text class="t" x="14" y="58">key = sha256 of:</text>
+      <text class="t" x="14" y="72">  file bytes + lang +</text>
+      <text class="t" x="14" y="86">  engine + ai_model +</text>
+      <text class="t" x="14" y="100">  split_engine</text>
+      <text class="t" x="14" y="120">stores main_path + sidecar</text>
+      <text class="tt" x="100" y="146" text-anchor="middle">CACHE_TTL_SEC = 5×24×3600</text>
+    </g>
+
+    <!-- Failures -->
+    <g transform="translate(760,30)">
+      <rect class="output-card" width="240" height="160" rx="6"/>
+      <text class="h" x="120" y="20" text-anchor="middle">Failure archive</text>
+      <text class="file" x="120" y="36" text-anchor="middle">runtime_dir/failures/&lt;id&gt;__&lt;ts&gt;/</text>
+      <text class="t" x="14" y="58">copies on any non-zero exit:</text>
+      <text class="t" x="14" y="72">  input.docx (verbatim)</text>
+      <text class="t" x="14" y="86">  stdout.log</text>
+      <text class="t" x="14" y="100">  meta.json (engine, lang, …)</text>
+      <text class="t" x="14" y="114">  UNREVIEWED.txt sentinel</text>
+      <text class="tt" x="120" y="138" text-anchor="middle">not served by launcher routes</text>
+      <text class="tt" x="120" y="152" text-anchor="middle">B-002 + B-003 (2026-05-10)</text>
+    </g>
+
+    <!-- Alerting -->
+    <g transform="translate(1020,30)">
+      <rect class="output-card" width="360" height="160" rx="6"/>
+      <text class="h" x="180" y="20" text-anchor="middle">Alerting (best-effort, optional)</text>
+      <text class="sh" x="14" y="42">Telegram</text>
+      <text class="t" x="14" y="58">MTD_TELEGRAM_TOKEN + CHAT_ID</text>
+      <text class="t" x="14" y="72">text alert always · 20 MB docx attach</text>
+      <text class="tt" x="14" y="86">weekly subscribers.txt (Sat 12:00 Paris)</text>
+      <text class="sh" x="180" y="42">Email</text>
+      <text class="t" x="180" y="58">MTD_FAILURE_EMAIL + SMTP_*</text>
+      <text class="t" x="180" y="72">stdlib smtplib</text>
+      <text class="sh" x="14" y="112">Webhook</text>
+      <text class="t" x="14" y="126">MTD_FAILURE_WEBHOOK</text>
+      <text class="t" x="14" y="140">Discord / Slack / Mattermost shape</text>
+      <text class="tt" x="180" y="146" text-anchor="middle">never blocks failure-archive path</text>
+    </g>
+  </g>
+
+  <!-- ╔═══════ ARROWS ═══════ -->
+  <!-- Browsers → Launcher -->
+  <path class="link" d="M240,82 L500,82" marker-end="url(#arr)"/>
+  <path class="link" d="M480,82 L500,82" marker-end="url(#arr)"/>
+  <!-- Launcher → CLI -->
+  <path class="link-a" d="M640,150 L160,200" marker-end="url(#arr-a)"/>
+  <!-- CLI → docx_io, openai_tools, engines (downward) -->
+  <path class="link-a" d="M160,400 L160,450" marker-end="url(#arr-a)"/>
+  <path class="link-a" d="M380,400 L380,450" marker-end="url(#arr-a)"/>
+  <path class="link-a" d="M640,400 L640,450" marker-end="url(#arr-a)"/>
+  <!-- CLI → outputs (downward) -->
+  <path class="link" d="M380,830 L380,870" marker-end="url(#arr)"/>
+  <path class="link" d="M640,830 L640,870" marker-end="url(#arr)"/>
+  <!-- supporting/optional links -->
+  <path class="link-d" d="M1270,150 L1270,180"/>
+  <path class="link-d" d="M1180,210 L1180,255"/>
+
+  <!-- ╔═══════ LEGEND ═══════ -->
+  <g transform="translate(40,1075)">
+    <text class="lbl" x="0" y="0">Legend</text>
+    <rect class="card" x="-6" y="10" width="1400" height="60" rx="6"/>
+
+    <g transform="translate(14,30)">
+      <rect class="card" x="0" y="0" width="20" height="20"/>
+      <text class="t" x="28" y="14">module / package</text>
+
+      <rect class="accent-card" x="170" y="0" width="20" height="20"/>
+      <text class="t" x="198" y="14">core orchestrator boundary</text>
+
+      <rect class="infra-card" x="380" y="0" width="20" height="20"/>
+      <text class="t" x="408" y="14">HTTP / infra surface</text>
+
+      <rect class="output-card" x="540" y="0" width="20" height="20"/>
+      <text class="t" x="568" y="14">output / persistent state</text>
+
+      <line class="link-a" x1="720" y1="10" x2="775" y2="10" marker-end="url(#arr-a)"/>
+      <text class="t" x="785" y="14">main pipeline flow</text>
+
+      <line class="link" x1="940" y1="10" x2="995" y2="10" marker-end="url(#arr)"/>
+      <text class="t" x="1005" y="14">data flow</text>
+
+      <line class="link-d" x1="1130" y1="10" x2="1185" y2="10"/>
+      <text class="t" x="1195" y="14">side-channel / optional</text>
+    </g>
+  </g>
+</svg>

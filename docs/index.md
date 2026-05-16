@@ -16,7 +16,10 @@ The repo's deeper documentation. Pick by what you're doing.
 | File | Purpose |
 |---|---|
 | [`architecture.md`](architecture.md) | Full pipeline + data flow + every key path |
-| [`diagrams/README.md`](diagrams/README.md) | The 6 SVG diagrams (architecture / pipeline / failure path × light + dark) |
+| [`uml.md`](uml.md) | 5 Mermaid UML diagrams — class, sequence (happy + failure), activity, deployment |
+| [`diagrams/architecture-detailed-light.svg`](diagrams/architecture-detailed-light.svg) | Module-level architecture map — every package under `src/machine_translate_docx/` |
+| [`diagrams/README.md`](diagrams/README.md) | The 6 high-level SVG diagrams (architecture / pipeline / failure path × light + dark) |
+| [`master-audit-2026-05-16.md`](master-audit-2026-05-16.md) | Five-shard audit of master HEAD — P0/P1/P2/P3 findings + Sprint plan |
 | [`refactor-roadmap.md`](refactor-roadmap.md) | Phase A → G design rationale |
 | [`post-refactor-audit.md`](post-refactor-audit.md) | 15 findings from the 2026-05-08 audit |
 | [`audit-2026-05-11.md`](audit-2026-05-11.md) | Comprehensive 2026-05-11 audit + applied fixes |
@@ -61,6 +64,12 @@ The repo's deeper documentation. Pick by what you're doing.
 | [`agent-handoff.md`](agent-handoff.md) | Agent → agent session handoff protocol |
 | [`agent-run-report.md`](agent-run-report.md) | Agent run reporting format |
 | [`next-session-handoff.md`](next-session-handoff.md) | The most recent next-session handoff note |
+
+## Strategy / external
+
+| File | Purpose |
+|---|---|
+| [`../JVM_Migration_Analysis.docx`](../JVM_Migration_Analysis.docx) | Word document — analysis of a hypothetical Java + Kotlin migration |
 
 ## Historical / archived
 

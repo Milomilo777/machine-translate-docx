@@ -80,3 +80,6 @@ Log json file/
 build/
 dist/
 *.spec.bak
+
+# Word / Office lock files (temp files created while a doc is open)
+~$*
