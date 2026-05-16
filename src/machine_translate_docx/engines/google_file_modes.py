@@ -185,7 +185,7 @@ def selenium_chrome_google_translate_text_file(ctx: "RuntimeContext", text_file_
             pass
         else:
             print("oups ! we got %s translated lines out of %s" % (text_translated_document_str_nb_lines, ctx.docx.docxfile_table_number_of_phrases))
-            translation_succeded = False
+            translation_succeeded = False
 
         #print("text_translated_document_str:")
         #print(text_translated_document_str)
@@ -346,8 +346,7 @@ def selenium_chrome_google_translate_html_javascript_file(ctx: "RuntimeContext",
             if not ctx.flags.showbrowser:
                 ctx.browser.chrome_options.add_argument("--headless")
 
-            from machine_translate_docx.cli import numrows
-            docxfile_table_number_of_lines = numrows
+            docxfile_table_number_of_lines = ctx.docx.numrows
             if ctx.flags.use_api or ctx.flags.splitonly:
                 print("\nCreating a new browser for stats")
 
@@ -358,11 +357,14 @@ def selenium_chrome_google_translate_html_javascript_file(ctx: "RuntimeContext",
 
 # method to get the downloaded file name
 # function to wait for download to finish and then rename the latest downloaded file
-def get_last_downloaded_file_path():
-    # Phase H: lazy-bind cli's module-level `driver` global (mirrored
-    # from ctx.browser.driver by _sync_globals_from_ctx). The inner
-    # function closes over this local.
-    from machine_translate_docx.cli import driver
+def get_last_downloaded_file_path(driver=None):
+    # 2026-05-16 Sprint D-C slice 6: ``driver`` is now threaded by the
+    # caller. If not supplied (legacy single call site), fall back to
+    # ``_get_ctx().browser.driver`` so external callers that pre-date
+    # the threading don't suddenly break.
+    if driver is None:
+        from machine_translate_docx.cli import _get_ctx
+        driver = _get_ctx().browser.driver
     # function to wait for all chrome downloads to finish
     def chrome_downloads(drv):
         if not "chrome://downloads" in drv.current_url: # if 'chrome downloads' is not current tab
@@ -479,7 +481,7 @@ def selenium_chrome_google_translate_xlsx_file(ctx: "RuntimeContext", xlsx_file_
                 safe_click(driver, download_button)
                 print("We found a download button")
                 print("Waiting for download to finish")
-                downloaded_xlsx_translation_path = get_last_downloaded_file_path()
+                downloaded_xlsx_translation_path = get_last_downloaded_file_path(driver)
                 if len(downloaded_xlsx_translation_path) > 0:
                     print("downloaded_xlsx_translation_path=%s" %(downloaded_xlsx_translation_path))
                     res_downloaded_xlsx_translation = True
@@ -535,7 +537,7 @@ def selenium_chrome_google_translate_xlsx_file(ctx: "RuntimeContext", xlsx_file_
             pass
         else:
             print("oups ! we got %s translated lines out of %s" % (text_translated_document_str_nb_lines, ctx.docx.docxfile_table_number_of_phrases))
-            translation_succeded = False
+            translation_succeeded = False
 
         #print("text_translated_document_str:")
         #print(text_translated_document_str)
@@ -544,23 +546,32 @@ def selenium_chrome_google_translate_xlsx_file(ctx: "RuntimeContext", xlsx_file_
         print("Error getting google translation from text file.")
         var = traceback.format_exc()
         print(var)
-        sys.exit(8)
+        # 2026-05-16 (P2.5 follow-on): bypassing atexit + structured-failure
+        # path via raw sys.exit(8) made this look like "engine returned no
+        # rows" to the launcher; surface it as a real failure instead.
+        raise TranslationFailure(
+            f"Selenium error in google text-file engine: {var}",
+            reason="google_text_file_mode_error",
+        )
     return ctx.docx.translation_array
 
 
 def generate_html_file_from_phrases_for_google_translate_javascript(ctx: "RuntimeContext"):
+    # 2026-05-16 Sprint D-C slice 6: runtime values come from ctx; only
+    # argparse-stable values (docx_file_name, word_file_to_translate,
+    # xlsxreplacefile) still come from cli's module namespace.
     from machine_translate_docx.cli import (
-        dest_lang,
-        dest_lang_name,
         docx_file_name,
-        from_text_by_phrase_separator_table,
-        from_text_table,
-        src_lang,
-        src_lang_name,
         word_file_to_translate,
         xlsxreplacefile,
-        xtm,
     )
+    dest_lang                            = ctx.language.dest_lang
+    dest_lang_name                       = ctx.language.dest_lang_name
+    src_lang                             = ctx.language.src_lang
+    src_lang_name                        = ctx.language.src_lang_name
+    from_text_table                      = ctx.docx.from_text_table
+    from_text_by_phrase_separator_table  = ctx.docx.from_text_by_phrase_separator_table
+    xtm                                  = ctx.docx.xtm
     #input("Here")
     print("Generating html page.")
 
@@ -660,11 +671,10 @@ window.onload = function(){
 
 
 def generate_text_file_from_phrases(ctx: "RuntimeContext", text_file_path):
-    from machine_translate_docx.cli import (
-        from_text_table,
-        xlsxreplacefile,
-        xtm,
-    )
+    # 2026-05-16 Sprint D-C slice 6: ctx for runtime values.
+    from machine_translate_docx.cli import xlsxreplacefile
+    from_text_table = ctx.docx.from_text_table
+    xtm             = ctx.docx.xtm
     ctx.docx.docxfile_table_number_of_phrases = 0
     print("Generating text file for google translation...")
     #if xtm.wb is not None:
@@ -719,12 +729,11 @@ def generate_text_file_from_phrases(ctx: "RuntimeContext", text_file_path):
 
 
 def generate_xlsx_file_from_phrases(ctx: "RuntimeContext", xlsx_file_path):
-    from machine_translate_docx.cli import (
-        from_text_table,
-        silent,
-        xlsxreplacefile,
-        xtm,
-    )
+    # 2026-05-16 Sprint D-C slice 6: ctx for runtime values; `silent`
+    # is argparse-stable so it stays as a cli import.
+    from machine_translate_docx.cli import silent, xlsxreplacefile
+    from_text_table = ctx.docx.from_text_table
+    xtm             = ctx.docx.xtm
     ctx.docx.docxfile_table_number_of_phrases = 0
     print("Generating xlsx file for google translation...")
     #if xtm.wb is not None:
@@ -770,11 +779,14 @@ def generate_xlsx_file_from_phrases(ctx: "RuntimeContext", xlsx_file_path):
         print("ERROR: %s" % (var))
         self.wb = None
         self.ws = None
-        if not silent:
-            input("Enter to close program")
-        else:
-            print("Program ended with errors")
-        sys.exit(13)
+        # 2026-05-16 (P2.5 follow-on): raise the structured failure so the
+        # launcher flags status=error with a useful reason. The legacy
+        # interactive-pause `input(...)` is gone with the structured-exit
+        # pattern — the launcher always passes --silent anyway.
+        raise TranslationFailure(
+            f"Failed to create empty xlsx workbook for translation memory: {var}",
+            reason="xlsx_workbook_init_error",
+        )
 
     index_current_row = 1
     max_col_length = 0

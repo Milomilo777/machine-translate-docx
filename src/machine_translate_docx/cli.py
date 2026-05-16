@@ -392,6 +392,21 @@ def _get_ctx() -> RuntimeContext:
             _ctx.config.shading_color_ignore_text = shading_color_ignore_text
         except NameError:
             pass
+        # 2026-05-16 Sprint D-C — xtm + rtlstyle snapshot. These were
+        # historically module globals (xtm initialised by
+        # initialize_translation_memory_xlsx; rtlstyle by the docx-load
+        # block at ~1146). Snapshotting them onto ctx.docx lets the
+        # cell-write helpers, generate_char_blocks_array_from_phrases,
+        # get_translation_and_replace_after and main() read via ctx,
+        # which paves the way for the bridge deletion in slice 6.
+        try:
+            _ctx.docx.xtm = xtm
+        except NameError:
+            pass
+        try:
+            _ctx.docx.rtlstyle = rtlstyle
+        except NameError:
+            pass
     return _ctx
 
 
@@ -456,78 +471,15 @@ import atexit as _atexit
 _atexit.register(_atexit_cleanup_driver)
 
 
-def _sync_globals_from_ctx(ctx: RuntimeContext) -> None:
-    """Mirror populated ctx attributes onto this module's namespace so
-    legacy helpers that still read by bare name see the populated state.
-
-    Phase H bridge: rather than threading ~40 remaining functions one
-    at a time, we re-export the same objects under their historical
-    module-level names. Lists and dicts on ``ctx.docx`` are referenced
-    by identity, so any in-place mutation by a downstream helper is
-    visible through both names. After a full replacement (e.g.
-    ``ctx.docx.translation_array = new_list``), call this helper again
-    to refresh the module-level alias.
-
-    Called from ``main()`` at pipeline boundaries: after
-    ``read_and_parse_docx_document``, after ``translate_docx``, and
-    after the polish/aligner step. Cheap (one ``setattr`` per attr).
-
-    Coverage policy (W-1, 2026-05-10)
-    ---------------------------------
-    The function operates as a *whitelist* per sub-context, **with one
-    exception**: every public field of ``ctx.docx`` is mirrored
-    automatically because the parallel arrays there are the canonical
-    place legacy helpers read from, and adding one means risking a
-    silent miss. For every other sub-context the mirror is explicit:
-
-      - The dispatcher and a few session flags on ``ctx.engine`` /
-        ``ctx.browser`` are *intentionally* not mirrored to module
-        scope because the legacy code already reads them via
-        ``ctx.*`` paths or via ``_get_ctx()``.
-      - CLI-derived booleans on ``ctx.flags`` (``silent``,
-        ``splitonly``, etc.) live as module-level globals from the
-        argparse step at the top of this file. They are *snapshotted*
-        into ``ctx.flags`` by ``_get_ctx()``; mirroring them back here
-        would risk overwriting a freshly-set CLI value with a stale
-        default. So we only mirror flags that ``main()`` itself
-        mutates (none today).
-
-    When a new ctx field is added that any legacy helper reads by
-    bare name, add an entry below — and ideally a unit test in
-    ``tests/test_runtime_threading.py``. This was the failure mode
-    that produced B-003 in ``docs/real-engine-test-findings.md``:
-    ``ctx.openai.translation_log`` was mutated by the runner but
-    ``write_translation_log()`` read the unmirrored module global,
-    so every JSON sidecar was empty.
-    """
-    import sys as _sys
-    _mod = _sys.modules[__name__]
-    # Mirror every public dataclass field on ctx.docx.
-    for _name, _value in vars(ctx.docx).items():
-        if _name.startswith("_"):
-            continue
-        setattr(_mod, _name, _value)
-    # ── ctx.language ─────────────────────────────────────────────────
-    if getattr(ctx.language, "dest_lang", None) is not None:
-        setattr(_mod, "dest_lang", ctx.language.dest_lang)
-    if getattr(ctx.language, "src_lang", None) is not None:
-        setattr(_mod, "src_lang", ctx.language.src_lang)
-    # ── ctx.browser ─────────────────────────────────────────────────
-    # the recovery branches inside the Selenium engines) read `driver` as
-    # a bare name. Mirror the active handle so they reach the live session.
-    if getattr(ctx.browser, "driver", None) is not None:
-        setattr(_mod, "driver", ctx.browser.driver)
-    # ── ctx.openai ──────────────────────────────────────────────────
-    # The oai_translator / oai_polisher / translation_log module-level
-    # globals are no longer read by any function in cli.py: their
-    # historical reader ``write_translation_log`` was extracted to
-    # ``translation_log_writer.py`` in 2026-05-16 phase 3 of the
-    # cli.py shrink and now reads ``ctx.openai.translation_log``
-    # directly via the shim. The mirror setattr calls that used to live
-    # here (verified dead by grep on 2026-05-16 Sprint D-C audit) have
-    # been removed. The module-level inits at cli.py:1077-1079 + the
-    # initial ctx-push at cli.py:294-302 are kept so the dataclass
-    # defaults are properly hydrated on first ``_get_ctx()`` call.
+# _sync_globals_from_ctx (Phase-H mirror bridge) was deleted on
+# 2026-05-16 in Sprint D-C slice 6. Every previously-bare-name read in
+# cli.py's helper functions has been threaded through ctx; the
+# `RuntimeContext` dataclass is now the SOLE canonical state surface for
+# downstream pipeline steps. Module-level globals at the top of this
+# file remain authoritative only for argparse-time CLI inputs (silent,
+# splitonly, viewdocx, etc.) and one-shot import-time setup (rtlstyle,
+# docxdoc); these are snapshotted into ctx by `_get_ctx()` and never
+# read by name from any function body.
 
 
 # Track the child processes
@@ -699,7 +651,10 @@ docxfile_table_number_of_words = 0
 numrows = 0
 numcols = 0
 
-E_mail_str = 'sm' + 'tv' + '.' + 'bot' + '@g' + 'mail' + '.' + 'c' + 'o' + 'm'
+# 2026-05-16 (P3.2): canonical name is ``config.SUPPORT_EMAIL``. This
+# module-level alias is kept for the three local prints + any operator
+# scripts that grep for the legacy spelling.
+from .config import SUPPORT_EMAIL as E_mail_str
 
 
 cf = currentframe()
@@ -1067,10 +1022,11 @@ else:
 # `_get_ctx()` runtime call below, otherwise the lazy snapshot inside
 # `_get_ctx()` hits NameError on these names and ctx.openai.translation_log
 # ends up as the dataclass empty {} default instead of pointing at this
-# module-global dict. `_sync_globals_from_ctx` repairs the divergence on
-# its first run inside main(), but only because the runner mutates the
-# same dict by reference — pre-2026-05-16 the names were declared AFTER
-# the snapshot fired, leaving the seed dict orphaned at startup.
+# module-global dict. (Until 2026-05-16 the Phase-H mirror
+# `_sync_globals_from_ctx` papered over this; with the mirror deleted
+# in Sprint D-C slice 6 the seed dict MUST exist before _get_ctx() runs,
+# and the runner mutates it by reference so subsequent reads on
+# ctx.openai.translation_log stay in sync.)
 oai_translator = None
 oai_polisher = None
 translation_log = {"run_info": {}, "blocks": [], "summary": {}}
@@ -1280,20 +1236,21 @@ elif platform.system() == "Linux":  # Linux
 #driver.get("https://translate.google.com/#%s/%s/" % (src_lang,dest_lang))
 #driver = uc.Firefox()
 
-def get_translated_cells_content(lineno, to_translate):
+def get_translated_cells_content(ctx: RuntimeContext, lineno, to_translate):
     print("get_translation for line %d" % (lineno))
-    print("from_text_nb_lines_in_phrase %d" % (from_text_nb_lines_in_phrase[lineno]))
+    print("from_text_nb_lines_in_phrase %d" % (ctx.docx.from_text_nb_lines_in_phrase[lineno]))
     translation = ""
 
-    if dest_lang.lower() == 'ja' or dest_lang.lower() == 'zh-cn' or dest_lang.lower() == 'zh-tw' or dest_lang.lower() == 'ko':
+    _dest_lang = ctx.language.dest_lang
+    if _dest_lang.lower() == 'ja' or _dest_lang.lower() == 'zh-cn' or _dest_lang.lower() == 'zh-tw' or _dest_lang.lower() == 'ko':
         cell_space = ''
     else:
         cell_space = ' '
 
-    last_row_n = from_text_nb_lines_in_phrase[lineno] + lineno
+    last_row_n = ctx.docx.from_text_nb_lines_in_phrase[lineno] + lineno
     for row_n in range(lineno, last_row_n):
         #cell_text = docxdoc.tables[0].cell(row_n, 2).text
-        cell_text = table_cells[row_n][2].text
+        cell_text = ctx.docx.table_cells[row_n][2].text
         cell_text = cell_text.strip()
         if cell_text != "":
             print("adding cell %s " % (cell_text))
@@ -1312,9 +1269,15 @@ def selenium_chrome_translate_get_from_text_array(to_translate, index):
     # (off-by-one or alignment mismatch). Returning '' instead lets the
     # caller log "Error translating='…'" and continue, rather than
     # killing the whole job.
-    if 0 < index <= len(translation_array):
-        return translation_array[index - 1]
-    print(f"[WARN] translation_array index out of range: index={index}, len={len(translation_array)}")
+    #
+    # 2026-05-16 Sprint D-C: signature is dictated by the dispatcher
+    # contract (`ctx.engine.dispatcher(to_translate, index)`), so we
+    # cannot take ``ctx`` as a positional arg. Resolve the singleton
+    # via ``_get_ctx()`` and read the canonical array off it.
+    ta = _get_ctx().docx.translation_array
+    if 0 < index <= len(ta):
+        return ta[index - 1]
+    print(f"[WARN] translation_array index out of range: index={index}, len={len(ta)}")
     return ""
     
 # method to get the downloaded file name
@@ -1376,6 +1339,14 @@ def initialize_translation_memory_xlsx(ctx: RuntimeContext):
         print("")
     else:
         xtm = xlsx_translation_memory.xlsx_translation_memory(None)
+    # 2026-05-16 Sprint D-C — mirror the newly-created XTM instance onto
+    # ctx.docx. The module-level `xtm` is kept in sync so the
+    # `print_replaced_items_*` calls in main() that go through ctx.docx.xtm
+    # see the populated handle. (Pre-slice-6 the Phase-H mirror would have
+    # stomped this from the snapshot's default None; the mirror is gone now,
+    # but threading every reader through ctx.docx still requires this explicit
+    # write.)
+    ctx.docx.xtm = xtm
 
 
 def is_end_of_line(line):
@@ -1432,10 +1403,10 @@ from .docx_io import (
 # change_cell_font was extracted to ``src/docx_io/cells.py`` in the
 # 2026-05-10 docx_io extraction pass. Thin shim — reads the entry-script
 # global ``dest_font`` and delegates to the new implementation.
-def change_cell_font(cell):
-    _change_cell_font_impl(cell, dest_font)
+def change_cell_font(ctx: RuntimeContext, cell):
+    _change_cell_font_impl(cell, ctx.language.dest_font)
 
-def tokenize_text_to_array(text, lang_code):
+def tokenize_text_to_array(ctx: RuntimeContext, text, lang_code):
     lang_code = lang_code + ""
     lang_code = lang_code.lower()
 
@@ -1449,15 +1420,15 @@ def tokenize_text_to_array(text, lang_code):
         words = word_tokenize(text)
     # In other languages, just use spaces
     else:
-        #xtm.tokenize_phrase(text, dest_lang)
+        #ctx.docx.xtm.tokenize_phrase(text, dest_lang)
 
         # search do not split here
-        #xtm.pprint_translation_memory_list()
+        #ctx.docx.xtm.pprint_translation_memory_list()
 
         # Old simple split method replaced by tokenize_phrase method having do not split
         # words = text.split()
 
-        words = xtm.tokenize_phrase(text, lang_code)
+        words = ctx.docx.xtm.tokenize_phrase(text, lang_code)
         #input("Wait, remove tokenize_phrase here..")
 
 
@@ -1579,7 +1550,7 @@ def split_phrases(ctx: RuntimeContext):
                 nb_lines_in_phrase += 1
                 docx.from_text_nb_lines_in_phrase[cur_row_n] += docx.from_text_nb_lines_in_cell[n_last_row_phrase]
                 docx.from_text_by_phrase_table[cur_row_n] = docx.from_text_by_phrase_table[cur_row_n] + ' ' + docx.from_text_table[n_last_row_phrase]
-            if use_html:
+            if docx.use_html:
                 print("(%d)from_text_by_phrase_table[%d]=%s<br>" % (n_last_row_phrase, cur_row_n, docx.from_text_by_phrase_table[cur_row_n]))
             nb_lines_in_phrase_str = "[%s]" % (nb_lines_in_phrase)
 
@@ -1597,10 +1568,11 @@ from .docx_io.cells import delete_paragraph  # noqa: E402
 def prepare_and_clear_cell_for_writing(ctx: RuntimeContext, row_n, translation_cell_text):
     """Clear and re-init a target-language cell.
 
-    Threaded in Phase F1.3: reads ``ctx.docx.table_cells`` in place of the
-    historical ``table_cells`` global. ``dest_lang`` and ``rtlstyle`` are
-    not yet on ctx; they remain as ambient module reads (closed over by
-    Python's name lookup) and will be threaded in a later sub-phase.
+    Threaded in Phase F1.3 + Sprint D-C slice 2 (2026-05-16): reads
+    ``ctx.docx.table_cells``, ``ctx.language.dest_lang`` /
+    ``ctx.language.dest_font``, and ``ctx.docx.rtlstyle`` in place of
+    the historical module-level globals. All four are mirrored back to
+    module scope by the Phase-H bridge until it is deleted in slice 6.
     """
     paragraph_no = 0
     # Skip rows that don't have a third cell (footer / single-column notes
@@ -1627,9 +1599,9 @@ def prepare_and_clear_cell_for_writing(ctx: RuntimeContext, row_n, translation_c
         cell_paragraph = current_cell.paragraphs[0]
 
     # Add orientation for Right-to-Left (RTL) languages
-    if dest_lang in right_to_left_languages_list.keys():
+    if ctx.language.dest_lang in right_to_left_languages_list.keys():
         run = cell_paragraph.add_run(translation_cell_text)
-        run.style = rtlstyle  # Ensure `rtlstyle` exists in the document
+        run.style = ctx.docx.rtlstyle  # Ensure `rtlstyle` exists in the document
         font = run.font
         font.rtl = True
         cell_paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
@@ -1648,8 +1620,8 @@ def prepare_and_clear_cell_for_writing(ctx: RuntimeContext, row_n, translation_c
         cell_paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
 
     # Apply font changes if necessary
-    if dest_font != "":
-        change_cell_font(current_cell)
+    if ctx.language.dest_font != "":
+        change_cell_font(ctx, current_cell)
 
     ctx.docx.table_cells[row_n][2] = current_cell
 
@@ -1660,27 +1632,26 @@ def prepare_and_clear_cell_for_writing(ctx: RuntimeContext, row_n, translation_c
 # new implementations take their dependencies as explicit kwargs so
 # they can be unit-tested without RuntimeContext.
 def cell_set_1st_paragraph(ctx: RuntimeContext, row_n, paragraph_text):
-    current_cell = ctx.docx.table_cells[row_n][2]
+    # Docx Cell objects are mutable, so we don't need to extract+reassign:
+    # the impl mutates the cell in place and ctx.docx.table_cells already
+    # references the same object.
     _cell_set_first_paragraph_impl(
-        current_cell,
+        ctx.docx.table_cells[row_n][2],
         paragraph_text,
-        dest_lang=dest_lang,
-        dest_font=dest_font,
-        rtlstyle=rtlstyle,
+        dest_lang=ctx.language.dest_lang,
+        dest_font=ctx.language.dest_font,
+        rtlstyle=ctx.docx.rtlstyle,
     )
-    ctx.docx.table_cells[row_n][2] = current_cell
 
 
 def cell_add_paragraph(ctx: RuntimeContext, row_n, paragraph_text):
-    current_cell = ctx.docx.table_cells[row_n][2]
     _cell_add_paragraph_impl(
-        current_cell,
+        ctx.docx.table_cells[row_n][2],
         paragraph_text,
-        dest_lang=dest_lang,
-        dest_font=dest_font,
-        rtlstyle=rtlstyle,
+        dest_lang=ctx.language.dest_lang,
+        dest_font=ctx.language.dest_font,
+        rtlstyle=ctx.docx.rtlstyle,
     )
-    ctx.docx.table_cells[row_n][2] = current_cell
 
 
 # read_and_parse_docx_document was extracted to ``src/docx_io/parse.py``
@@ -1702,8 +1673,8 @@ from .engines.deepl import deepl_double_linefeed_between_phrases  # noqa: E402
 def generate_char_blocks_array_from_phrases(ctx: RuntimeContext, text_file_path):
     ctx.docx.docxfile_table_number_of_phrases = 0
     print("Generating %d character blocks for translation..." % (ctx.config.max_translation_block_size))
-    #if xtm.wb is not None:
-    if xtm is not None:
+    #if ctx.docx.xtm.wb is not None:
+    if ctx.docx.xtm is not None:
         print("Replacing text before using excel file...\n")
     text_to_translate = ''
     text_to_translate_array = []
@@ -1718,19 +1689,19 @@ def generate_char_blocks_array_from_phrases(ctx: RuntimeContext, text_file_path)
             phrase_separator = "\n\n"
             phrase_separator_len = 2
     
-    for i, line in enumerate(from_text_table):
+    for i, line in enumerate(ctx.docx.from_text_table):
         item = ctx.docx.from_text_by_phrase_separator_table[i]
         item = item.strip()
-        
+
         item_searched_and_replaced_before = item
-        
+
         if item_searched_and_replaced_before != '':
             if xlsxreplacefile is not None:
-                #if xtm.wb is not None:
-                if xtm.wb is not None:
+                #if ctx.docx.xtm.wb is not None:
+                if ctx.docx.xtm.wb is not None:
                     #print("%d/%d" % (i, word_translation_table_length))
                     #print("Phrase to translate :'%s'\n" % (item.strip()))
-                    item_searched_and_replaced_before, nb_searched_and_replaced_before = xtm.search_and_replace_text('before', item)
+                    item_searched_and_replaced_before, nb_searched_and_replaced_before = ctx.docx.xtm.search_and_replace_text('before', item)
                     if item_searched_and_replaced_before.strip() == '' or item_searched_and_replaced_before is None:
                         continue
         
@@ -1817,21 +1788,21 @@ def translate_from_phrasesblock(ctx: RuntimeContext):
     #generate_text_file_from_phrases(ctx, text_file_full_path)
     generate_char_blocks_array_from_phrases(ctx, text_file_full_path)
 
-    translation_succeded = True
+    translation_succeeded = True
 
     #input("phrasesblock")
     print("Starting translation in %s using phrase blocks of %d characters..." % (ctx.engine.engine, ctx.config.max_translation_block_size))
 
-    translation_succeded, ctx.docx.translation_array = _runner_translate_maxchar_blocks(ctx)
+    translation_succeeded, ctx.docx.translation_array = _runner_translate_maxchar_blocks(ctx)
     try:
         os.remove(text_file_path)
         pass
     except Exception:
         pass
-    return translation_succeded
+    return translation_succeeded
 
 def translate_docx(ctx: RuntimeContext):
-    translation_succeded = True
+    translation_succeeded = True
 
     # Splitonly mode = "only run document_split_phrases, do NOT translate".
     # Without this guard the chatgpt branch of use_phrasesblock() fires
@@ -1843,14 +1814,14 @@ def translate_docx(ctx: RuntimeContext):
     # refactor): the spec'd `--splitonly --engine chatgpt --enginemethod
     # api` re-spawn relies on this short-circuit.
     if ctx.flags.splitonly:
-        return translation_succeded
+        return translation_succeeded
 
     # ------------------------------------------------------------------
     # Engine-method specific translators
     # ------------------------------------------------------------------
     if engine_method == "textfile":
         google_translate_from_text_file(ctx)
-        return translation_succeded
+        return translation_succeeded
 
     if engine_method == "javascript":
         google_translate_from_html_javascript(ctx)
@@ -1866,11 +1837,11 @@ def translate_docx(ctx: RuntimeContext):
             print("[ERROR] file:// URLs (CORS / sandboxing). This engine path")
             print("[ERROR] cannot complete in current Chrome versions.")
             print("[INFO] Use the OpenAI API engine (chatgpt) or DeepL instead.")
-        return translation_succeded
+        return translation_succeeded
 
     if engine_method == "xlsxfile":
         google_translate_from_html_xlsxfile(ctx)
-        return translation_succeded
+        return translation_succeeded
 
     # ------------------------------------------------------------------
     # Phrase-block logic — predicate lives in src/dispatch.py so it
@@ -1879,9 +1850,9 @@ def translate_docx(ctx: RuntimeContext):
     # the per-engine policy.
     # ------------------------------------------------------------------
     if _dispatch_use_phrasesblock(translation_engine, engine_method):
-        translation_succeded = translate_from_phrasesblock(ctx)
+        translation_succeeded = translate_from_phrasesblock(ctx)
 
-    return translation_succeded
+    return translation_succeeded
 
 
 
@@ -1902,7 +1873,7 @@ def get_translation_and_replace_after(ctx: RuntimeContext):
     p_remove_double_spaces = re.compile(' +')
     p_remove_parenthesis_spaces = re.compile('\( +')
 
-    for i, line in enumerate(from_text_table):
+    for i, line in enumerate(ctx.docx.from_text_table):
         item = ctx.docx.from_text_by_phrase_separator_table[i]
         item = item.strip()
         from_language = ctx.language.src_lang
@@ -1917,18 +1888,18 @@ def get_translation_and_replace_after(ctx: RuntimeContext):
             web_translation_separators = ''
             if item.strip() != '':
                 phrase_no = phrase_no + 1
-                print("\n%d/%d" % (i, word_translation_table_length))
+                print("\n%d/%d" % (i, ctx.docx.word_translation_table_length))
                 print("Phrase to translate :'%s'\n" % (item.strip()))
                 item = item.strip()
 
                 item_searched_and_replaced_before = item
                 if xlsxreplacefile is not None:
-                    if xtm.wb is not None:
-                        item_searched_and_replaced_before, nb_searched_and_replaced_before = xtm.search_and_replace_text('before', item)
+                    if ctx.docx.xtm.wb is not None:
+                        item_searched_and_replaced_before, nb_searched_and_replaced_before = ctx.docx.xtm.search_and_replace_text('before', item)
                         if item_searched_and_replaced_before.strip() == '' or item_searched_and_replaced_before is None:
                             continue
                 if ctx.flags.splitonly:
-                    web_translation_separators = get_translated_cells_content (i, item_searched_and_replaced_before)
+                    web_translation_separators = get_translated_cells_content(ctx, i, item_searched_and_replaced_before)
                 elif ctx.flags.use_api:
                     try:
                         web_translation_separators = ""
@@ -1969,7 +1940,7 @@ def get_translation_and_replace_after(ctx: RuntimeContext):
                         web_translation_separators = selenium_chrome_machine_translate(ctx, item_searched_and_replaced_before, phrase_no)
                 else:
                     if ctx.engine.method == "singlephrase" and ctx.engine.engine == 'deepl':
-                        translation_succeded, web_translation_separators  = selenium_chrome_machine_translate(ctx, item_searched_and_replaced_before, phrase_no)
+                        translation_succeeded, web_translation_separators  = selenium_chrome_machine_translate(ctx, item_searched_and_replaced_before, phrase_no)
                     else:
                         web_translation_separators = selenium_chrome_machine_translate(ctx, item_searched_and_replaced_before, phrase_no)
                         
@@ -1979,7 +1950,7 @@ def get_translation_and_replace_after(ctx: RuntimeContext):
                 #print("Google translation='%s'" % (phrase_separator_removed_str.encode('utf8')))
                 if xlsxreplacefile is not None:
                     nb_searched_and_replaced = 0
-                    web_translation_separators_searched_and_replaced, nb_searched_and_replaced = xtm.search_and_replace_text('after', phrase_separator_removed_str)
+                    web_translation_separators_searched_and_replaced, nb_searched_and_replaced = ctx.docx.xtm.search_and_replace_text('after', phrase_separator_removed_str)
                     if nb_searched_and_replaced > 0:
                         #print("\nPhrase %d replacements :\n'%s'" % (nb_searched_and_replaced, web_translation_separators))
                         #print("Replaced phrase :\n'%s'" % (web_translation_separators_searched_and_replaced))
@@ -2004,14 +1975,14 @@ def get_translation_and_replace_after(ctx: RuntimeContext):
                 ctx.docx.to_text_by_phrase_separator_table[i] = phrase_separator_removed_str
                 phrase_separator_removed_str = p_remove_separator.sub(' ', phrase_separator_removed_str)
                 phrase_separator_removed_str.strip()
-                to_text_by_phrase_separator_removed_table[i] = phrase_separator_removed_str
+                ctx.docx.to_text_by_phrase_separator_removed_table[i] = phrase_separator_removed_str
         except Exception:
             var = traceback.format_exc()
             ctx.browser.numerrors_deepl = ctx.browser.numerrors_deepl + 1
             web_translation_separators = var
             print("ERROR:%s" % (var))
 
-        item = from_text_by_phrase_table[i]
+        item = ctx.docx.from_text_by_phrase_table[i]
         try:
             web_translation_no_separators = ''
             if item.strip() != '':
@@ -2020,7 +1991,7 @@ def get_translation_and_replace_after(ctx: RuntimeContext):
                 #web_translation_no_separators = pydeepl.translate(item, to_language)
                 phrase_separator_removed_str = p_remove_double_spaces.sub(' ', web_translation_no_separators)
                 phrase_separator_removed_str = p_remove_parenthesis_spaces.sub('(', phrase_separator_removed_str)
-                to_text_by_phrase_table[i] = phrase_separator_removed_str
+                ctx.docx.to_text_by_phrase_table[i] = phrase_separator_removed_str
         except Exception:
             var = traceback.format_exc()
             numerrors_googletranslate = numerrors_googletranslate + 1
@@ -2040,7 +2011,7 @@ def document_split_phrases(ctx: RuntimeContext):
         else:
             oai_sub_splitter = OpenAISubtitleSplitter()
     
-    for i, line in enumerate(from_text_table):
+    for i, line in enumerate(ctx.docx.from_text_table):
         if ctx.docx.to_text_by_phrase_separator_table[i] != '':
             #ctx.docx.docxfile_table_number_of_phrases = ctx.docx.docxfile_table_number_of_phrases + 1
             ctx.docx.docxfile_table_number_of_characters = ctx.docx.docxfile_table_number_of_characters + len(ctx.docx.from_text_by_phrase_separator_table[i])
@@ -2062,7 +2033,7 @@ def document_split_phrases(ctx: RuntimeContext):
                     if str_translation_len <= 0:
                         str_phrase_stats = ""
                     else:
-                        str_nb_lines = from_text_nb_lines_in_phrase[i]
+                        str_nb_lines = ctx.docx.from_text_nb_lines_in_phrase[i]
                         if str_nb_lines > 0:
                             str_line_average = str_translation_len / str_nb_lines
                             str_phrase_stats = "[%d/%d=%d] " % (str_translation_len, str_nb_lines, str_line_average)
@@ -2078,7 +2049,7 @@ def document_split_phrases(ctx: RuntimeContext):
                 # --- Step 1: Build input safely ---
                 if str_nb_lines > 1:
                     input_phrase_lines = "\n".join(
-                        from_text_table[i + idx] for idx in range(str_nb_lines)
+                        ctx.docx.from_text_table[i + idx] for idx in range(str_nb_lines)
                     )
                 else:
                     input_phrase_lines = current_line
@@ -2155,7 +2126,7 @@ def document_split_phrases(ctx: RuntimeContext):
                     if local_avg > MAX_LINE_SIZE:
                         local_avg = math.ceil(local_avg)
 
-                    tokens = tokenize_text_to_array(current_line, ctx.language.dest_lang)
+                    tokens = tokenize_text_to_array(ctx, current_line, ctx.language.dest_lang)
                     lines = divide_array(tokens, ctx.language.dest_lang, local_avg + 4)
 
                     divide_max_try = MAX_LINE_SIZE
@@ -2219,15 +2190,15 @@ def document_split_phrases(ctx: RuntimeContext):
 
 
                 # --- Step 6: Store results ---
-                translation_result_phrase_array[i] = lines_divided
+                ctx.docx.translation_result_phrase_array[i] = lines_divided
 
                 number_lines = len(lines_divided)
                 for line_no in range(number_lines):
                     try:
-                        translation_result_using_separator[line_no + i] = lines_divided[line_no]
+                        ctx.docx.translation_result_using_separator[line_no + i] = lines_divided[line_no]
                         print(f"{line_no} -> {lines_divided[line_no]}")
                     except Exception:
-                        translation_result_using_separator[line_no + i] = "Error"
+                        ctx.docx.translation_result_using_separator[line_no + i] = "Error"
 
 
                 # --- Step 7: Logging ---
@@ -2264,19 +2235,19 @@ from .docx_io.metadata import (
 )  # noqa: E402
 
 
-def write_destination_language_in_docx_cell():
+def write_destination_language_in_docx_cell(ctx: RuntimeContext):
     _write_dest_lang_impl(
-        docxdoc,
-        splitonly=splitonly,
-        dest_lang_name=dest_lang_name,
-        dest_lang=dest_lang,
+        ctx.docx.docxdoc,
+        splitonly=ctx.flags.splitonly,
+        dest_lang_name=ctx.language.dest_lang_name,
+        dest_lang=ctx.language.dest_lang,
     )
 
 
 def print_console_docx_file_translated(ctx: RuntimeContext):
     print("\nTranslated text:\n")
-    numrows = len(table.rows)
-    numcols = len(table.columns)
+    numrows = len(ctx.docx.table.rows)
+    numcols = len(ctx.docx.table.columns)
     current_cell_row = 2
     for row_n in range(2, (numrows)):
 
@@ -2293,11 +2264,11 @@ def print_console_docx_file_translated(ctx: RuntimeContext):
         # (e.g. its own to_text guard), the translation would never reach
         # the cell. By keying on to_text_by_phrase_separator_table directly
         # we write whatever the translation engine returned.
-        if not split_translation:
+        if not ctx.flags.split_translation:
             translation_cell_text = ctx.docx.to_text_by_phrase_separator_table[row_n]
             if translation_cell_text:
                 prepare_and_clear_cell_for_writing(ctx, row_n, translation_cell_text)
-                if dest_lang in right_to_left_languages_list.keys():
+                if ctx.language.dest_lang in right_to_left_languages_list.keys():
                     translation_cell_aligned_text = get_display(translation_cell_text)
                 else:
                     translation_cell_aligned_text = translation_cell_text
@@ -2326,7 +2297,7 @@ def print_console_docx_file_translated(ctx: RuntimeContext):
                         and translation_phrase_line_pos < translation_phrase_lines_len:
 
                         translation_phrase_line_str = ctx.docx.translation_result_phrase_array[row_n][translation_phrase_line_pos]
-                        if dest_lang in right_to_left_languages_list.keys():
+                        if ctx.language.dest_lang in right_to_left_languages_list.keys():
                             #translation_cell_aligned_text = reverse_string (translation_phrase_line_str)
                             #translation_cell_aligned_text = "\u202B" + translation_phrase_line_str + "\u202C"
                             translation_cell_aligned_text = get_display(translation_phrase_line_str)
@@ -2338,7 +2309,7 @@ def print_console_docx_file_translated(ctx: RuntimeContext):
                             print("%d : %s" % (current_cell_row, translation_cell_aligned_text))
                         if cell_line_pos == 0:
                             #print("cell_line_pos=%d" % cell_line_pos)
-                            if splitonly:
+                            if ctx.flags.splitonly:
                                 prepare_and_clear_cell_for_writing(ctx, current_cell_row, translation_phrase_line_str)
                             else:
                             #prepare_and_clear_cell_for_writing(current_cell_row, translation_phrase_line_str)
@@ -2359,8 +2330,8 @@ def print_console_docx_file_translated(ctx: RuntimeContext):
             if str_translation_len <= 0:
                 str_phrase_stats = ""
             else:
-                str_translation_len = len(translation_result_using_separator[row_n])
-                str_nb_lines = from_text_nb_lines_in_phrase[row_n]
+                str_translation_len = len(ctx.docx.translation_result_using_separator[row_n])
+                str_nb_lines = ctx.docx.from_text_nb_lines_in_phrase[row_n]
                 if str_nb_lines > 0:
                     str_line_average = str_translation_len / str_nb_lines
                     str_phrase_stats = "[%d/%d=%d] " % (str_translation_len, str_nb_lines, str_line_average)
@@ -2375,7 +2346,7 @@ def print_console_docx_file_translated(ctx: RuntimeContext):
 
 def set_docx_properties_comment_for_history(ctx: RuntimeContext):
     _set_docx_history_impl(
-        docxdoc, program_version=PROGRAM_VERSION, engine=ctx.engine.engine,
+        ctx.docx.docxdoc, program_version=PROGRAM_VERSION, engine=ctx.engine.engine,
     )
 
 
@@ -2449,8 +2420,8 @@ def save_docx_file(ctx: RuntimeContext):
     print("PROGRESS:90", flush=True)
     _save_docx_file_impl(
         ctx,
-        docxdoc,
-        silent=silent,
+        ctx.docx.docxdoc,
+        silent=ctx.flags.silent,
         write_translation_log_fn=write_translation_log,
     )
 
@@ -2505,13 +2476,12 @@ def main() -> int:
         print(f"[WARN] Log retention sweep failed: {_exc!r}")
 
     ctx = _get_ctx()
-    translation_succeded = False
+    translation_succeeded = False
 
     set_translation_function(ctx)
     initialize_translation_memory_xlsx(ctx)
 
     read_and_parse_docx_document(ctx)
-    _sync_globals_from_ctx(ctx)  # Phase H bridge — see helper docstring
 
     # B-001: fail fast on a docx with no translatable text. Without this
     # guard, the pipeline finishes "successfully" with an empty output
@@ -2519,13 +2489,11 @@ def main() -> int:
     assert_source_has_content(ctx)
 
     create_webdriver(ctx)
-    _sync_globals_from_ctx(ctx)  # mirror ctx.browser.driver to module-level so legacy helpers see it
 
     if ctx.engine.engine == 'deepl':
         ctx.browser.logged_into_deepl = selenium_chrome_deepl_log_in(ctx)
 
-    translation_succeded = translate_docx(ctx)
-    _sync_globals_from_ctx(ctx)  # refresh module-level after translation_array etc. populated
+    translation_succeeded = translate_docx(ctx)
 
     if ctx.browser.logged_into_deepl:
         selenium_chrome_deepl_log_off(ctx)
@@ -2537,7 +2505,7 @@ def main() -> int:
     # `test_engine_method_flip_via_ctx`,
     # `test_driver_rebuild_via_ctx`, and
     # `test_dispatcher_refresh_drops_stale_driver_reference` cover this.
-    if (translation_succeded is False
+    if (translation_succeeded is False
             and ctx.engine.engine == 'deepl'
             and ctx.engine.method == 'phrasesblock'):
         ctx.engine.method = 'singlephrase'
@@ -2550,7 +2518,6 @@ def main() -> int:
         create_webdriver(ctx)
 
     get_translation_and_replace_after(ctx)
-    _sync_globals_from_ctx(ctx)  # to_text_by_phrase_separator_table fields just populated
 
     # B-001: fail with a structured reason if the engine returned
     # nothing usable. Catches the "all rows empty" + "single-row dump"
@@ -2576,14 +2543,12 @@ def main() -> int:
     # loops don't TypeError.
     if ctx.docx.translation_array is None:
         ctx.docx.translation_array = []
-        _sync_globals_from_ctx(ctx)
 
     minimize_browser(ctx)
 
     document_split_phrases(ctx)
-    _sync_globals_from_ctx(ctx)  # translation_result_phrase_array populated by split helper
 
-    write_destination_language_in_docx_cell()
+    write_destination_language_in_docx_cell(ctx)
 
     print_console_docx_file_translated(ctx)
     set_docx_properties_comment_for_history(ctx)
@@ -2594,16 +2559,16 @@ def main() -> int:
     run_statistics(ctx)
     save_docx_file(ctx)
 
-    if viewdocx:
+    if ctx.flags.viewdocx:
         print(f"Opening document : {ctx.flags.word_file_to_translate_save_as_path}")
         open_app_docx_file(ctx)
     _end_time = datetime.datetime.now()
     _elapsed_time = _end_time - start_time
 
     if ctx.flags.xlsxreplacefile is not None:
-        xtm.print_replaced_items_number_of_replacements('before')
-        xtm.print_replaced_items_number_of_replacements('after')
-        xtm.print_do_not_split_number_of_matches('keep_on_same_line')
+        ctx.docx.xtm.print_replaced_items_number_of_replacements('before')
+        ctx.docx.xtm.print_replaced_items_number_of_replacements('after')
+        ctx.docx.xtm.print_do_not_split_number_of_matches('keep_on_same_line')
 
     if ctx.browser.driver is not None:
         clean_up_previous_chrome_selenium_drivers(ctx.browser.driver.service.path)
@@ -2635,7 +2600,7 @@ def main() -> int:
 
     print("\nDeveloper: %s" % (E_mail_str))
     print("Program version: %s\n" % (PROGRAM_VERSION))
-    if not exitonsuccess and not silent:
+    if not ctx.flags.exitonsuccess and not ctx.flags.silent:
         input("Enter to close program")
     else:
         if str_needs_update == "1":

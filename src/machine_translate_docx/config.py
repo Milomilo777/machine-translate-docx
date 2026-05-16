@@ -36,7 +36,18 @@ __all__ = [
     "ALIGNER_MODEL",
     "VALID_AI_MODELS",
     "is_valid_ai_model",
+    "SUPPORT_EMAIL",
 ]
+
+
+# ── Support contact ──────────────────────────────────────────────────────────
+#
+# 2026-05-16 (P3.2 from master audit): consolidated from two scattered
+# spellings (cli.py:E_mail_str, docx_io/parse.py:E_MAIL_STR) into a single
+# canonical name. Both legacy spellings are kept as aliases in their
+# original modules so any operator scripts that grep for them still work.
+
+SUPPORT_EMAIL: Final[str] = "smtv.bot@gmail.com"
 
 
 # ── OpenAI model whitelist ────────────────────────────────────────────────────

@@ -41,10 +41,10 @@ def test_runner_chatgpt_api_dispatches_to_single_call_path():
 
     with patch("machine_translate_docx.runner.run_openai_single_call") as mock_single:
         mock_single.return_value = "salām dunyā\nkhat-e-dovvom"
-        succeded, arr = selenium_chrome_translate_maxchar_blocks(ctx)
+        succeeded, arr = selenium_chrome_translate_maxchar_blocks(ctx)
 
     mock_single.assert_called_once()
-    assert succeded is True
+    assert succeeded is True
     assert arr == ["salām dunyā", "khat-e-dovvom"]
 
 

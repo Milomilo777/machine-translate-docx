@@ -108,3 +108,37 @@ def call_with_retry(fn: Callable[[], T], *, label: str = "openai") -> T:
             time.sleep(delay)
     assert last_exc is not None
     raise last_exc
+
+
+def normalize_usage(response_json: dict) -> dict:
+    """Rewrite ``response_json["usage"]`` from Responses-API → Chat-Completions shape.
+
+    The Responses API (the new ``client.responses.create`` endpoint) reports
+    usage as ``input_tokens`` / ``output_tokens`` / ``input_tokens_details``.
+    Every downstream piece of code in this project (cost calculation,
+    cached-token logging, JSON sidecar) was written against the Chat
+    Completions shape ``prompt_tokens`` / ``completion_tokens`` /
+    ``prompt_tokens_details``. To avoid rewriting all of that, we
+    re-label the keys in place.
+
+    Returns the (possibly-rewrapped) response dict. Idempotent: if
+    ``usage`` already carries ``prompt_tokens``, the dict is returned
+    unchanged. Never mutates the input dict — caller-safe.
+
+    2026-05-16 (P2.8 / P2.9 from master audit): extracted from two
+    byte-identical copies in translator.py:373-386 and
+    polisher.py:352-362 so future Responses-API schema changes are a
+    one-line edit.
+    """
+    raw_usage = response_json.get("usage") or {}
+    if "input_tokens" in raw_usage and "prompt_tokens" not in raw_usage:
+        rewrapped = dict(response_json)
+        rewrapped["usage"] = {
+            "prompt_tokens":             raw_usage.get("input_tokens", 0),
+            "completion_tokens":         raw_usage.get("output_tokens", 0),
+            "total_tokens":              raw_usage.get("total_tokens", 0),
+            "prompt_tokens_details":     raw_usage.get("input_tokens_details", {}),
+            "completion_tokens_details": raw_usage.get("output_tokens_details", {}),
+        }
+        return rewrapped
+    return response_json

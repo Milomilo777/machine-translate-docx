@@ -113,19 +113,20 @@ def run_statistics(ctx: "RuntimeContext") -> None:
     from selenium.webdriver.support.ui import WebDriverWait
     from selenium.common.exceptions import TimeoutException, WebDriverException
 
-    # Phase H bridge — pull the cli module globals that the legacy body
-    # read by bare name. See module docstring for the end_time /
-    # elapsed_time caveat.
+    # 2026-05-16 Sprint D-C slice 6 — read runtime-changing values from
+    # ctx instead of bare cli module globals (the Phase H bridge that used
+    # to mirror them is gone). Stable values (argparse-time constants,
+    # start_time, PROGRAM_VERSION) still come from cli's module namespace.
     from machine_translate_docx.cli import (
         PROGRAM_VERSION,
         dest_font,
         docx_file_name,
-        numrows,
         split_translation,
         start_time,
         xlsxreplacefile,
-        xtm,
     )
+    numrows = ctx.docx.numrows
+    xtm    = ctx.docx.xtm
     from .config import get_nested_value_from_json_array
 
     # Phase H: seed local `driver` so subsequent `driver.get(...)` reads
