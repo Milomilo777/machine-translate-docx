@@ -1836,6 +1836,18 @@ def translate_from_phrasesblock(ctx: RuntimeContext):
 def translate_docx(ctx: RuntimeContext):
     translation_succeded = True
 
+    # Splitonly mode = "only run document_split_phrases, do NOT translate".
+    # Without this guard the chatgpt branch of use_phrasesblock() fires
+    # (it always returns True for chatgpt regardless of method), and the
+    # runner is invoked with engine_method='' (cleared by the splitonly
+    # gate at line ~983) — which fails immediately with
+    # `chatgpt method '' not supported (supported: api)`.
+    # Added 2026-05-16 to unblock launcher._apply_basic_split (raw-cache
+    # refactor): the spec'd `--splitonly --engine chatgpt --enginemethod
+    # api` re-spawn relies on this short-circuit.
+    if ctx.flags.splitonly:
+        return translation_succeded
+
     # ------------------------------------------------------------------
     # Engine-method specific translators
     # ------------------------------------------------------------------

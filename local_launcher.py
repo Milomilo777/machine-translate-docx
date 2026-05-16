@@ -135,24 +135,28 @@ def _sanitize_filename(name: str) -> str:
 # ── 5-day cache for API-translated outputs (CACHE_TTL_SEC above) ─────────────
 
 def _cache_key(payload: bytes, target_lang: str, engine: str,
-               ai_model: str | None, split_engine: str | None = None) -> str:
-    """SHA-256 over payload + lang + engine + ai_model + split_engine.
+               ai_model: str | None) -> str:
+    """SHA-256 over payload + lang + engine + ai_model.
 
     Two requests collide ONLY when the uploaded bytes are byte-identical AND
-    the language/engine/model/split_engine quadruple matches. A one-byte
-    difference in the docx zip (e.g. different metadata, different
-    timestamp) yields a different key — by design.
+    the language/engine/model triple matches. A one-byte difference in the
+    docx zip (e.g. different metadata, different timestamp) yields a
+    different key — by design.
 
-    2026-05-15 — `split_engine` added to the key. The launcher routes
-    Persian Double Lines and Basic through different CLI flag combinations
-    (B1-guard forces `splitTranslate=false` for persian_double_lines, true
-    for basic), so the cached ``main_path`` file has a different row
-    shape depending on which split method ran first. Without
-    `split_engine` in the key, a Persian-Double-Lines-first run would
-    cache a raw "everything in row 1" docx, and a subsequent Basic run
-    would replay that wrong-shape cache (bug observed on MOS 3148,
-    2026-05-15). Including `split_engine` forces a cache miss on switch,
-    which re-runs the engine with the correct flags for the new method.
+    2026-05-16 (raw-cache refactor) — ``split_engine`` REMOVED from the
+    key. Paired with the generalised B1-guard in ``_run_real_backend``,
+    every API-engine job now emits a "raw" single-blob-per-phrase docx
+    that is cache_store'd as-is. The requested splitter is applied
+    post-cache by ``_apply_splitter`` (in-process FA aligner for
+    persian_double_lines; ``_apply_basic_split`` subprocess for
+    basic / openai / null). A re-upload of the same source bytes with a
+    different Split Method now hits the cache and re-splits in ~10 s
+    instead of re-running the engine (which used to cost ~5 min and
+    ~$0.40 per round trip on the bug reported 2026-05-15 for MOS 3148).
+
+    Legacy cache entries from before 2026-05-16 are invisible after this
+    change because their keys still include the 5th component; users see
+    a one-time "cold cache" period until the new key shape repopulates.
     """
     h = hashlib.sha256()
     h.update(payload)
@@ -162,8 +166,6 @@ def _cache_key(payload: bytes, target_lang: str, engine: str,
     h.update(engine.encode("utf-8", errors="replace"))
     h.update(b"\x00")
     h.update((ai_model or "").encode("utf-8", errors="replace"))
-    h.update(b"\x00")
-    h.update((split_engine or "").encode("utf-8", errors="replace"))
     return h.hexdigest()
 
 
@@ -1492,7 +1494,6 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
         if translation_engine.lower() in _API_ENGINES:
             cache_key = _cache_key(
                 payload, target_language, translation_engine, ai_model,
-                split_engine,
             )
             cached = self.state.cache_lookup(cache_key)
             if cached:
@@ -1624,10 +1625,31 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
             count = _read_int(self.state.count_file, 0) + 1
             _write_int(self.state.count_file, count)
 
+            # 2026-05-16 (raw-cache refactor): cache_store BEFORE
+            # _apply_splitter. The CLI now always emits a "raw"
+            # one-blob-per-phrase docx (B1-guard generalised in
+            # _run_real_backend). _apply_basic_split, when invoked by
+            # _apply_splitter, OVERWRITES output_path in place with the
+            # split-shape result. If we cache_store after, we'd cache
+            # the split shape — defeating the whole "one cache entry,
+            # any splitter" point of this refactor.
+            if cache_key:
+                self.state.cache_store(
+                    cache_key,
+                    main_path=output_path,
+                    source_file=source_file,
+                    engine=translation_engine,
+                    ai_model=ai_model,
+                    src_lang=source_language,
+                    dest_lang=target_language,
+                )
+
             # Apply the requested Split Method on top of the engine's
             # raw translated output. For Persian Double Lines this runs
-            # the FA mechanical aligner in-process; for any other splitter
-            # (or none) the engine output is served unchanged.
+            # the FA mechanical aligner in-process and emits
+            # `{stem}_Double_Lines.docx`; for basic / openai / null it
+            # row-distributes the raw blob via `_apply_basic_split`
+            # (CLI --splitonly subprocess with MTD_SKIP_STATS_BROWSER=1).
             served_path = self._apply_splitter(
                 output_path,
                 split_engine=split_engine,
@@ -1641,21 +1663,6 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
                 filename=served_path.name,
                 error=None,
             )
-
-            # Cache outputs for 36 hours (API engines only — `cache_key` is
-            # only set for them in do_POST). The cache stores the engine's
-            # *raw* translated docx (no splitter applied) so a re-upload
-            # with a different Split Method can reuse it.
-            if cache_key:
-                self.state.cache_store(
-                    cache_key,
-                    main_path=output_path,
-                    source_file=source_file,
-                    engine=translation_engine,
-                    ai_model=ai_model,
-                    src_lang=source_language,
-                    dest_lang=target_language,
-                )
 
             _job_elapsed = time.time() - _job_t0
             print(f"[job {job_id}] ✓ done in {_job_elapsed:.0f}s -> {served_path.name}")
@@ -1701,20 +1708,27 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
     ) -> Path:
         engine, extra_flags = self._map_engine(translation_engine)
 
-        # B1-guard (2026-05-12 revised): only the persian_double_lines
-        # split path runs the FA aligner, and that path does its OWN
-        # row distribution on the saved docx. For the basic split path
-        # the legacy line-by-line splitter (document_split_phrases) is
-        # the only thing that fans the single-call FA output back across
-        # the cell column — without `--split` the entire polished
-        # translation lands in row 1 and every following row stays
-        # empty (bug observed on News Scroll NS 3145, 2026-05-12).
-        # So: force off ONLY for persian_double_lines, leave basic alone.
-        if (
-            translation_engine == "chatgpt-polish"
-            and target_language.lower().startswith("fa")
-            and split_engine == "persian_double_lines"
-        ):
+        # B1-guard (2026-05-16 raw-cache refactor): generalised to ALL
+        # cached API engines (``_API_ENGINES`` — chatgpt, chatgpt-polish)
+        # and ALL target languages. Every API-engine job now emits a
+        # "raw" single-blob-per-phrase docx (one row, every translated
+        # line concatenated). The launcher's ``_apply_splitter`` is then
+        # responsible for row distribution:
+        #
+        #   - persian_double_lines (FA only) → in-process FASubtitleAligner
+        #   - basic / openai / null         → ``_apply_basic_split`` subprocess
+        #                                      (CLI ``--splitonly`` re-spawn)
+        #
+        # Why generalise: ``_cache_key`` no longer includes ``split_engine``
+        # (see _cache_key docstring), so the cached engine output must be
+        # split-shape-agnostic. If even one API engine + language combo
+        # still emitted a split-shaped docx, that cache entry would
+        # replay wrong-shape on a re-upload with a different Split Method
+        # (the exact bug observed on MOS 3148 for FA pre-refactor).
+        #
+        # Non-API engines (DeepL, Google) are unchanged: they don't cache
+        # and their Selenium pipelines do their own row distribution.
+        if translation_engine.lower() in _API_ENGINES:
             split_translate = False
 
         # 2026-05-11 src-layout migration: invoke the CLI as a *module*
@@ -2407,23 +2421,31 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
     ) -> Path:
         """Apply the requested Split Method to a translated docx.
 
-        For ``persian_double_lines`` (FA target only): run the FA mechanical
-        aligner in-process — no API call, no extra subprocess — and emit
-        ``{stem}_Double_Lines.docx`` next to the input. For any other
-        splitter or target language, return ``base_path`` unchanged.
+        Routing (2026-05-16 raw-cache refactor):
 
-        Falls back to the input path on any aligner error so the user
-        always receives at least the engine's translated docx.
+        * ``persian_double_lines`` (FA target only) → run the FA
+          mechanical aligner in-process, no API call, no extra
+          subprocess; emit ``{stem}_Double_Lines.docx`` next to the
+          input.
+        * ``basic`` / ``openai`` / ``None`` → call
+          :meth:`_apply_basic_split` which spawns the CLI in
+          ``--splitonly`` mode to row-distribute the raw
+          one-blob-per-phrase docx. ~8 s with
+          ``MTD_SKIP_STATS_BROWSER=1``.
+
+        The legacy "return ``base_path`` unchanged for non-PDL
+        splitters" fallback is gone — the new B1-guard makes every
+        API-engine job emit a raw, un-distributed docx, so the
+        launcher MUST split it before serving.
+
+        Falls back to the input path on any error so the user always
+        receives at least the engine's translated docx.
 
         ``aligner_max_chars`` (added 2026-05-15) controls the broadcast
         CPL ceiling that the FA aligner enforces per chunk. UI exposes
         24..70 with default 48; we clamp to the same band here so a
         hand-crafted request cannot push the aligner out of range.
         """
-        if split_engine != "persian_double_lines":
-            return base_path
-        if not (target_language or "").lower().startswith("fa"):
-            return base_path
         # 2026-05-13 (News Scroll NS 3146 fix): if the file already
         # carries _Double_Lines in its name, refuse to re-align it.
         # Safety net for any future code path that produces an
@@ -2431,31 +2453,151 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
         # someone calls the aligner directly from a CLI script).
         if "_Double_Lines" in base_path.stem:
             return base_path
-        try:
-            out_path = _double_lines_output_path(base_path)
-            if out_path.exists():
+
+        if split_engine == "persian_double_lines":
+            if not (target_language or "").lower().startswith("fa"):
+                # PDL only meaningful for FA — fall through to basic split.
+                return self._apply_basic_split(base_path, target_language=target_language)
+            try:
+                out_path = _double_lines_output_path(base_path)
+                if out_path.exists():
+                    return out_path
+                src_dir = str(ROOT / "src")
+                if src_dir not in sys.path:
+                    sys.path.insert(0, src_dir)
+                # Lazy import — keeps the launcher's start-up cheap and avoids
+                # loading python-docx until a Persian Double Lines job arrives.
+                from machine_translate_docx.openai_tools.persian_double_lines import FASubtitleAligner
+                # Clamp again at the boundary in case a caller passed an
+                # unvalidated value (e.g. cache replay path).
+                mc = max(24, min(70, int(aligner_max_chars)))
+                print(f"[splitter] persian_double_lines: MAX_CHARS={mc}")
+                aligner = FASubtitleAligner(
+                    model="gpt-5.4-mini",   # aligner is hardcoded mini (C1)
+                    llm_threshold=0,        # purely mechanical; no LLM call
+                    token_budget=0,
+                    max_chars=mc,
+                )
+                aligner.align(str(base_path), str(out_path))
                 return out_path
-            src_dir = str(ROOT / "src")
-            if src_dir not in sys.path:
-                sys.path.insert(0, src_dir)
-            # Lazy import — keeps the launcher's start-up cheap and avoids
-            # loading python-docx until a Persian Double Lines job arrives.
-            from machine_translate_docx.openai_tools.persian_double_lines import FASubtitleAligner
-            # Clamp again at the boundary in case a caller passed an
-            # unvalidated value (e.g. cache replay path).
-            mc = max(24, min(70, int(aligner_max_chars)))
-            print(f"[splitter] persian_double_lines: MAX_CHARS={mc}")
-            aligner = FASubtitleAligner(
-                model="gpt-5.4-mini",   # aligner is hardcoded mini (C1)
-                llm_threshold=0,        # purely mechanical; no LLM call
-                token_budget=0,
-                max_chars=mc,
+            except Exception as exc:
+                print(f"[splitter] persian_double_lines failed: {exc}")
+                return base_path
+
+        # basic / openai / None — distribute the raw blob across rows
+        # via the CLI's document_split_phrases helper in --splitonly mode.
+        return self._apply_basic_split(base_path, target_language=target_language)
+
+    def _apply_basic_split(self, base_path: Path, *, target_language: str) -> Path:
+        """Row-distribute a raw one-blob-per-phrase docx via the CLI's
+        ``--splitonly`` mode.
+
+        Spawns ``python -m machine_translate_docx.cli`` with
+        ``--splitonly --engine chatgpt --enginemethod api --aimodel
+        gpt-5.4-mini`` (the engine/method/model triple matters only
+        because argparse demands them — splitonly itself doesn't call
+        any engine). The CLI runs ``document_split_phrases`` against
+        ``base_path``'s col 2 and writes a new docx via
+        ``_resolve_output_path``, which appends a second engine suffix
+        (``_chatGPT``) to the input stem. We parse the
+        ``Saved file name:`` line, then move the result onto
+        ``base_path`` so the user-facing filename stays clean.
+
+        ``MTD_SKIP_STATS_BROWSER=1`` in the subprocess env short-
+        circuits ``statistics.run_statistics`` /
+        ``get_robot_usage_comment`` (they early-return on that var as
+        their first statement), saving a Chrome launch the splitonly
+        spawn doesn't need — observed runtime drop ≈ 22 s → 8 s.
+
+        Falls back to ``base_path`` (raw, unsplit) on any failure so
+        the user still gets a valid docx even if the splitter crashes.
+        """
+        # Build the subprocess command. Same package-vs-script logic
+        # as _run_real_backend so a legacy non-src layout still works.
+        is_pkg_layout = self.state.script_path.parent.name == "machine_translate_docx"
+        if is_pkg_layout:
+            cmd = [
+                str(self.state.python_exe),
+                "-m", "machine_translate_docx.cli",
+            ]
+        else:
+            cmd = [
+                str(self.state.python_exe),
+                str(self.state.script_path),
+            ]
+        cmd.extend([
+            "--docxfile", str(base_path),
+            "--destlang", target_language,
+            "--engine", "chatgpt",
+            "--enginemethod", "api",
+            "--aimodel", "gpt-5.4-mini",
+            "--splitonly",
+            "--silent", "--exitonsuccess",
+        ])
+
+        env = {
+            **{k: v for k, v in os.environ.items() if k.upper() not in {
+                "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY",
+                "http_proxy", "https_proxy", "all_proxy", "no_proxy",
+            }},
+            "PYTHONIOENCODING": "utf-8",
+            "PYTHONUTF8": "1",
+            "PYTHONPATH": str(ROOT / "src"),
+            "MTD_SKIP_STATS_BROWSER": "1",
+        }
+
+        print(f"[basic-split] running: {' '.join(cmd)}")
+        try:
+            proc = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                env=env,
+                cwd=str(ROOT),
+                timeout=120,
             )
-            aligner.align(str(base_path), str(out_path))
-            return out_path
-        except Exception as exc:
-            print(f"[splitter] persian_double_lines failed: {exc}")
+        except subprocess.TimeoutExpired:
+            print("[basic-split] subprocess timed out after 120 s — returning raw docx")
             return base_path
+        except Exception as exc:
+            print(f"[basic-split] subprocess spawn failed: {exc} — returning raw docx")
+            return base_path
+
+        if proc.returncode != 0:
+            print(f"[basic-split] subprocess exit={proc.returncode}:\n{proc.stdout}")
+            return base_path
+
+        # Parse the "Saved file name:" line — same contract used by
+        # _run_real_backend.
+        saved_path: Path | None = None
+        for line in proc.stdout.splitlines():
+            if line.startswith("Saved file name:"):
+                saved_path = Path(line.split(":", 1)[1].strip())
+                break
+
+        if saved_path is None:
+            print("[basic-split] no 'Saved file name:' line — returning raw docx")
+            return base_path
+        if not saved_path.exists():
+            print(f"[basic-split] saved path missing on disk: {saved_path} — returning raw docx")
+            return base_path
+
+        # Move the subprocess output onto the user-facing base_path
+        # (overwrite). _resolve_output_path appended an extra
+        # ``_chatGPT`` suffix we don't want the user to see.
+        try:
+            if saved_path.resolve() == base_path.resolve():
+                # Subprocess already wrote in place (unlikely for
+                # --splitonly, but cheap to check).
+                return base_path
+            shutil.move(str(saved_path), str(base_path))
+            print(f"[basic-split] {saved_path.name} -> {base_path.name}")
+            return base_path
+        except Exception as exc:
+            print(f"[basic-split] rename failed: {exc} — serving subprocess output as-is")
+            return saved_path
 
     def _materialise_cached_output(
         self,
