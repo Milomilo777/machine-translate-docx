@@ -44,7 +44,7 @@ Translation log saved` line operators look for) is unchanged.
 
 The remaining high-payoff work is captured in a Claude Code Console
 handoff prompt at
-[`notes/2026-05-16_cli-shrink-phase3-handoff.md`](notes/2026-05-16_cli-shrink-phase3-handoff.md):
+[`docs/cli-shrink-phase3-handoff.md`](docs/cli-shrink-phase3-handoff.md):
 
 1. Extract the statistics + report cluster (`run_statistics`,
    `get_robot_usage_comment`, `print_console_docx_file_translated`,
