@@ -6,6 +6,88 @@
 
 ---
 
+## 2026-05-17 — Sprint D-C complete (bridge collapse) + P2/P3 round 2
+
+Eight commits land the full `_sync_globals_from_ctx` collapse plus
+a second batch of P2/P3 hygiene items from the master audit. Master
+HEAD: `5408f80` (then `27be4ad` for the pre-audit cleanup). Branch
+`refactor/cli-py-sprint-d-final` synced. Tag:
+`archive/2026-05-17-sprint-d-c-complete`.
+
+### Sprint D-C bridge collapse (6 atomic slices)
+
+The Phase-H mirror function `_sync_globals_from_ctx` and its 6 call
+sites in `main()` are gone. Every bare-name read across cli.py was
+threaded through `ctx` first, then the bridge was deleted last.
+
+| Slice | Scope | Commit |
+|---|---|---|
+| 1 | Add `xtm` and `rtlstyle` to `ctx.docx` | `5dd4a9c` |
+| 2 | Thread cell-write helpers (10 reads) | `7601686` |
+| 3 | Thread 6 small helpers (15 reads) | `026b778` |
+| 4 | Thread engine orchestrators (15 reads) | `751052f` |
+| 5 | Thread top-level orchestrators (20 reads) | `2d9afce` |
+| 6 | Delete the Phase-H mirror bridge | `b12b8a2` |
+
+After slice 6 the only references to `_sync_globals_from_ctx` are
+two historical comments. RuntimeContext is now the canonical state
+surface — constraint C10 has been rewritten in `PROJECT_MEMORY.md`
+to reflect this (no more "call after every pipeline boundary"
+rule).
+
+### P2/P3 hygiene round 2 (Phase 2, single commit `dfee48b`)
+
+Seven items from `docs/master-audit-2026-05-16.md`:
+
+- New `src/machine_translate_docx/openai_tools/_pricing.py` —
+  consolidates the PRICES table that was duplicated 3× across
+  `translator.py`, `polisher.py`, `splitting.py`.
+- New `_normalize_usage` helper in `_retry.py` — Response-API
+  usage-shape normalization that was duplicated in `translator.py`
+  and `polisher.py`.
+- `saved_filename` from CLI stdout is now path-confined against
+  `uploads_root` in `local_launcher.py`.
+- `openai_tools/splitting.py` now wraps every OpenAI call with
+  `call_with_retry` (was the one OpenAI caller without it).
+- Google file-mode workers: `sys.exit(7)` in the exception path
+  replaced with `raise TranslationFailure(reason="google_file_mode_error", …)`.
+- `translation_succeded` → `translation_succeeded` typo fix across
+  cli.py + runner.py + test fixtures.
+- `E_mail_str` / `E_MAIL_STR` consolidated into
+  `config.SUPPORT_EMAIL`.
+
+### Pre-audit cleanup (commit `27be4ad`)
+
+- `docs/cli-shrink-phase3-handoff.md` status banner refreshed
+  (Task C no longer "DEFERRED" — it's DONE).
+- `docs/agent-handoff.md:157` C10 description updated to the
+  post-bridge invariant.
+- Tagged + deleted `origin/claude/raw-cache-refactor` — commits
+  absorbed via the spec-not-merge pattern, preserved as
+  `archive/2026-05-15-raw-cache-refactor-original`.
+- Orphan local branch `claude/festive-colden-af72d9` deleted.
+- Worktree `.claude/worktrees/raw-cache-v2/` + its branch removed.
+- Memory file `pending_cache_refactor.md` deleted (work merged).
+- Smoke-test artifacts cleaned from `Log json file/` and `/tmp`.
+
+### Verification
+
+- pytest tests/ --ignore=tests/test_v2_e2e.py: **239 passed, 8
+  skipped (live), 6 deselected** at every commit.
+- End-to-end smoke chatgpt-polish FA on `sample_hyperlink.docx`:
+  exit 0 at every cli.py-touching commit. C13 source-column lock
+  PASS across 42 rows. Target column: 17/40 populated with 17/17
+  Persian Unicode script match.
+
+### cli.py line-count
+
+cli.py 2,686 → **2,651** (-35 net). The bridge body removal saved
+~70 lines; the threading work added ~35 lines to function
+signatures. Total reduction from the start of the original
+3-phase shrink: 4,395 → 2,651 = **−39.7%**.
+
+---
+
 ## 2026-05-16 — Cache refactor + Sprint D-C partial + P2/P3 hygiene + matrix smoke
 
 Continuation on `refactor/cli-py-sprint-d-final` (branch already
