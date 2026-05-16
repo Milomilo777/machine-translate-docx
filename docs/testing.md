@@ -9,15 +9,29 @@ pip install -r requirements-test.txt
 pytest
 ```
 
-Ten tests live under `tests/`:
+Eighteen test files live under `tests/` (154 tests pass; 8 live-tier tests
+skipped by default, 8 parametrized rows deselected via marker):
 
-| File | Count | What it covers |
-|------|-------|---------------|
-| `tests/test_aligner_only.py` | 2 | Aligner Mechanical v2.0 deterministic core (post-rewrite) |
-| `tests/test_polisher_parse.py` | 3 | `⟨⟨N⟩⟩` tag parser; `Line N:` legacy fallback; `_detect_en_residue` true/false/empty cases |
-| `tests/test_translator_utils.py` | 1 | `_normalize_lang` + `_prompt_lang_code` round-trip |
-| `tests/test_launcher_endpoints.py` | 15 | `local_launcher.py` cache helpers + `_append_subscriber` validation + idempotency |
-| `tests/test_v2_e2e.py` | 4 | Live e2e — boots the launcher, drives Playwright. **Skipped by default** |
+| File | Coverage |
+|------|----------|
+| `tests/test_aligner_split.py` | Persian aligner mechanical split + AJAR-3147 regression |
+| `tests/test_docx_io_cells.py` | Per-cell read/write helpers + shading-colour detection |
+| `tests/test_engines_registry.py` | Engine dispatch table + deleted-engine guard |
+| `tests/test_fa_postprocess.py` | FA character normaliser (3 safe Unicode mappings) |
+| `tests/test_launcher_endpoints.py` | Launcher cache helpers + `_append_subscriber` + path traversal |
+| `tests/test_line_count_reconciler.py` | Line-count reconciler stub-driven scripted behaviours |
+| `tests/test_log_sidecar_pair.py` | JSON sidecar pair shape (translator + polisher) |
+| `tests/test_polisher_parse.py` | `⟨⟨N⟩⟩` tag parser + 4 fallback strategies |
+| `tests/test_post_test_hardening.py` | Magic-number guards + `is_valid_ai_model` whitelist |
+| `tests/test_prompts_regression.py` | v7 prompt regression — mock mode (live mode env-gated) |
+| `tests/test_runner.py` | Block-loop dispatcher + single-call routing |
+| `tests/test_runtime_threading.py` | `RuntimeContext` field surface + R15/R16 invariants |
+| `tests/test_selenium_utils.py` | Driver / click / forms helpers |
+| `tests/test_telegram_alert.py` | Telegram alerting under network/HTTP failure modes |
+| `tests/test_translator_utils.py` | `_normalize_lang` + `_prompt_lang_code` round-trip |
+| `tests/test_v2_e2e.py` | Live e2e — boots the launcher, drives Playwright. **Skipped by default** |
+| `tests/test_validators.py` | Post-translate + post-polish validator codes (positive + negative) |
+| `tests/integration/test_real_file_per_engine.py` | `@pytest.mark.live` end-to-end engine matrix |
 
 Tests construct their objects with `__new__` to bypass `__init__` and never
 touch the OpenAI client / DOCX I/O / network — all run in <2 s with no API key.
@@ -53,11 +67,11 @@ has fully resolved.
 ## 1. Syntax Check (fast, no API)
 
 ```bash
-python -m py_compile src/machine-translate-docx.py
-python -m py_compile src/openai_tools/translator.py
-python -m py_compile src/openai_tools/polisher.py
-python -m py_compile src/openai_tools/aligner_per.py
-python -m py_compile src/openai_tools/_retry.py
+python -m py_compile src/machine_translate_docx/cli.py
+python -m py_compile src/machine_translate_docx/openai_tools/translator.py
+python -m py_compile src/machine_translate_docx/openai_tools/polisher.py
+python -m py_compile src/machine_translate_docx/openai_tools/persian_double_lines.py
+python -m py_compile src/machine_translate_docx/openai_tools/_retry.py
 python -m py_compile local_launcher.py
 ```
 
@@ -104,8 +118,8 @@ Open browser → `http://127.0.0.1:3000`
 ## 4. Aligner Unit Test
 
 ```python
-# Quick sanity: import and instantiate aligner
-from src.openai_tools.aligner_per import FASubtitleAligner
+# Quick sanity: import and instantiate aligner (PYTHONPATH=src first)
+from machine_translate_docx.openai_tools.persian_double_lines import FASubtitleAligner
 a = FASubtitleAligner(model='gpt-5.4-mini', llm_threshold=10)
 print("Aligner OK, threshold:", a.llm_threshold)  # should print 10
 ```

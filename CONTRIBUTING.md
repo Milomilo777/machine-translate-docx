@@ -29,7 +29,7 @@ test matrix.
 1. `python -m py_compile <changed_files>` — all changed Python files must
    parse.
 2. `python -m pytest tests/ --ignore=tests/test_v2_e2e.py` — all unit tests
-   must pass. The current baseline is 113 / 113.
+   must pass. The current baseline is 154 / 154.
 3. If you touched anything in the translation pipeline, also run the smoke
    test: `make smoke` (DeepL en→fr, ~30 s, 0 / 42 source-column mismatches).
 4. Update [`CHANGELOG.md`](CHANGELOG.md) with a one-paragraph entry under
@@ -38,7 +38,7 @@ test matrix.
 ## Project rules
 
 The project has a small set of hard invariants documented in
-[`PROJECT_MEMORY.md`](PROJECT_MEMORY.md) as `C1` through `C20`. The ones
+[`PROJECT_MEMORY.md`](PROJECT_MEMORY.md) as `C1` through `C31`. The ones
 that catch contributors out most often:
 
 - **C1** — the aligner model is always `gpt-5.4-mini`. Do not parameterise

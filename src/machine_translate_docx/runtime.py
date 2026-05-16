@@ -137,7 +137,7 @@ class OpenAICtx:
     ``translation_log`` is the dict consumed by ``write_translation_log`` and
     carries the ``"blocks"`` shape contracted by the block-loop and aligner
     code paths. Its layout is intentionally unconstrained here; the entry
-    script + ``aligner_per`` own the schema.
+    script + ``persian_double_lines`` own the schema.
     """
 
     translator: Any = None             # OpenAITranslator

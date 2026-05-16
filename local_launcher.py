@@ -60,7 +60,7 @@ SUBSCRIBERS_FILE = ROOT / "subscribers.txt"
 CACHE_TTL_SEC = 5 * 24 * 60 * 60
 _API_ENGINES = frozenset({"chatgpt", "chatgpt-polish"})  # only API engines cache
 
-# ISO 639-2/B codes matching what machine_translate_docx.py produces via langcodes
+# ISO 639-2/B codes matching what machine_translate_docx.cli produces via langcodes
 _LANG_ALPHA3B = {
     'fa': 'PER', 'ar': 'ARA', 'de': 'GER', 'fr': 'FRE',
     'zh-hans': 'CHI', 'zh-hant': 'CHI', 'zh-cn': 'CHI', 'zh-tw': 'CHI',
@@ -132,7 +132,7 @@ def _sanitize_filename(name: str) -> str:
     return name
 
 
-# ── 36-hour cache for API-translated outputs ─────────────────────────────────
+# ── 5-day cache for API-translated outputs (CACHE_TTL_SEC above) ─────────────
 
 def _cache_key(payload: bytes, target_lang: str, engine: str,
                ai_model: str | None, split_engine: str | None = None) -> str:

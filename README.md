@@ -61,7 +61,7 @@ cd machine-translate-docx
 pip install -r compile/requirements.txt
 pip install -r requirements-test.txt
 
-# Run the unit tests (113 should pass)
+# Run the unit tests (154 should pass)
 python -m pytest tests/ --ignore=tests/test_v2_e2e.py
 
 # Start the dev server (no Node required)
@@ -132,15 +132,18 @@ blocks the failure-archive path.
 ## Architecture
 
 ```
-src/
-├── machine_translate_docx.py    CLI entry — orchestrator
+src/machine_translate_docx/
+├── cli.py                       CLI entry — orchestrator
 ├── runtime.py                   RuntimeContext (replaces ~80 module globals)
 ├── config.py                    DEFAULT_AI_MODEL, VALID_AI_MODELS, lang tables
 ├── runner.py                    Block-loop dispatcher
 ├── dispatch.py                  set_translation_function(ctx)
 ├── exceptions.py                TranslationFailure hierarchy
 ├── translation_health.py        assert_source_has_content / assert_translation_present
-├── docx_io/                     parse, cells, runs, save (everything docx-shaped)
+├── network_utils.py             startup-time region / connectivity / mirror helpers
+├── translation_log_writer.py    JSON sidecar writer for OpenAI runs
+├── log_paths.py                 Log json file/ resolver + retention
+├── docx_io/                     parse, cells, runs, save, metadata
 ├── engines/
 │   ├── chatgpt_api.py           single-call OpenAI translation
 │   ├── deepl.py                 Selenium-driven DeepL
@@ -153,7 +156,9 @@ src/
 │   ├── persian_double_lines.py  FA bilingual aligner
 │   ├── fa_postprocess.py        safe FA character normaliser (3 mappings)
 │   └── line_count_reconciler.py recover after engine line drift
-└── selenium_utils/              driver / click / forms helpers
+├── selenium_utils/              driver / click / forms helpers
+├── validators/                  post-translate / post-polish validator layer
+└── xlsx_translation_memory/     translation-memory glossary engine
 
 web/v2/                          v2 SPA (HTML + plain JS + handwritten CSS)
 └── content.json                 announcements + stories (single source of truth)
@@ -165,7 +170,7 @@ server.js                        Express server (production)
 index.ejs                        Legacy UI template (preserved)
 ```
 
-The `RuntimeContext` (`src/runtime.py`) is the central refactor work
+The `RuntimeContext` (`src/machine_translate_docx/runtime.py`) is the central refactor work
 of this project: ~80 module-level globals from the original script
 were grouped into seven dataclasses (`flags`, `language`, `engine`,
 `openai`, `docx`, `browser`, `config`) and threaded as `ctx` through
@@ -188,13 +193,13 @@ covering different angles. Start with these:
 | Decision log (2026) | [`docs/decisions-2026.md`](docs/decisions-2026.md) |
 | Architecture diagrams | [`docs/diagrams/README.md`](docs/diagrams/README.md) |
 
-The project's hard invariants (`C1` through `C20`) live in
+The project's hard invariants (`C1` through `C31`) live in
 [`PROJECT_MEMORY.md`](PROJECT_MEMORY.md) — read them before sending
 a PR that touches the pipeline.
 
 ## Status
 
-- **Unit tests**: 113 / 113 passing (`make test`).
+- **Unit tests**: 154 / 154 passing (`make test`).
 - **Smoke test**: DeepL en→fr on the canonical fixture in 27 s,
   0 / 42 source-column mismatches (`make smoke`).
 - **Live validation**: re-run weekly across DeepL, Google, and

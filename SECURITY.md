@@ -17,8 +17,8 @@ issues are fixed and disclosed on a coordinated schedule.
 - `local_launcher.py` — the dev HTTP server. Any way to escape the
   `web/v2/` or `uploads/` directories, RCE via crafted docx, or auth
   bypass.
-- `src/openai_tools/*` — anywhere OpenAI API keys could leak to stdout,
-  log files, or HTTP responses.
+- `src/machine_translate_docx/openai_tools/*` — anywhere OpenAI API keys
+  could leak to stdout, log files, or HTTP responses.
 - The translation pipeline — anywhere user input (filename, language
   code, docx body) ends up in a shell command without escaping.
 - `.docx` parsing — zip-bomb or XXE attacks (we use python-docx; known

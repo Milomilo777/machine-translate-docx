@@ -56,11 +56,12 @@ stories grid stays left-aligned (cards are language-neutral).
 - Drag-and-drop, click-to-pick, or batch upload (max 2 files, 50 MB each).
 - Sequential translation with a real progress bar fed by the existing
   `PROGRESS:N` markers in the launcher.
-- 36-hour server-side cache for OpenAI API translations
-  (sha256 of the file bytes + target language + engine + AI model).
+- 5-day server-side cache for OpenAI API translations
+  (sha256 of the file bytes + target language + engine + AI model + split method).
   A cache hit shows a "cached" badge next to each download.
 - Download links for every output the backend produces:
-  `_PER_TranslatePolish.docx`, `_PER_Double.docx`, `_PER_Classic.docx`.
+  `_PER_Polish.docx`, `_PER_Polish_Double_Lines.docx`, `_chatGPT.docx`,
+  `_Google.docx`, etc. (engine suffix per `docx_io/save.engine_suffix`).
 - Newsletter signup that writes to `subscribers.txt` in the project root.
 - Light / dark theme toggle (Claude-style warm cream by day,
   warm dark by night). Persisted in `localStorage`.
@@ -178,7 +179,7 @@ v2-specific changes on the legacy UI side.
 
 ## Privacy notes
 
-- Uploaded `.docx` files are kept on the server for **up to 36 hours**
+- Uploaded `.docx` files are kept on the server for **up to 5 days**
   (cache TTL) for OpenAI API engines. After that they are permanently
   deleted by the launcher's cleanup thread.
 - The newsletter list is plain text in `subscribers.txt`. Keep it out of

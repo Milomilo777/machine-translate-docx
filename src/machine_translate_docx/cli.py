@@ -203,8 +203,6 @@ from .engines.deepl import (
     deepl_close_messages,
     selenium_chrome_deepl_translate,
 )
-# Stale ``engines._prompts`` shim was removed in C3 of the 2026-05-10
-# cleanup. The only callers of ``build_translation_prompt`` were the
 from .runner import selenium_chrome_translate_maxchar_blocks as _runner_translate_maxchar_blocks
 
 # Module-level RuntimeContext singleton — Phase F1 transition shim.
@@ -952,8 +950,6 @@ else:
 
 if translation_engine in ['chatgpt', 'deepl']:
     showbrowser = True
-elif translation_engine in ['deepl', 'chatgpt']:
-    pass  # keep the value as is
 else:
     translation_engine = 'google'
 
@@ -1175,7 +1171,6 @@ if word_file_to_translate_extension != ".docx":
 print("")
 
 
-location_primary_country_checker_url_key = ["local_configuration", "json_filename_path"]
 location_primary_country_checker_url_key = ["location", "primary_country_checker_url"]
 location_primary_country_checker_url = get_nested_value_from_json_array(json_configuration_array, location_primary_country_checker_url_key)
 
@@ -1225,23 +1220,11 @@ set_se_driver_mirror_url_if_needed(
     http_timeout=location_http_query_timeout,
 )
 
-# Set up Chrome options
-# Set the user-data-dir to the parent of the profiles
-
-#chrome_options.add_argument(f"--user-data-dir={user_data_dir}") 
-#chrome_options.add_argument(r'--profile-directory=Default')
-
-
-user_data_dir = fr"C:\Temp\Chrome"
-# Set the user-data-dir to the parent of the profiles
-
-
-
+# Set up Chrome options.
 chrome_options = Options()
 chrome_options.add_argument("--disable-web-security")
 chrome_options.add_argument("--disable-xss-auditor")
 chrome_options.add_argument("--lang=en-GB")
-#chrome_options.add_argument("--verbose")
 chrome_options.add_argument("--log-level=3")  # fatal
 chrome_options.add_argument("--password-store=basic")
 # Mirror onto ctx so create_webdriver(ctx) sees the populated options.
@@ -1249,14 +1232,6 @@ chrome_options.add_argument("--password-store=basic")
 # G1 docxdoc mirror at line ~1091) when this name did not yet exist.
 _get_ctx().browser.chrome_options = chrome_options
 
-
-if  translation_engine.lower() == "chatgpt" and False:
-    print(f"Using Chrome profile")
-    print(f"Using user data dir: {user_data_dir}")
-    chrome_options.add_argument(f"--user-data-dir={user_data_dir}") 
-    chrome_options.add_argument(r'--profile-directory=Default')
-
-#chrome_options.add_argument("load-extension=C:\\Users\Patriot\\AppData\\Local\\Google\\Chrome\\User Data\\Default\\Extensions\\mooikfkahbdckldjjndioackbalphokd\\3.17.0_0")
 
 if not showbrowser :
     chrome_options.add_argument("--headless")
@@ -1277,32 +1252,6 @@ elif platform.system() == "Linux":  # Linux
     chrome_options.add_argument("--disable-backgrounding-occluded-windows")
     chrome_options.add_argument("--disable-features=OptimizationGuideModelDownloading")
     chrome_options.add_argument("--disable-infobars")
-
-if translation_engine.lower() == "chatgpt" and False:
-    # Get the Windows username
-    try:
-        username = os.getlogin()
-        home_dir = os.path.expanduser("~")
-
-        # Construct the Chrome user data directory path
-        user_data_dir = os.path.join(home_dir, "AppData", "Local", "Google", "Chrome", "User Data")
-        
-        user_data_dir = fr"C:\Temp\Chrome"
-        print(f"Using Chrome user data directory: {user_data_dir}")
-
-        # Set up ChromeOptions
-        print(f"Using Chrome user data directory: {user_data_dir}")
-        chrome_options.add_argument(f"--user-data-dir={user_data_dir}")  # Path to the user data directory
-        chrome_options.add_argument("--disable-blink-features=AutomationControlled")
-        chrome_options.add_argument("--profile-directory=Default")  # Use the "Default" profile
-
-        print(f"Using Chrome user data directory: {user_data_dir}")
-    #word_file_to_translate = r'X:\travail\smtv-hindi\NWN 584 sf2 - table fix1.doc'
-    except Exception:
-        var = traceback.format_exc()
-        print(var)
-        print("Failed to add chrome options")
-
 
 # Used to tokenize thai
 #thai_segmenter = thai_tokenizer_tokenizer()
@@ -3131,8 +3080,6 @@ def run_statistics(ctx: RuntimeContext):
     # don't UnboundLocalError when the reassign branch is skipped.
     driver = ctx.browser.driver
 
-    _orig_run_statistics_body_marker = None  # placeholder kept for the editor diff
-    
     statistics_html_statistics_form_url_key = ['statistics', 'html_statistics_form_url']
     statistics_html_statistics_form_url = get_nested_value_from_json_array(ctx.config.json_configuration_array, statistics_html_statistics_form_url_key)
     

@@ -15,7 +15,7 @@ local_launcher.py  ────────────────────�
    │  GET /status/:jobId  (polled every 4 s by browser)
    │  GET /download/:filename
    │
-   └─► subprocess: python src/machine-translate-docx.py [args]
+   └─► subprocess: python -m machine_translate_docx.cli [args]   (PYTHONPATH=src)
             │
             ├─► [Google / DeepL] translator  →  output_PER_Google.docx
             │
@@ -33,7 +33,7 @@ local_launcher.py  ────────────────────�
                     │       output: {stem}_PER_Polish.docx
                     │
                     └─► (optional Split Method = persian_double_lines)
-                        FASubtitleAligner.align()            ← aligner_per.py
+                        FASubtitleAligner.align()            ← persian_double_lines.py
                             model: gpt-5.4-mini (hardcoded)
                             llm_threshold: 0
                             output: {stem}_PER_Polish_Double_Lines.docx
@@ -43,11 +43,12 @@ local_launcher.py  ────────────────────�
 
 ## Component Responsibilities
 
-### `src/machine-translate-docx.py`
-- CLI entry point, argparse
-- Orchestrates the full pipeline
-- Calls translator → polisher → aligner in sequence
-- Prints `Saved file name: {path}` to stdout (local_launcher reads this)
+### `src/machine_translate_docx/cli.py`
+- CLI entry point, argparse, signal handling, `main()` orchestrator.
+- Threads `ctx: RuntimeContext` through every pipeline step.
+- Translator → polisher → aligner sequence.
+- Emits `Saved file name: {path}` (parsed by `local_launcher.py`) and
+  `PROGRESS:N` markers (parsed by the v2 frontend).
 
 ### `src/machine_translate_docx/openai_tools/translator.py`
 - `OpenAITranslator` class
@@ -64,8 +65,9 @@ local_launcher.py  ────────────────────�
 - 4-strategy parser for robust tag extraction
 - `reasoning_effort: high` only when `"mini"` in model name
 
-### `src/machine_translate_docx/openai_tools/aligner_per.py`
-- `FASubtitleAligner` class
+### `src/machine_translate_docx/openai_tools/persian_double_lines.py`
+- `FASubtitleAligner` class (the legacy `aligner_per.py` is a thin
+  compatibility shim re-exporting from this module).
 - Reads bilingual DOCX table (EN | FA columns)
 - Mechanical pass: splits FA sentences into ≤50-char chunks, distributes as singles/doubles
 - LLM pass: groups with score < `llm_threshold` sent to gpt-5.4-mini for quality review
