@@ -6,6 +6,168 @@
 
 ---
 
+## 2026-05-16c — cli.py 3-phase shrink — Phase 3 (own work)
+
+Third phase of the cli.py shrink, executed directly. Pushes cli.py
+below 4,000 lines for the first time since the src/ migration.
+
+### New module — `src/machine_translate_docx/translation_log_writer.py`
+
+Owns the JSON-sidecar writer that the OpenAI engines emit at end of
+run. The historical `write_translation_log(log_path)` body lived in
+the entry script and read `translation_log` plus `_get_ctx()` from
+module scope. The new implementation takes `(ctx, log_path)` as
+explicit arguments — `translation_log` is read off
+`ctx.openai.translation_log` directly, removing one of the few
+remaining bare-name globals.
+
+`cli.py` keeps a 2-line shim with the historical 1-arg signature so
+the injected callback in `docx_io/save.py` (and the `[INFO]
+Translation log saved` line operators look for) is unchanged.
+
+### Deletion
+
+- `getDownLoadedFileNameChrome(waitTime)` — 22-line Chrome-downloads
+  scraper. The only "caller" was a commented-out line inside
+  `selenium_chrome_google_translate_xlsx_file`; the live code path
+  already uses `get_last_downloaded_file_path()` instead. Removed.
+
+### Result
+
+- `cli.py`: 4,129 → 3,994 lines (-135, total -401 from the 4,395
+  start, -9.1%). First time the entry script is under 4,000 lines
+  since the 2026-05-11 src/ migration.
+- New code: `translation_log_writer.py` (148 lines).
+- Test suite: 154 passed / 8 skipped (live) / 8 deselected.
+
+### Phase 3 (continued) — handoff prompt for the big blocks
+
+The remaining high-payoff work is captured in a Claude Code Console
+handoff prompt at
+[`docs/cli-shrink-phase3-handoff.md`](docs/cli-shrink-phase3-handoff.md):
+
+1. Extract the statistics + report cluster (`run_statistics`,
+   `get_robot_usage_comment`, `print_console_docx_file_translated`,
+   `local_time_offset`) — ~900 lines.
+2. Extract the Google file-mode workers
+   (`selenium_chrome_google_translate_{text,html_javascript,xlsx}_file`
+   + their `generate_*_from_phrases` + `google_translate_from_*`
+   wrappers) — ~800 lines, lower-priority because file modes are
+   rarely chosen over singlephrase / phrasesblock.
+3. Collapse `_sync_globals_from_ctx` once the remaining helpers read
+   from ctx directly.
+
+Each item carries documented globals, call sites, and verification
+steps so the work can resume in a separate session without
+re-discovering context.
+
+---
+
+## 2026-05-16b — cli.py 3-phase shrink — Phase 2 (low-risk extractions)
+
+Second phase of the cli.py shrink. Moves four free-standing helper
+clusters out of the entry script into dedicated modules and deletes
+three more orphan functions discovered in the process.
+
+### New module — `src/machine_translate_docx/network_utils.py`
+
+Owns the four startup-time region/connectivity helpers:
+
+- `test_internet(host, port, timeout)` — TCP probe against Google DNS.
+- `fetch_country_data(url, *, http_timeout)` — region detection.
+- `check_mirror_url(url, *, http_timeout)` — driver-mirror reachability.
+- `set_se_driver_mirror_url_if_needed(country_name, mirror_url, *,
+  restricted_countries, http_timeout)` — env-var setter for restricted
+  regions. Renamed from `set_SE_DRIVER_MIRROR_URL_if_needed` to follow
+  the rest of the repo's snake_case convention.
+
+Every dependency that the historical bodies read from module globals
+(`location_http_query_timeout`, `chrome_driver_restricted_countries`)
+is now an explicit keyword argument. The module imports only `socket`,
+`os`, `json`, and `requests` so adding it to the package costs almost
+nothing at startup.
+
+### New module — `src/machine_translate_docx/docx_io/metadata.py`
+
+Owns the two output-side DOCX metadata writers:
+
+- `write_destination_language_in_docx_cell(docxdoc, *, splitonly,
+  dest_lang_name, dest_lang)` — fills cell (1, 2) of the first table
+  with the human-readable destination language name (fallback to ISO).
+- `set_docx_properties_comment_for_history(docxdoc, *, program_version,
+  engine)` — stamps a one-line audit comment into core properties.
+
+Thin shims in `cli.py` preserve the historical zero-argument signatures
+so existing call sites keep working without churn.
+
+### Moved to existing modules
+
+- `deepl_double_linefeed_between_phrases(dest_lang)` →
+  `engines/deepl.py`. Inline tuple turned into a module-level frozen
+  set (`_DEEPL_SINGLE_LINEFEED_LANGS`).
+- `delete_paragraph(paragraph)` → `docx_io/cells.py`. Documented as
+  the "cell-clearing helper" with a one-line rationale.
+
+### Deletions (orphans)
+
+- `generate_tmx_file()` — 62-line TMX exporter. Only caller was a
+  commented-out `#generate_tmx_file ()` line. Removed.
+- `linux_distribution()` — wrapped `platform.linux_distribution()`
+  (deprecated and removed in Python 3.8+). Only caller was the
+  also-orphan `print_os_info()`. Removed.
+- `print_os_info()` — startup OS-info dump that called the removed
+  `platform.dist()` (also gone in 3.8+). Never called from anywhere.
+  Removed.
+
+### Result
+
+- `cli.py`: 4,257 → 4,129 lines (-128, total -266 from the 4,395 start).
+- New code: `network_utils.py` (119 lines) + `docx_io/metadata.py`
+  (74 lines) + small additions to `engines/deepl.py` and
+  `docx_io/cells.py`.
+- Test suite: 154 passed / 8 skipped (live) / 8 deselected. Zero
+  failures.
+
+Phase 3 will tackle the remaining big block — the statistics +
+log-writer cluster (~900 lines) and the Google file-mode workers
+(~800 lines) — plus the eventual cell-shim collapse once globals are
+moved onto `RuntimeContext`.
+
+---
+
+## 2026-05-16a — cli.py 3-phase shrink — Phase 1 (dead-code removal)
+
+First phase of a planned 3-phase shrink of `src/machine_translate_docx/cli.py`
+(the 4,395-line god file that survived the src/ layout migration). Phase 1
+is the lowest-risk pass: delete functions that are demonstrably never called
+and a function that is fully duplicated by a module helper.
+
+### Deletions
+
+- `lineno()` — 3-line helper, never called anywhere in the repo.
+- `reverse_string()` — 2-line helper, never called anywhere.
+- `remove_span_tag()` — 24-line DeepL HTML-clean helper. Never called from
+  cli.py and fully duplicated by `engines/deepl.py::_remove_span_tag` (which
+  is the version DeepL actually uses).
+- `create_translation_split_prompts()` + `print_prompt_block()` +
+  `MAX_CHARS = 750` — orphan demo function (~80 lines) that printed AI
+  prompts to stdout. No call site existed.
+- `print_html_program_result()` — 18-line HTML debug dumper, never called.
+
+### Result
+
+- `cli.py`: 4,395 → 4,257 lines (-138, -3.1%).
+- Test suite: 154 passed / 8 skipped (live) / 8 deselected. Zero failures.
+- No production behaviour change — every removed function had zero call
+  sites (verified by repo-wide grep).
+
+Branch: `refactor/cli-py-3-phase-shrink`. Phase 2 (extract OS info /
+network / statistics / TMX / Google file-mode workers into dedicated
+modules) and phase 3 (collapse `_sync_globals_from_ctx` + cell shims)
+follow.
+
+---
+
 ## 2026-05-15c — Validator layer + prompt-regression suite (env-gated)
 
 Follow-up to the v7 promote. Two new code modules deliver the

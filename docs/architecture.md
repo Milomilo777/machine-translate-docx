@@ -72,6 +72,45 @@ local_launcher.py  ────────────────────�
 - Bridge detection: skips grey cells, timecodes, empty FA, speaker tags
 - Output: double-line bilingual DOCX
 
+### `src/machine_translate_docx/network_utils.py` (2026-05-16)
+- Startup-time helpers extracted from `cli.py`:
+  - `test_internet(host, port, timeout)` — TCP probe against Google DNS,
+    used as the "is the box actually online?" fallback when the config
+    JSON fetch fails.
+  - `fetch_country_data(url, *, http_timeout)` — region detection.
+  - `check_mirror_url(url, *, http_timeout)` — driver-mirror
+    reachability.
+  - `set_se_driver_mirror_url_if_needed(country_name, mirror_url, *,
+    restricted_countries, http_timeout)` — sets the
+    `SE_DRIVER_MIRROR_URL` env var for users in restricted regions.
+- Every dependency the historical bodies read from module globals is
+  now an explicit keyword argument.
+
+### `src/machine_translate_docx/translation_log_writer.py` (2026-05-16)
+- `write_translation_log(ctx, log_path)` — owns the JSON sidecar
+  emitted at end of run for every OpenAI engine.
+- Reads `ctx.openai.translation_log` (mutated in-place by `runner.py`
+  and `engines/chatgpt_api.py`), aggregates per-block tokens + cost +
+  elapsed, stashes the canonical system prompts once under
+  `run_info.translation_prompts` / `run_info.polish_prompts`, enriches
+  `summary` with row counts and polish-touched lines, and writes the
+  resulting dict to `log_path` as pretty-printed UTF-8 JSON.
+- `cli.py` keeps a 2-line shim `write_translation_log(log_path)` so
+  the injected callback in `docx_io/save.py` continues to see the
+  historical 1-arg signature.
+
+### `src/machine_translate_docx/docx_io/metadata.py` (2026-05-16)
+- Output-side DOCX metadata writers extracted from `cli.py`:
+  - `write_destination_language_in_docx_cell(docxdoc, *, splitonly,
+    dest_lang_name, dest_lang)` — fills cell (1, 2) of the first
+    table with the human-readable destination language name (fallback
+    to ISO code); no-op when `splitonly` is True.
+  - `set_docx_properties_comment_for_history(docxdoc, *,
+    program_version, engine)` — stamps a one-line audit comment into
+    the docx core properties.
+- `cli.py` keeps zero-argument shims so the call sites in `main()`
+  don't need to change.
+
 ### `local_launcher.py`
 - `ThreadingHTTPServer` on configurable port (default 3000)
 - Two modes: `real` (invokes actual backend) and `mock` (generates placeholder DOCX)

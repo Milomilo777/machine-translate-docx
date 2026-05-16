@@ -59,9 +59,12 @@ diagrams in [`docs/diagrams/`](docs/diagrams/) for the full picture.
 | `src/machine_translate_docx/dispatch.py` | `set_translation_function(ctx)` |
 | `src/machine_translate_docx/exceptions.py` | `TranslationFailure` hierarchy |
 | `src/machine_translate_docx/translation_health.py` | `assert_source_has_content`, `assert_translation_present` |
-| `src/machine_translate_docx/docx_io/` | parse, cells, runs, save (every docx-shaped operation) |
+| `src/machine_translate_docx/network_utils.py` | Startup-time region / connectivity / driver-mirror helpers (extracted 2026-05-16) |
+| `src/machine_translate_docx/translation_log_writer.py` | JSON sidecar writer for the OpenAI translation/polish log (extracted 2026-05-16) |
+| `src/machine_translate_docx/docx_io/` | parse, cells (incl. `delete_paragraph`), runs, save, metadata |
+| `src/machine_translate_docx/docx_io/metadata.py` | Output-side DOCX metadata writers — language label + history comment (extracted 2026-05-16) |
 | `src/machine_translate_docx/engines/google.py` | Selenium-based Google Translate engine |
-| `src/machine_translate_docx/engines/deepl.py` | Selenium-based DeepL engine |
+| `src/machine_translate_docx/engines/deepl.py` | Selenium-based DeepL engine (incl. `deepl_double_linefeed_between_phrases`) |
 | `src/machine_translate_docx/engines/chatgpt_api.py` | OpenAI API engine bridge |
 | `src/machine_translate_docx/engines/inactive/` | Disabled web engines (perplexity_web, etc.) |
 | `src/machine_translate_docx/selenium_utils/` | Driver/click/forms helpers |
@@ -117,7 +120,7 @@ python -m venv .venv-build && .venv-build/Scripts/python.exe -m pip install \
 .venv-build/Scripts/python.exe -m PyInstaller packaging/mtd.spec --clean --noconfirm
 # Output: dist/mtd/mtd.exe
 
-# Run pytest (113 tests, ~2 s) — `live` marker is deselected by default
+# Run pytest (154 tests, ~2 s) — `live` marker is deselected by default
 E:\Python311\python.exe -m pytest tests/ --ignore=tests/test_v2_e2e.py
 ```
 
@@ -171,7 +174,7 @@ DeepL / Google runs write a minimal sidecar with row counts only.
 - Never add `reasoning_effort` to the translator.
 - `_normalize_lang()` must not be modified — only `_prompt_lang_code()`
   maps prompt filenames.
-- The full invariant list (C1–C20) lives in
+- The full invariant list (C1–C31) lives in
   [`PROJECT_MEMORY.md`](PROJECT_MEMORY.md).
 
 ---
@@ -194,9 +197,13 @@ DeepL / Google runs write a minimal sidecar with row counts only.
   decisions log.
 - [`docs/audit-2026-05-11.md`](docs/audit-2026-05-11.md) — the
   comprehensive 2026-05-11 audit + applied fixes.
+- [`docs/cli-shrink-phase3-handoff.md`](docs/cli-shrink-phase3-handoff.md)
+  — handoff prompt for the remaining cli.py shrink work (statistics
+  cluster, Google file-mode workers, `_sync_globals_from_ctx`
+  collapse). Authored 2026-05-16 after phases 1–3 of the shrink landed.
 - [`docs/v2-future-ideas.md`](docs/v2-future-ideas.md) — tier-1..4
   backlog for the v2 SPA with 3-axis cost scoring.
-- [`PROJECT_MEMORY.md`](PROJECT_MEMORY.md) — active constraints C1–C22,
+- [`PROJECT_MEMORY.md`](PROJECT_MEMORY.md) — active constraints C1–C31,
   recent changes.
 - [`web/v2/README.md`](web/v2/README.md) — v2 frontend stack, deploy,
   file map.

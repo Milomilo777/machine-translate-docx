@@ -20,8 +20,9 @@ The repo's deeper documentation. Pick by what you're doing.
 | [`refactor-roadmap.md`](refactor-roadmap.md) | Phase A → G design rationale |
 | [`post-refactor-audit.md`](post-refactor-audit.md) | 15 findings from the 2026-05-08 audit |
 | [`audit-2026-05-11.md`](audit-2026-05-11.md) | Comprehensive 2026-05-11 audit + applied fixes |
+| [`cli-shrink-phase3-handoff.md`](cli-shrink-phase3-handoff.md) | Continuation prompt for the cli.py shrink (Task A: statistics cluster, Task B: Google file-mode workers, Task C: `_sync_globals_from_ctx` collapse) — phases 1-3 landed 2026-05-16 |
 | [`decisions-2026.md`](decisions-2026.md) | Architectural decision log (ADRs) |
-| [`../PROJECT_MEMORY.md`](../PROJECT_MEMORY.md) | Active invariants C1–C20 + recurring issues E1–E15 |
+| [`../PROJECT_MEMORY.md`](../PROJECT_MEMORY.md) | Active invariants C1–C31 + recurring issues E1–E15 |
 
 ## Translation domain knowledge
 

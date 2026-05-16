@@ -7,7 +7,7 @@
 
 <p align="center">
   <img alt="Python 3.11+"   src="https://img.shields.io/badge/python-3.11%2B-1F1E1B?style=flat-square&logo=python&logoColor=white">
-  <img alt="Tests 113/113"   src="https://img.shields.io/badge/tests-113%2F113-D97757?style=flat-square">
+  <img alt="Tests 154/154"   src="https://img.shields.io/badge/tests-154%2F154-D97757?style=flat-square">
   <img alt="License MIT"    src="https://img.shields.io/badge/license-MIT-D97757?style=flat-square">
   <img alt="No framework"   src="https://img.shields.io/badge/v2%20frontend-plain%20JS-1F1E1B?style=flat-square">
   <img alt="Status active"  src="https://img.shields.io/badge/status-active-D97757?style=flat-square">

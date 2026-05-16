@@ -582,19 +582,15 @@ my_hazm_normalizer = None
 # now live in src/config.py.
 
 
-def test_internet(host="8.8.8.8", port=53, timeout=3):
-    """
-    Host: 8.8.8.8 (google-public-dns-a.google.com)
-    OpenPort: 53/tcp
-    Service: domain (DNS/TCP)
-    """
-    try:
-        socket.setdefaulttimeout(timeout)
-        socket.socket(socket.AF_INET, socket.SOCK_STREAM).connect((host, port))
-        return True
-    except socket.error as ex:
-        print(ex)
-        return False
+# test_internet was extracted to ``src/machine_translate_docx/network_utils.py``
+# in the 2026-05-16 cli.py shrink phase 2. The free-standing helper lives
+# there now; this entry script just imports it.
+from .network_utils import (
+    test_internet,
+    fetch_country_data,
+    check_mirror_url,
+    set_se_driver_mirror_url_if_needed,
+)
 
 try:
     json_online_configuration = requests.get(json_configuration_url).content
@@ -1058,6 +1054,18 @@ if translation_engine == 'chatgpt' and engine_method != "webservice":
 else:
     from selenium import webdriver  # regular selenium webdriver
 
+# OpenAI handles + translation log dict must exist BEFORE the first
+# `_get_ctx()` runtime call below, otherwise the lazy snapshot inside
+# `_get_ctx()` hits NameError on these names and ctx.openai.translation_log
+# ends up as the dataclass empty {} default instead of pointing at this
+# module-global dict. `_sync_globals_from_ctx` repairs the divergence on
+# its first run inside main(), but only because the runner mutates the
+# same dict by reference — pre-2026-05-16 the names were declared AFTER
+# the snapshot fired, leaving the seed dict orphaned at startup.
+oai_translator = None
+oai_polisher = None
+translation_log = {"run_info": {}, "blocks": [], "summary": {}}
+
 # Mirror the webdriver module onto ctx now that it has been chosen.
 # `_get_ctx()`'s lazy snapshot may have fired earlier (e.g. from the
 # G2 shading-color mirror at line ~570) when this name did not yet
@@ -1065,165 +1073,18 @@ else:
 # sees the right module.
 _get_ctx().browser.webdriver_module = webdriver
 
-def lineno():
-    """Returns the current line number in our program."""
-    return inspect.currentframe().f_back.f_lineno
-    
-def linux_distribution():
-    try:
-        return platform.linux_distribution()
-    except Exception:
-        return "N/A"
 
-oai_translator = None
-oai_polisher = None
-translation_log = {"run_info": {}, "blocks": [], "summary": {}}
+# write_translation_log was extracted to
+# ``src/machine_translate_docx/translation_log_writer.py`` in the
+# 2026-05-16 cli.py shrink phase 3. The injected callback in
+# ``docx_io/save.py`` still gets the historical 1-arg signature, so a
+# thin shim here forwards ``log_path`` plus the live ctx.
+from .translation_log_writer import write_translation_log as _write_translation_log_impl  # noqa: E402
 
 
 def write_translation_log(log_path: str):
-    """Write translation_log as formatted JSON next to the output DOCX."""
-    import json as _json
-    import datetime as _dt
-    from .openai_tools._retry import prompt_hash
+    _write_translation_log_impl(_get_ctx(), log_path)
 
-    blocks = translation_log.get("blocks", [])
-
-    total_prompt = 0
-    total_completion = 0
-    total_total = 0
-    total_cached = 0
-    total_cost = 0.0
-    total_elapsed = 0.0
-
-    for b in blocks:
-        for key in ("translation", "polish"):
-            call = b.get(key) or {}
-            tok = call.get("tokens") or {}
-            total_prompt     += tok.get("prompt", 0)
-            total_completion += tok.get("completion", 0)
-            total_total      += tok.get("total", 0)
-            total_cached     += tok.get("cached", 0)
-            total_cost       += call.get("cost_usd", 0.0)
-            total_elapsed    += call.get("elapsed_seconds", 0.0)
-
-    # 2026-05-13: log_path lives in `Log json file/`; the docx still sits at
-    # the user's chosen output location. Resolve it from the live ctx so the
-    # run-summary card displays the real docx path, not a sibling under the
-    # central log folder.
-    try:
-        _out_docx = _get_ctx().flags.word_file_to_translate_save_as_path or ""
-    except Exception:
-        _out_docx = log_path.replace("_log.json", ".docx")
-    translation_log["run_info"]["output_file"] = _out_docx
-
-    # 2026-05-15 (log compaction): persist the translator + polisher system
-    # prompts ONCE at the run_info level instead of repeating them inside
-    # every block's translation/polish dict. The bodies are byte-identical
-    # across blocks (v7 STATIC + JOB_CONFIG layout), so per-block storage
-    # multiplied log size by `len(blocks)` for zero audit benefit. The
-    # canonical user-prompt envelope is also captured here as a single
-    # sample — block-level source_text + output_text already reflect the
-    # per-call payload.
-    _ctx = _get_ctx()
-    try:
-        _tr = getattr(_ctx.openai, "translator", None)
-        if _tr is not None and getattr(_tr, "last_system_prompt", None):
-            translation_log["run_info"]["translation_prompts"] = {
-                "system_prompt":         _tr.last_system_prompt,
-                "user_prompt_sample":    getattr(_tr, "last_user_prompt", "") or "",
-                "prompt_hash":           prompt_hash(_tr.last_system_prompt),
-            }
-    except Exception as _e:
-        print(f"[WARN] Could not stash translator prompts in run_info: {_e!r}")
-    try:
-        _po = getattr(_ctx.openai, "polisher", None)
-        if _po is not None and getattr(_po, "system_prompt", None):
-            translation_log["run_info"]["polish_prompts"] = {
-                "system_prompt":      _po.system_prompt,
-                "user_prompt_sample": getattr(_po, "last_user_prompt", "") or "",
-                "prompt_hash":        prompt_hash(_po.system_prompt),
-            }
-    except Exception as _e:
-        print(f"[WARN] Could not stash polisher prompts in run_info: {_e!r}")
-
-    # 2026-05-11 (#1 backlog) — enrich the summary with row counts +
-    # polish-touched count so the v2 frontend's run-summary card and
-    # quality-warning system have everything they need without doing a
-    # second pass over the docx.
-    _src_rows = _ctx.docx.from_text_table or []
-    _tgt_rows = _ctx.docx.to_text_by_phrase_separator_table or []
-    _src_n    = sum(1 for v in _src_rows if v and v.strip())
-    _tgt_n    = sum(1 for v in _tgt_rows if v and v.strip())
-
-    # Polish-touched lines: prefer the polisher's own lines_modified count
-    # (an honest pre-reconcile figure). The legacy fallback to comparing
-    # translation.output_text vs polish.output_text remains for verbose
-    # logs that still carry the redundant input_fa_text field.
-    _polish_touched_total = 0
-    _polish_input_total   = 0
-    for b in blocks:
-        polish = b.get("polish") or {}
-        if "lines_processed" in polish:
-            _polish_input_total   += polish.get("lines_processed", 0) or 0
-            _polish_touched_total += polish.get("lines_modified",  0) or 0
-            continue
-        before = (polish.get("input_fa_text") or "").split("\n")
-        after  = (polish.get("output_text")  or "").split("\n")
-        if not before or not after:
-            continue
-        n = min(len(before), len(after))
-        _polish_input_total += n
-        for i in range(n):
-            if before[i] != after[i]:
-                _polish_touched_total += 1
-
-    translation_log["summary"] = {
-        "total_blocks":        len(blocks),
-        "total_tokens": {
-            "prompt":          total_prompt,
-            "completion":      total_completion,
-            "total":           total_total,
-            "cached":          total_cached,
-        },
-        "total_cost_usd":      round(total_cost, 6),
-        "elapsed_total_seconds": round(total_elapsed, 3),
-        # New (informational; the v2 card reads these for the
-        # quality-warning toggles and the "X / Y rows translated" line).
-        "row_count":              max(len(_src_rows), len(_tgt_rows)),
-        "source_rows_nonempty":   _src_n,
-        "target_rows_nonempty":   _tgt_n,
-        "polish_lines_touched":   _polish_touched_total,
-        "polish_lines_total":     _polish_input_total,
-    }
-
-    with open(log_path, "w", encoding="utf-8") as fh:
-        _json.dump(translation_log, fh, ensure_ascii=False, indent=2)
-
-    print(f"[INFO] Translation log saved → {log_path}")
-
-
-def print_os_info():
-
-    print("""Python version: %s
-    dist: %s
-    linux_distribution: %s
-    system: %s
-    machine: %s
-    platform: %s
-    uname: %s
-    version: %s
-    mac_ver: %s
-    """ % (
-    sys.version.split('\n'),
-    str(platform.dist()),
-    linux_distribution(),
-    platform.system(),
-    platform.machine(),
-    platform.platform(),
-    platform.uname(),
-    platform.version(),
-    platform.mac_ver(),
-    ))
 
 if not os.path.exists(word_file_to_translate) :
     print("ERROR: File not found: %s" % (word_file_to_translate))
@@ -1339,62 +1200,30 @@ chrome_driver_mirror_url = get_nested_value_from_json_array(json_configuration_a
 #print(f"chrome_driver_restricted_countries = {chrome_driver_restricted_countries}")
 #print(f"chrome_driver_mirror_url = {chrome_driver_mirror_url}")
 
-def fetch_country_data(url):
-    """Fetch country data from the specified URL."""
-    try:
-        response = requests.get(url, timeout=location_http_query_timeout)
-        response.raise_for_status()  # Check if the request was successful (status code 200)
-        
-        # Parse the JSON response
-        data = response.json()
-        
-        # Check if the status is success and return the country name
-        if data.get("status") == "success":
-            return data.get('country')
-        else:
-            print(f"Failed to retrieve IP information: {data.get('message')}")
-            return None
-            
-    except requests.exceptions.RequestException as e:
-        print(f"HTTP request failed: {e}")
-    except json.JSONDecodeError:
-        print("Failed to parse the JSON response.")
-    return None
-
-def check_mirror_url(url):
-    """Check if the mirror URL responds with HTTP 200 or 400 status codes."""
-    try:
-        response = requests.get(url, timeout=location_http_query_timeout)
-        return response.status_code in [200, 400]
-    except requests.exceptions.RequestException as e:
-        print(f"Mirror URL check failed: {e}")
-        return False
-
-def set_SE_DRIVER_MIRROR_URL_if_needed(country_name, mirror_url):
-    """Set the SE_DRIVER_MIRROR_URL environment variable if the country is restricted and mirror URL is valid."""
-    if country_name in chrome_driver_restricted_countries:
-        print(f"The host country ({country_name}) is restricted from downloading Google Chrome Driver, using proxy to bypass restrictions...")
-        
-        # Check the mirror URL and set environment variable if it responds with HTTP 200 or 400
-        if check_mirror_url(mirror_url):
-            os.environ['SE_DRIVER_MIRROR_URL'] = mirror_url
-            print(f"SE_DRIVER_MIRROR_URL set to: {os.environ['SE_DRIVER_MIRROR_URL']}")
-        else:
-            print(f"Mirror URL ({mirror_url}) did not respond with HTTP 200 or 400.")
-    else:
-        print(f"Using Google Chrome Driver from {country_name}...")
-
+# fetch_country_data / check_mirror_url / set_se_driver_mirror_url_if_needed
+# were extracted to ``src/machine_translate_docx/network_utils.py``
+# in the 2026-05-16 cli.py shrink phase 2. The thin module-level startup
+# sequence below drives them via the already-loaded JSON config values.
 
 # Set chrome driver download proxy URL for restricted countries
-country_name = fetch_country_data(location_primary_country_checker_url)
+country_name = fetch_country_data(
+    location_primary_country_checker_url, http_timeout=location_http_query_timeout,
+)
 
 # If primary URL fails or does not return a valid country name, fallback to the secondary URL
 if not country_name:
     print("Falling back to secondary URL...")
-    country_name = fetch_country_data(location_secondary_country_checker_url)
+    country_name = fetch_country_data(
+        location_secondary_country_checker_url, http_timeout=location_http_query_timeout,
+    )
 
 # Set environment variable if needed
-set_SE_DRIVER_MIRROR_URL_if_needed(country_name, chrome_driver_mirror_url)
+set_se_driver_mirror_url_if_needed(
+    country_name,
+    chrome_driver_mirror_url,
+    restricted_countries=chrome_driver_restricted_countries or [],
+    http_timeout=location_http_query_timeout,
+)
 
 # Set up Chrome options
 # Set the user-data-dir to the parent of the profiles
@@ -1766,30 +1595,6 @@ def selenium_chrome_google_translate_html_javascript_file(ctx: RuntimeContext, h
 
     
 # method to get the downloaded file name
-def getDownLoadedFileNameChrome(waitTime):
-    driver.execute_script("window.open()")
-    # switch to new tab
-    driver.switch_to.window(driver.window_handles[-1])
-    # navigate to chrome downloads
-    driver.get('chrome://downloads')
-    # define the endTime
-    endTime = time.time()+waitTime
-    while True:
-        try:
-            # get downloaded percentage
-            downloadPercentage = driver.execute_script(
-                "return document.querySelector('downloads-manager').shadowRoot.querySelector('#downloadsList downloads-item').shadowRoot.querySelector('#progress').value")
-            # check if downloadPercentage is 100 (otherwise the script will keep waiting)
-            if downloadPercentage == 100:
-                # return the file name once the download is completed
-                return driver.execute_script("return document.querySelector('downloads-manager').shadowRoot.querySelector('#downloadsList downloads-item').shadowRoot.querySelector('div#content  #file-link').text")
-        except Exception:
-            pass
-        time.sleep(1)
-        if time.time() > endTime:
-            break
-
-
 # function to wait for download to finish and then rename the latest downloaded file
 def get_last_downloaded_file_path():
     # function to wait for all chrome downloads to finish
@@ -1906,7 +1711,6 @@ def selenium_chrome_google_translate_xlsx_file(ctx: RuntimeContext, xlsx_file_pa
                 safe_click(driver, download_button)
                 print("We found a download button")
                 print("Waiting for download to finish")
-                #xlsx_tranlated_path = getDownLoadedFileNameChrome(15)
                 downloaded_xlsx_translation_path = get_last_downloaded_file_path()
                 if len(downloaded_xlsx_translation_path) > 0:
                     print("downloaded_xlsx_translation_path=%s" %(downloaded_xlsx_translation_path))
@@ -1974,33 +1778,6 @@ def selenium_chrome_google_translate_xlsx_file(ctx: RuntimeContext, xlsx_file_pa
         print(var)
         sys.exit(8)
     return ctx.docx.translation_array
-
-
-
-def remove_span_tag(text):
-    search_opening_html_span_tag = r'(?i)<span class="[a-zA-Z]+">'
-    search_replace_opening_span = re.compile(search_opening_html_span_tag)
-                
-    subn_result = search_replace_opening_span.subn("", text)
-    subn_count = subn_result[1]
-    if subn_count > 0:
-        #print ("Replaced '%s' by '%s' %d times." % (search_opening_html_span_tag, "", subn_count))
-        text = subn_result[0]
-        #if subn_count > 0:
-        #    print ("Replaced span %d times" % (subn_count))
-            
-    search_closing_html_span_tag = r'(?i)</span>'
-    search_replace_closing_span = re.compile(search_closing_html_span_tag)
-                
-    subn_result = search_replace_closing_span.subn("", text)
-    subn_count = subn_result[1]
-    if subn_count > 0:
-        #print ("Replaced '%s' by '%s' %d times." % (search_opening_html_span_tag, "", subn_count))
-        text = subn_result[0]
-        #if subn_count > 0:
-        #    input ("Replaced span %d times" % (subn_count))
-                
-    return text
 
 
 
@@ -2275,72 +2052,9 @@ def split_phrases(ctx: RuntimeContext):
 
     return 0
 
-def delete_paragraph(paragraph):
-    p = paragraph._element
-    p.getparent().remove(p)
-    p._p = p._element = None
-
-def generate_tmx_file():
-    print("In generate_tmx_file")
-
-    try:
-        f = open(tmx_file_path, 'w', encoding='utf-8')
-
-        # Writing TMX Header
-        username = getpass.getuser()
-        datenow = datetime.datetime.now()
-        creation_date = "%s%0.2d%0.2dT%0.2d%0.2d%0.2dZ" % (datenow.year, datenow.month, datenow.day, datenow.hour, datenow.minute,
- datenow.second)
-        header = """<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE tmx PUBLIC "-//LISA OSCAR:1998//DTD for Translation Memory eXchange//EN" "tmx14.dtd" >
-<tmx version="1.4">
-<header
-	creationtool="SMTV translation robot"
-	creationtoolversion="1.0"
-	srclang="%s"
-	adminlang=%s
-	datatype="unknown"
-	o-tmf="unknown"
-	segtype="sentence"
-	creationid="%s"
-	creationdate="%s">
-</header>
-<body>\n""" % (src_lang, src_lang, username,creation_date)
-        f.write(header)
-
-        for i, line in enumerate(from_text_table):
-            item = from_text_by_phrase_separator_table[i]
-            item.strip()
-            from_language = src_lang
-            phrase_separator_removed_str = ''
-
-            p_remove_separator = re.compile(line_separator_regex_str)
-            p_remove_double_spaces = re.compile(' +')
-            p_remove_parenthesis_spaces = re.compile('\( +')
-
-            item = from_text_by_phrase_table[i]
-            item_escaped = from_text_by_phrase_table[i].replace("&", "&amp;")
-            item_escaped = item_escaped.replace("<", "&lt;")
-            item_escaped = item_escaped.replace(">", "&gt;")
-
-            item_translation = to_text_by_phrase_separator_table[i].replace("&", "&amp;")
-            item_translation = item_translation.replace("<", "&lt;")
-            item_translation = item_translation.replace(">", "&gt;")
-            if item_escaped.strip() != "":
-                segment = """<tu changeid="french user 1" changedate="%s" creationid="Black Mamba RS7" creationdate="%s" creationtool="SMTV translation robot" creationtoolversion="1.0.0">
-<tuv xml:lang="en-US"><seg>%s</seg></tuv>
-<tuv xml:lang="%s"><seg>%s</seg></tuv>
-</tu>""" % (creation_date, creation_date, item_escaped, dest_lang, item_translation)
-                f.write(segment)
-                f.write("\n")
-
-        # Writing TMX Footer
-        footer = """</body>
-</tmx>\n"""
-        f.write(footer)
-    except Exception:
-        var = traceback.format_exc()
-        print(var)
+# delete_paragraph was extracted to ``docx_io/cells.py`` in the
+# 2026-05-16 cli.py shrink phase 2.
+from .docx_io.cells import delete_paragraph  # noqa: E402
 
 
 def prepare_and_clear_cell_for_writing(ctx: RuntimeContext, row_n, translation_cell_text):
@@ -2441,9 +2155,6 @@ def cell_add_paragraph(ctx: RuntimeContext, row_n, paragraph_text):
 # `is_*_line` predicates plus `prepare_and_clear_cell_for_writing` and
 # `split_phrases` from this module to avoid an import cycle.
 from .docx_io.parse import read_and_parse_docx_document  # noqa: E402,F401
-
-def reverse_string(s):
-    return s[::-1]
 
 
 def generate_html_file_from_phrases_for_google_translate_javascript(ctx: RuntimeContext):
@@ -2678,12 +2389,10 @@ def generate_xlsx_file_from_phrases(ctx: RuntimeContext, xlsx_file_path):
                 time.sleep(2)
         
 
-def deepl_double_linefeed_between_phrases(dest_lang):
-    single_linefeed_phrase_separator_langs = ('ar', 'bg', 'cs', 'da', 'de', 'el', 'en', 'en-us', 'en-gb',
-                       'es', 'et', 'fi', 'fr', 'he', 'hu', 'id', 'it', 'ja', 'ko',
-                       'lt', 'lv', 'nb', 'nl', 'pl', 'pt', 'pt-br', 'pt-pt',
-                       'ro', 'ru', 'sk', 'sl', 'sv', 'tr', 'uk', 'vi', 'zh-hant', 'zh-hans')
-    return dest_lang not in single_linefeed_phrase_separator_langs
+# deepl_double_linefeed_between_phrases was extracted to
+# ``engines/deepl.py`` in the 2026-05-16 cli.py shrink phase 2.
+from .engines.deepl import deepl_double_linefeed_between_phrases  # noqa: E402
+
 
 def generate_char_blocks_array_from_phrases(ctx: RuntimeContext, text_file_path):
     ctx.docx.docxfile_table_number_of_phrases = 0
@@ -3278,119 +2987,22 @@ def document_split_phrases(ctx: RuntimeContext):
                 print("  ERROR:%s<br>" % (var))
 
 
-MAX_CHARS = 750
+# write_destination_language_in_docx_cell was extracted to
+# ``docx_io/metadata.py`` in the 2026-05-16 cli.py shrink phase 2.
+# Thin shim — reads the entry-script globals and delegates.
+from .docx_io.metadata import (
+    write_destination_language_in_docx_cell as _write_dest_lang_impl,
+    set_docx_properties_comment_for_history as _set_docx_history_impl,
+)  # noqa: E402
 
-def create_translation_split_prompts():
-    """
-    Groups source phrases into blocks of max 750 characters (without breaking phrases)
-    and prints AI prompts in the requested subtitle format.
-    """
-
-    current_block = []
-    current_length = 0
-    block_index = 1
-
-    for phrase in from_text_table:
-        phrase = phrase.strip()
-        if not phrase:
-            continue
-
-        phrase_length = len(phrase)
-
-        # If adding this phrase would exceed the max size, finalize current block
-        if current_length + phrase_length > MAX_CHARS and current_block:
-            print_prompt_block(block_index, current_block)
-            block_index += 1
-            current_block = []
-            current_length = 0
-
-        current_block.append(phrase)
-        current_length += phrase_length
-
-    # Print last block if any
-    if current_block:
-        print_prompt_block(block_index, current_block)
-
-
-def print_prompt_block(block_index, block_phrases):
-    """
-    Prints a single AI prompt for one block of phrases in the desired format.
-    """
-
-    # Prepare source text lines with numbering
-    source_lines = "\n".join([f"Input {i+1}:{line}" for i, line in enumerate(block_phrases)])
-    num_lines = len(block_phrases)
-
-    prompt = f"""
-You are given subtitle text in a source language and its translation in a destination language.
-
-Source Text ({num_lines} lines):
-{source_lines}
-
-Destination Text (translation):
-# Insert your translation here, line by line
-
-Task:
-
-Reformat the translated text so that it has exactly the same number of lines as the source text, preserving the line structure of the source.
-
-Rules:
-
-- Each line in the source corresponds in order to the translated text.
-- If a source sentence is split across multiple lines, the translation must also be split naturally across the same number of lines.
-- Do not change any words or punctuation in the translation.
-- Each phrase ending with a full stop in the source should preserve its line count in the translation.
-- In case the target language grammar is different from the input language grammar, the lines do not need to match the source, but the phrase full stop should determine the number of lines to be split for a phrase(s) from the input.
-- Output only the translated text, line by line, with no numbers or labels.
-
-Example:
-
-Source sample (English):
-
-I’ve always had a terrible  
-aversion to bullfighting.
-
-Translation sample (French):
-
-J'ai toujours eu une aversion terrible
-pour la corrida.
-"""
-
-    print(f"\n{'=' * 80}")
-    print(f"PROMPT BLOCK #{block_index}")
-    print(f"{'=' * 80}")
-    print(prompt.strip())
-
-
-    
-def print_html_program_result():
-    if use_html :
-        print("<table border=1 bgcolor=""#EEEEEE"">")
-
-    for i, line in enumerate(from_text_table):
-        Identical_with_without_separators = 'DIFFERENT<BR>'
-        if to_text_by_phrase_separator_removed_table[i] == to_text_by_phrase_table[i]:
-            Identical_with_without_separators = 'SAME<BR>'
-        #print "<tr><td>%s<td>%s<td>%s<td>%s<td>%s%s" % (i, from_text_table[i], from_text_by_phrase_separator_table[i].encode('utf8'), to_text_by_phrase_separator_table[i].encode('utf8'), Identical_with_without_separators.encode('utf8'), to_text_by_phrase_separator_removed_table[i].encode('utf8') )
-        if len(from_text_by_phrase_separator_table[i]) == 0:
-            Identical_with_without_separators = ''
-        if use_html :
-            print("<tr><td>%d<td>'%s'<td>%s<td>%s<td>%s<td>%s%s" % (i, from_text_table[i], translation_result_using_separator[i].encode('utf8'), to_text_by_phrase_separator_table[i].encode('utf8'), to_text_by_phrase_table[i].encode('utf8'), Identical_with_without_separators.encode('utf8'), to_text_by_phrase_table[i].encode('utf8') ))
-        #sys.exit(0)
-
-    if use_html :
-        print("</table><br>elapsedtime = ", elapsedtime)
-        print("</span>")
 
 def write_destination_language_in_docx_cell():
-    if not splitonly:
-        try:
-            docxdoc.tables[0].cell(1, 2).text = dest_lang_name
-        except Exception:
-            try:
-                docxdoc.tables[0].cell(1, 2).text = dest_lang
-            except Exception:
-                pass
+    _write_dest_lang_impl(
+        docxdoc,
+        splitonly=splitonly,
+        dest_lang_name=dest_lang_name,
+        dest_lang=dest_lang,
+    )
 
 
 def print_console_docx_file_translated(ctx: RuntimeContext):
@@ -3493,15 +3105,10 @@ def print_console_docx_file_translated(ctx: RuntimeContext):
             print("  ERROR:%s<br>" % (var))
 
 
-#print("Generating TMX file for translation comparison")
-#generate_tmx_file ()
-#word.Application.ActiveWindow.Close()
-#word.Application.Quit()
-
 def set_docx_properties_comment_for_history(ctx: RuntimeContext):
-    now = datetime.datetime.now()
-    dt_string = now.strftime("%d/%m/%Y %H:%M:%S")
-    docxdoc.core_properties.comments = "Document translated by SMTV Robot version %s using %s engine on %s." % (PROGRAM_VERSION, ctx.engine.engine, dt_string)
+    _set_docx_history_impl(
+        docxdoc, program_version=PROGRAM_VERSION, engine=ctx.engine.engine,
+    )
 
 
 
