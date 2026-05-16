@@ -6,6 +6,168 @@
 
 ---
 
+## 2026-05-16e — Sprint B: P0 + P1 fixes from master audit + 36 new tests
+
+Second half of the master-audit follow-up
+([`docs/master-audit-2026-05-16.md`](docs/master-audit-2026-05-16.md))
+— addresses every P0 and P1 finding plus the related test-coverage
+gaps. Test suite grows from 154 → **190** (+36 new tests).
+
+### P0 fixes
+
+- **P0-1 — `server.js` path traversal.** `GET /download/:fileName`
+  now resolves the candidate path and rejects anything outside
+  `uploads/` with a 403 (matches the equivalent check in
+  `local_launcher.py`). Sibling fix: `multer({...})`'s `fileFilter`
+  and `limits` were nested under `diskStorage({...})` where multer
+  silently ignores them — moved to the top-level `multer({...})`
+  options. The upload endpoint now actually enforces the `.docx`
+  filter and a 50 MB fileSize cap.
+- **P0-2 — Integration test entry-point.**
+  `tests/integration/test_real_file_per_engine.py` invoked
+  `src/machine_translate_docx.py` (deleted on 2026-05-11) and
+  parametrized the long-dead `chatgpt-web` / `perplexity-web`
+  engines. Switched to `python -m machine_translate_docx.cli` with
+  `PYTHONPATH=src`; dropped the two dead engines from parametrize +
+  `ENGINE_SUFFIX` + `WEB_ENGINES`; removed the web-engine-only
+  skip branch. `pytest -m live tests/integration` now runs.
+
+### P1 fixes
+
+- **P1-1 — `xlsx_translation_memory.py` C24 violation.**
+  `newmm_tokenizer` and `tinysegmenter` were top-level imports.
+  Every CLI startup required these Thai / CJK NLP toolkits even
+  for `chatgpt --enginemethod api` runs that never tokenize.
+  Moved both imports to function-local scope (`word_tokenize`
+  inside `tokenize_phrase`, `tinysegmenter` inside `__init__`).
+- **P1-2 — `input()` ignored `silent` flag (C16 violation).**
+  `cli.py` prompted for `dest_lang` only on `if not splitonly:` —
+  no silent guard. Now emits `[FAIL] reason=missing_destlang` and
+  exits 20 in silent mode.
+- **P1-3 — `engines/deepl.py` UnboundLocalError-masked-by-bare-try.**
+  `closed_cookies_accept_message_bool` was read before the local
+  reassign — Python pre-classified it as local, so reads at lines
+  176 / 232 raised `UnboundLocalError`, silently swallowed by the
+  surrounding `try/except Exception: pass`. Cookie-banner closure
+  was effectively dead code. Added the canonical C11 seed-from-ctx
+  pattern at the top of `selenium_chrome_deepl_log_in`.
+- **P1-5 — SSRF allowlist in `network_utils.py`.** `fetch_country_
+  data` and `check_mirror_url` accepted any URL from
+  `json_configuration_array`. A compromised remote config could
+  point them at internal endpoints (cloud-metadata, intranet
+  APIs). Added an explicit `_SAFE_HOSTNAMES` allowlist (ip-api.com,
+  Selenium driver mirrors, public DNS), extensible via
+  `MTD_NETWORK_ALLOW_HOSTS`. Added `allow_redirects=False` so a
+  redirect-chain attack can't bypass the allowlist. Renamed
+  `test_internet` → `probe_internet` (pytest was collecting the
+  historical name as a non-None test, emitting
+  `PytestReturnNotNoneWarning` on every CI run). Socket now uses
+  a context manager.
+- **P1-6 — Tests for the three new shrink modules.** Added 36
+  pytest functions across three new files:
+  - `tests/test_network_utils.py` — 17 tests covering all four
+    public helpers + SSRF allowlist behaviour + env-var override.
+  - `tests/test_docx_io_metadata.py` — 8 tests (splitonly no-op,
+    name + ISO fallback, exact format-string parity, short-table
+    no-crash, repeated-write).
+  - `tests/test_translation_log_writer.py` — 11 tests covering
+    summary aggregation, polish-lines counting (new and legacy
+    paths), row-count metadata, prompt_hash present/absent,
+    output_file resolution, and UTF-8 `ensure_ascii=False`.
+- **P1-8 — `tests/test_aligner_only.py` was not a pytest file.**
+  Filename matched `python_files = "test_*.py"` so pytest scanned
+  it, but it had zero `def test_*` functions. Moved to
+  `scripts/aligner_only.py`.
+
+### Verification
+
+- `pytest tests/ --ignore=tests/test_v2_e2e.py`: **190 passed,
+  8 skipped (live), 6 deselected** (down from 8 because two dead
+  engines no longer parametrize).
+- End-to-end smoke on `tests/fixtures/sample_hyperlink.docx` with
+  `chatgpt --enginemethod api --aimodel gpt-5.4-mini --with-polish`:
+  exit 0.
+
+### What's left from the audit
+
+- **Sprint C** — 5 more uncovered modules (`docx_io/parse.py`,
+  `docx_io/save.py`, `dispatch.py`, `log_paths.py`,
+  `openai_tools/_retry.py::call_with_retry`) + a regression test
+  for the `_get_ctx()` snapshot-ordering bug fix.
+- **Sprint D** — original phase-3 continuation work
+  (`docs/cli-shrink-phase3-handoff.md`): statistics extraction,
+  Google file-mode workers, `_sync_globals_from_ctx` collapse.
+
+---
+
+## 2026-05-16d — Sprint A: dead-code purge + doc sweep
+
+Quick-wins follow-up to the master deep audit
+([`docs/master-audit-2026-05-16.md`](docs/master-audit-2026-05-16.md)).
+Zero functional change, zero risk; pure hygiene.
+
+### Deletions (verified zero callers by repo-wide grep)
+
+- `src/machine_translate_docx/table.py` — full file (~400 LOC).
+  Copy of python-docx internals importing `.blkcntnr` etc. that
+  don't exist in this package. Orphan untracked by post-migration
+  PRs.
+- `src/machine_translate_docx/updtlnk.py` — full file. Windows
+  `.lnk` rewriter hard-coded to a non-existent path.
+- `src/machine_translate_docx/openai_tools/example.py` — full
+  file. Scratch script with wrong relative import and a
+  non-existent model (`gpt-5-nano`).
+
+### cli.py cleanup (-53 lines: 4,002 → 3,949)
+
+- Comment fragment ending mid-sentence referencing the removed
+  `engines._prompts` shim.
+- Duplicate `elif translation_engine in ['deepl', 'chatgpt']`
+  after an `if translation_engine in ['chatgpt', 'deepl']` —
+  identical set, never fires.
+- Duplicate `location_primary_country_checker_url_key`
+  assignment (the first value was overwritten on the next line).
+- Two `if engine == "chatgpt" and False:` dead blocks totalling
+  ~30 lines, plus the orphan `user_data_dir = fr"C:\Temp\Chrome"`
+  they referenced.
+- `_orig_run_statistics_body_marker = None` placeholder.
+
+### Documentation sweep
+
+- `README.md`: tests `113/113 → 154/154`; `C1–C20 → C1–C31`;
+  rewrote the `src/` tree with the post-2026-05-11 layout
+  (now includes `network_utils.py`, `translation_log_writer.py`,
+  `validators/`, `xlsx_translation_memory/`,
+  `docx_io/metadata.py`).
+- `CONTRIBUTING.md`: tests `113/113 → 154/154`; `C1–C20 → C1–C31`.
+- `web/v2/README.md`: `36-hour → 5-day` cache (matches
+  `CACHE_TTL_SEC` since commit `c811d4d`); output filename family
+  updated to the post-phase-5 `_PER_Polish` suffix scheme.
+- `SECURITY.md`: `src/openai_tools/* →
+  src/machine_translate_docx/openai_tools/*`.
+- `docs/architecture.md`: pipeline diagram + Component
+  Responsibilities rebuilt; `aligner_per` references switched to
+  `persian_double_lines`.
+- `docs/testing.md`: "Ten tests" → 18-file table (154 tests);
+  `py_compile` + aligner import paths corrected.
+- `AGENTS.md`: rewritten end-to-end. Old version cited removed
+  files (`machine-translate-docx.py`, `src/openai_tools/`),
+  wrong CLI flags (`--input` vs `--docxfile`), and the long-gone
+  `_find_double_file` workflow.
+
+### Internal source comments
+
+- `runtime.py:140` — `aligner_per → persian_double_lines`.
+- `local_launcher.py:63 + :135` — stale module name + cache-TTL.
+
+### Verification
+
+- `pytest tests/ --ignore=tests/test_v2_e2e.py`: 154 passed,
+  8 skipped (live), 8 deselected.
+- End-to-end chatgpt-polish smoke on `sample_hyperlink.docx`: exit 0.
+
+---
+
 ## 2026-05-16c — cli.py 3-phase shrink — Phase 3 (own work)
 
 Third phase of the cli.py shrink, executed directly. Pushes cli.py
