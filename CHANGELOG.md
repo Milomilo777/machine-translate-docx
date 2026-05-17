@@ -6,6 +6,95 @@
 
 ---
 
+## 2026-05-17 — FA aligner phase-3 (corpus-driven mechanical tuning + NS citation fix)
+
+Mechanical aligner rewrite informed by a 562-file corpus analysis of
+the human-edited Google Drive archive (236 967 FA rows, 39 625 cut
+points). All changes are universal — no per-doc-type tagging, no LLM
+involvement (`llm_threshold=0` default stays). Single file touched:
+`src/machine_translate_docx/openai_tools/persian_double_lines.py`.
+
+### Constants
+
+- `DANGLING_PREPS`: «که» REMOVED. Corpus shows 4.24 % of human cuts
+  intentionally end a chunk with «که» — the relative/complement
+  particle reads naturally at line end and binds to the next row.
+- `LEADING_CONJUNCTIONS`: +8 — اگر، وقتی، حتی، همچنین، چه، شاید،
+  آیا، بلکه. Each occurs >0.15 % of all human cuts as the leading
+  token of the next chunk.
+- `LEADING_PREPS` (NEW set): 18 prepositions that humans cut
+  BEFORE — covers ~18.6 % of human cuts (در، به، از، برای، با، …).
+- `PROTECTED_BIGRAMS`: +22 — break-rate ≤ 2 % each across the corpus
+  (از آن، به آن، بیش از، به این، در حالی، به نظر، به اشتراک، از نظر،
+  نه تنها، هر کس، نه فقط، هر چه، به سرعت، در همان، به نمایش، هر چند،
+  به هر حال، به این شکل، هیچ کس، با توجه به، به آرامی، از این رو).
+
+### Helpers
+
+- `_split_citation(text) -> (main, citation)` REPLACES the old
+  `_strip_citation`. Detects news-source citations like `(Reuters)`,
+  `(Tuổi Trẻ)`, `(VnExpress)` at end of cell and returns them
+  byte-id so `_align_group` can place them in the LAST row.
+  Reactions (`(بله، استاد.)`, `(درسته.)`) and descriptors (`(وگان)`,
+  `(گیاهخوار)`) are NOT matched as citations — they ride with their
+  host text.
+- `_has_midline_paren(text)`, `_has_midline_dot(text)` — flag when a
+  parenthesis or sentence terminator sits inside the cell (not at
+  end). Used by `_align_group` to disable doubling for that group.
+
+### `_find_break` priority cascade
+
+New Priority 3.5 inserted between LEADING_CONJUNCTIONS and the generic
+space-with-safety rule: split BEFORE a `LEADING_PREPS` token. This
+routes the ~18.6 % preposition-led cut pattern through a dedicated
+priority instead of the generic space scan.
+
+### `_align_group` rewrite
+
+Three new responsibilities (in order):
+
+1. **Citation preservation**: extract `(Source)` from joined FA;
+   reserve the last row for it; concatenate to a 1-row group when
+   no separate row is available; never doubled, never broken.
+2. **No-doubling on midline pattern**: when any cell of the group
+   carries `(...)` mid-line OR a `.`/`!`/`?`/`؟` mid-line, set
+   `no_doubling=True`. Chunks distribute one-per-row with empty
+   padding instead of repeats.
+3. **Reader pass** (`_read_rows`): stop calling `_strip_citation`
+   inside the reader — the raw FA cell (with its citation) flows
+   into `_align_group` so citation logic runs once, in one place.
+
+### Cleanup
+
+- Removed 120 lines of dead code: `_align_to_en_benchmarks`,
+  `_en_row_terminal`, `_EN2FA_PUNCT`, `_EN_TERM_PUNCT`. Scaffolding
+  for an EN-anchored split path that never went live.
+- `_RE_CITATION` kept as a backwards-compatible alias for any
+  external import.
+
+### Benchmark numbers (66-file held-out human-edited sample)
+
+```
+rows_total                 29 376
+row_exact_pct              34.4 %   (cuts identical to human)
+row_substring_pct          35.7 %   (cuts where one is substring of other)
+row_match_total_pct        70.1 %   (combined)
+over_limit_rows                0   (MAX_CHARS satisfied 100 %)
+triple_runs                    0
+groups_with_citation         209
+citation_preserved_pct    100.0 %   ← NS bug fixed
+midline_paren_no_double    93.3 %
+midline_dot_no_double      96.7 %
+aligner_doubling_ratio     0.133
+human_doubling_ratio       0.160
+```
+
+The NS News Scroll citation-loss bug (a `text + (Source)` row had
+its source silently stripped by the old `_strip_citation`) is now
+fully resolved on the benchmark.
+
+---
+
 ## 2026-05-17 — v2 redesign drop-in + backend wire-up
 
 Branch `feat/v2-redesign-wireup` (commit `cbb5f2e` initial drop, plus

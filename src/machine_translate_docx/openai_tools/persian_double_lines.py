@@ -45,7 +45,10 @@ except ImportError:
 # ── constants ──────────────────────────────────────────────────────────────────
 
 MAX_CHARS  = 48    # hard per-chunk display limit (broadcast standard)
-MIN_TARGET = 24    # minimum split target length
+# 2026-05-17 phase-3 benchmark: MIN_TARGET=24 outperforms 28 on the 66-file
+# human-corpus benchmark (row_exact 34.41 % vs 34.35 %, midline patterns
+# also slightly better). Keeping the historical value.
+MIN_TARGET = 24
 
 ZWNJ = '‌'    # Persian half-space — invisible, excluded from MAX_CHARS
 
@@ -56,9 +59,13 @@ COMPOUND_PREFIXES = (
     'می‌',   'نمی‌',
 )
 
-# Prepositions that must not sit at the end of a chunk
+# Prepositions / particles that must not sit at the end of a chunk.
+# 2026-05-17 phase-3: «که» REMOVED. The human-edited corpus shows that
+# ending a chunk with «که» is a deliberate editorial choice — «X که» at
+# line end binds naturally to the relative/complement clause on the next
+# line. User explicitly confirmed: "که در انتهای سطر هیچ مشکلی ندارد".
 DANGLING_PREPS = frozenset({
-    'به', 'از', 'در', 'برای', 'با', 'که', 'تا', 'بر',
+    'به', 'از', 'در', 'برای', 'با', 'تا', 'بر',
     'تحت', 'جز', 'روی', 'زیر', 'نزد', 'پیش', 'سوی',
     # 2026-05-12 phase-2: extended list — these also strand badly at line-end
     'بدون', 'علیه', 'مقابل', 'درباره', 'دربارهٔ', 'بنا', 'طبق',
@@ -82,6 +89,14 @@ PROTECTED_BIGRAMS = frozenset({
     'تا به حال', 'به نام', 'بنا بر', 'علاوه بر این',
     'به اعتقاد', 'به گفته', 'به گفتهٔ', 'به گفته‌ٔ',
     'به نقل از', 'به دنبال', 'در پی این', 'بر این اساس',
+    # 2026-05-17 phase-3: 22 new bigrams confirmed by 562-file human
+    # corpus with break-rate ≤ 2% across thousands of occurrences.
+    'از آن', 'به آن', 'بیش از', 'به این',
+    'در حالی', 'به نظر', 'به اشتراک', 'از نظر',
+    'نه تنها', 'هر کس', 'نه فقط', 'هر چه',
+    'به سرعت', 'در همان', 'به نمایش', 'هر چند',
+    'به هر حال', 'به این شکل', 'هیچ کس',
+    'با توجه به', 'به آرامی', 'از این رو',
 })
 
 # Sentence-end punctuation — strongest split candidate.
@@ -93,13 +108,31 @@ MID_PUNCT_CHARS = '،؛:'
 # Subordinating / coordinating conjunctions that look natural at the
 # *start* of the second chunk (i.e. break BEFORE these tokens).
 # Single-token entries only — multi-word forms live in PROTECTED_BIGRAMS.
+# 2026-05-17 phase-3: 8 new conjunctions confirmed by post-cut frequency
+# analysis on 39 625 human cuts (each occurring >0.15% of all cuts).
 LEADING_CONJUNCTIONS = frozenset({
     'و', 'اما', 'ولی', 'چون', 'زیرا', 'پس', 'سپس', 'بنابراین',
     'هرچند', 'گرچه', 'یعنی', 'مگر', 'تا',
+    'اگر', 'وقتی', 'حتی', 'همچنین', 'چه', 'شاید', 'آیا', 'بلکه',
 })
 
-# Trailing citation "(source)" stripped from FA before processing
-_RE_CITATION = re.compile(r'\s*\([^()]{2,40}\)\s*$')
+# Leading prepositions — when the NEXT chunk starts with one of these,
+# breaking the previous chunk just before it is a natural FA cut point.
+# 2026-05-17 phase-3: ~18.6% of all human cuts in the corpus go directly
+# before one of these prepositions. Adds a new Priority 3.5 in _find_break.
+LEADING_PREPS = frozenset({
+    'در', 'به', 'از', 'برای', 'با', 'بر', 'تا',
+    'روی', 'زیر', 'نزد', 'پیش', 'سوی', 'بدون',
+    'علیه', 'مقابل', 'درباره', 'دربارهٔ', 'ضد',
+})
+
+# Citation pattern — a parenthesised source at the very end of a cell.
+# Used by _split_citation to preserve news-source attributions byte-id.
+# 2026-05-17 phase-3 (NS bug fix).
+_RE_CITATION_END = re.compile(r'\(([^()]{2,60})\)\s*$')
+
+# Legacy alias kept for any external import; new code calls _split_citation.
+_RE_CITATION = _RE_CITATION_END
 
 # Speaker tag: "John Smith (m):" on its OWN line is a bridge row.
 # 2026-05-13 (AW-3146 fix): added end-of-string anchor so the pattern
@@ -153,25 +186,86 @@ def _display_len(text: str) -> int:
     return len(text.replace(ZWNJ, ''))
 
 
-def _strip_citation(text: str) -> str:
-    """Remove trailing '(source)' attribution from FA cell text.
+def _split_citation(text: str) -> tuple[str, str]:
+    """Detect a *real* news-source citation at end of FA cell.
 
-    2026-05-13 bug fix (News Scroll NS 3146): when an FA cell contains
-    ONLY the citation (e.g. '(EuroWeekly News)' or '(Reuters)' on its
-    own row — the standard SMTV layout for news-source attribution),
-    the old version wiped the cell to empty. The aligner then saw an
-    empty FA row, treated it as a continuation slot, and the source
-    name disappeared from the final docx. The W2 whitelist contract
-    is that source-name tokens stay byte-identical end-to-end.
+    Returns ``(main_text, citation_or_empty_string)`` where ``citation``
+    includes the surrounding parens (e.g. ``"(Reuters)"``).
 
-    Fix: if stripping leaves nothing, the cell was citation-only —
-    keep it verbatim. Only strip when the cell carries a Persian
-    sentence followed by a parenthesised source.
+    Heuristic (2026-05-17 phase-3, NS bug fix):
+      - The final parenthetical ``(...)`` must be 2-60 chars long.
+      - Inner content must NOT contain any sentence terminator
+        (``.``, ``!``, ``?``, ``؟``). Examples of REJECTED matches:
+        ``(بله، استاد.)``, ``(درسته.)``, ``(وای.)`` — these are
+        dialogue reactions, not news citations.
+      - Inner content must NOT be a single short Persian descriptor
+        such as ``(وگان)``, ``(گیاهخوار)``, ``(آلمانی)``, ``(ویتنامی)``
+        — those follow a name and should travel WITH the name. The
+        rule fires only when the inner is multi-token OR contains
+        Latin letters (the news-source signature).
+
+    The OLD ``_strip_citation`` discarded citations entirely; this
+    function preserves them so ``_align_group`` can place them in
+    the final row of the group.
     """
-    stripped = _RE_CITATION.sub('', text).strip()
-    if not stripped and text.strip():
-        return text
-    return stripped
+    if not text:
+        return (text, "")
+    m = _RE_CITATION_END.search(text.rstrip())
+    if not m:
+        return (text, "")
+    inner = m.group(1).strip()
+    if any(c in inner for c in ".!?؟"):
+        return (text, "")  # dialogue reaction, not a citation
+    # Single Persian descriptor (وگان / گیاهخوار / ویتنامی …) → not citation;
+    # keep as-is. Detect by: pure Persian script + ≤2 tokens.
+    has_latin = any('a' <= c.lower() <= 'z' for c in inner)
+    token_count = len(inner.split())
+    if not has_latin and token_count <= 2:
+        return (text, "")
+    main = text[: m.start()].rstrip()
+    return (main, m.group(0).strip())
+
+
+def _strip_citation(text: str) -> str:
+    """Backwards-compatible wrapper kept for the bridge-clear pass.
+
+    Returns only the main text without the citation. Internally calls
+    ``_split_citation``. The citation-only fallback (return original
+    when stripping leaves nothing) is preserved so a citation-only
+    cell stays verbatim.
+    """
+    main, cite = _split_citation(text)
+    if not main and cite:
+        return text  # citation-only cell — keep verbatim
+    return main
+
+
+def _has_midline_paren(text: str) -> bool:
+    """True when '(' appears in the middle of the cell, NOT as end citation.
+
+    2026-05-17 phase-3 (no-doubling rule): an FA cell with mid-line
+    parens carries auxiliary information that should NOT be repeated
+    across rows. _align_group respects this flag.
+    """
+    if not text:
+        return False
+    main, _ = _split_citation(text.strip())
+    return "(" in main
+
+
+def _has_midline_dot(text: str) -> bool:
+    """True when '.', '!', '?', '؟' appears in the middle of the cell.
+
+    2026-05-17 phase-3 (no-doubling rule): mid-line sentence terminator
+    means the cell holds two independent sentences; doubling would
+    misalign their distribution across rows.
+    """
+    if not text:
+        return False
+    t = text.strip()
+    while t and t[-1] in '.!?؟':
+        t = t[:-1].rstrip()
+    return any(c in '.!?؟' for c in t)
 
 
 def _normalize_fa(text: str) -> str:
@@ -366,6 +460,26 @@ def _find_break(text: str, target: int, bad_bigrams: frozenset) -> int:
     if pos > 0:
         return pos
 
+    # Priority 3.5: just before a leading preposition (در، به، از، برای، …).
+    # 2026-05-17 phase-3: ~18.6 % of human cuts in the 562-file corpus
+    # land directly before a prepositional phrase. Inserting this between
+    # the conjunction rule and the generic-space rule routes a large slice
+    # of cuts to a natural FA break point.
+    def _is_pre_preposition(p):
+        if text[p - 1] != ' ':
+            return False
+        right = text[p:].lstrip()
+        if not right:
+            return False
+        first = right.split()[0].rstrip('،؛:.!?؟…')
+        if first not in LEADING_PREPS:
+            return False
+        return p not in bad_bigrams and _is_safe_break(text, p)
+
+    pos = _scan(_is_pre_preposition)
+    if pos > 0:
+        return pos
+
     # Priority 4: space with full safety.
     pos = _scan(
         lambda p: (
@@ -447,154 +561,14 @@ def _split_natural(text: str) -> list:
     return chunks or [text[:MAX_CHARS]]
 
 
-# EN punctuation → preferred FA equivalent for benchmark anchoring.
-# 2026-05-13 (AJAR-3147 benchmark fix): captured but currently INACTIVE.
-# The user's reference manually rearranges sentences semantically, so a
-# purely position-based EN→FA punct mapping over-corrects in 30% of
-# groups. The functions below are kept as scaffolding for the future
-# LLM-rescue path that can use the EN anchors as soft hints.
-_EN2FA_PUNCT = {
-    '.': '.', '!': '!', '?': '؟',
-    ',': '،', ';': '؛', ':': ':',
-    ')': ')', ']': ']',
-    '"': '"',
-    '“': '"',   # LEFT DOUBLE QUOTATION MARK
-    '”': '"',   # RIGHT DOUBLE QUOTATION MARK
-    '»': '"',   # RIGHT-POINTING DOUBLE ANGLE
-    '…': '…',   # HORIZONTAL ELLIPSIS
-}
-
-# Terminal punctuation set we will trust as a row-boundary signal.
-_EN_TERM_PUNCT = set(_EN2FA_PUNCT.keys())
-
-
-def _en_row_terminal(en_row: str) -> str | None:
-    """Return the trailing punct char of an EN row (last non-space),
-    if and only if it's one of the benchmark-trusted characters.
-    Otherwise None.
-    """
-    en_row = en_row.rstrip()
-    if not en_row:
-        return None
-    last = en_row[-1]
-    return last if last in _EN_TERM_PUNCT else None
-
-
-def _align_to_en_benchmarks(en_per_row: list, full_fa: str,
-                            n_rows: int) -> list | None:
-    """Anchor FA chunk boundaries to EN row terminal punctuation.
-
-    Strategy (2026-05-13 AJAR-3147 benchmark fix):
-      • Walk through `en_per_row[:-1]`. For each EN row that ends with
-        a benchmark punct, locate the next matching FA punct in
-        `full_fa` (after the last anchor). Cut there.
-      • Rows BETWEEN anchors (EN rows without terminal punct) inherit
-        the doubled-content pattern: their slot reuses the surrounding
-        anchored chunk via `_distribute_to_rows`.
-      • The last row gets the remainder.
-
-    Returns a `list[str]` of length `n_rows` on success, or `None`
-    if no useful benchmarks were found or any sub-chunk would exceed
-    `MAX_CHARS`. The caller falls back to the mechanical splitter on
-    `None`.
-    """
-    if n_rows < 2 or len(en_per_row) != n_rows:
-        return None
-    if not full_fa or _display_len(full_fa) <= MAX_CHARS:
-        # Trivial cases — let the mechanical path handle them.
-        return None
-
-    # Identify anchored rows (EN row terminal punct that we'll use).
-    anchors: list = []   # list of (row_idx, fa_punct_char)
-    for i in range(n_rows - 1):
-        tp = _en_row_terminal(en_per_row[i])
-        if tp is None:
-            continue
-        anchors.append((i, _EN2FA_PUNCT[tp]))
-    if not anchors:
-        return None
-
-    # Walk full_fa and locate each anchor's matching FA punct position.
-    cuts: list = []   # list of (row_idx, end_pos_in_full_fa)
-    fa_pos = 0
-    n = len(full_fa)
-    for row_idx, fa_punct in anchors:
-        # Search forward for the next occurrence.
-        idx = full_fa.find(fa_punct, fa_pos)
-        if idx < 0:
-            # No matching punct ahead → bail; mechanical fallback.
-            return None
-        end = idx + 1
-        # Absorb a trailing close-quote / close-paren that belongs to
-        # the same boundary (so a chunk ending with `?` then `)` keeps
-        # the `)` attached, not orphaned onto the next chunk).
-        while end < n and full_fa[end] in ')"»」]”':
-            end += 1
-        # Reject if this would produce a chunk longer than MAX_CHARS
-        # (e.g. one very long FA sentence with all punct at the tail).
-        if _display_len(full_fa[fa_pos:end]) > MAX_CHARS:
-            return None
-        cuts.append((row_idx, end))
-        fa_pos = end
-
-    if fa_pos >= n and any(cut[0] < n_rows - 1 for cut in cuts):
-        # Anchors consumed all FA — nothing left for the tail row.
-        # Reject so mechanical path can balance better.
-        return None
-
-    # Distribute chunks. Rows from prev_anchor+1 .. cut.row_idx get the
-    # chunk that ends at `cut.end_pos`. If the run is >1 row, double /
-    # split via the existing helper so we still respect MAX_CHARS.
-    chunks_out: list = [''] * n_rows
-    fa_pos = 0
-    prev_row = -1
-    for row_idx, end in cuts:
-        chunk = full_fa[fa_pos:end].strip()
-        if not chunk:
-            return None
-        rows_in_block = list(range(prev_row + 1, row_idx + 1))
-        if len(rows_in_block) == 1:
-            chunks_out[row_idx] = chunk
-        else:
-            # Re-split this chunk for the inner rows; if it can't fit,
-            # fall through to mechanical.
-            sub_chunks = _split_for_n_rows(chunk, len(rows_in_block))
-            if not sub_chunks or any(
-                _display_len(c) > MAX_CHARS for c in sub_chunks
-            ):
-                return None
-            distributed = _distribute_to_rows(sub_chunks, len(rows_in_block))
-            for k, r in enumerate(rows_in_block):
-                chunks_out[r] = distributed[k] if k < len(distributed) else ''
-        fa_pos = end
-        prev_row = row_idx
-
-    # Tail: anything from the last anchored row + 1 to the very end.
-    tail_rows = list(range(prev_row + 1, n_rows))
-    tail_text = full_fa[fa_pos:].strip()
-    if not tail_rows:
-        if tail_text:
-            # Anchors ended mid-text but no row slots left → reject.
-            return None
-    elif not tail_text:
-        # No content for the tail rows → fail (would silently drop rows).
-        return None
-    else:
-        if len(tail_rows) == 1:
-            if _display_len(tail_text) > MAX_CHARS:
-                return None
-            chunks_out[tail_rows[0]] = tail_text
-        else:
-            sub_chunks = _split_for_n_rows(tail_text, len(tail_rows))
-            if not sub_chunks or any(
-                _display_len(c) > MAX_CHARS for c in sub_chunks
-            ):
-                return None
-            distributed = _distribute_to_rows(sub_chunks, len(tail_rows))
-            for k, r in enumerate(tail_rows):
-                chunks_out[r] = distributed[k] if k < len(distributed) else ''
-
-    return chunks_out
+# Note (2026-05-17 phase-3): removed `_align_to_en_benchmarks`,
+# `_en_row_terminal`, `_EN2FA_PUNCT`, `_EN_TERM_PUNCT` — they were
+# scaffolding for an EN-anchored split path that never went live
+# (~120 lines of dead code). The 2026-05-17 corpus analysis path
+# operates purely on FA structure (citations + midline patterns +
+# enriched bigram/preposition sets), which covers the cases the EN
+# anchor was meant to solve, without the 30% over-correction the
+# anchor caused in BMD/CTAW reference docs.
 
 
 def _split_for_n_rows(text: str, n_rows: int) -> list:
@@ -1077,7 +1051,11 @@ class FASubtitleAligner:
             rows.append({
                 'ri':     ri,
                 'en':     _cell_text(cells[1]),
-                'fa':     _strip_citation(_cell_text(cells[2])),
+                # 2026-05-17 phase-3: keep the citation in raw FA. The
+                # old _strip_citation call silently dropped news-source
+                # attributions on every "text (Source)" row; _align_group
+                # now handles citation placement explicitly.
+                'fa':     _cell_text(cells[2]),
                 'shaded': _cell_has_shading(cells[1]),
             })
         return rows
@@ -1225,20 +1203,78 @@ class FASubtitleAligner:
         """
         Align one sentence group.
         Returns list[str] with len == len(row_indices).
+
+        2026-05-17 phase-3 — rewritten for three new responsibilities:
+          1. CITATION PRESERVATION: when the joined FA text ends with
+             ``(Source)`` (Reuters / VnExpress / Tuổi Trẻ / …), the
+             citation is detached BEFORE splitting and placed alone in
+             the last row of the group. Never duplicated, never broken
+             across rows. Pure descriptors like «(وگان)» / «(گیاهخوار)»
+             stay attached to their host (they ride inside the text).
+          2. MID-LINE PAREN NO-DOUBLING: if any FA cell of the group
+             carries ``(...)`` in the middle (not the end), the group
+             is flagged ``no_doubling``. Chunks distribute one-per-row;
+             extra rows stay empty rather than repeat content.
+          3. MID-LINE DOT NO-DOUBLING: if any FA cell of the group
+             carries a sentence terminator (. ! ? ؟) in the middle, the
+             same ``no_doubling`` flag fires. Two independent sentences
+             in one cell must not be repeated across rows.
         """
         n_rows = len(group['row_indices'])
-        full_fa = _normalize_fa(
-            ' '.join(p for p in group['fa_parts'] if p)
+
+        # Detect no-doubling flag on the RAW per-row FA before joining.
+        # Joining can hide a mid-line dot (turns into an inter-cell space).
+        no_doubling = any(
+            _has_midline_paren(p) or _has_midline_dot(p)
+            for p in group['fa_parts'] if p
         )
+
+        raw_join = ' '.join(p for p in group['fa_parts'] if p)
+        main_text, citation = _split_citation(raw_join)
+        full_fa = _normalize_fa(main_text)
+
+        # Special case: citation-only group (no other text). Place the
+        # citation in the LAST row, leave the rest empty.
+        if not full_fa and citation:
+            rows = [''] * n_rows
+            rows[-1] = citation
+            return rows
 
         if not full_fa:
             return [''] * n_rows
 
-        chunks = _split_for_n_rows(full_fa, n_rows)
-        rows   = _distribute_to_rows(chunks, n_rows)
-        rows   = _enforce_no_triple(rows)
+        # Reserve one row for citation when the group has more than one row.
+        # A 1-row group with citation gets the citation concatenated at end.
+        reserve_citation_row = bool(citation) and n_rows >= 2
+        target_rows = n_rows - (1 if reserve_citation_row else 0)
+        if target_rows < 1:
+            target_rows = 1
 
-        # Pad / trim to exact count
+        chunks = _split_for_n_rows(full_fa, target_rows)
+
+        if no_doubling:
+            # One chunk per row, no repeats. Trim or pad to fit target_rows.
+            rows = list(chunks[:target_rows])
+            while len(rows) < target_rows:
+                rows.append('')
+        else:
+            rows = _distribute_to_rows(chunks, target_rows)
+
+        rows = _enforce_no_triple(rows)
+
+        # Attach citation: dedicated last row when reserved, otherwise
+        # appended to the only row.
+        if citation:
+            if reserve_citation_row:
+                rows.append(citation)
+            else:
+                if rows:
+                    joined = (rows[0] + ' ' + citation).strip()
+                    rows[0] = joined
+                else:
+                    rows = [citation]
+
+        # Pad / trim to exact count.
         if len(rows) < n_rows:
             rows.extend([''] * (n_rows - len(rows)))
         rows = rows[:n_rows]
@@ -1247,13 +1283,11 @@ class FASubtitleAligner:
         # if the LLM threshold is high enough AND this group looks rough,
         # hand it to gpt-5.4-mini for a second take. The pure-mechanical
         # default (llm_threshold == 0) leaves this branch dormant — every
-        # existing run stays byte-identical.
+        # existing run stays byte-identical. Citation/no-doubling logic
+        # above runs BEFORE the LLM rescue so the LLM never sees stripped
+        # text or repeated chunks.
         if self.llm_threshold > 0:
             score = _group_difficulty_score(rows, n_rows)
-            # threshold semantics: 100 = always invoke LLM, 0 = never.
-            # We invoke when score >= (100 - threshold), so:
-            #   threshold=40 → invoke on score ≥ 60   (only hard groups)
-            #   threshold=80 → invoke on score ≥ 20   (most groups)
             if score >= (100 - self.llm_threshold):
                 refined = self._llm_refine_group(full_fa, rows, n_rows, group)
                 if refined is not None:
