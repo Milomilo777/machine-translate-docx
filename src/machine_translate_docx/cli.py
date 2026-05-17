@@ -265,6 +265,19 @@ def _get_ctx() -> RuntimeContext:
             _ctx.flags.splitonly = splitonly
         except NameError:
             pass
+        # 2026-05-17 (AJAR 3150 basic-split bug): `split_translation` flag
+        # had no snapshot here. The module-level global is set to True in
+        # splitonly mode (line ~799) but ``ctx.flags.split_translation``
+        # stayed at the RuntimeContext default (False). Downstream
+        # ``print_console_docx_file_translated`` then took the
+        # ``if not ctx.flags.split_translation:`` branch, which writes the
+        # phrase's full FA blob into the FIRST row of the phrase only and
+        # leaves the rest empty. Adding the snapshot fixes the
+        # basic-split distribution.
+        try:
+            _ctx.flags.split_translation = split_translation
+        except NameError:
+            pass
         try:
             _ctx.docx.translation_errors_count = translation_errors_count
         except NameError:
@@ -2545,6 +2558,40 @@ def main() -> int:
         ctx.docx.translation_array = []
 
     minimize_browser(ctx)
+
+    # 2026-05-17 (AJAR 3150 basic-split bug fix): in splitonly mode the
+    # translation phase is skipped, so
+    # ``ctx.docx.to_text_by_phrase_separator_table`` is never populated
+    # by get_translation_and_replace_after. document_split_phrases then
+    # iterates with every entry == '' and does nothing — leaving the
+    # raw "first-row-of-phrase has all the FA, rest empty" shape
+    # unchanged. Populate the array directly from the docx's FA column
+    # so the distributor has something to split.
+    if ctx.flags.splitonly:
+        # In splitonly mode the translation phase is skipped, so
+        # ``to_text_by_phrase_separator_table`` is never filled by
+        # get_translation_and_replace_after. Read the FA column of the
+        # source docx directly so document_split_phrases has phrase-level
+        # text to distribute across the phrase's rows.
+        try:
+            _table = ctx.docx.docxdoc.tables[0]
+            _last_row = ctx.docx.word_translation_table_length
+            _populated = 0
+            for _ri in range(_last_row):
+                if _ri >= len(_table.rows):
+                    break
+                _cells = _table.rows[_ri].cells
+                if len(_cells) < 3:
+                    continue
+                _fa = " ".join(
+                    p.text.strip() for p in _cells[2].paragraphs if p.text.strip()
+                )
+                if _fa:
+                    ctx.docx.to_text_by_phrase_separator_table[_ri] = _fa
+                    _populated += 1
+            print(f"[INFO] splitonly: populated {_populated} FA rows for distribution")
+        except Exception as _exc:
+            print(f"[WARN] splitonly populate-from-docx failed: {_exc}")
 
     document_split_phrases(ctx)
 

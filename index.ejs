@@ -1183,6 +1183,45 @@
         _maxCharsRow.classList.toggle('hidden', !isPDL);
       }
 
+      // ------- splitTranslate checkbox: master toggle (2026-05-17) -------
+      // When the user un-ticks "Splittranslation", every dependent control
+      // — splitEngine dropdown, alignerMaxChars slider row, alignerLlm
+      // threshold row — must visibly disable / hide so the user cannot
+      // pick a Split Method that the backend will then ignore.
+      const _splitTrans = document.getElementById('splitTranslate');
+      function _refreshSplitControls() {
+        const enabled = !!_splitTrans && _splitTrans.checked;
+        // splitEngine: when splitTranslate is off, force-disable. When on,
+        // restore the language-aware disabled state (only FA enables it).
+        const _splitSelLocal = document.getElementById('splitEngine');
+        if (_splitSelLocal) {
+          if (!enabled) {
+            _splitSelLocal.disabled = true;
+            _splitSelLocal.classList.add('opacity-50');
+          } else {
+            // Language-aware re-enable: FA target → enabled, others → stay
+            // disabled per the existing rule. We respect whatever the
+            // language handler set; we only LIFT the override when on.
+            const _tgtEl = document.getElementById('targetLanguages');
+            const _destLang = _tgtEl ? _tgtEl.value : '';
+            _splitSelLocal.disabled = (_destLang !== 'fa');
+            _splitSelLocal.classList.remove('opacity-50');
+          }
+        }
+        // Aligner rows: when splitTranslate is off, force-hide regardless
+        // of split engine value.
+        const _maxRow = document.getElementById('alignerMaxCharsRow');
+        const _thrRow = document.getElementById('alignerThresholdRow');
+        const _isPDL = _splitSelLocal && _splitSelLocal.value === 'persian_double_lines';
+        if (_maxRow) _maxRow.classList.toggle('hidden', !enabled || !_isPDL);
+        if (_thrRow) _thrRow.classList.toggle('hidden', !enabled || !_isPDL);
+      }
+      if (_splitTrans) {
+        _splitTrans.addEventListener('change', _refreshSplitControls);
+        // Initial paint — sync controls with the checkbox's initial state.
+        _refreshSplitControls();
+      }
+
     }); // end DOMContentLoaded
     </script>
 

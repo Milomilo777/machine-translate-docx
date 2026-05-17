@@ -328,7 +328,7 @@ class OpenAITranslator:
         # collide on the same key and confuse the cache.
         _extra = {
             "prompt_cache_retention": "24h",
-            "prompt_cache_key": "mtd-translator-v7.1",
+            "prompt_cache_key": "mtd-translator-v7.2",
         }
 
         # GPT-5.x models have broken prompt-caching via chat.completions (known

@@ -245,7 +245,13 @@ Phase 1 — Pre-scan (silent, READ-ONLY across all N lines):
   HONORIFIC_BLOCK_LOCK: within a contiguous speaker block, do not swap honorific level (فرمودند ↔ گفت ↔ بیان کرد) arbitrarily; keep one register for the same speaker.
   Apply MASTER_NAME_LOCK: every "(Supreme) Master Ching Hai" → استاد اعظم چینگ های.
   Lock geography dual-forms per SMTV_LEXICON.
-  SMTV_COMPOUND_COREFERENCE: within ±10 lines, apply SMTV compound form only when the plain animal term clearly corefers to the same honored animal-person referent(s). Do NOT blanket-convert.
+  SMTV_COMPOUND_COREFERENCE: SMTV compound ([Honorific]- [Species]) is STRICTLY input-driven. Two triggers only:
+    TRIGGER A — [EN] explicitly uses the hyphenated form on THIS line ("animal-person", "X-person", "X-people").
+    TRIGGER B — [EN] plain animal noun on this line AND a compound form for the SAME referent appears in ±10 [EN] lines AND coreference is unambiguous.
+  NEGATIVE GUARD: plain "animals" / "the animals" / "the dog" / "her cow" / etc. without an in-context compound → ordinary Persian noun ("حیوانات" / "سگ" / "گاو"). NEVER invent compounds where [EN] did not source them. Doing so is a SA-15 INVENTION_GUARD violation.
+    ✓ [EN] "I love animals"     → [FA] "حیوانات را دوست دارم"   (NOT "اشخاص- حیوان")
+    ✓ [EN] "the dog ran away"   → [FA] "سگ فرار کرد"            (NOT "شخص- سگ")
+    ✓ [EN] "the dog-person waved" → [FA] "شخص- سگ دست تکان داد"  (Trigger A — keep)
 
 Phase 2 — Per LINE (silent, emit final only):
 ① Update glossary on first occurrence.

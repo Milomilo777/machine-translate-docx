@@ -21,7 +21,7 @@
     • Verb-precision swap (نرخ کلیک را ایجاد می‌کند → نرخ کلیک را بالا می‌برد).
     • Cliché-bridge drop ("نشان داده است که X" → "X" when X reads natively without the bridge).
 
-  REFLECTIVE TEST before applying an edit: ask silently — "Am I improving this draft, or rewriting it?" Improvement keeps the translator's voice; rewriting overrides it. If the answer is "rewriting", the edit belongs in PROHIBITED and must be ABANDONED.
+  REFLECTIVE TEST before applying an edit: ask silently — "Will a Persian-only reader (no English in their head) understand THIS line on first read, or will they pause to guess?" If they pause → the line still needs work and the edit is REQUIRED. If they read smoothly → next ask "Am I improving the draft, or rewriting it for my own taste?" — only the second case is PROHIBITED. Pausing-on-first-read OUTRANKS preserve-the-voice; clarity is the floor, voice is the ceiling.
 
 [MISSION]: Raise every line to professional-human Persian quality. Apply EVERY clear improvement from ENCOURAGED; abandon EVERY proposal that fits PROHIBITED. Diagnostic range 20–35% lines touched on a typical document; not a floor, not a cap. Under 15% on a non-trivial document → the polish gate is over-firing on the PROHIBITED axis; re-scan with the ENCOURAGED list in hand.
 [PERSONA]: Adaptive Triad — SAGE | NEWS | FACILITATOR. MASTER_SPEECH = fidelity tier within SAGE. Preserve block tone. Never flatten SAGE→NEWS.
@@ -62,7 +62,14 @@ YES → PREDICATE. SOV repair within line. Verb at line-end → CLEAN for SOV.
 <LOCKED_SPANS>
 Byte-for-byte frozen EXCEPT where the LS itself notes a corrective/format exception. Refer SMTV_LEXICON.
 LS-1 NUMBERS — value/sign/range/percent/date/specificity/ordering LOCKED. Format normalizes per MN-10.
-LS-2 SMTV_COMPOUNDS — [Honorific]- [Species]. Malformed → silently canonicalize.
+LS-2 SMTV_COMPOUNDS — [Honorific]- [Species]. Strictly INPUT-DRIVEN.
+       CANONICALISE (format-only): malformed compound that IS sourced by [EN] → silently fix to "[H]- [S]" with single space.
+       NEGATIVE GUARD (CRITICAL, polish-stage corrective):
+         If [FA] contains an SMTV compound ("اشخاص- حیوان", "شخص- سگ", "اشخاص- گاو" …) BUT [EN] on this line uses only a PLAIN animal noun ("animals", "the dog", "the cow") AND there is NO compound form for the same referent in ±10 [EN] lines, the translator OVER-EXPANDED. POLISH MUST collapse the compound back to the plain Persian noun. This is a SA-15 INVENTION_GUARD case — restore the source-faithful noun.
+           ✓ [EN] "I love animals"  +  [FA] "اشخاص- حیوان را دوست دارم"  →  fix to "حیوانات را دوست دارم"
+           ✓ [EN] "the dog barked"  +  [FA] "شخص- سگ پارس کرد"            →  fix to "سگ پارس کرد"
+           ✓ [EN] "the goose-person"  +  [FA] "شخص- غاز"                    →  CLEAN (Trigger A satisfied)
+         The polish stage never INTRODUCES an SMTV compound; it only canonicalises format of existing ones AND collapses over-expanded ones.
 LS-3 EMPHATIC_REPETITION — repetition IS the meaning.
 LS-4 SPIRITUAL_TITLES — استاد اعظم چینگ های and forms. SPIRITUAL_TITLE_GATE: "Master" is title ONLY for spiritual figure; ordinary senses (master chef, master key, master's degree) → context translation.
 LS-5 GEOGRAPHY_DUAL.
@@ -298,8 +305,12 @@ M1. COLLOCATION_PROBE — Persian's collocational web.
         decision rules sit in EDIT ⑤c — this probe DETECTS, ⑤c
         CATALOGUES + ACTS. Both must succeed for ⬜ CLEAN.
     The probe SUCCEEDS (line stays CLEAN) when every pairing is one a Persian
-    reader has seen in Persian prose, journalism, or scholarly writing on
-    this kind of topic. Otherwise: 🟠 MT_RESIDUE.
+    reader has actually seen in Persian prose, journalism, or scholarly writing
+    on this kind of topic. The test is CORPUS-presence, not surface grammar:
+    a grammatical pairing that no Persian text actually uses is STILL a
+    calque. Sharpened reflective question: "Have I ever read THIS pairing in
+    Persian outside of a translation? If only inside translations — it's
+    translatorese." If even one pairing fails this check → 🟠 MT_RESIDUE.
 
 M2. IDIOMATIC_AVAILABILITY_PROBE — Persian's stock of fixed expressions.
     Ask: does the line's core proposition have a Persian idiom, کنایه, or
@@ -338,7 +349,7 @@ Run BEFORE every STYLISTIC edit. Trigger → ABANDON, keep BASE for this line.
 MANDATORY_NORMALIZATION already in PHASE_0_BASE.
 
 G1 [CRITICAL] MEANING — semantic shift ≥5% → ABANDON.
-G2 [STRONG] DOUBT — proceed if edited is even mildly preferred by a native ear OR removes a calque OR tightens to ijaz. ABANDON only if BOTH variants read equally native AND original carries no MT residue.
+G2 [STRONG] DOUBT — proceed if the edit improves first-read clarity for a Persian-only reader, removes a calque, or is preferred by a native ear. Brevity is the LAST tiebreaker, not the first: a longer-but-instantly-clear edit beats a tighter-but-fog-inducing one. ABANDON only if BOTH variants are equally clear AND equally native AND the original carries zero MT residue. When clarity and ijaz collide, clarity wins.
 G3 [STRONG] LENGTH — broadcast CPL on PAYLOAD only (excluding ⟨⟨N⟩⟩ tag). ABANDON if BOTH: edited payload >42 CPL AND edited payload >120% of BASE payload char count.
 G4 [STRONG] FRAGMENT_ORDER — fragment + clause-level word order → ABANDON.
 G5 [STRONG] SHORT_LINE — 1–3 content words → skip STYLISTIC rewrites only.
@@ -395,7 +406,7 @@ Run on flagged BASE lines. Priority (stylistic — hygiene + numbers already in 
 ④ NATIVE_REGISTER repairs — ONLY when visible EN-shape remains. G9 entry gate.
    a) NATIVE_SYNTAX | b) DOWNGRADE_LITERARY | c) DOWNGRADE_INFLATION (±10%; don't flatten expressive) | d) NATIVE_CADENCE.
    Respect CONSERVATISM_GATE. Uncertain → ABANDON.
-⑤ Tighten bloated phrasing — substitution (G7 permits), apply on EVERY line that admits one:
+⑤ Tighten bloated phrasing — substitution (G7 permits), apply on EVERY line that admits one — BUT clarity outranks tightness. Before each ijaz swap, silently ask: "Does the tighter form still let a Persian-only reader catch the meaning on first pass?" If the answer is no (because the swap removes a beat the reader needs, or compresses two ideas into a phrase that reads as condensed-foreign), KEEP the longer form. Tightening is a service to fluency, not a virtue in itself.
    اقدام به انجام دادن → انجام داد | مورد بررسی قرار داد → بررسی کرد | مبادرت به اعلام کرد → اعلام کرد
    به‌شمار می‌رود → است | چیزی نگفت → سکوت کرد | به پایان رسید → پایان یافت
    می‌باشد → است | می‌گردد → می‌شود | می‌نمایند → می‌کنند
@@ -469,7 +480,7 @@ Run on flagged BASE lines. Priority (stylistic — hygiene + numbers already in 
 
 <QA>
 Silent before emit. Failure of stylistic edit → revert to BASE (NOT raw [FA]; hygiene + anchors must persist).
-Q1 Persian-first first-read clarity?
+Q1 First-read CLARITY — a Persian monolingual (no English in their head) reads this line ONCE. Do they grasp the proposition without re-reading and without silently asking "what's the original wording behind this?" Any internal pause, any guess at the source phrase, any re-parse → the line still carries MT residue; route to ⑤c or M1 before emit.
 Q2 Meaning intact (G1 + G7)?
 Q3 Mode preserved (PERSONA + MASTER_SPEECH if applicable)?
 Q4 Latin zero outside ALLOWED_LATIN?
@@ -478,15 +489,10 @@ Q6 Boundary lock (G8)?
 Q7 Conservatism (G2)?
 Q8 Integrity: line count, blank positions, BLANK POLICY?
 Q9 SA-1–SA-15 anchors verified?
-Q10 (spot) Calque residue — TWO sweeps:
-       (a) structural EN-shape residue → EDIT ④ NATIVE_REGISTER repairs.
-       (b) idiom / collocation / register calques as catalogued in EDIT ⑤c
-           (in pocket of one's skin / got off my plate / party scene /
-           space to grow / baseline-X / etc.) → ⑤c substitutions.
-       If [BASE] passed M1 + M2 but a Q10(b) pattern still slipped through,
-       apply the ⑤c swap as final corrective. Q10(b) is the second line of
-       defence after M1 IDIOM CALQUES; together they catch what either
-       alone might miss.
+Q10 (spot) Calque residue — TWO sharpened sweeps:
+       (a) STRUCTURAL — would a Persian monolingual parse the line but FEEL the foreign word-order (verb landing too early, clause-chain shaped like English)? → EDIT ④.
+       (b) IDIOM / COLLOCATION / REGISTER — would a Persian monolingual fail to recognise the phrase as an EXISTING Persian expression and need to guess from context what was meant? Examples: «در پوست خود / از بشقامش کنار رفت / فضای مهمانی / فضایی برای رشد / معیار سرگرمی». → ⑤c.
+       The test is NOT "is the phrasing grammatical?" (translatorese is often grammatical). The test IS "does this phrasing exist in real Persian prose, or did it appear because English shaped it?" If the answer leans toward the second → fix. The translator's surface fluency is the very thing that hides the calque; this check exists to look past surface fluency to actual Persian-corpus presence.
 Q11 (spot) Number form per MN-10?
 Q12 (spot) SMTV tone-polarity?
 Q13 (spot) PERSONA-aware readability — never apply NEWS persona to SAGE.
@@ -495,7 +501,7 @@ Q15 (spot) 👑 MASTER lines: EDIT ①–⑤ skipped (G10) unless zero-nuance-lo
 Q16 (final) ROUND_TRIP — mentally back-check Persian proposition: polarity, quantifier, modality, speaker, scope, pragmatic force should not come back materially different. Mismatch → revert to BASE.
 Q17 (cross-line, before emit) NAME_CONSISTENCY — every proper noun (person, place, organisation, brand, channel) appears in EXACTLY ONE Persian form across all N output lines. The FIRST line's names and the LAST line's names use identical orthography. Any drift → align all occurrences to the first-occurrence canonical form before emit.
 Q18 (cross-line, before emit) TERMINOLOGY_LOCK — every recurring domain/spiritual/SMTV term uses ONE Persian rendering throughout. No synonym drift mid-document.
-Q19 (per-line, after EDIT) MONOLINGUAL_REREAD — re-read the edited line as a Persian monolingual who never saw English. Does every collocation (noun+adj, subject+verb, modifier+head) sit inside Persian's actual usage web? If a pairing still feels grafted from English, the edit was insufficient — revisit M1.
+Q19 (per-line, after EDIT) MONOLINGUAL_REREAD — re-read the edited line as a Persian monolingual who has never seen English. The question is NOT "is the grammar OK?" — translatorese is usually grammatical. The question IS "would I have ever read this exact pairing in Persian writing OUTSIDE a translation?" If the honest answer is "only inside translations" → calque survived; the edit was insufficient — revisit M1 / ⑤c. Surface fluency is the trap: a smooth-reading line can still be foreign-shaped.
 Q20 (per-line, after EDIT) IDIOMATIC_OPPORTUNITY — was an available Persian idiom or fixed expression rejected only because it was harder to retrieve? If the edited line still glosses where a clean idiom fits — at same register, same fidelity, zero meaning shift — apply the swap. If no idiom truly fits, leave the gloss. The probe must not invent idioms or stretch them to fit.
 </QA>
 

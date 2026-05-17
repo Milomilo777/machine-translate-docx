@@ -6,6 +6,116 @@
 
 ---
 
+## 2026-05-17 — AJAR 3150 bug-batch: basic-split + aligner + frontend + prompt polish
+
+Driven by the four-file AJAR 3150 user report. Single batch covering
+prompts (translate / polish / SMTV locks), aligner (NFE bridge + content
+drop), CLI (basic-split distributor), and the legacy frontend
+(Splittranslation toggle). Cache keys bumped to v7.2 / v7.5.
+
+### CLI — basic-split distribution fix (`cli.py`)
+
+Root cause traced: `_get_ctx()` snapshotted every `ctx.flags.*` except
+`split_translation`. The module-level `split_translation = True` set by
+`--splitonly` mode never reached the context, so
+`ctx.flags.split_translation` stayed at the RuntimeContext default
+(`False`). Downstream `print_console_docx_file_translated` then took
+the `if not ctx.flags.split_translation:` branch and wrote each
+phrase's entire FA blob into the FIRST row of the phrase, leaving
+the rest of the phrase's rows empty.
+
+- **Fix A**: snapshot `_ctx.flags.split_translation = split_translation`
+  in `_get_ctx()` so the splitter branch fires correctly.
+- **Fix B**: in `--splitonly` mode, populate
+  `ctx.docx.to_text_by_phrase_separator_table` directly from the docx's
+  FA column before calling `document_split_phrases`. The translation
+  phase is skipped in splitonly, so the array would otherwise stay
+  all-empty and the splitter would have nothing to distribute.
+
+Verified: AJAR 3150 row 14-16 (and every similar 3-row phrase) now
+distributes properly across all rows instead of stranding the FA in
+row 1 + empty 2/3.
+
+### FA aligner — content drop + NFE bridge (`persian_double_lines.py`)
+
+- `_align_group` (`no_doubling` path): when the splitter produced more
+  chunks than `target_rows` (because the citation slot was reserved
+  or the midline-pattern guard fired), the trailing chunks were
+  silently sliced off. AJAR 3150 rows 87 and 103-104 lost their Persian
+  entirely. Fix: when `len(chunks) > target_rows`, merge the overflow
+  tail (`' '.join(chunks[target_rows-1:])`) into the last slot
+  instead of dropping it.
+- `_BRIDGE_PATTERNS_RAW`: added `r'^\(NF[ETHG]\b'` and
+  `r'^NF[ETHG]:'`. Editor-comment rows beginning with `(NFE:`,
+  `(NFT:`, `(NFH:`, `(NFG:` (or the bare prefix) are now recognised
+  as bridge rows so the aligner stops spilling next-group content
+  into them. AJAR row 84 (`(NFE: This should be: ...)`) was the
+  trigger case.
+
+### Frontend — Splittranslation master toggle (`index.ejs`)
+
+The legacy UI's `Splittranslation` checkbox had no event listener:
+toggling it did nothing to the `Split Method` dropdown, the
+`alignerMaxChars` slider, or the `alignerLlmThreshold` slider, so a
+user could pick a method that the backend then ignored.
+
+Added `_refreshSplitControls()` plus an `addEventListener('change')`:
+unticking force-disables `splitEngine` and hides the aligner rows;
+re-ticking restores the language-aware enable rule (FA-only).
+Initial paint syncs with the checkbox's starting state.
+
+### Prompt polish — multi-layer reflection round (`polish_PER.txt`)
+
+Seven existing probes sharpened in place (NO new rules added) to tilt
+the balance from ijaz-first to clarity-first while making the
+calque-detection question operational rather than abstract:
+
+- HANDOFF_TRUST reflective test now asks "will a Persian-only reader
+  understand on first read?" — pause-on-first-read outranks
+  preserve-the-voice; clarity is the floor, voice is the ceiling.
+- G2 DOUBT explicitly ranks brevity LAST; longer-but-instantly-clear
+  beats tighter-but-fog-inducing.
+- EDIT ⑤ Tighten now asks "does the swap still let a monolingual
+  catch the meaning on first pass?" — keeps the longer form if not.
+- Q1 First-read CLARITY made operational: any internal pause, any
+  guess at the source phrasing → not CLEAN.
+- Q10 Calque residue: two sharpened sweeps; the test is "does this
+  pairing exist in real Persian prose, or did English shape it?"
+- M1 COLLOCATION_PROBE conclusion: corpus-presence is the test, not
+  surface grammar (translatorese is grammatical).
+- Q19 MONOLINGUAL_REREAD: same anchor — would I read this pairing
+  in Persian writing OUTSIDE a translation?
+
+### Prompt polish — SMTV compound input-driven tightening
+### (`_smtv_locks.txt` + `translate_PER.txt` + `polish_PER.txt`)
+
+User-reported regression: the model expanded plain `animals` /
+`the dog` into the SMTV compound `اشخاص- حیوان` / `شخص- سگ` even
+when the English never used the hyphenated `animal-people` /
+`X-person` form.
+
+Tightened the existing INPUT-DRIVEN rule across the three files:
+
+- `_smtv_locks.txt` `# SMTV COMPOUNDS`: two explicit triggers
+  (A = EN compound on this line; B = coreference in ±10 [EN] lines),
+  plus a NEGATIVE GUARD with three before/after examples and a
+  cross-ref to SA-15 INVENTION_GUARD. `SMTV_OVERRIDE_TRUST` now
+  bounded to format-canonicalisation; no introduction.
+- `translate_PER.txt` `SMTV_COMPOUND_COREFERENCE` (in WORKFLOW
+  Phase 1): same two triggers + negative guard + three examples.
+- `polish_PER.txt` `LS-2 SMTV_COMPOUNDS`: corrective NEGATIVE GUARD —
+  if [FA] uses a compound but [EN] context shows it shouldn't,
+  polish collapses the compound back to the plain noun.
+
+### Cache key bumps
+
+- `mtd-translator-v7.1` → `mtd-translator-v7.2`
+  (covers `translate_PER.txt` SMTV change).
+- `mtd-polisher-v7.4` → `mtd-polisher-v7.5`
+  (covers all polish_PER.txt / _smtv_locks.txt changes since v7.4).
+
+---
+
 ## 2026-05-17 — Polish prompt: SAGE_PERSONA block (15-line BMD-corpus tuned)
 
 Calibrated on 250 BMD files (104 403 FA rows, 3.07 M Persian chars) of

@@ -175,6 +175,12 @@ _BRIDGE_PATTERNS_RAW = [
     r'^[A-Z][A-Z\s]{2,}:\s*$',
     # 2026-05-13: stand-alone hashtag-id rows (`#193465`).
     r'^#\d{3,}\s*$',
+    # 2026-05-17 (AJAR 3150 bug): editor-comment rows beginning with
+    # "(NFE:", "(NFT:", "(NFH:", "(NFG:" — these are production-note
+    # cells that are intentionally empty in the FA column; treating them
+    # as ordinary rows lets the aligner spill the next group's content
+    # into them. Also catches the bare prefix without leading paren.
+    r'^\(NF[ETHG]\b', r'^NF[ETHG]:',
 ]
 _BRIDGE_RE = [re.compile(p, re.IGNORECASE) for p in _BRIDGE_PATTERNS_RAW]
 
@@ -1253,8 +1259,19 @@ class FASubtitleAligner:
         chunks = _split_for_n_rows(full_fa, target_rows)
 
         if no_doubling:
-            # One chunk per row, no repeats. Trim or pad to fit target_rows.
-            rows = list(chunks[:target_rows])
+            # One chunk per row, no repeats. BUT we MUST NOT drop content:
+            # if the splitter produced more chunks than target_rows
+            # (because target_rows shrank after reserving the citation
+            # slot, or because the midline-pattern guard fired on a long
+            # cell), merge the trailing overflow into the last row
+            # instead of slicing it off. 2026-05-17 (AJAR 3150 bug:
+            # content silently disappeared on rows whose group had
+            # citation + midline paren).
+            chunks_list = list(chunks)
+            if len(chunks_list) > target_rows and target_rows > 0:
+                tail = ' '.join(chunks_list[target_rows - 1:]).strip()
+                chunks_list = chunks_list[:target_rows - 1] + [tail]
+            rows = chunks_list[:target_rows]
             while len(rows) < target_rows:
                 rows.append('')
         else:
