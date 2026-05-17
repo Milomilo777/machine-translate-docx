@@ -6,6 +6,81 @@
 
 ---
 
+## 2026-05-17 — Polish prompt: invention guard + calque cleanup expansion
+
+Driven by Gemini-led review of a real `VEG 3150 _PER_Polish_Double_Lines`
+output (FA: «گروه مذهبیِ دوستانی» when [EN] said only "the friends" —
+the word «مذهبی» was invented). Multi-layer reflective re-evaluation of
+six proposed gaps; four landed in `prompts/polish_PER.txt`, one was
+rejected as redundant with the existing G9 rule, one was folded into
+the existing Q10 check instead of standing alone.
+
+### `prompts/polish_PER.txt`
+
+- **SA-15 INVENTION_GUARD (NEW)** — every content noun, adjective, and
+  modifier in [FA] must trace back to a referent or clear implication
+  in [EN]. Removes unjustified material. Explicit exceptions for
+  Persian function words, contextually-required explicit subjects,
+  honorific/register adjustments mandated by LS-4/LS-7/LS-11, and
+  BRACKETGLOSS contents.
+- **SA-14 ONTOLOGICAL_REPAIR broadened** — now covers three patterns:
+  (a) inanimate subject + human action [existing],
+  (b) possessive genitive on entity that cannot physically possess
+      the noun (e.g. «گره‌های غاز» when [EN] context shows the rope
+      is what was tangled),
+  (c) body-part adjective on entity lacking that part.
+  Adds METAPHOR_GUARD so deliberate poetic figures from [EN]
+  ("wings of imagination") are not over-corrected.
+- **EDIT ⑤c CALQUE cleanup expanded** — from 3 patterns to ~20,
+  organised into STRUCTURAL / IDIOM / COLLOCATION / REGISTER calque
+  families with explicit before/after pairs. Adds a CONTEXT_GUARD
+  block that prevents swapping when the EN phrase is literal (e.g.
+  "at the end of the day" meaning actual time-of-day, "breaking
+  point" in engineering context).
+- **M1 COLLOCATION_PROBE — IDIOM CALQUE tell-tale added** — six
+  diagnostic examples (در پوست خود / از بشقامش کنار رفت / معده‌ام
+  می‌پذیرفت / فضای مهمانی / فضایی برای رشد / حیوانی که زمانی بود)
+  cross-referenced to ⑤c for the actual repair list.
+- **Q10 (spot) Calque residue expanded** — now sweeps in two passes:
+  (a) structural residue → EDIT ④, (b) idiom/collocation/register
+  calques → ⑤c. Second line of defence after M1.
+
+### Multi-layer reflection rejected two proposals
+
+- HANDOFF_TRUST PROHIBITED exception for calque cleanup: REJECTED.
+  G9 already states "BLOCKS clause restructuring; does NOT block
+  ijaz substitutions, calque cleanups". An additional exception in
+  PROHIBITED would be redundant and risks over-relaxing the lock.
+- Q21 final sweep: FOLDED into Q10. The existing Q10 was the right
+  home for a calque-residue check; adding Q21 separately would
+  duplicate the responsibility.
+
+### `src/machine_translate_docx/openai_tools/polisher.py`
+
+- `prompt_cache_key` bumped: `mtd-polisher-v7.2` → `mtd-polisher-v7.3`
+  so OpenAI's prompt cache invalidates and picks up the new system
+  prompt cleanly.
+
+### Verification path (for next polish run)
+
+Run a real-file polish on `VEG 3150 (Derek Simnett Part 1 of 2)`
+and check the 9 Gemini-flagged issues:
+
+  1. «گروه مذهبیِ دوستانی»  ← SA-15 should drop «مذهبی»
+  2. «باز کردن گره‌های او»  ← SA-14(b) should rewrite to «گره‌های طناب»
+  3. «در پوست خود احساس خوبی نمی‌کرد»  ← ⑤c IDIOM
+  4. «معده‌ام می‌پذیرفت»  ← ⑤c COLLOCATION
+  5. «فضای مهمانی استفاده می‌کرد»  ← ⑤c COLLOCATION
+  6. «این هیچ فضایی برای رشد به من نمی‌داد»  ← ⑤c COLLOCATION
+  7. «از بشقابم کنار رفتند»  ← ⑤c IDIOM
+  8. «حیوانی که زمانی بود»  ← ⑤c IDIOM (temporal-ellipsis)
+  9. «معیار سرگرمی»  ← ⑤c COLLOCATION
+
+Expected improvement: ≥ 6 of 9 flagged issues resolved on the same
+input, without restructuring untouched lines.
+
+---
+
 ## 2026-05-17 — FA aligner phase-3 (corpus-driven mechanical tuning + NS citation fix)
 
 Mechanical aligner rewrite informed by a 562-file corpus analysis of
