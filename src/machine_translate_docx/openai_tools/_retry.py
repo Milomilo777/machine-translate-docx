@@ -6,9 +6,17 @@ Currently exposes:
 
 
 Behaviour:
-- RateLimitError, APIConnectionError, APITimeoutError -> retry up to MAX_RETRIES
+- RateLimitError, APIConnectionError -> retry up to MAX_RETRIES
   with exponential backoff (1 s, 2 s, 4 s, ...).
 - BadRequestError, AuthenticationError, PermissionDeniedError -> raise immediately.
+- APITimeoutError -> raise immediately (2026-05-17 policy change). The
+  server keeps generating output even after the SDK times out (openai-
+  python #2725), so a retry on timeout BILLS the same output again —
+  in the FLYIN incident, a single hung call paid for 6 attempts × ~25K
+  output tokens each before finally surrendering. We now treat timeout
+  as a fatal request error: surface to the caller and let it decide
+  (smaller block, stream=True, or model switch). With the stream=True
+  fix in translator/polisher this path should rarely fire.
 - Any other Exception subclass not in the openai hierarchy is also raised
   immediately (do not silently swallow unknown failures).
 
@@ -45,17 +53,20 @@ try:
         RateLimitError,
     )
     # A4 (2026-05-12): treat transient 5xx (InternalServerError, generic
-    # APIError used for 502/503) the same as connection / timeout / rate
-    # errors — they recover on retry. BadRequestError stays non-retryable
-    # (a bug in our request, not the server).
+    # APIError used for 502/503) the same as connection / rate errors —
+    # they recover on retry. BadRequestError stays non-retryable (a bug
+    # in our request, not the server).
+    # 2026-05-17: APITimeoutError MOVED to non-retryable. See module
+    # docstring — silent server-side billing on timeout retries was
+    # observed to spiral cost ~6× per hung call. Better to fail fast and
+    # let the caller decide whether to shrink payload / enable stream.
     _RETRYABLE: tuple = (
         RateLimitError,
         APIConnectionError,
-        APITimeoutError,
         InternalServerError,
         APIError,
     )
-    _NON_RETRYABLE: tuple = (BadRequestError,)
+    _NON_RETRYABLE: tuple = (BadRequestError, APITimeoutError)
 except ImportError:                               # openai not installed in this env
     _RETRYABLE = ()
     _NON_RETRYABLE = ()
