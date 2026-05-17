@@ -83,3 +83,4 @@ dist/
 
 # Word / Office lock files (temp files created while a doc is open)
 ~$*
+deploy/

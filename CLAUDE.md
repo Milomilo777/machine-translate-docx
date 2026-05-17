@@ -16,9 +16,10 @@ double-line `.docx`.
 ## High-Level Architecture
 
 ```
-                ┌─ index.ejs        (legacy UI, served at /)
+                ┌─ index.ejs            (legacy UI, served at /)
 frontend ──────┤
-                └─ web/v2/index.html  (v2 SPA, served at /v2/)
+                ├─ web/v2/index.html    (v2 SPA, served at /v2/)
+                └─ web/v2/redesign.html (claude-palette redesign — preview)
                           │
                           ▼  POST /upload
               local_launcher.py
@@ -61,11 +62,9 @@ diagrams in [`docs/diagrams/`](docs/diagrams/) for the full picture.
 | `src/machine_translate_docx/translation_health.py` | `assert_source_has_content`, `assert_translation_present` |
 | `src/machine_translate_docx/network_utils.py` | Startup-time region / connectivity / driver-mirror helpers (extracted 2026-05-16) |
 | `src/machine_translate_docx/translation_log_writer.py` | JSON sidecar writer for the OpenAI translation/polish log (extracted 2026-05-16) |
-| `src/machine_translate_docx/statistics.py` | End-of-run statistics cluster — `local_time_offset`, `run_statistics` (D-A.4), `get_robot_usage_comment` (D-A.5). Honours `MTD_SKIP_STATS_BROWSER` env var to short-circuit the Chrome launch from cache-replay re-runs |
 | `src/machine_translate_docx/docx_io/` | parse, cells (incl. `delete_paragraph`), runs, save, metadata |
 | `src/machine_translate_docx/docx_io/metadata.py` | Output-side DOCX metadata writers — language label + history comment (extracted 2026-05-16) |
-| `src/machine_translate_docx/engines/google.py` | Selenium-based Google Translate engine (singlephrase + phrasesblock paths + shared cookies-consent helper) |
-| `src/machine_translate_docx/engines/google_file_modes.py` | Google file-mode workers — 3 dispatchers + 7 internal helpers for `--enginemethod textfile / htmljavascript / xlsxfile` (extracted 2026-05-16 in Sprint D-B) |
+| `src/machine_translate_docx/engines/google.py` | Selenium-based Google Translate engine |
 | `src/machine_translate_docx/engines/deepl.py` | Selenium-based DeepL engine (incl. `deepl_double_linefeed_between_phrases`) |
 | `src/machine_translate_docx/engines/chatgpt_api.py` | OpenAI API engine bridge |
 | `src/machine_translate_docx/engines/inactive/` | Disabled web engines (perplexity_web, etc.) |
@@ -81,6 +80,7 @@ diagrams in [`docs/diagrams/`](docs/diagrams/) for the full picture.
 | `web/v2/index.html` | **v2** frontend — plain JS SPA, served at `/v2/` |
 | `web/v2/app.js` | Plain-JS app for v2 |
 | `web/v2/content.json` | Announcements + stories (single source of truth for v2 UI copy) |
+| `web/v2/redesign.html` | **Claude-palette redesign preview** — single-file drop-in (2026-05-16). Includes a header v1↔v2 pill switcher (persisted to `localStorage.mtd.uiPref`), full anti-indexing meta block, country-flag from IP, and the legacy index.ejs wiring ported into a single-screen layout. Hits the same `/upload`, `/status/:id`, `/download/:name`, `/cancel/:id`, `/count`, `/robotscount` endpoints. Needs `GET /history` (TODO #1 in `docs/v2-backend-todo.md`) to drive the Recent runs panel with real data. |
 | `prompts/translate_PER.txt` | Persian translation system prompt |
 | `prompts/polish_PER.txt` | Persian polish system prompt |
 | `prompts/translate_universal.txt` | Fallback prompt for other languages |
@@ -88,15 +88,6 @@ diagrams in [`docs/diagrams/`](docs/diagrams/) for the full picture.
 | `packaging/mtd.spec` | PyInstaller config (onedir, ~65 MB output) |
 | `packaging/README.md` | Clean-venv build instructions |
 | `src/machine_translate_docx/log_paths.py` | Central `Log json file/` resolver + 10-day retention; honours `MTD_FROZEN_ROOT` |
-| `src/machine_translate_docx/server_config.py` | Server-side `config.toml` loader (single source of truth for OpenAI key, Telegram, SMTP, auth, server bind) |
-| `scripts/setup_wizard.py` | Interactive first-run wizard — collects every secret, writes `config.toml` (mode 0600) |
-| `scripts/install_server.sh` | One-shot Ubuntu/Debian installer — creates `mtd` user, venv, runs wizard, drops systemd unit |
-| `scripts/mtd-server.service` | systemd unit template (`@@MTD_VENV_DIR@@` etc. substituted at install) |
-| `scripts/Caddyfile.example` | TLS reverse-proxy config with Let's Encrypt auto-renewal |
-| `scripts/mtd-logrotate` | Weekly rotation, 90-day retention for `Log json file/` + Caddy logs |
-| `scripts/mtd-backup.sh` | Daily backup of config + logs + cache to `/var/backups/mtd/` |
-| `requirements-server.txt` | Minimal dep set for OpenAI-API server deployment (~30 MB) |
-| `docs/server-deploy.md` | Start-to-finish VPS deployment guide |
 
 ---
 
@@ -107,8 +98,9 @@ diagrams in [`docs/diagrams/`](docs/diagrams/) for the full picture.
 E:\Python311\python.exe local_launcher.py
 "run_local_launcher_v2.bat"
 
-# Legacy UI: http://127.0.0.1:3000/
-# v2 UI:     http://127.0.0.1:3000/v2/
+# Legacy UI:        http://127.0.0.1:3000/
+# v2 UI (current):  http://127.0.0.1:3000/v2/
+# v2 redesign:      http://127.0.0.1:3000/v2/redesign.html
 
 # Run the CLI directly (post-migration; sets PYTHONPATH on the fly)
 PYTHONPATH=src E:\Python311\python.exe -m machine_translate_docx.cli \
@@ -130,16 +122,6 @@ python -m venv .venv-build && .venv-build/Scripts/python.exe -m pip install \
     newmm-tokenizer tinysegmenter httpx certifi
 .venv-build/Scripts/python.exe -m PyInstaller packaging/mtd.spec --clean --noconfirm
 # Output: dist/mtd/mtd.exe
-
-# Server deployment (one-shot installer on Ubuntu 22.04+/Debian 12+):
-curl -fsSL https://raw.githubusercontent.com/Milomilo777/machine-translate-docx/master/scripts/install_server.sh | sudo bash
-# After install:
-#   systemctl status mtd-server
-#   journalctl -u mtd-server -f
-#   curl http://127.0.0.1:3000/health
-# Re-run the setup wizard later to rotate keys:
-sudo -u mtd /opt/mtd/.venv/bin/python /opt/mtd/app/scripts/setup_wizard.py
-# Full guide: docs/server-deploy.md
 
 # Run pytest (154 tests, ~2 s) — `live` marker is deselected by default
 E:\Python311\python.exe -m pytest tests/ --ignore=tests/test_v2_e2e.py
@@ -200,6 +182,24 @@ DeepL / Google runs write a minimal sidecar with row counts only.
 
 ---
 
+## Anti-indexing posture (added 2026-05-16)
+
+The tool is private — every frontend page must stay out of every search
+index. `web/v2/redesign.html` ships a comprehensive `<meta name="robots">`
+block targeting googlebot / bingbot / yandex / baidu / duckduckbot /
+slurp + `referrer: no-referrer` + `Cache-Control: no-store`. Legacy
+`index.ejs` and current `web/v2/index.html` already had the basic
+`noindex, nofollow` meta. To complete coverage **server-side** add:
+
+1. `GET /robots.txt` → `User-agent: *\nDisallow: /\n`
+2. `X-Robots-Tag: noindex, nofollow, noarchive, nosnippet, noimageindex`
+   on every launcher response (including `/download/*`).
+
+Details + code snippet for `local_launcher.py` in
+[`docs/v2-backend-todo.md`](docs/v2-backend-todo.md) §TODO #2.
+
+---
+
 ## Deeper Docs
 
 - [`docs/index.md`](docs/index.md) — hub for every other doc.
@@ -224,6 +224,14 @@ DeepL / Google runs write a minimal sidecar with row counts only.
   collapse). Authored 2026-05-16 after phases 1–3 of the shrink landed.
 - [`docs/v2-future-ideas.md`](docs/v2-future-ideas.md) — tier-1..4
   backlog for the v2 SPA with 3-axis cost scoring.
+- [`docs/v2-improvements.md`](docs/v2-improvements.md) — **NEW**
+  (2026-05-16). Twelve design proposals for the v2 SPA, impact-vs-effort
+  matrix, and the v1↔v2 version-switcher spec with drop-in code.
+- [`docs/v2-backend-todo.md`](docs/v2-backend-todo.md) — **NEW**
+  (2026-05-16). Endpoints the redesigned v2 frontend already calls but
+  that the launcher does not yet implement: `GET /history?limit=N`
+  (Recent runs panel), plus the server-side anti-indexing reinforcement
+  (`/robots.txt` + `X-Robots-Tag` header).
 - [`PROJECT_MEMORY.md`](PROJECT_MEMORY.md) — active constraints C1–C31,
   recent changes.
 - [`web/v2/README.md`](web/v2/README.md) — v2 frontend stack, deploy,
@@ -245,6 +253,11 @@ is the **only** way to change what visitors see:
 Each `id` drives dismissal persistence — bumping it re-shows the
 surface to every visitor. Set any slot to `null` to hide it.
 
+(The `redesign.html` preview at `web/v2/redesign.html` reads its
+announcement content from `index.ejs` instead of `content.json` —
+see TODO in `docs/v2-improvements.md` for migrating it to the
+same content.json pipeline when the redesign goes live.)
+
 ## Weekly newsletter export (C22)
 
 When `MTD_TELEGRAM_TOKEN` + `MTD_TELEGRAM_CHAT_ID` are set, every
@@ -253,3 +266,12 @@ the launcher uploads `subscribers.txt` as a Telegram document.
 State persists at `runtime_dir/subscribers_report_state.json`;
 the next launcher boot prints a one-line warning if last week's
 attempt failed. Empty subscribers file → silent skip.
+
+## v2 version switcher (C23, added 2026-05-16)
+
+The `web/v2/redesign.html` page exposes a pill toggle in the header
+that flips between the legacy UI (`/`) and the modern v2 UI (`/v2/`).
+The user's choice is persisted to `localStorage.mtd.uiPref` and
+applied as a redirect on subsequent visits. To make it bidirectional,
+add the same switcher markup + script to `index.ejs` — code snippet
+is in `docs/v2-improvements.md` §0.

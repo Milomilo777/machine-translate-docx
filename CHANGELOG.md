@@ -6,6 +6,50 @@
 
 ---
 
+## 2026-05-17 — v2 redesign drop-in + backend wire-up
+
+Branch `feat/v2-redesign-wireup` (commit `cbb5f2e` initial drop, plus
+follow-up cleanup) lands the v2 redesign preview UI and the two
+launcher endpoints the new frontend expects. Multi-engine matrix
+smoke verified on `feat/v2-redesign-wireup` (9 cases × fa+vi).
+
+### Frontend (additive only)
+
+| File | Status |
+|---|---|
+| `web/v2/redesign.html` | NEW — 1,947-line single-file Claude-palette redesign reachable at `/v2/redesign.html`. Lives next to (not on top of) the existing `web/v2/index.html`. |
+| `docs/v2-improvements.md` | NEW — 12 design proposals + matrix + v1↔v2 switcher spec. |
+| `docs/v2-backend-todo.md` | NEW — contract for the backend changes the redesign waits on. |
+| `CLAUDE.md` | Replaced with deploy version — adds `web/v2/redesign.html` to Key Paths, new Anti-indexing posture section, v2 version switcher (C23). |
+
+### Backend (additive only — `local_launcher.py`)
+
+- `GET /history?limit=N` — scans `Log json file/` for `*_log.json`
+  sidecars, returns up to `limit` newest runs with
+  `{id, model, target_lang, elapsed_seconds, completed_at, filename}`
+  per row. 60-second in-memory cache so v2 page loads don't re-scan
+  per poll. Capped at 50.
+- `GET /robots.txt` — `User-agent: *\nDisallow: /\n`. The legacy
+  allow-all handler lower in `do_GET` was removed to avoid two
+  routes claiming `/robots.txt`.
+- `X-Robots-Tag: noindex, nofollow, noarchive, nosnippet,
+  noimageindex` added to `_send_security_headers` so every response
+  (including `/download/*.docx`) carries the directive — the HTTP-
+  header equivalent of the v2 page's meta block, but applies to
+  non-HTML too.
+- Top-level `from urllib.parse import …` extended with `parse_qs`
+  for the `/history?limit=…` query parser.
+
+### Verification
+
+- pytest `tests/ --ignore=tests/test_v2_e2e.py`: **239 passed / 8 skipped / 6 deselected**.
+- Live curl: `GET /robots.txt` → 200 + correct body; `GET /history?limit=3`
+  → 200 + real JSON from sidecar logs; `GET /count` regression → 200.
+- Smoke fixture (`tests/fixtures/sample_hyperlink.docx`)
+  end-to-end on chatgpt-polish FA: exit 0.
+
+---
+
 ## 2026-05-17 — Sprint D-C complete (bridge collapse) + P2/P3 round 2
 
 Eight commits land the full `_sync_globals_from_ctx` collapse plus

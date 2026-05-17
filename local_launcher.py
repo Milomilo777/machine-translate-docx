@@ -19,7 +19,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import subprocess
-from urllib.parse import unquote, urlparse
+from urllib.parse import unquote, urlparse, parse_qs
 
 
 import re as _re
@@ -503,6 +503,116 @@ class LocalState:
     def job_snapshot(self) -> dict[str, Job]:
         with self.lock:
             return dict(self.jobs)
+
+    # ── /history endpoint cache + reader ────────────────────────────────────
+    # Caches the result of load_recent_runs for ~60 s. /history fires on
+    # every v2 page load — without the cache, every poll re-scans the
+    # entire Log json file/ directory.
+    _recent_runs_cache: tuple[float, int, list[dict]] | None = None
+    _recent_runs_cache_ttl_sec: float = 60.0
+
+    def load_recent_runs(self, limit: int = 10) -> list[dict]:
+        """Return the newest ``limit`` translation runs for the v2 Recent
+        runs panel.
+
+        Walks the ``Log json file/`` directory, parses each ``*_log.json``
+        sidecar, returns one record per file. Schema documented in
+        ``docs/v2-backend-todo.md`` TODO #1. Missing fields are omitted
+        so the frontend renders them as ``—``.
+
+        Memoised for 60 seconds (per-limit). Best-effort — any parse error
+        on an individual sidecar is swallowed; the run just doesn't appear
+        in the list.
+        """
+        import time as _time
+
+        now = _time.monotonic()
+        cached = self._recent_runs_cache
+        if cached is not None and cached[1] == limit:
+            cached_at, _limit_cached, runs_cached = cached
+            if now - cached_at < self._recent_runs_cache_ttl_sec:
+                return runs_cached
+
+        try:
+            _src_dir = ROOT / "src"
+            if str(_src_dir) not in sys.path:
+                sys.path.insert(0, str(_src_dir))
+            from machine_translate_docx.log_paths import resolve_log_dir
+            log_dir = resolve_log_dir()
+        except Exception as exc:
+            print(f"[/history] log dir unavailable: {exc!r}", file=sys.stderr)
+            self._recent_runs_cache = (now, limit, [])
+            return []
+
+        try:
+            candidates = sorted(
+                (p for p in log_dir.glob("*_log.json") if p.is_file()),
+                key=lambda p: p.stat().st_mtime,
+                reverse=True,
+            )
+        except OSError as exc:
+            print(f"[/history] log dir scan failed: {exc!r}", file=sys.stderr)
+            self._recent_runs_cache = (now, limit, [])
+            return []
+
+        runs: list[dict] = []
+        for path in candidates[: limit * 2]:  # over-fetch so parse errors don't starve
+            if len(runs) >= limit:
+                break
+            try:
+                with path.open("r", encoding="utf-8") as fh:
+                    payload = json.load(fh)
+            except (OSError, json.JSONDecodeError):
+                continue
+
+            run_info = payload.get("run_info") or {}
+            summary  = payload.get("summary")  or {}
+
+            entry: dict = {"id": path.stem}
+            # model fallback chain: run_info.model > summary.model > engine name
+            model = (
+                run_info.get("model")
+                or summary.get("model")
+                or run_info.get("engine")
+            )
+            if model:
+                entry["model"] = model
+            # target_lang fallback: run_info.dest_lang > run_info.target_lang
+            target_lang = run_info.get("dest_lang") or run_info.get("target_lang")
+            if target_lang:
+                entry["target_lang"] = target_lang
+            # elapsed seconds — summary first, then run_info
+            elapsed = summary.get("elapsed_total_seconds") or run_info.get("elapsed_seconds")
+            if elapsed is not None:
+                entry["elapsed_seconds"] = elapsed
+            # completed_at — prefer ISO timestamp on run_info, fall back to file mtime
+            completed_at = run_info.get("completed_at_iso") or run_info.get("timestamp")
+            if completed_at:
+                entry["completed_at"] = completed_at
+            else:
+                try:
+                    mt = path.stat().st_mtime
+                    import datetime as _dt
+                    entry["completed_at"] = _dt.datetime.fromtimestamp(
+                        mt, tz=_dt.timezone.utc
+                    ).strftime("%Y-%m-%dT%H:%M:%SZ")
+                except Exception:
+                    pass
+            # filename — strip the _log.json suffix to get the docx name
+            output_file = run_info.get("output_file")
+            if output_file:
+                # full path → basename
+                try:
+                    entry["filename"] = Path(output_file).name
+                except Exception:
+                    entry["filename"] = output_file
+            else:
+                stem = path.name.replace("_log.json", ".docx")
+                entry["filename"] = stem
+            runs.append(entry)
+
+        self._recent_runs_cache = (now, limit, runs)
+        return runs
 
     def cancel_job(self, job_id: str) -> tuple[bool, str]:
         """Terminate a running real-backend job.
@@ -1076,6 +1186,14 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
         self.send_header("X-Frame-Options", "DENY")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
+        # 2026-05-17 (v2 redesign anti-indexing): the HTTP-header equivalent
+        # of the <meta name="robots"> block in web/v2/redesign.html. Applies
+        # to every response — including /download/<file> — so aggressive
+        # scrapers that skip the meta tag still see the directive.
+        self.send_header(
+            "X-Robots-Tag",
+            "noindex, nofollow, noarchive, nosnippet, noimageindex",
+        )
 
     def _send_json(self, payload: dict, status: int = 200) -> None:
         data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -1179,6 +1297,13 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
             self.wfile.write(fresh_html.encode("utf-8"))
             return
 
+        if path == "/robots.txt":
+            # 2026-05-17 (v2 redesign anti-indexing). Companion to the
+            # X-Robots-Tag header — well-behaved crawlers read this file
+            # before any URL fetch. Block everything.
+            self._send_text("User-agent: *\nDisallow: /\n", content_type="text/plain; charset=utf-8")
+            return
+
         if path == "/count":
             self._send_json({"count": str(_read_int(self.state.count_file, 0))})
             return
@@ -1230,6 +1355,25 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
                 "currency": "USD",
                 "unit":     "per_1M_tokens",
             })
+            return
+
+        if path.startswith("/history"):
+            # 2026-05-17 (v2 redesign): Recent runs panel data source.
+            # Walks the Log json file/ directory, parses each *_log.json
+            # sidecar, returns the newest `limit` (default 10, max 50).
+            # Schema documented in docs/v2-backend-todo.md TODO #1.
+            try:
+                q = urlparse(path).query
+                params = parse_qs(q)
+                try:
+                    limit = int(params.get("limit", ["10"])[0])
+                except (ValueError, TypeError):
+                    limit = 10
+                limit = max(1, min(50, limit))
+            except Exception:
+                limit = 10
+            runs = self.state.load_recent_runs(limit)
+            self._send_json({"runs": runs})
             return
 
         if path == "/robotscount":
@@ -1289,9 +1433,10 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
             self._send_zip_for_job(job_id)
             return
 
-        if path == "/robots.txt":
-            self._send_text("User-agent: *\nDisallow:\n")
-            return
+        # NOTE: 2026-05-17 — the legacy /robots.txt handler that lived here
+        # (Disallow: empty = allow-all) was removed. The v2-redesign anti-
+        # indexing handler near the top of do_GET (Disallow: /) is the only
+        # /robots.txt response now.
 
         # ── /static/* — shared assets (e.g. Tailwind served locally) ─────────
         # 2026-05-13: legacy frontend used to pull Tailwind from
