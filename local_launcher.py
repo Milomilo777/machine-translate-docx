@@ -1433,9 +1433,10 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
             self._send_zip_for_job(job_id)
             return
 
-        if path == "/robots.txt":
-            self._send_text("User-agent: *\nDisallow:\n")
-            return
+        # NOTE: 2026-05-17 — the legacy /robots.txt handler that lived here
+        # (Disallow: empty = allow-all) was removed. The v2-redesign anti-
+        # indexing handler near the top of do_GET (Disallow: /) is the only
+        # /robots.txt response now.
 
         # ── /static/* — shared assets (e.g. Tailwind served locally) ─────────
         # 2026-05-13: legacy frontend used to pull Tailwind from
