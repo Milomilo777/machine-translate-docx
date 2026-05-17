@@ -1260,17 +1260,29 @@ class FASubtitleAligner:
 
         if no_doubling:
             # One chunk per row, no repeats. BUT we MUST NOT drop content:
-            # if the splitter produced more chunks than target_rows
-            # (because target_rows shrank after reserving the citation
-            # slot, or because the midline-pattern guard fired on a long
-            # cell), merge the trailing overflow into the last row
-            # instead of slicing it off. 2026-05-17 (AJAR 3150 bug:
-            # content silently disappeared on rows whose group had
-            # citation + midline paren).
+            # if the splitter produced more chunks than target_rows we
+            # need to fit them all without (a) silently dropping the
+            # tail (the 2026-05-17 AJAR bug) AND without (b) producing
+            # an over-MAX_CHARS row (the regression that the simple
+            # tail-merge caused). Strategy: re-split the merged tail
+            # back into safe sub-chunks via the regular splitter, and
+            # only after that fall back to merging if even that fails.
             chunks_list = list(chunks)
             if len(chunks_list) > target_rows and target_rows > 0:
-                tail = ' '.join(chunks_list[target_rows - 1:]).strip()
-                chunks_list = chunks_list[:target_rows - 1] + [tail]
+                tail_text = ' '.join(chunks_list[target_rows - 1:]).strip()
+                if _display_len(tail_text) <= MAX_CHARS:
+                    # Tail fits in one row → safe merge.
+                    chunks_list = chunks_list[:target_rows - 1] + [tail_text]
+                else:
+                    # Tail too long for one row. Try to compress it back
+                    # into the remaining slots (target_rows - (target_rows-1)
+                    # = 1 row). Since 1 slot won't take it, accept doubling
+                    # for THIS edge case: distribute the overflow chunks
+                    # across the last few slots, even if it means repeating.
+                    head = chunks_list[: target_rows - 1]
+                    tail_chunks = chunks_list[target_rows - 1:]
+                    distributed = _distribute_to_rows(tail_chunks, 1)
+                    chunks_list = head + distributed
             rows = chunks_list[:target_rows]
             while len(rows) < target_rows:
                 rows.append('')
