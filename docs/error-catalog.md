@@ -171,6 +171,18 @@ Recurring bugs, root causes, and fixes. Add an entry any time a non-trivial bug 
 
 ---
 
+## E16 — Google `engine_method=textfile` blocked by Documents-tab UI change
+
+**ID:** E16
+**Status:** Active (external break) — discovered 2026-05-17 during v2-redesign wire-up matrix smoke
+**Symptom:** Google file-mode worker hangs at "Selecting file …docx.txt for uploading…" then dies with `TimeoutException` after 925 s. Hit on `--engine google --enginemethod textfile`.
+**Root cause:** Google Translate's Documents tab (https://translate.google.com/?op=translate, Documents button) no longer lists `.txt` as a supported upload format. The "Supported file types" hint shown next to the *Browse your files* button now reads `.docx, .pdf, .pptx, .xlsx` — `.txt` was silently removed. The file-input element is still on the page so Selenium fills it, but Google rejects the type after upload and never renders the *Download translation* button the worker is waiting on. Reproduces on `master` as well — **not** a wire-up regression.
+**Fix:** None yet. The `xlsxfile` and `html_javascript` paths in `google_file_modes.py` use the same Documents-tab page and stale `Browse your computer` xpath (`//label[contains(.,'Browse your computer')]`) — Google now says *Browse your files*, so those workers will need an xpath refresh anyway before they can be tested. For the v2-wireup matrix smoke we fell back to `engine_method=singlephrase` (text-input mode, no file upload) which is unaffected.
+**Workaround:** Use `--enginemethod singlephrase` until the file-mode workers are repaired (one-phrase-per-request via the Text tab — slower but still works on `translate.google.com`).
+**Regression test:** none — needs a captured HTML fixture of the new Documents-tab DOM to drive a unit test.
+
+---
+
 ## Template for new entries
 
 ```
