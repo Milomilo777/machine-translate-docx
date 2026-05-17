@@ -260,7 +260,7 @@ class OpenAIPolisher:
         # change in a non-backwards-compatible way.
         _extra = {
             "prompt_cache_retention": "24h",
-            "prompt_cache_key": "mtd-polisher-v7.3",
+            "prompt_cache_key": "mtd-polisher-v7.4",
         }
         if "mini" in self.model.lower():
             _extra["reasoning_effort"] = "medium"
@@ -275,7 +275,7 @@ class OpenAIPolisher:
         # (Responses API accepts reasoning via the `reasoning` parameter, not extra_body).
         _extra_responses = {
             "prompt_cache_retention": "24h",
-            "prompt_cache_key": "mtd-polisher-v7.3",
+            "prompt_cache_key": "mtd-polisher-v7.4",
         }
         # Reasoning effort policy (per model class):
         #   mini       → medium  (was "high"; 2026-05-12 user lowered to medium

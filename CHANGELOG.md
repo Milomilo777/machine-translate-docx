@@ -6,6 +6,58 @@
 
 ---
 
+## 2026-05-17 — Polish prompt: SAGE_PERSONA block (15-line BMD-corpus tuned)
+
+Calibrated on 250 BMD files (104 403 FA rows, 3.07 M Persian chars) of
+the human-edited corpus. Single critical finding drove most of the
+new block: in 104 403 FA rows the speech verb «گفت» appears **2 887**
+times while «فرمودند» appears **7 times** — the translator pipeline
+defaults to cold speech-verb register for Master discourse even though
+LS-7 SPEECH_VERBS exists. Polish was not aggressive enough about it.
+
+### `prompts/polish_PER.txt`
+
+A new `<SAGE_PERSONA>` block (15 numbered lines L1–L15) inserted after
+`<MASTER_SPEECH_HANDOFF>` and before `<PHASE_0_BASE>`. The block layers
+on top of MN / SA / EDIT and does NOT override the existing G10
+MASTER_SPEECH_HANDOFF when 👑 is active. Coverage:
+
+- **L1 SPEECH_VERB_LOCK** — cold-default («گفت») → reverent
+  («فرمودند / می‌فرمایند / فرموده‌اند»). Backed by the 2 887 vs 7 stat.
+- **L2 REVERENT_LEXICON** — keep عشق / مهر / شفقت / رحمت / لطف / نور
+  / صلح / آرامش / خرد / حکمت verbatim; no downgrade to cold synonyms.
+- **L3 WARM_OPENERS** — «می‌دانید / می‌بینید / ببینید / بله» are
+  rhetorical markers, not literal "you know / you see / yes".
+- **L4 SOFT_FORMS** — preserve «باشد که / شاید / بیایید / اجازه دهید».
+- **L5 COLD_VERB_GUARD** — do/have/make/get → spiritual collocation
+  (make peace → صلح برقرار کردن, have love → عشق ورزیدن, …).
+- **L6 REACTION_LOCK** — "(بله، استاد.)" / "(درسته.)" stay byte-id.
+- **L7 MASTER_NAME** (LS-4 reminder).
+- **L8 CADENCE** — median 30, p95 43 chars; lines past 45 with no pause
+  smell of over-formal recast.
+- **L9 REGISTER FLOOR/CEILING** — no «گفت/باشه/آره» (floor),
+  no «بفرمود/همانا/این‌جانب/می‌باشد» without source support (ceiling).
+- **L10 ADDRESS** — preserve «عزیزان/دوستان/فرزندان» when translator
+  used them; SA-15 prevents inventing vocatives from bare "you".
+- **L11 SACRED_PASSIVE → ACTIVE** — "we are loved/blessed/guided" →
+  ما را دوست می‌دارند/برکت می‌دهند/هدایت می‌کنند (escalates MN-5
+  from preference to requirement for sacred-action verbs).
+- **L12 SKY_HEAVEN** — SA-8 reminder: آسمان/بهشت/بهشتی.
+- **L13 DRIFT_DIRECTION** — SAGE empirical failure mode is COLD, not
+  warm. When two valid edits exist, prefer the warmer one. Inverse of
+  N7's news-block guard.
+- **L14 EMPHATIC_REPETITION** — LS-3 reminder; restore dropped
+  «می‌آییم، می‌آییم، می‌آییم».
+- **L15 ROUND_TRIP_SAGE** — back-check honorific register + divine
+  agency + warmth; cold drift → revert to BASE.
+
+### `src/machine_translate_docx/openai_tools/polisher.py`
+
+- `prompt_cache_key` bumped: `mtd-polisher-v7.3` → `mtd-polisher-v7.4`
+  so the new SAGE block does not collide with the v7.3 cached prefix.
+
+---
+
 ## 2026-05-17 — Polish prompt: invention guard + calque cleanup expansion
 
 Driven by Gemini-led review of a real `VEG 3150 _PER_Polish_Double_Lines`

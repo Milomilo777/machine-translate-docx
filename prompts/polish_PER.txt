@@ -233,6 +233,25 @@ ON POSITIVE TRIGGER:
 CONSTRAINT ON [SRC] CONSULTATION: MASTER_TRIGGERS authorize a TARGETED [SRC] read — scan for the marker patterns above only. This is not a green light to re-translate. Any meaning-related correction still routes through SA-* anchor logic.
 </MASTER_SPEECH_HANDOFF>
 
+<SAGE_PERSONA>
+Fires when SCAN marks block as SAGE (spiritual / Master discourse / devotional). 250-file BMD-corpus calibrated. Layers on top of MN / SA / EDIT — does NOT override MASTER_SPEECH_HANDOFF (G10) when 👑 active.
+L1  SPEECH_VERB_LOCK: Master's words ALWAYS «فرمودند / می‌فرمایند / فرموده‌اند»; NEVER «گفت / گفتند / می‌گوید». Corpus: «گفت»=2887 vs «فرمودند»=7 — translator default is cold, polish MUST correct every Master said/says/notes/shares/explains → فرمودند / می‌فرمایند / خاطرنشان می‌فرمایند.
+L2  REVERENT_LEXICON: عشق / مهر / شفقت / رحمت / لطف / نور / صلح / آرامش / خرد / حکمت / گذشت / فروتنی / ایمان / تعالی / رهایی / مراقبه — preserve verbatim; do NOT downgrade to cold synonyms (محبت→علاقه, نور→روشنایی فنی, شفقت→ترحم = all losses).
+L3  WARM_OPENERS: «می‌دانید / می‌بینید / ببینید / بله» are rhetorical warmth markers, NOT literal "you know / you see / yes". Preserve; never drop, never formalise to «لطفاً توجه فرمایید».
+L4  SOFT_FORMS: «باشد که / شاید / بیایید / اجازه دهید» — keep when present; never flatten to bare imperative or factual indicative.
+L5  COLD_VERB_GUARD: do/have/make/get → spiritual collocation, not transactional default. make peace → صلح برقرار کردن (not صلح ساختن); have love → عشق ورزیدن (not عشق داشتن); do good → نیکی کردن; give thanks → سپاس گفتن / سپاسگزاری کردن; give blessing → برکت دادن / دعای خیر کردن.
+L6  REACTION_LOCK: "(بله، استاد.)" / "(درسته.)" / "(آه.)" / "(متشکرم.)" stay byte-id inside their carrying row; never verbalised, never translated into narration.
+L7  MASTER_NAME (LS-4 reminder): canonical «استاد اعظم چینگ های» in narration / third-person reference. Bare «استاد» permitted only in unambiguous direct address.
+L8  CADENCE: SAGE FA cell median=30, p95=43 chars. Lines breezing past 45 chars with no internal pause smell of over-formal recast — soften the break (one verbal pause, not a literary cascade).
+L9  REGISTER FLOOR & CEILING: standard modern broadcast Persian + spiritual warmth. FLOOR: no «گفت» for Master, no «باشه / آره / اوکی». CEILING: no classical/archaic («بفرمود / همانا / این‌جانب / می‌باشد») without explicit source support.
+L10 ADDRESS: «عزیزان / دوستان / فرزندان / بینندگان» — preserve when translator used them. Do NOT invent vocatives if [EN] says only "you" (SA-15 INVENTION_GUARD applies — bare «شما» is fine).
+L11 SACRED_PASSIVE→ACTIVE: "we are loved / blessed / guided" → ما را دوست می‌دارند / برکت می‌دهند / هدایت می‌کنند (implied divine agent active form), NOT cold «دوست داشته می‌شویم». SAGE escalates MN-5 from preference to requirement for sacred-action verbs.
+L12 SKY_HEAVEN (SA-8 reminder for SAGE density): آسمان=physical sky, بهشت=divine afterlife, بهشتی=heavenly quality. Master discourse usually intends بهشت / بهشتی — verify against [EN] heaven/heavenly.
+L13 DRIFT_DIRECTION: SAGE empirical failure mode in this pipeline is COLDNESS (not over-warmth). When two valid edits exist, prefer the warmer / more reverent one. SAGE-specific inverse of N7 (N7 guards news/factual blocks from inflation; SAGE guards spiritual blocks from chilling).
+L14 EMPHATIC_REPETITION (LS-3 reminder): «می‌آییم، می‌آییم، می‌آییم» / «عشق، عشق، عشق» — Master's repetitions ARE the meaning; restore any single instance the translator collapsed.
+L15 ROUND_TRIP_SAGE: after edits, back-check honorific register + divine agency + warmth + reverent lexicon — any cold drift → revert to BASE. Do NOT over-edit a SAGE block in the name of "fluency"; the only correct fluency for SAGE is the warm-reverent one.
+</SAGE_PERSONA>
+
 <PHASE_0_BASE>
 BEFORE SCAN. On EVERY line (regardless of flag), produce BASE = [FA] with:
   MN-1 to MN-10 hygiene + format transforms applied.
