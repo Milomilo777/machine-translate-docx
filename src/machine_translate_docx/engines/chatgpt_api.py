@@ -75,13 +75,17 @@ def run_openai_single_call(
     _t_translate = time.time() - _t_translate_start
     print("PROGRESS:30", flush=True)
 
+    # last_call_data stores token counts under a nested "tokens" dict
+    # (compact-log shape, 2026-05-15). Read from there with flat-key
+    # fallback for the verbose-log path.
     _td = oai_translator.last_call_data
+    _tk = _td.get('tokens', {}) if isinstance(_td.get('tokens'), dict) else {}
     print(
         f"[TIMER] Translate: {_t_translate:.1f}s | "
-        f"tokens: {_td.get('total_tokens', '?')} "
-        f"(prompt {_td.get('prompt_tokens', '?')}, "
-        f"completion {_td.get('completion_tokens', '?')}, "
-        f"cached {_td.get('cached_tokens', 0)})"
+        f"tokens: {_tk.get('total', _td.get('total_tokens', '?'))} "
+        f"(prompt {_tk.get('prompt', _td.get('prompt_tokens', '?'))}, "
+        f"completion {_tk.get('completion', _td.get('completion_tokens', '?'))}, "
+        f"cached {_tk.get('cached', _td.get('cached_tokens', 0))})"
     )
 
     # Phase 11 — line-count reconciler. The translator occasionally
@@ -118,12 +122,13 @@ def run_openai_single_call(
     print("PROGRESS:65", flush=True)
 
     _pd = oai_polisher.last_call_data
+    _pk = _pd.get('tokens', {}) if isinstance(_pd.get('tokens'), dict) else {}
     print(
         f"[TIMER] Polish:    {_t_polish:.1f}s | "
-        f"tokens: {_pd.get('total_tokens', '?')} "
-        f"(prompt {_pd.get('prompt_tokens', '?')}, "
-        f"completion {_pd.get('completion_tokens', '?')}, "
-        f"cached {_pd.get('cached_tokens', 0)})"
+        f"tokens: {_pk.get('total', _pd.get('total_tokens', '?'))} "
+        f"(prompt {_pk.get('prompt', _pd.get('prompt_tokens', '?'))}, "
+        f"completion {_pk.get('completion', _pd.get('completion_tokens', '?'))}, "
+        f"cached {_pk.get('cached', _pd.get('cached_tokens', 0))})"
     )
 
     _lines_before = _before_polish.split("\n")

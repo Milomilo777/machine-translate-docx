@@ -589,6 +589,15 @@
       if (!res.ok) continue;
       const data = await res.json();
       if (typeof data.progress === 'number') setProgress(data.progress, bucketLabel(data.progress));
+      if (data.status === 'queued') {
+        // Concurrency cap reached on server. Surface the wait state in
+        // the progress label so the user knows their job is queued, not
+        // stuck. As soon as a slot frees up, the server flips status
+        // back to 'pending' and polling continues normally.
+        setProgress(data.progress || 5,
+          'در صف انتظار — سامانه همزمان فقط ۲ فایل را ترجمه می‌کند. ' +
+          'به‌محض آزاد شدن یک جای خالی، فایل شما خودکار شروع می‌شود.');
+      }
       if (data.status === 'done')      return data;
       if (data.status === 'cancelled') throw new Error('Cancelled by user');
       if (data.status === 'error') {

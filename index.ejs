@@ -178,6 +178,9 @@
               <span id="progressPct">0%</span>
             </div>
             <progress id="progressBar" value="0" max="100" class="w-full h-3"></progress>
+            <div id="queueMessage" dir="rtl" lang="fa"
+                 class="hidden mt-3 px-3 py-2 rounded bg-amber-100 text-amber-900 text-sm text-right leading-relaxed">
+            </div>
             <div class="mt-4 flex justify-center">
               <button type="button" id="cancelBtn"
                 class="bg-red-600 hover:bg-red-700 text-white text-sm px-4 py-2 rounded shadow">
@@ -750,7 +753,24 @@
             if (data.status === 'done')  { _updateProgress(100); return { filename: data.filename }; }
             if (data.status === 'error') throw new Error(data.error || 'Translation failed on server.');
             if (data.status === 'cancelled') throw new Error('Translation cancelled by user.');
-            // 'pending' → keep polling
+            if (data.status === 'queued') {
+              // Concurrency cap hit on server — surface a Persian wait
+              // message next to the progress bar. Polling continues; the
+              // server flips status back to 'pending' as soon as a slot
+              // frees up.
+              const _msgEl = document.getElementById('queueMessage');
+              if (_msgEl) {
+                _msgEl.textContent =
+                  'در صف انتظار — سامانه همزمان فقط ۲ فایل را ترجمه می‌کند. '
+                  + 'به‌محض آزاد شدن یک جای خالی، فایل شما خودکار شروع می‌شود '
+                  + 'و در پایان به‌طور خودکار قابل دانلود است.';
+                _msgEl.classList.remove('hidden');
+              }
+            } else {
+              const _msgEl = document.getElementById('queueMessage');
+              if (_msgEl) _msgEl.classList.add('hidden');
+            }
+            // 'pending' / 'queued' → keep polling
           } catch (err) {
             // Re-throw terminal errors; swallow transient network errors
             if (err.message && (

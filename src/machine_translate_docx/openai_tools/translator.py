@@ -340,21 +340,48 @@ class OpenAITranslator:
         )
 
         if _use_responses_api:
-            # C2: never spend reasoning tokens on the translator. The
-            # Responses API defaults gpt-5.x to reasoning.effort=medium,
-            # which previously caused ~50% reasoning_token overhead and
-            # multi-minute latency. Force minimal here. (For gpt-5.4-mini
-            # the polisher uses reasoning="high" elsewhere — translator
-            # stays minimal in both cases.)
-            response = call_with_retry(
-                lambda: self.client.responses.create(
+            # C2: never spend reasoning tokens on the translator.
+            # 2026-05-17 (FLYIN hang fix): use streaming for gpt-5.x via
+            # Responses API. The non-streaming code path in openai-python
+            # SDK hangs indefinitely on payloads >~25K tokens against
+            # gpt-5 models (openai/openai-python#2725). Streaming uses a
+            # different parse path that avoids the hang. Output text +
+            # usage are reassembled from event chunks.
+            def _stream_call():
+                stream = self.client.responses.create(
                     model=self.model,
                     input=_messages,
                     extra_body=_extra,
                     reasoning={"effort": "none"},
                     timeout=1800,
-                ),
-                label="translator.responses.create",
+                    stream=True,
+                )
+                _chunks: list[str] = []
+                _final = None
+                for event in stream:
+                    et = getattr(event, "type", "")
+                    if et == "response.output_text.delta":
+                        _chunks.append(getattr(event, "delta", "") or "")
+                    elif et == "response.completed":
+                        _final = getattr(event, "response", None)
+                    elif et in ("response.failed", "response.incomplete"):
+                        _final = getattr(event, "response", None)
+                        raise RuntimeError(
+                            f"translator stream ended with type={et}: {_final}"
+                        )
+                return {"text": "".join(_chunks), "final": _final}
+
+            stream_result = call_with_retry(
+                _stream_call,
+                label="translator.responses.create(stream)",
+            )
+            # Build a SimpleNamespace that mimics the non-streaming response
+            # shape so the rest of the code below works unchanged.
+            from types import SimpleNamespace
+            _final = stream_result["final"]
+            response = SimpleNamespace(
+                output_text=stream_result["text"],
+                model_dump=(lambda f: (lambda: f.model_dump()))(_final) if _final else (lambda: {}),
             )
         else:
             response = call_with_retry(

@@ -6,6 +6,83 @@
 
 ---
 
+## 2026-05-17 — gpt-5.x hang fix (stream=True) + queue-status surfacing + log cosmetic
+
+Three coordinated fixes triggered by the FLYIN 3150 incident. With the
+stream change, the same single-call payload that hung the SDK for
+50+ minutes on master now completes in ~5 minutes against
+gpt-5.4-mini and is the documented workaround for the upstream
+openai-python bug.
+
+### Translator + Polisher — `stream=True` for Responses API
+
+Root cause traced to openai-python issue #2725 / community thread
+1364523: `client.responses.create()` hangs indefinitely on gpt-5.x
+once total input exceeds ~30K tokens, while the server completes the
+job and curl/REST works. The non-streaming SDK parse path is the
+defect; streaming bypasses it.
+
+- `src/machine_translate_docx/openai_tools/translator.py`: when the
+  Responses-API branch fires (`gpt-5.x` / `pro`), call with
+  `stream=True` and accumulate `response.output_text.delta` chunks;
+  capture `response.completed.response` for usage metadata. Result
+  is wrapped in a `SimpleNamespace` so the rest of the function
+  (`response.output_text`, `response.model_dump()`) works unchanged.
+- `src/machine_translate_docx/openai_tools/polisher.py`: identical
+  streaming wrapper for the polish call.
+- `raise RuntimeError(...)` on `response.failed` or
+  `response.incomplete` events so call_with_retry sees the failure.
+
+End-to-end verification on FLYIN 3150 (1913 rows, ~25K user tokens):
+```
+Translate (gpt-5.4-mini):  127s  | 37,427 total tokens
+Polish    (gpt-5.4-mini):  521s  | 77,815 total tokens
+Save + Persian Double Lines: ~30s
+Total:                     ~ 11 min   (was: 50+ min hang)
+```
+
+### `chatgpt_api.py` — TIMER token log cosmetic
+
+The TIMER lines read flat `total_tokens`/`prompt_tokens`/etc., but
+`last_call_data` has carried a nested `tokens` dict (compact-log
+shape, 2026-05-15). The flat lookups always returned `?`. Fix is
+read from `_td.get('tokens', {})` first with the flat keys as
+fallback so verbose-log mode still works.
+
+Result: `tokens: 37427 (prompt 23118, completion 14309, cached 0)`
+instead of `tokens: ? (prompt ?, completion ?, cached 0)`.
+
+### `local_launcher.py` — queue-status notification
+
+The 2-job concurrency cap (semaphore at line 290) existed but was
+silent — when a third upload waited at `_job_semaphore.acquire()`,
+the frontend showed only `pending` with no indication it was queued.
+
+Fix: try non-blocking acquire first; on contention, flip the job to
+`status='queued'` so the frontend can surface a Persian wait message,
+then block on the semaphore. On unblock, restore `status='pending'`
+and continue.
+
+### `index.ejs` + `web/v2/app.js` — queue UI
+
+Both frontends now special-case `status='queued'`. Polling continues
+unchanged; the difference is a visible Persian message:
+
+```
+در صف انتظار — سامانه همزمان فقط ۲ فایل را ترجمه می‌کند.
+به‌محض آزاد شدن یک جای خالی، فایل شما خودکار شروع می‌شود.
+```
+
+- Legacy `index.ejs`: a new `#queueMessage` div (amber-tinted, RTL,
+  hidden by default) appears beneath the progress bar.
+- `web/v2/app.js`: the existing progress-label is replaced with the
+  Persian wait text when the status flips to `queued`.
+
+The download flow continues to be automatic once the job completes —
+no user action needed after queueing.
+
+---
+
 ## 2026-05-17 — AJAR 3150 bug-batch: basic-split + aligner + frontend + prompt polish
 
 Driven by the four-file AJAR 3150 user report. Single batch covering

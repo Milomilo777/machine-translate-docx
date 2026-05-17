@@ -1745,9 +1745,21 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
         print(f"[job {job_id}] ▶ start — file: {original_name} | lang: {target_language} | engine: {translation_engine}")
         self.state.update_job(job_id, progress=5)
         # Limit concurrent backend subprocesses to keep memory bounded.
-        # When the cap is reached, a job waits here (status remains 'pending'
-        # so the frontend keeps polling) until a slot frees up.
-        _job_semaphore.acquire()
+        # When the cap is reached, a job waits here until a slot frees up.
+        # 2026-05-17: surface the wait to the user as status='queued' with an
+        # explicit Persian message so the frontend can show a "in queue" pill
+        # instead of a silent pending-poll spin.
+        if not _job_semaphore.acquire(blocking=False):
+            # Slot occupied — surface this as status='queued' so the frontend
+            # can show a "در صف انتظار" pill. Front-end checks for the
+            # specific 'queued' status and renders the Persian wait message;
+            # we keep launcher-side data minimal (no error string) so the
+            # 'error' channel stays reserved for actual failures.
+            print(f"[job {job_id}] queued — concurrency cap {_MAX_CONCURRENT_JOBS} reached, waiting")
+            self.state.update_job(job_id, status="queued", progress=5)
+            _job_semaphore.acquire()  # now blocking until a slot frees
+            self.state.update_job(job_id, status="pending")
+            print(f"[job {job_id}] ▶ resumed from queue")
         self.state.update_job(job_id, progress=10)
         try:
             if self.state.backend_mode == "mock":

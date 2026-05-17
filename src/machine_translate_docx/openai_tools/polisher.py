@@ -309,15 +309,43 @@ class OpenAIPolisher:
         t0 = time.time()
         try:
             if _use_responses_api:
-                response = call_with_retry(
-                    lambda: self.client.responses.create(
+                # 2026-05-17 (FLYIN hang fix): streaming for gpt-5.x via
+                # Responses API — non-streaming SDK path hangs on large
+                # payloads (openai/openai-python#2725). Same fix as the
+                # translator.
+                def _stream_call():
+                    s = self.client.responses.create(
                         model=self.model,
                         input=_messages_list,
                         extra_body=_extra_responses,
                         reasoning=_reasoning_param,
                         timeout=1800,
-                    ),
-                    label="polisher.responses.create",
+                        stream=True,
+                    )
+                    _chunks: list[str] = []
+                    _final = None
+                    for event in s:
+                        et = getattr(event, "type", "")
+                        if et == "response.output_text.delta":
+                            _chunks.append(getattr(event, "delta", "") or "")
+                        elif et == "response.completed":
+                            _final = getattr(event, "response", None)
+                        elif et in ("response.failed", "response.incomplete"):
+                            _final = getattr(event, "response", None)
+                            raise RuntimeError(
+                                f"polisher stream ended with type={et}: {_final}"
+                            )
+                    return {"text": "".join(_chunks), "final": _final}
+
+                _sr = call_with_retry(
+                    _stream_call,
+                    label="polisher.responses.create(stream)",
+                )
+                from types import SimpleNamespace
+                _final = _sr["final"]
+                response = SimpleNamespace(
+                    output_text=_sr["text"],
+                    model_dump=(lambda f: (lambda: f.model_dump()))(_final) if _final else (lambda: {}),
                 )
             else:
                 response = call_with_retry(
