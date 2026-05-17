@@ -396,12 +396,22 @@ def get_robot_usage_comment(ctx: "RuntimeContext") -> None:
         PROGRAM_VERSION,
         dest_font,
         docx_file_name,
-        numrows,
         split_translation,
         start_time,
         xlsxreplacefile,
-        xtm,
     )
+    # 2026-05-17 hotfix: when cli.py runs as `python -m machine_translate_docx.cli`
+    # it is loaded under TWO module names — `__main__` (the entry point) AND
+    # `machine_translate_docx.cli` (this import path). The `global xtm`
+    # / `global numrows` writes inside cli.py only mutate `__main__.*`;
+    # the attributes we'd read here on `machine_translate_docx.cli`
+    # stay at their module-init defaults (None / 0). Read both runtime
+    # values from the canonical ctx surface (C10) instead — they are
+    # written there by `initialize_translation_memory_xlsx` and
+    # `read_and_parse_docx_document` respectively. `run_statistics`
+    # already does this; this brings `get_robot_usage_comment` in line.
+    xtm = ctx.docx.xtm
+    numrows = ctx.docx.numrows
     from .config import get_nested_value_from_json_array
     from .selenium_utils import browser_fill_form_field_value, safe_click
 
