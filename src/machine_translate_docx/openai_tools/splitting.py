@@ -238,14 +238,40 @@ class OpenAISubtitleSplitter:
         # OpenAI callers (translator, polisher) already use this helper;
         # splitting was the lone outlier.
         from ._retry import call_with_retry
-        if "pro" in self.model:
-            response = call_with_retry(
-                lambda: self.client.responses.create(
+        if "pro" in self.model or self.model.lower().startswith("gpt-5"):
+            # 2026-05-18 stream-parity fix: same openai-python #2725
+            # hang risk on Responses API + gpt-5.x as translator/polisher.
+            # Stream the deltas and reassemble to keep this code path
+            # safe under any input size, even though the default Split
+            # Method is `persian_double_lines` so this rarely fires.
+            def _stream_call():
+                s = self.client.responses.create(
                     model=self.model,
                     input=_messages,
                     extra_body=_cache_extra,
-                ),
-                label="splitter.responses",
+                    stream=True,
+                )
+                _chunks: list[str] = []
+                _final = None
+                for event in s:
+                    et = getattr(event, "type", "")
+                    if et == "response.output_text.delta":
+                        _chunks.append(getattr(event, "delta", "") or "")
+                    elif et == "response.completed":
+                        _final = getattr(event, "response", None)
+                    elif et in ("response.failed", "response.incomplete"):
+                        _final = getattr(event, "response", None)
+                        raise RuntimeError(
+                            f"splitter stream ended with type={et}: {_final}"
+                        )
+                return {"text": "".join(_chunks), "final": _final}
+
+            _sr = call_with_retry(_stream_call, label="splitter.responses(stream)")
+            from types import SimpleNamespace
+            _final = _sr["final"]
+            response = SimpleNamespace(
+                output_text=_sr["text"],
+                model_dump=(lambda f: (lambda: f.model_dump()))(_final) if _final else (lambda: {}),
             )
         else:
             response = call_with_retry(

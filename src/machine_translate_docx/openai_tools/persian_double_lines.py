@@ -983,8 +983,12 @@ class FASubtitleAligner:
 
         try:
             from ._retry import call_with_retry
-            resp = call_with_retry(
-                lambda: client.responses.create(
+            # 2026-05-18 stream-parity fix: aligner LLM rescue also hits
+            # Responses API on gpt-5.x; bring it to the same stream path
+            # the translator and polisher use to avoid the openai-python
+            # #2725 hang under any input size.
+            def _stream_call():
+                s = client.responses.create(
                     model=self.model,
                     input=[
                         {"role": "system", "content": self._LLM_SYSTEM},
@@ -996,8 +1000,29 @@ class FASubtitleAligner:
                     },
                     reasoning={"effort": "low"},
                     timeout=120,
-                ),
-                label="aligner.llm_refine",
+                    stream=True,
+                )
+                _chunks: list[str] = []
+                _final = None
+                for event in s:
+                    et = getattr(event, "type", "")
+                    if et == "response.output_text.delta":
+                        _chunks.append(getattr(event, "delta", "") or "")
+                    elif et == "response.completed":
+                        _final = getattr(event, "response", None)
+                    elif et in ("response.failed", "response.incomplete"):
+                        _final = getattr(event, "response", None)
+                        raise RuntimeError(
+                            f"aligner stream ended with type={et}: {_final}"
+                        )
+                return {"text": "".join(_chunks), "final": _final}
+
+            _sr = call_with_retry(_stream_call, label="aligner.llm_refine(stream)")
+            from types import SimpleNamespace
+            _final = _sr["final"]
+            resp = SimpleNamespace(
+                output_text=_sr["text"],
+                model_dump=(lambda f: (lambda: f.model_dump()))(_final) if _final else (lambda: {}),
             )
         except Exception as exc:
             print(f"[WARN] FA aligner LLM refine failed: {exc!r} — using mechanical.")
