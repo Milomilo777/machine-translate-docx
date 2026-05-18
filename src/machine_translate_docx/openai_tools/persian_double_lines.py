@@ -172,7 +172,13 @@ _BRIDGE_PATTERNS_RAW = [
     # bridge classification to the label-only case.
     r'^Narrator\s*:?\s*$', r'^Maharaj\s*:\s*$',
     r'^SM\s*:\s*$', r'^Master\s*:\s*$',
-    r'^[A-Z][A-Z\s]{2,}:\s*$',
+    # 2026-05-19 fix: the ALL-CAPS label catcher (e.g. "NARRATOR:" /
+    # "VEGGIE ELITE HOST:") must NOT be case-folded by re.IGNORECASE,
+    # otherwise lowercase phrases that happen to be letters+spaces+colon
+    # like "the rehearsal went:" are misclassified as bridge rows and
+    # their FA content silently drops out of the aligner. Disable the
+    # IGNORECASE flag locally with (?-i:...).
+    r'^(?-i:[A-Z][A-Z\s]{2,}):\s*$',
     # 2026-05-13: stand-alone hashtag-id rows (`#193465`).
     r'^#\d{3,}\s*$',
     # 2026-05-17 (AJAR 3150 bug): editor-comment rows beginning with
@@ -265,12 +271,34 @@ def _has_midline_dot(text: str) -> bool:
     2026-05-17 phase-3 (no-doubling rule): mid-line sentence terminator
     means the cell holds two independent sentences; doubling would
     misalign their distribution across rows.
+
+    2026-05-19 fix: trailing closing-quote characters (``"``, ``'``,
+    ``»``, ``“”``, ``’``) after a sentence terminator must be stripped
+    BEFORE the midline check. Otherwise quoted-sentence endings like
+    ``بکنی."`` are misclassified as mid-line dots, triggering the
+    no_doubling path; the AJAR loss pattern (24-57 rows of empty FA
+    per file) traces back to this. See
+    ``notes/aligner-work-2026-05-19/`` for the diagnostic transcript.
     """
     if not text:
         return False
     t = text.strip()
-    while t and t[-1] in '.!?؟':
-        t = t[:-1].rstrip()
+    # Strip trailing terminators AND any wrapping close-quotes.
+    # ``."``, ``?"`` ``..."`` ``»."`` all denote end-of-sentence.
+    _CLOSING_QUOTES = set('"\'»“”’›`')
+    while t:
+        last = t[-1]
+        if last in '.!?؟' or last in _CLOSING_QUOTES:
+            t = t[:-1].rstrip()
+        else:
+            break
+    # 2026-05-19 fix #2: ellipsis (``...`` / ``…``) is a pause within a
+    # sentence, not a hard terminator. Strip them out before scanning so
+    # mid-line ellipses don't falsely trigger no_doubling. A cell like
+    # ``خراب نمی‌شود"... آن هم فقط`` (one continuous quoted-clause-then-
+    # continuation) was misclassified as multi-sentence, which then
+    # concentrated FA on the first 2 rows and left row 3 empty.
+    t = t.replace('...', '').replace('…', '')
     return any(c in '.!?؟' for c in t)
 
 
@@ -591,7 +619,14 @@ def _split_for_n_rows(text: str, n_rows: int) -> list:
     text = text.strip()
     if not text:
         return []
-    if _display_len(text) <= MAX_CHARS:
+    # 2026-05-19 fix: when text fits in one chunk and n_rows ≤ 2, the
+    # single-chunk return is correct (doubling fills both rows). But for
+    # n_rows ≥ 3, returning a single chunk forces the downstream
+    # _enforce_no_triple to blank the 3rd+ row — visually the viewer
+    # gets an empty FA cell during that time slice. Fall through to the
+    # splitting loop so we try to produce ≥ ceil(n_rows/2) chunks first,
+    # which the distributor can then expand to fill every row safely.
+    if _display_len(text) <= MAX_CHARS and n_rows <= 2:
         return [text]
 
     min_chunks    = -(-_display_len(text) // MAX_CHARS)  # ceil(len/MAX)
@@ -1348,6 +1383,16 @@ class FASubtitleAligner:
                     tail_chunks = chunks_list[target_rows - 1:]
                     distributed = _distribute_to_rows(tail_chunks, 1)
                     chunks_list = head + distributed
+            elif len(chunks_list) < target_rows:
+                # 2026-05-19 fix: splitter merged too aggressively for no_doubling.
+                # The original input cells already met MAX_CHARS (that's how the
+                # translator/polisher emitted them), and the translator chose those
+                # row boundaries deliberately. Preserve that original mapping so
+                # every row stays filled instead of leaving an empty tail.
+                orig_parts = [p for p in group['fa_parts'] if p]
+                if (len(orig_parts) >= target_rows
+                        and all(_display_len(p) <= MAX_CHARS for p in orig_parts)):
+                    chunks_list = orig_parts[:target_rows]
             rows = chunks_list[:target_rows]
             while len(rows) < target_rows:
                 rows.append('')
