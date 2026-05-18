@@ -62,7 +62,16 @@ dependencies = [
     "python-docx>=1.1.0",
     "lxml>=5.0",
     # ── OpenAI engine + helpers ─────────────────────────────────────
-    "openai>=1.0",
+    # 2026-05-18 hardening: cap below the next major. The stream loops
+    # in translator/polisher/splitting/persian_double_lines depend on
+    # the Responses-API SSE event names (response.output_text.delta /
+    # response.completed / response.failed / response.incomplete).
+    # A major bump could rename or restructure these and silently
+    # break the stream parse path. Bump the upper bound deliberately
+    # after running tests/test_stream_line_contract.py against the
+    # new version. Floor sits at 2.30 — the version tested with the
+    # 2026-05-17 stream=True / #2725 workaround.
+    "openai>=2.30,<3",
     "tiktoken>=0.7",
     "json5>=0.9",
     # ── Selenium-driven engines (DeepL, Google) ─────────────────────

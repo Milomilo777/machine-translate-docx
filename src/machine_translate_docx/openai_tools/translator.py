@@ -347,60 +347,92 @@ class OpenAITranslator:
             # gpt-5 models (openai/openai-python#2725). Streaming uses a
             # different parse path that avoids the hang. Output text +
             # usage are reassembled from event chunks.
-            def _stream_call():
-                stream = self.client.responses.create(
-                    model=self.model,
-                    input=_messages,
-                    extra_body=_extra,
-                    reasoning={"effort": "none"},
-                    timeout=1800,
-                    stream=True,
-                )
-                _chunks: list[str] = []
-                _final = None
-                _delta_n = 0
-                for event in stream:
-                    et = getattr(event, "type", "")
-                    if et == "response.output_text.delta":
-                        _chunks.append(getattr(event, "delta", "") or "")
-                        _delta_n += 1
-                        # B3 (2026-05-18): emit a tick every 50 deltas so
-                        # the launcher can nudge the UI progress bar
-                        # while the stream is still draining.
-                        if _delta_n % 50 == 0:
-                            print(f"[STREAM] role=translator chunks={_delta_n}", flush=True)
-                    elif et == "response.completed":
-                        _final = getattr(event, "response", None)
-                    elif et in ("response.failed", "response.incomplete"):
-                        _final = getattr(event, "response", None)
-                        raise RuntimeError(
-                            f"translator stream ended with type={et}: {_final}"
-                        )
-                return {"text": "".join(_chunks), "final": _final}
-
-            stream_result = call_with_retry(
-                _stream_call,
-                label="translator.responses.create(stream)",
+            #
+            # 2026-05-18 hardening: ``MTD_FORCE_NON_STREAM=1`` degrades
+            # this site to a non-streaming Responses-API call. Reserved
+            # for emergency rollback only — non-streaming still has the
+            # #2725 hang risk on gpt-5.x with large payloads.
+            from ._stream_helper import (
+                force_non_stream,
+                maybe_log_unknown_event,
             )
-            # Build a SimpleNamespace that mimics the non-streaming response
-            # shape so the rest of the code below works unchanged.
-            from types import SimpleNamespace
-            _final = stream_result["final"]
-            # CODE-C-9 (2026-05-18 audit): when the stream ends without a
-            # `response.completed` event (network reset, server early-
-            # close), `_final` stays None. We still have the assembled
-            # text, but token / cost usage is unknown — log it so the
-            # sidecar zero is explainable.
-            if _final is None:
+            if force_non_stream():
                 print(
-                    "[WARN] translator: stream ended without response.completed — "
-                    "usage data unavailable, log sidecar will record zero tokens/cost",
+                    "[WARN] MTD_FORCE_NON_STREAM=1 — translator using "
+                    "non-stream Responses API; #2725 hang risk on large "
+                    "gpt-5.x payloads",
                     flush=True,
                 )
-            response = SimpleNamespace(
-                output_text=stream_result["text"],
-                model_dump=(lambda f: (lambda: f.model_dump()))(_final) if _final else (lambda: {}),
-            )
+                response = call_with_retry(
+                    lambda: self.client.responses.create(
+                        model=self.model,
+                        input=_messages,
+                        extra_body=_extra,
+                        reasoning={"effort": "none"},
+                        timeout=1800,
+                    ),
+                    label="translator.responses.create(non-stream)",
+                )
+            else:
+                def _stream_call():
+                    stream = self.client.responses.create(
+                        model=self.model,
+                        input=_messages,
+                        extra_body=_extra,
+                        reasoning={"effort": "none"},
+                        timeout=1800,
+                        stream=True,
+                    )
+                    _chunks: list[str] = []
+                    _final = None
+                    _delta_n = 0
+                    for event in stream:
+                        et = getattr(event, "type", "")
+                        if et == "response.output_text.delta":
+                            _chunks.append(getattr(event, "delta", "") or "")
+                            _delta_n += 1
+                            # B3 (2026-05-18): emit a tick every 50 deltas so
+                            # the launcher can nudge the UI progress bar
+                            # while the stream is still draining.
+                            if _delta_n % 50 == 0:
+                                print(f"[STREAM] role=translator chunks={_delta_n}", flush=True)
+                        elif et == "response.completed":
+                            _final = getattr(event, "response", None)
+                        elif et in ("response.failed", "response.incomplete"):
+                            _final = getattr(event, "response", None)
+                            raise RuntimeError(
+                                f"translator stream ended with type={et}: {_final}"
+                            )
+                        else:
+                            # 2026-05-18 hardening: surface SDK changes
+                            # (renamed / added event types) instead of
+                            # silently dropping them.
+                            maybe_log_unknown_event("translator", et)
+                    return {"text": "".join(_chunks), "final": _final}
+
+                stream_result = call_with_retry(
+                    _stream_call,
+                    label="translator.responses.create(stream)",
+                )
+                # Build a SimpleNamespace that mimics the non-streaming response
+                # shape so the rest of the code below works unchanged.
+                from types import SimpleNamespace
+                _final = stream_result["final"]
+                # CODE-C-9 (2026-05-18 audit): when the stream ends without a
+                # `response.completed` event (network reset, server early-
+                # close), `_final` stays None. We still have the assembled
+                # text, but token / cost usage is unknown — log it so the
+                # sidecar zero is explainable.
+                if _final is None:
+                    print(
+                        "[WARN] translator: stream ended without response.completed — "
+                        "usage data unavailable, log sidecar will record zero tokens/cost",
+                        flush=True,
+                    )
+                response = SimpleNamespace(
+                    output_text=stream_result["text"],
+                    model_dump=(lambda f: (lambda: f.model_dump()))(_final) if _final else (lambda: {}),
+                )
         else:
             response = call_with_retry(
                 lambda: self.client.chat.completions.create(

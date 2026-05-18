@@ -987,43 +987,73 @@ class FASubtitleAligner:
             # Responses API on gpt-5.x; bring it to the same stream path
             # the translator and polisher use to avoid the openai-python
             # #2725 hang under any input size.
-            def _stream_call():
-                s = client.responses.create(
-                    model=self.model,
-                    input=[
-                        {"role": "system", "content": self._LLM_SYSTEM},
-                        {"role": "user",   "content": user},
-                    ],
-                    extra_body={
-                        "prompt_cache_retention": "24h",
-                        "prompt_cache_key": "mtd-aligner-v7",
-                    },
-                    reasoning={"effort": "low"},
-                    timeout=120,
-                    stream=True,
-                )
-                _chunks: list[str] = []
-                _final = None
-                for event in s:
-                    et = getattr(event, "type", "")
-                    if et == "response.output_text.delta":
-                        _chunks.append(getattr(event, "delta", "") or "")
-                    elif et == "response.completed":
-                        _final = getattr(event, "response", None)
-                    elif et in ("response.failed", "response.incomplete"):
-                        _final = getattr(event, "response", None)
-                        raise RuntimeError(
-                            f"aligner stream ended with type={et}: {_final}"
-                        )
-                return {"text": "".join(_chunks), "final": _final}
-
-            _sr = call_with_retry(_stream_call, label="aligner.llm_refine(stream)")
-            from types import SimpleNamespace
-            _final = _sr["final"]
-            resp = SimpleNamespace(
-                output_text=_sr["text"],
-                model_dump=(lambda f: (lambda: f.model_dump()))(_final) if _final else (lambda: {}),
+            #
+            # 2026-05-18 hardening: ``MTD_FORCE_NON_STREAM=1`` falls back
+            # to non-stream Responses API. Emergency rollback only.
+            from ._stream_helper import (
+                force_non_stream,
+                maybe_log_unknown_event,
             )
+            _aligner_extra = {
+                "prompt_cache_retention": "24h",
+                "prompt_cache_key": "mtd-aligner-v7",
+            }
+            _aligner_messages = [
+                {"role": "system", "content": self._LLM_SYSTEM},
+                {"role": "user",   "content": user},
+            ]
+            if force_non_stream():
+                print(
+                    "[WARN] MTD_FORCE_NON_STREAM=1 — aligner using "
+                    "non-stream Responses API; #2725 hang risk on large "
+                    "gpt-5.x payloads",
+                    flush=True,
+                )
+                resp = call_with_retry(
+                    lambda: client.responses.create(
+                        model=self.model,
+                        input=_aligner_messages,
+                        extra_body=_aligner_extra,
+                        reasoning={"effort": "low"},
+                        timeout=120,
+                    ),
+                    label="aligner.llm_refine(non-stream)",
+                )
+            else:
+                def _stream_call():
+                    s = client.responses.create(
+                        model=self.model,
+                        input=_aligner_messages,
+                        extra_body=_aligner_extra,
+                        reasoning={"effort": "low"},
+                        timeout=120,
+                        stream=True,
+                    )
+                    _chunks: list[str] = []
+                    _final = None
+                    for event in s:
+                        et = getattr(event, "type", "")
+                        if et == "response.output_text.delta":
+                            _chunks.append(getattr(event, "delta", "") or "")
+                        elif et == "response.completed":
+                            _final = getattr(event, "response", None)
+                        elif et in ("response.failed", "response.incomplete"):
+                            _final = getattr(event, "response", None)
+                            raise RuntimeError(
+                                f"aligner stream ended with type={et}: {_final}"
+                            )
+                        else:
+                            # 2026-05-18 hardening: surface SDK changes.
+                            maybe_log_unknown_event("aligner", et)
+                    return {"text": "".join(_chunks), "final": _final}
+
+                _sr = call_with_retry(_stream_call, label="aligner.llm_refine(stream)")
+                from types import SimpleNamespace
+                _final = _sr["final"]
+                resp = SimpleNamespace(
+                    output_text=_sr["text"],
+                    model_dump=(lambda f: (lambda: f.model_dump()))(_final) if _final else (lambda: {}),
+                )
         except Exception as exc:
             print(f"[WARN] FA aligner LLM refine failed: {exc!r} — using mechanical.")
             return None
