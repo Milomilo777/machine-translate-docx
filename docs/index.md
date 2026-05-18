@@ -2,6 +2,16 @@
 
 The repo's deeper documentation. Pick by what you're doing.
 
+## ⭐ Read these first (if you're new here)
+
+| File | Time | Purpose |
+|---|---|---|
+| [`quickref.md`](quickref.md) | 1 min | The whole repo on one page — entry points, engines, models, tests, key env vars |
+| [`../CLAUDE.md`](../CLAUDE.md) | 5 min | The project router — architecture overview + key paths + conventions |
+| [`architecture.md`](architecture.md) | 10 min | Full pipeline + data flow + every key path |
+| [`../PROJECT_MEMORY.md`](../PROJECT_MEMORY.md) | 10 min | Active invariants C1–C39 (the things you can't break) + recent changes |
+| [`configuration.md`](configuration.md) | reference | Every env var + tuning constant in one table |
+
 ## Getting started
 
 | File | Purpose |

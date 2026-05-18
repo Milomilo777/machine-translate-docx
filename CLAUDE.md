@@ -174,6 +174,10 @@ DeepL / Google runs write a minimal sidecar with row counts only.
 
 ## Runtime environment variables
 
+> Most-touched 8 vars below. **Full list of 23 env vars + 10 tuning
+> constants:** [`docs/configuration.md`](docs/configuration.md).
+> One-page repo summary: [`docs/quickref.md`](docs/quickref.md).
+
 | Variable | Default | Purpose |
 |---|---|---|
 | `OPENAI_API_KEY` | — | Required for any chatgpt / chatgpt-polish run |
