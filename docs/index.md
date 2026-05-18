@@ -2,7 +2,11 @@
 
 The repo's deeper documentation. Pick by what you're doing.
 
-## ⭐ Read these first (if you're new here)
+> **Three tiers below** — `⭐ Start here`, `📂 Active reference`, and `🗄️ Archived` (history, kept for provenance only).
+
+---
+
+## ⭐ Start here — read these first (in order)
 
 | File | Time | Purpose |
 |---|---|---|
@@ -12,7 +16,11 @@ The repo's deeper documentation. Pick by what you're doing.
 | [`../PROJECT_MEMORY.md`](../PROJECT_MEMORY.md) | 10 min | Active invariants C1–C39 (the things you can't break) + recent changes |
 | [`configuration.md`](configuration.md) | reference | Every env var + tuning constant in one table |
 
-## Getting started
+---
+
+## 📂 Active reference — read on demand
+
+### Getting started
 
 | File | Purpose |
 |---|---|
@@ -21,23 +29,17 @@ The repo's deeper documentation. Pick by what you're doing.
 | [`testing.md`](testing.md) | How to run unit tests, smoke tests, and live engine tests |
 | [`../SECURITY.md`](../SECURITY.md) | Vulnerability reporting + active security measures |
 
-## Architecture
+### Architecture
 
 | File | Purpose |
 |---|---|
 | [`architecture.md`](architecture.md) | Full pipeline + data flow + every key path |
-| [`uml.md`](uml.md) | 5 Mermaid UML diagrams — class, sequence (happy + failure), activity, deployment |
-| [`diagrams/architecture-detailed-light.svg`](diagrams/architecture-detailed-light.svg) | Module-level architecture map — every package under `src/machine_translate_docx/` |
-| [`diagrams/README.md`](diagrams/README.md) | The 6 high-level SVG diagrams (architecture / pipeline / failure path × light + dark) |
-| [`master-audit-2026-05-16.md`](master-audit-2026-05-16.md) | Five-shard audit of master HEAD — P0/P1/P2/P3 findings + Sprint plan |
-| [`refactor-roadmap.md`](refactor-roadmap.md) | Phase A → G design rationale |
-| [`post-refactor-audit.md`](post-refactor-audit.md) | 15 findings from the 2026-05-08 audit |
-| [`audit-2026-05-11.md`](audit-2026-05-11.md) | Comprehensive 2026-05-11 audit + applied fixes |
-| [`cli-shrink-phase3-handoff.md`](cli-shrink-phase3-handoff.md) | Historical — all Sprint D tasks (statistics cluster, Google file-mode workers, `_sync_globals_from_ctx` collapse) merged to master 2026-05-17. Archive reference only. |
+| [`uml.md`](uml.md) | Mermaid UML diagrams — class, sequence, activity, deployment |
+| [`diagrams/`](diagrams/) | 6 high-level SVG diagrams (architecture / pipeline / failure path × light + dark). *Last refreshed 2026-05-16 — predates this week's stream-hardening + circuit breaker additions. Schedule for refresh after the next real translation test.* |
 | [`decisions-2026.md`](decisions-2026.md) | Architectural decision log (ADRs) |
-| [`../PROJECT_MEMORY.md`](../PROJECT_MEMORY.md) | Active invariants C1–C39 + recurring issues E1–E16 |
+| [`refactor-roadmap.md`](refactor-roadmap.md) | Phase A → G design rationale |
 
-## Translation domain knowledge
+### Translation domain knowledge
 
 | File | Purpose |
 |---|---|
@@ -47,50 +49,35 @@ The repo's deeper documentation. Pick by what you're doing.
 | [`aligner-research.md`](aligner-research.md) | Background research for the Persian aligner |
 | [`roadmap-persian-double-lines.md`](roadmap-persian-double-lines.md) | The 15-phase Persian Double Lines roadmap |
 
-## Operations + observability
+### Operations + observability
 
 | File | Purpose |
 |---|---|
 | [`telegram-alerts-setup.md`](telegram-alerts-setup.md) | Step-by-step Telegram bot setup + security + multi-recipient |
-| [`real-engine-test-findings.md`](real-engine-test-findings.md) | Live engine test pass + 4 bugs + 8 weaknesses (all resolved or parked) |
 | [`error-catalog.md`](error-catalog.md) | Known bugs (E1–E16) + status |
+| [`real-engine-test-findings.md`](real-engine-test-findings.md) | Live engine test pass + bug catalog |
+| [`server-deploy.md`](server-deploy.md) | Server-side deployment notes |
 
-## API + engines
+### API + engines + frontend
 
 | File | Purpose |
 |---|---|
 | [`batch-api-analysis.md`](batch-api-analysis.md) | OpenAI Batch API evaluation |
-| [`analysis-raw.md`](analysis-raw.md) | Raw analysis of the original entry script (~80 globals) |
-| [`v2-frontend-hardening.md`](v2-frontend-hardening.md) | 2026-05-09 v2 hardening sprint (5 phases) |
+| [`v2-improvements.md`](v2-improvements.md) | Design proposals for the v2 SPA + redesign |
+| [`v2-future-ideas.md`](v2-future-ideas.md) | Tier 1–4 backlog for v2 SPA with cost scoring |
 
-## Process / playbooks
-
-| File | Purpose |
-|---|---|
-| [`playbooks/add-feature.md`](playbooks/add-feature.md) | How to ship a feature end-to-end |
-| [`playbooks/fix-bug.md`](playbooks/fix-bug.md) | Bug-fix workflow |
-| [`playbooks/translate-batch.md`](playbooks/translate-batch.md) | Bulk translation playbook |
-| [`playbooks/update-memory.md`](playbooks/update-memory.md) | When + how to update PROJECT_MEMORY.md |
-| [`agent-handoff.md`](agent-handoff.md) | Agent → agent session handoff protocol |
-| [`agent-run-report.md`](agent-run-report.md) | Agent run reporting format |
-| [`next-session-handoff.md`](next-session-handoff.md) | The most recent next-session handoff note |
-
-## Strategy / external
+### Most recent baseline
 
 | File | Purpose |
 |---|---|
-| [`../JVM_Migration_Analysis.docx`](../JVM_Migration_Analysis.docx) | Word document — analysis of a hypothetical Java + Kotlin migration |
+| [`deep-debug-audit-2026-05-18.md`](deep-debug-audit-2026-05-18.md) | Six-shard parallel audit of master after the FLYIN incident — P0/P1/P2 findings + applied fixes. **Read this for the current baseline state.** |
 
-## Historical / archived
+---
 
-| File | Purpose |
-|---|---|
-| [`phase-F-blocked.md`](phase-F-blocked.md) | Phase F1 original blocker note |
-| [`PR-text.md`](PR-text.md) | Stored PR description text |
+## 🗄️ Archived — history, kept for provenance only
 
-## See also
+29 historical documents have been moved to [`archive/`](archive/) on 2026-05-18. These are point-in-time records (audit reports, session-state snapshots, one-off design proposals) that are **no longer the current source of truth**.
 
-- [`../CHANGELOG.md`](../CHANGELOG.md) — chronological session log (one entry
-  per landing commit; reverse-chronological).
-- [`docs/diagrams/`](diagrams/) — SVG architecture diagrams; the hero
-  one is embedded in the project README.
+See [`archive/README.md`](archive/README.md) for an explanation of what's there and when to read it.
+
+If you're investigating a specific commit, the commit message will tell you which archived doc to consult. Otherwise, prefer the active reference above.

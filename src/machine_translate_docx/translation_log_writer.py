@@ -176,3 +176,41 @@ def write_translation_log(
         json.dump(translation_log, fh, ensure_ascii=False, indent=2)
 
     print(f"[INFO] Translation log saved → {log_path}")
+
+    # ── 2026-05-18 (Session A item #2): one-line run summary ─────────
+    #
+    # A single grep-able line at the end of every CLI job. Tagged
+    # ``[RUN-SUMMARY]`` so the launcher (or a human reading stdout)
+    # can spot it instantly without parsing the JSON sidecar.
+    #
+    # Format:
+    #   [RUN-SUMMARY] model=<m> rows=<n> tokens_prompt=<p> tokens_completion=<c>
+    #                 tokens_cached=<k> cost_usd=<x> elapsed_s=<t>
+    #                 breaker=<state>
+    #
+    # ``breaker`` reports the stream-circuit-breaker state at the
+    # end of the run — a quick way to see in stdout whether the
+    # breaker is currently OPEN. Wrapped in try/except so a
+    # diagnostic line never crashes a successful run.
+    try:
+        _breaker_state = "n/a"
+        try:
+            from .openai_tools._stream_circuit import snapshot as _circuit_snapshot
+            _breaker_state = _circuit_snapshot().get("state", "n/a")
+        except Exception:
+            pass
+        _model = (translation_log.get("run_info") or {}).get("model", "?")
+        print(
+            f"[RUN-SUMMARY] "
+            f"model={_model} "
+            f"rows={max(len(_src_rows), len(_tgt_rows))} "
+            f"tokens_prompt={total_prompt} "
+            f"tokens_completion={total_completion} "
+            f"tokens_cached={total_cached} "
+            f"cost_usd={round(total_cost, 4)} "
+            f"elapsed_s={round(total_elapsed, 1)} "
+            f"breaker={_breaker_state}",
+            flush=True,
+        )
+    except Exception as _exc:
+        print(f"[WARN] could not emit run summary: {_exc!r}")

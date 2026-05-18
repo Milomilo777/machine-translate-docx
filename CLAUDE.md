@@ -222,7 +222,7 @@ slurp + `referrer: no-referrer` + `Cache-Control: no-store`. Legacy
    on every launcher response (including `/download/*`).
 
 Details + code snippet for `local_launcher.py` in
-[`docs/v2-backend-todo.md`](docs/v2-backend-todo.md) §TODO #2.
+[`docs/archive/v2-backend-todo.md`](docs/archive/v2-backend-todo.md) §TODO #2.
 
 ---
 
@@ -242,21 +242,18 @@ Details + code snippet for `local_launcher.py` in
 - [`docs/error-catalog.md`](docs/error-catalog.md) — known bugs.
 - [`docs/decisions-2026.md`](docs/decisions-2026.md) — architectural
   decisions log.
-- [`docs/audit-2026-05-11.md`](docs/audit-2026-05-11.md) — the
-  comprehensive 2026-05-11 audit + applied fixes.
-- [`docs/cli-shrink-phase3-handoff.md`](docs/cli-shrink-phase3-handoff.md)
-  — **Historical handoff** — all Sprint D tasks (statistics, Google
-  file-mode, `_sync_globals_from_ctx` collapse) merged to master
-  2026-05-17. Archive reference only.
+- [`docs/deep-debug-audit-2026-05-18.md`](docs/deep-debug-audit-2026-05-18.md) —
+  most recent audit baseline (six-shard, post-FLYIN; 1 P0 + 14 P1 closed).
 - [`docs/v2-future-ideas.md`](docs/v2-future-ideas.md) — tier-1..4
   backlog for the v2 SPA with 3-axis cost scoring.
-- [`docs/v2-improvements.md`](docs/v2-improvements.md) — **NEW**
-  (2026-05-16). Twelve design proposals for the v2 SPA, impact-vs-effort
-  matrix, and the v1↔v2 version-switcher spec with drop-in code.
-- [`docs/v2-backend-todo.md`](docs/v2-backend-todo.md) — **DONE**
-  (closed 2026-05-17). Both endpoints originally listed as pending
-  (`GET /history?limit=N` and server-side anti-indexing — `/robots.txt`
-  + `X-Robots-Tag` header) shipped in the launcher merge `cbb5f2e`.
+- [`docs/v2-improvements.md`](docs/v2-improvements.md) — twelve design
+  proposals for the v2 SPA + version-switcher spec.
+- [`docs/configuration.md`](docs/configuration.md) — single reference
+  for every env var + tuning constant.
+- [`docs/quickref.md`](docs/quickref.md) — one-page repo at a glance.
+- [`docs/archive/`](docs/archive/) — 29 historical audit / handoff /
+  session-state docs. See [`docs/archive/README.md`](docs/archive/README.md)
+  for when to read them.
 - [`PROJECT_MEMORY.md`](PROJECT_MEMORY.md) — active constraints C1–C39,
   recent changes.
 - [`web/v2/README.md`](web/v2/README.md) — v2 frontend stack, deploy,

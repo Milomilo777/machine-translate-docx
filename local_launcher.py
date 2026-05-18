@@ -1159,13 +1159,131 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
             pass
 
     def _handle_health(self) -> None:
-        """Liveness probe — no auth. Used by Caddy / UptimeRobot."""
+        """Liveness + diagnostics probe — no auth. Used by Caddy /
+        UptimeRobot for liveness AND as an at-a-glance operator
+        dashboard for queue depth, breaker state, today's cost, and
+        last failure timestamp.
+
+        Schema (2026-05-18 expansion):
+          status          "ok" — fixed; if this handler runs, the
+                          launcher is live
+          version         project version
+          uptime          seconds since launcher boot
+          jobs.active     count of jobs in pending/running state
+          jobs.queued     count of jobs waiting at the semaphore
+          jobs.total      count of jobs in the in-memory table
+          breaker.state   stream-circuit-breaker state (CLOSED / OPEN /
+                          HALF_OPEN)
+          breaker.consecutive_failures   how close to tripping
+          breaker.cooldown_remaining_s   seconds until probe (OPEN only)
+          today.cost_usd  sum of cost_usd across today's *_log.json
+                          sidecars (may be retail-rate; doesn't know
+                          about incentivized-tier discounts)
+          today.runs      count of today's sidecar files
+          last_failure    ISO timestamp of newest entry under
+                          runtime_dir/failures/, or null
+          sdk.openai      openai-python version string, or null
+
+        Defensive: each diagnostics block is wrapped in try/except so
+        a single broken lookup doesn't take down the liveness probe.
+        Cached-cheap: each call re-reads filesystem; that's a few
+        stat() calls and a directory listing, fine for the polling
+        frequency this endpoint is built for.
+        """
         import time as _time
         boot_ts = getattr(self.server, "_mtd_boot_time", _time.time())
+
+        # ── jobs (queue depth + active count) ────────────────────────
+        jobs_block: dict = {}
+        try:
+            snap = self.state.job_snapshot()
+            jobs_block = {
+                "total":  len(snap),
+                "active": sum(1 for j in snap.values()
+                              if j.status not in ("done", "error", "cancelled", "queued")),
+                "queued": sum(1 for j in snap.values() if j.status == "queued"),
+            }
+        except Exception as _exc:
+            jobs_block = {"error": repr(_exc)}
+
+        # ── stream circuit breaker state ─────────────────────────────
+        breaker_block: dict = {}
+        try:
+            _src_dir = ROOT / "src"
+            if str(_src_dir) not in sys.path:
+                sys.path.insert(0, str(_src_dir))
+            from machine_translate_docx.openai_tools._stream_circuit import snapshot as _circuit_snapshot
+            bs = _circuit_snapshot()
+            breaker_block = {
+                "state": bs.get("state", "UNKNOWN"),
+                "consecutive_failures": int(bs.get("consecutive_failures") or 0),
+            }
+            if "cooldown_remaining_seconds" in bs:
+                breaker_block["cooldown_remaining_s"] = bs["cooldown_remaining_seconds"]
+        except Exception as _exc:
+            breaker_block = {"error": repr(_exc)}
+
+        # ── today's cost from sidecar JSONs ───────────────────────────
+        today_block: dict = {}
+        try:
+            import json as _json
+            import datetime as _dt
+            from machine_translate_docx.log_paths import resolve_log_dir
+            log_dir = resolve_log_dir()
+            today_iso = _dt.datetime.now().strftime("%Y-%m-%d")
+            total_cost = 0.0
+            run_count = 0
+            for entry in log_dir.glob("*_log.json"):
+                try:
+                    mtime = _dt.datetime.fromtimestamp(entry.stat().st_mtime).strftime("%Y-%m-%d")
+                    if mtime != today_iso:
+                        continue
+                    data = _json.loads(entry.read_text(encoding="utf-8"))
+                    cost = (data.get("summary") or {}).get("total_cost_usd")
+                    if isinstance(cost, (int, float)):
+                        total_cost += float(cost)
+                    run_count += 1
+                except Exception:
+                    continue  # one bad sidecar doesn't break the rollup
+            today_block = {
+                "cost_usd": round(total_cost, 4),
+                "runs":     run_count,
+                "note":     "retail-rate calc; ignores incentivized-tier discounts",
+            }
+        except Exception as _exc:
+            today_block = {"error": repr(_exc)}
+
+        # ── last failure timestamp ────────────────────────────────────
+        last_failure_iso: str | None = None
+        try:
+            failures_dir = self.state.runtime_dir / "failures"
+            if failures_dir.is_dir():
+                latest = max(failures_dir.glob("*"), key=lambda p: p.stat().st_mtime, default=None)
+                if latest:
+                    import datetime as _dt
+                    last_failure_iso = _dt.datetime.fromtimestamp(
+                        latest.stat().st_mtime
+                    ).isoformat(timespec="seconds")
+        except Exception:
+            last_failure_iso = None
+
+        # ── SDK version ──────────────────────────────────────────────
+        sdk_block: dict = {}
+        try:
+            import openai  # type: ignore[import-not-found]
+            sdk_block["openai"] = getattr(openai, "__version__", None)
+        except Exception:
+            sdk_block["openai"] = None
+
         self._send_json({
-            "status":  "ok",
-            "version": getattr(self.server, "_mtd_version", "unknown"),
-            "uptime":  int(_time.time() - boot_ts),
+            "status":       "ok",
+            "version":      getattr(self.server, "_mtd_version", "unknown"),
+            "uptime":       int(_time.time() - boot_ts),
+            "jobs":         jobs_block,
+            "breaker":      breaker_block,
+            "today":        today_block,
+            "last_failure": last_failure_iso,
+            "sdk":          sdk_block,
         })
 
     def _send_security_headers(self) -> None:
