@@ -7,7 +7,7 @@
 
 <p align="center">
   <img alt="Python 3.11+"   src="https://img.shields.io/badge/python-3.11%2B-1F1E1B?style=flat-square&logo=python&logoColor=white">
-  <img alt="Tests 154/154"   src="https://img.shields.io/badge/tests-154%2F154-D97757?style=flat-square">
+  <img alt="Tests 243/243"   src="https://img.shields.io/badge/tests-243%2F243-D97757?style=flat-square">
   <img alt="License MIT"    src="https://img.shields.io/badge/license-MIT-D97757?style=flat-square">
   <img alt="No framework"   src="https://img.shields.io/badge/v2%20frontend-plain%20JS-1F1E1B?style=flat-square">
   <img alt="Status active"  src="https://img.shields.io/badge/status-active-D97757?style=flat-square">
@@ -193,13 +193,13 @@ covering different angles. Start with these:
 | Decision log (2026) | [`docs/decisions-2026.md`](docs/decisions-2026.md) |
 | Architecture diagrams | [`docs/diagrams/README.md`](docs/diagrams/README.md) |
 
-The project's hard invariants (`C1` through `C31`) live in
+The project's hard invariants (`C1` through `C39`) live in
 [`PROJECT_MEMORY.md`](PROJECT_MEMORY.md) — read them before sending
 a PR that touches the pipeline.
 
 ## Status
 
-- **Unit tests**: 154 / 154 passing (`make test`).
+- **Unit tests**: 243 / 243 passing (`make test`).
 - **Smoke test**: DeepL en→fr on the canonical fixture in 27 s,
   0 / 42 source-column mismatches (`make smoke`).
 - **Live validation**: re-run weekly across DeepL, Google, and

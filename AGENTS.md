@@ -5,7 +5,7 @@ Instructions for AI agents (Claude Code, Jules, Codex, etc.) and CI workflows.
 This file is the **single entry point** for an agent landing on this
 repo without prior context. Read it once; then defer to `CLAUDE.md`
 (router) and `PROJECT_MEMORY.md` (the canonical constraint list
-`C1–C31`).
+`C1–C39`).
 
 ---
 
@@ -43,7 +43,7 @@ python -m py_compile src/machine_translate_docx/openai_tools/persian_double_line
 python -m py_compile src/machine_translate_docx/openai_tools/_retry.py
 python -m py_compile local_launcher.py
 
-# Unit tests (154 pass; `live` marker deselected by default)
+# Unit tests (243 pass; `live` marker deselected by default)
 python -m pytest tests/ --ignore=tests/test_v2_e2e.py
 ```
 
@@ -55,7 +55,7 @@ A task is complete when:
 
 - [ ] Modified Python files pass `py_compile` (no syntax errors).
 - [ ] `pytest tests/ --ignore=tests/test_v2_e2e.py` still reports
-      154/154 (or the new baseline if you added tests).
+      243/243 (or the new baseline if you added tests).
 - [ ] Output naming convention respected — engine suffix per
       `docx_io/save.engine_suffix` (`_PER_Polish`, `_PER_chatGPT`,
       `_PER_Google`, `_PER_Deepl`, plus optional `_Double_Lines`).
@@ -92,9 +92,10 @@ Before marking any coding task done:
 4. **Source-column lock.** Columns 0 + 1 of the input docx are
    deepcopy-snapshotted at parse time and restored at save time
    (C13). Do not add code that writes into those columns.
-5. **`_sync_globals_from_ctx` placement.** After every pipeline
-   boundary documented in C10, `cli.py:main()` must call
-   `_sync_globals_from_ctx(ctx)`. The Phase H bridge depends on it.
+5. **ctx threading (C10).** Every helper added or modified must
+   read pipeline state from `ctx.<sub>.<field>` — never by bare
+   module-global name in cli.py. The `_sync_globals_from_ctx` mirror
+   bridge was deleted 2026-05-17 in Sprint D-C slice 6.
 6. **No bare `except:`.** Always `except Exception:` or a more
    specific class (C15).
 7. **`input()` respects `silent`.** Any new blocking prompt needs an
@@ -159,7 +160,7 @@ Before marking any coding task done:
 | You changed... | Update... |
 |---|---|
 | Public file map / module layout | `CLAUDE.md` Key Paths table |
-| A constraint (or added one) | `PROJECT_MEMORY.md` C1–C31 table |
+| A constraint (or added one) | `PROJECT_MEMORY.md` C1–C39 table |
 | The pipeline shape | `docs/architecture.md` |
 | A recurring bug pattern | `docs/error-catalog.md` |
 | An architectural decision | `docs/decisions-2026.md` |

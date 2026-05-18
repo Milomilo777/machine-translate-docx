@@ -23,9 +23,9 @@ The repo's deeper documentation. Pick by what you're doing.
 | [`refactor-roadmap.md`](refactor-roadmap.md) | Phase A → G design rationale |
 | [`post-refactor-audit.md`](post-refactor-audit.md) | 15 findings from the 2026-05-08 audit |
 | [`audit-2026-05-11.md`](audit-2026-05-11.md) | Comprehensive 2026-05-11 audit + applied fixes |
-| [`cli-shrink-phase3-handoff.md`](cli-shrink-phase3-handoff.md) | Continuation prompt for the cli.py shrink (Task A: statistics cluster, Task B: Google file-mode workers, Task C: `_sync_globals_from_ctx` collapse) — phases 1-3 landed 2026-05-16 |
+| [`cli-shrink-phase3-handoff.md`](cli-shrink-phase3-handoff.md) | Historical — all Sprint D tasks (statistics cluster, Google file-mode workers, `_sync_globals_from_ctx` collapse) merged to master 2026-05-17. Archive reference only. |
 | [`decisions-2026.md`](decisions-2026.md) | Architectural decision log (ADRs) |
-| [`../PROJECT_MEMORY.md`](../PROJECT_MEMORY.md) | Active invariants C1–C31 + recurring issues E1–E15 |
+| [`../PROJECT_MEMORY.md`](../PROJECT_MEMORY.md) | Active invariants C1–C39 + recurring issues E1–E16 |
 
 ## Translation domain knowledge
 
@@ -43,7 +43,7 @@ The repo's deeper documentation. Pick by what you're doing.
 |---|---|
 | [`telegram-alerts-setup.md`](telegram-alerts-setup.md) | Step-by-step Telegram bot setup + security + multi-recipient |
 | [`real-engine-test-findings.md`](real-engine-test-findings.md) | Live engine test pass + 4 bugs + 8 weaknesses (all resolved or parked) |
-| [`error-catalog.md`](error-catalog.md) | Known bugs (E1–E15) + status |
+| [`error-catalog.md`](error-catalog.md) | Known bugs (E1–E16) + status |
 
 ## API + engines
 
