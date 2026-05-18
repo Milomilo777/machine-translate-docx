@@ -2837,6 +2837,23 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
             print(f"[basic-split] saved path missing on disk: {saved_path} — returning raw docx")
             return base_path
 
+        # SEC-A-1 (2026-05-18 audit): confine the subprocess-reported
+        # path to the uploads dir. A buggy or attacker-influenced CLI
+        # subprocess could print "Saved file name: /etc/passwd"; without
+        # this guard the shutil.move below would relocate that file into
+        # the user-visible uploads/ dir. Match the relative_to pattern
+        # used by _run_real_backend.
+        try:
+            uploads_root = self.state.uploads_dir.resolve()
+            saved_resolved = saved_path.resolve()
+            saved_resolved.relative_to(uploads_root)
+        except (ValueError, RuntimeError) as exc:
+            print(
+                f"[basic-split] subprocess saved-path outside uploads_dir "
+                f"({saved_path}); refusing to move — returning raw docx"
+            )
+            return base_path
+
         # Move the subprocess output onto the user-facing base_path
         # (overwrite). _resolve_output_path appended an extra
         # ``_chatGPT`` suffix we don't want the user to see.
