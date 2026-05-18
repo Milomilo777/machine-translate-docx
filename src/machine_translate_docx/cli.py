@@ -47,7 +47,10 @@ print("*********************************************************")
 
 print("Python programming language %s\n" % (platform.python_version()))
 
-from pprint import pprint                          # 2026-05-18 cleanup: drop bare `import gc`, `import pprint`, `import shlex`, `import codecs` — unused at module scope.
+# 2026-05-18 audit C1 follow-up: drop the leftover `from pprint
+# import pprint` (and `import gc`, `import pprint`, `import shlex`,
+# `import codecs` from the prior cleanup) — none of them are called
+# anywhere in cli.py.
 import traceback
 import subprocess
 import os
@@ -62,7 +65,7 @@ import json5 # json 5 with the ability to have comments
 
 from inspect import currentframe, getframeinfo
 import chardet
-import getpass
+# 2026-05-18 audit CODE-C-2: drop `import getpass` — never called.
 import datetime
 
 import zipfile
@@ -85,18 +88,18 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.remote.remote_connection import LOGGER
 from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.action_chains import ActionChains
-from selenium.common.exceptions import NoSuchElementException
-from selenium.common.exceptions import TimeoutException
-from selenium.webdriver.common.keys import Keys
-from selenium.common.exceptions import StaleElementReferenceException, TimeoutException
+# 2026-05-18 audit CODE-C-4: dropped unused selenium symbols
+# (ActionChains, NoSuchElementException, TimeoutException ×2, Keys,
+# StaleElementReferenceException). The Selenium engine helpers that
+# need them live in engines/deepl.py + engines/google.py +
+# selenium_utils/ — cli.py no longer references any of them.
 
 from screeninfo import get_monitors
 
 
 from time import sleep
 import argparse
-import clipboard
+# 2026-05-18 audit CODE-C-3: drop `import clipboard` — never called.
 
 import psutil
 

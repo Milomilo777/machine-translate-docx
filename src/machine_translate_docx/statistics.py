@@ -301,8 +301,10 @@ def run_statistics(ctx: "RuntimeContext") -> None:
             "replacebeforelistreplaced" : replacebeforelistreplaced,
             "replaceafterlistsize" : replaceafterlistsize,
             "replaceafterlistreplaced" : replaceafterlistreplaced,
-            "replaceafterlistsize" : replaceafterlistsize,
-            "replaceafterlistreplaced" : replaceafterlistreplaced,
+            # CODE-C-12 (2026-05-18 audit): removed duplicate keys
+            # (replaceafterlistsize/replaceafterlistreplaced/
+            # platform_processor/elapsed_time appeared twice each;
+            # Python silently kept the last value).
             "donotsplitlistsize" : donotsplitlistsize,
             "donotsplitfound" : donotsplitfound,
             "platform_uname" : platform_uname,
@@ -312,9 +314,7 @@ def run_statistics(ctx: "RuntimeContext") -> None:
             "platform_machine" : platform_machine,
             "platform_processor" : platform_processor,
             "cpu_count" : cpu_count,
-            "platform_processor" : platform_processor,
             "mem_total" : mem_total,
-            "elapsed_time" : elapsed_time,
             "local_time_offset" : local_time_offset_str,
             "docxfile_page_count" : docxfile_page_count,
             "platform_node" : platform_node,
@@ -719,8 +719,9 @@ def get_robot_usage_comment(ctx: "RuntimeContext") -> None:
                 "replacebeforelistreplaced": replacebeforelistreplaced,
                 "replaceafterlistsize": replaceafterlistsize,
                 "replaceafterlistreplaced": replaceafterlistreplaced,
-                "replaceafterlistsize": replaceafterlistsize,
-                "replaceafterlistreplaced": replaceafterlistreplaced,
+                # CODE-C-12 (2026-05-18 audit): removed duplicate keys
+                # (replaceafterlistsize/replaceafterlistreplaced/
+                # platform_processor/elapsed_time appeared twice each).
                 "donotsplitlistsize": donotsplitlistsize,
                 "donotsplitfound": donotsplitfound,
                 "platform_uname": platform_uname,
@@ -730,9 +731,7 @@ def get_robot_usage_comment(ctx: "RuntimeContext") -> None:
                 "platform_machine": platform_machine,
                 "platform_processor": platform_processor,
                 "cpu_count": cpu_count,
-                "platform_processor": platform_processor,
                 "mem_total": mem_total,
-                "elapsed_time": elapsed_time,
                 "local_time_offset": local_time_offset_str,
                 "docxfile_page_count": docxfile_page_count,
                 "platform_node": platform_node,

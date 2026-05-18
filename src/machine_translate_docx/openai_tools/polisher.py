@@ -350,6 +350,15 @@ class OpenAIPolisher:
                 )
                 from types import SimpleNamespace
                 _final = _sr["final"]
+                # CODE-C-9 (2026-05-18 audit): mirror the translator
+                # warning — stream without response.completed leaves
+                # usage data unavailable.
+                if _final is None:
+                    print(
+                        "[WARN] polisher: stream ended without response.completed — "
+                        "usage data unavailable, log sidecar will record zero tokens/cost",
+                        flush=True,
+                    )
                 response = SimpleNamespace(
                     output_text=_sr["text"],
                     model_dump=(lambda f: (lambda: f.model_dump()))(_final) if _final else (lambda: {}),
