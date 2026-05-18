@@ -1,10 +1,13 @@
 # Session State Report — 2026-05-16, Cache refactor + Sprint D-C partial + P2/P3 hygiene + matrix smoke
 
+> **HISTORICAL** — branch merged to master via `28512c3` / `5408f80`
+> on 2026-05-17. The "NOT merged" claim below was true at the time
+> of writing only.
+>
 > Written from the architect role at the end of the
 > `refactor/cli-py-sprint-d-final` second-pass session. HEAD is
-> commit `e8b7062`. The branch is **NOT merged to master.** This
-> doc is the canonical handoff for everything done after the prior
-> Sprint D-A/B merge.
+> commit `e8b7062`. This doc is the canonical handoff for everything
+> done after the prior Sprint D-A/B merge.
 
 ---
 

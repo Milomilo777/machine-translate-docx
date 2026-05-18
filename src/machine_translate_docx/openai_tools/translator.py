@@ -386,6 +386,17 @@ class OpenAITranslator:
             # shape so the rest of the code below works unchanged.
             from types import SimpleNamespace
             _final = stream_result["final"]
+            # CODE-C-9 (2026-05-18 audit): when the stream ends without a
+            # `response.completed` event (network reset, server early-
+            # close), `_final` stays None. We still have the assembled
+            # text, but token / cost usage is unknown — log it so the
+            # sidecar zero is explainable.
+            if _final is None:
+                print(
+                    "[WARN] translator: stream ended without response.completed — "
+                    "usage data unavailable, log sidecar will record zero tokens/cost",
+                    flush=True,
+                )
             response = SimpleNamespace(
                 output_text=stream_result["text"],
                 model_dump=(lambda f: (lambda: f.model_dump()))(_final) if _final else (lambda: {}),

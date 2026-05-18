@@ -131,8 +131,8 @@ For a single-server deployment (Option 1), no CORS work is needed.
 
 | File | Role |
 |------|------|
-| `web/v2/index.html` | Main page. Compiled Tailwind + Alpine.js CDN + Vazirmatn/Inter Google Fonts. |
-| `web/v2/app.js`     | Alpine factory `docTranslator()` — upload, polling, cache-hit display, theme, newsletter. |
+| `web/v2/index.html` | Main page. Compiled Tailwind + Vazirmatn/Inter Google Fonts. No framework (the 2026-05-09 rewrite dropped Alpine; the comment "Plain-JS app: no framework, no Alpine" inside index.html records the decision). |
+| `web/v2/app.js`     | Plain-JS module — upload, polling, cache-hit display, theme, newsletter. No Alpine factory. |
 | `web/v2/styles.css` | Theme tokens + dark-mode override + Vazirmatn polish + `.sr-only`. |
 | `web/v2/tailwind.css` | Compiled output — minified utilities + base + components. **Committed.** |
 | `web/v2/src/tailwind.css` | Tailwind source (3 directives: `@tailwind base/components/utilities`). |
@@ -184,6 +184,8 @@ v2-specific changes on the legacy UI side.
   deleted by the launcher's cleanup thread.
 - The newsletter list is plain text in `subscribers.txt`. Keep it out of
   any public repo branch — `.gitignore` already excludes it.
-- No telemetry. No analytics. The only third-party network requests are
-  Alpine.js (jsdelivr CDN) and Google Fonts. Tailwind is now compiled
-  locally — no longer fetched from `cdn.tailwindcss.com`.
+- No telemetry. No analytics. The only third-party network request is
+  Google Fonts (Vazirmatn / Inter). Tailwind is compiled locally — no
+  longer fetched from `cdn.tailwindcss.com`. Alpine.js was removed in
+  the 2026-05-09 rewrite (the legacy paragraph below referenced it
+  but the dependency has been gone since).

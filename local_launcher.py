@@ -123,9 +123,14 @@ def _sanitize_filename(name: str) -> str:
     if len(name) > 200:
         # Preserve the suffix (last `.ext`, max 10 chars) so MIME / docx
         # detection still works on the truncated name.
+        # CODE-C-8 (2026-05-18 audit): the prior chained-compare
+        # `0 <= dot >= len(name) - 11` is technically correct (when
+        # `dot == -1` the right-hand side is `-1 >= 189` which is False
+        # so suffix stays empty), but reads as if it guards against
+        # "not found". Make the intent explicit.
         suffix = ""
         dot = name.rfind(".")
-        if 0 <= dot >= len(name) - 11:
+        if dot != -1 and dot >= len(name) - 11:
             suffix = name[dot:]
         head_budget = 200 - len(suffix)
         name = name[:head_budget] + suffix
@@ -683,7 +688,7 @@ class LocalState:
                 removed += 1
         return removed
 
-    # ── 36-hour cache ────────────────────────────────────────────────────────
+    # ── 5-day cache (DOC-E-13: was 36-hour, bumped 2026-05-15) ──────────────
 
     def cache_lookup(self, key: str) -> dict | None:
         """Return the cache payload dict if a fresh entry exists, else None.
@@ -884,7 +889,11 @@ class LocalState:
             last_fired_on: str = ""   # YYYY-MM-DD of last fire (in TZ)
             while True:
                 try:
-                    now = _dt.datetime.now(tz) if tz else _dt.datetime.utcnow()
+                    # CODE-C-16/17 (2026-05-18 audit): utcnow() is
+                    # deprecated in 3.12; also it returns a tz-naive
+                    # datetime that contradicts the tz-aware branch
+                    # one line up and creates isoformat-output drift.
+                    now = _dt.datetime.now(tz) if tz else _dt.datetime.now(_dt.timezone.utc)
                     # weekday: Mon=0 … Sat=5, Sun=6.
                     is_window = (
                         now.weekday() == 5 and
@@ -1673,7 +1682,7 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
         sound_select = fields.get("soundSelect")
         split_translate = fields.get("splitTranslate", "false").lower() in {"true", "1", "on", "yes"}
 
-        # ── 36-hour cache short-circuit ──────────────────────────────────────
+        # ── 5-day cache short-circuit (DOC-E-13: was 36-hour, bumped 2026-05-15) ─
         # Only API engines cache (chatgpt, chatgpt-polish). Selenium engines
         # are stateful (cookie consent, login) and not worth caching.
         cache_key: str | None = None
@@ -2062,9 +2071,13 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
                         if cur is not None:
                             cur_p = cur.progress
                             new_p = cur_p
-                            if "role=translator" in stripped and cur_p >= 15 and cur_p < 29:
+                            # CODE-C-20 (2026-05-18 audit): exact-prefix
+                            # match so a future role token like
+                            # `translator_v2` cannot piggyback on the
+                            # substring search and nudge the bar.
+                            if stripped.startswith("[STREAM] role=translator ") and cur_p >= 15 and cur_p < 29:
                                 new_p = cur_p + 1
-                            elif "role=polisher" in stripped and cur_p >= 30 and cur_p < 64:
+                            elif stripped.startswith("[STREAM] role=polisher ") and cur_p >= 30 and cur_p < 64:
                                 new_p = cur_p + 1
                             if new_p != cur_p:
                                 self.state.update_job(job_id, progress=new_p)
@@ -2226,7 +2239,8 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
         import tempfile as _tf
         import traceback as _tb
 
-        ts = _dt.datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+        # CODE-C-16 (2026-05-18 audit): utcnow() deprecated since 3.12.
+        ts = _dt.datetime.now(_dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         primary = self.state.runtime_dir / "failures" / f"{job_id}__{ts}"
         base = None
         try:
@@ -2835,6 +2849,23 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
             return base_path
         if not saved_path.exists():
             print(f"[basic-split] saved path missing on disk: {saved_path} — returning raw docx")
+            return base_path
+
+        # SEC-A-1 (2026-05-18 audit): confine the subprocess-reported
+        # path to the uploads dir. A buggy or attacker-influenced CLI
+        # subprocess could print "Saved file name: /etc/passwd"; without
+        # this guard the shutil.move below would relocate that file into
+        # the user-visible uploads/ dir. Match the relative_to pattern
+        # used by _run_real_backend.
+        try:
+            uploads_root = self.state.uploads_dir.resolve()
+            saved_resolved = saved_path.resolve()
+            saved_resolved.relative_to(uploads_root)
+        except (ValueError, RuntimeError) as exc:
+            print(
+                f"[basic-split] subprocess saved-path outside uploads_dir "
+                f"({saved_path}); refusing to move — returning raw docx"
+            )
             return base_path
 
         # Move the subprocess output onto the user-facing base_path

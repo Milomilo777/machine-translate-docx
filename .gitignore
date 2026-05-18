@@ -17,6 +17,17 @@ src/configuration/configuration.local.json
 src/configuration/*secret*
 src/configuration/*credentials*
 
+# Server-deploy config.toml (C27) — populated by scripts/setup_wizard.py
+# with OPENAI_API_KEY, Telegram token, SMTP password, password hash, and
+# webhook URLs. Anything matching `config*.toml` at any depth is
+# considered secret and must never be committed.
+config.toml
+config.*.toml
+**/config.toml
+**/config.*.toml
+runtime_dir/config.toml
+runtime_dir/*.toml
+
 # IDE
 .idea/
 .vscode/

@@ -64,7 +64,10 @@ diagrams in [`docs/diagrams/`](docs/diagrams/) for the full picture.
 | `src/machine_translate_docx/translation_log_writer.py` | JSON sidecar writer for the OpenAI translation/polish log (extracted 2026-05-16) |
 | `src/machine_translate_docx/docx_io/` | parse, cells (incl. `delete_paragraph`), runs, save, metadata |
 | `src/machine_translate_docx/docx_io/metadata.py` | Output-side DOCX metadata writers — language label + history comment (extracted 2026-05-16) |
+| `src/machine_translate_docx/statistics.py` | `run_statistics` + `get_robot_usage_comment` — end-of-run report cluster (extracted 2026-05-16 Sprint D-A) |
+| `src/machine_translate_docx/server_config.py` | TOML-based server config reader — pushes `config.toml` values into MTD_* env vars at launcher boot (C27 server-deploy) |
 | `src/machine_translate_docx/engines/google.py` | Selenium-based Google Translate engine |
+| `src/machine_translate_docx/engines/google_file_modes.py` | Google file-mode translation paths (textfile / htmljavascript / xlsxfile) (extracted 2026-05-16 Sprint D-B) |
 | `src/machine_translate_docx/engines/deepl.py` | Selenium-based DeepL engine (incl. `deepl_double_linefeed_between_phrases`) |
 | `src/machine_translate_docx/engines/chatgpt_api.py` | OpenAI API engine bridge |
 | `src/machine_translate_docx/engines/inactive/` | Disabled web engines (perplexity_web, etc.) |
@@ -80,7 +83,7 @@ diagrams in [`docs/diagrams/`](docs/diagrams/) for the full picture.
 | `web/v2/index.html` | **v2** frontend — plain JS SPA, served at `/v2/` |
 | `web/v2/app.js` | Plain-JS app for v2 |
 | `web/v2/content.json` | Announcements + stories (single source of truth for v2 UI copy) |
-| `web/v2/redesign.html` | **Claude-palette redesign preview** — single-file drop-in (2026-05-16). Includes a header v1↔v2 pill switcher (persisted to `localStorage.mtd.uiPref`), full anti-indexing meta block, country-flag from IP, and the legacy index.ejs wiring ported into a single-screen layout. Hits the same `/upload`, `/status/:id`, `/download/:name`, `/cancel/:id`, `/count`, `/robotscount` endpoints. Needs `GET /history` (TODO #1 in `docs/v2-backend-todo.md`) to drive the Recent runs panel with real data. |
+| `web/v2/redesign.html` | **Claude-palette redesign preview** — single-file drop-in (2026-05-16). Includes a header v1↔v2 pill switcher (persisted to `localStorage.mtd.uiPref`), full anti-indexing meta block, country-flag from IP, and the legacy index.ejs wiring ported into a single-screen layout. Hits `/upload`, `/status/:id`, `/download/:name`, `/cancel/:id`, `/count`, `/robotscount`, `/history` endpoints. `/history`, `/robots.txt`, and `X-Robots-Tag` were wired in the 2026-05-17 launcher merge — frontend now renders cost + token columns natively. |
 | `prompts/translate_PER.txt` | Persian translation system prompt |
 | `prompts/polish_PER.txt` | Persian polish system prompt |
 | `prompts/translate_universal.txt` | Fallback prompt for other languages |
@@ -193,8 +196,11 @@ DeepL / Google runs write a minimal sidecar with row counts only.
 - Never add `reasoning_effort` to the translator.
 - `_normalize_lang()` must not be modified — only `_prompt_lang_code()`
   maps prompt filenames.
-- The full invariant list (C1–C31) lives in
-  [`PROJECT_MEMORY.md`](PROJECT_MEMORY.md).
+- The full invariant list (C1–C39) lives in
+  [`PROJECT_MEMORY.md`](PROJECT_MEMORY.md). The v7-promote set is now
+  C32–C36 (renumbered 2026-05-18 to resolve a duplicate-ID collision
+  with the server-deploy set). The 2026-05-17/18 stream / timeout /
+  progress-line rules are C37–C39.
 
 ---
 
@@ -235,20 +241,19 @@ Details + code snippet for `local_launcher.py` in
 - [`docs/audit-2026-05-11.md`](docs/audit-2026-05-11.md) — the
   comprehensive 2026-05-11 audit + applied fixes.
 - [`docs/cli-shrink-phase3-handoff.md`](docs/cli-shrink-phase3-handoff.md)
-  — handoff prompt for the remaining cli.py shrink work (statistics
-  cluster, Google file-mode workers, `_sync_globals_from_ctx`
-  collapse). Authored 2026-05-16 after phases 1–3 of the shrink landed.
+  — **Historical handoff** — all Sprint D tasks (statistics, Google
+  file-mode, `_sync_globals_from_ctx` collapse) merged to master
+  2026-05-17. Archive reference only.
 - [`docs/v2-future-ideas.md`](docs/v2-future-ideas.md) — tier-1..4
   backlog for the v2 SPA with 3-axis cost scoring.
 - [`docs/v2-improvements.md`](docs/v2-improvements.md) — **NEW**
   (2026-05-16). Twelve design proposals for the v2 SPA, impact-vs-effort
   matrix, and the v1↔v2 version-switcher spec with drop-in code.
-- [`docs/v2-backend-todo.md`](docs/v2-backend-todo.md) — **NEW**
-  (2026-05-16). Endpoints the redesigned v2 frontend already calls but
-  that the launcher does not yet implement: `GET /history?limit=N`
-  (Recent runs panel), plus the server-side anti-indexing reinforcement
-  (`/robots.txt` + `X-Robots-Tag` header).
-- [`PROJECT_MEMORY.md`](PROJECT_MEMORY.md) — active constraints C1–C31,
+- [`docs/v2-backend-todo.md`](docs/v2-backend-todo.md) — **DONE**
+  (closed 2026-05-17). Both endpoints originally listed as pending
+  (`GET /history?limit=N` and server-side anti-indexing — `/robots.txt`
+  + `X-Robots-Tag` header) shipped in the launcher merge `cbb5f2e`.
+- [`PROJECT_MEMORY.md`](PROJECT_MEMORY.md) — active constraints C1–C39,
   recent changes.
 - [`web/v2/README.md`](web/v2/README.md) — v2 frontend stack, deploy,
   file map.

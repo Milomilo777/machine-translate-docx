@@ -236,7 +236,7 @@ def _write_minimal_sidecar(ctx: RuntimeContext) -> None:
 
     payload = {
         "run_info": {
-            "timestamp":   _dt.datetime.utcnow().isoformat(timespec="seconds"),
+            "timestamp":   _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds"),
             "input_file":  ctx.flags.word_file_to_translate,
             "output_file": out_path,
             "engine":      ctx.engine.engine,

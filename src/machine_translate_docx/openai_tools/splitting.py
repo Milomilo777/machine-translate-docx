@@ -238,7 +238,10 @@ class OpenAISubtitleSplitter:
         # OpenAI callers (translator, polisher) already use this helper;
         # splitting was the lone outlier.
         from ._retry import call_with_retry
-        if "pro" in self.model or self.model.lower().startswith("gpt-5"):
+        # ARCH-B-5 (2026-05-18 audit): normalise to .lower() for parity
+        # with translator.py:337-339 and polisher.py:270-272. A model id
+        # like "Pro-X" would otherwise miss the Responses-API branch.
+        if "pro" in self.model.lower() or self.model.lower().startswith("gpt-5"):
             # 2026-05-18 stream-parity fix: same openai-python #2725
             # hang risk on Responses API + gpt-5.x as translator/polisher.
             # Stream the deltas and reassemble to keep this code path

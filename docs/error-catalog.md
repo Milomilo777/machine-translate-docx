@@ -166,8 +166,9 @@ Recurring bugs, root causes, and fixes. Add an entry any time a non-trivial bug 
 **Status:** Fixed 2026-05-08 (Phase 2, review-rewrite-opus-4.7)
 **Symptom:** A single `RateLimitError` or brief network blip caused translator/polisher/aligner to fail and the user lost the whole job.
 **Root cause:** No retry logic; every API call was a one-shot.
-**Fix:** New `src/openai_tools/_retry.py::call_with_retry(fn, *, label)` — 3 attempts with exponential backoff (1 s, 2 s, 4 s) for `RateLimitError`, `APIConnectionError`, `APITimeoutError`. `BadRequestError` raises immediately (request bug — retrying would just reburn tokens). All three OpenAI callers (translator, polisher, aligner) wrap their `client.*.create(...)` call in this helper.
-**Regression test:** mock the openai client to throw `RateLimitError` once → call should succeed on retry; mock to throw 3× → should raise.
+**Fix:** New `src/openai_tools/_retry.py::call_with_retry(fn, *, label)` — 5 attempts with exponential backoff + full jitter for `RateLimitError`, `APIConnectionError`, `InternalServerError`, generic `APIError`. `BadRequestError` raises immediately (request bug — retrying would just reburn tokens). All four OpenAI callers (translator, polisher, splitter, aligner) wrap their `client.*.create(...)` call in this helper.
+**2026-05-17 amendment:** `APITimeoutError` MOVED from retryable to non-retryable (`_retry.py:69`). The server keeps generating output even after the SDK times out (openai-python #2725), so a retry on timeout re-bills the same ~25K output tokens. In the FLYIN incident a single hung call paid for 6 attempts before surrendering. The stream=True wrapper in translator/polisher should now prevent the underlying hang in the first place.
+**Regression test:** `tests/test_retry.py` covers RateLimitError retry + exhaustion; new APITimeoutError tests (TEST-D-2, 2026-05-18 audit) pin the non-retryable policy by class + propagation + call-count.
 
 ---
 

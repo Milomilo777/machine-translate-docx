@@ -1683,6 +1683,14 @@ small,
             if (!r.ok) continue;
             const d = await r.json();
             if (typeof d.progress === 'number') updateProgress(d.progress);
+            /* FE-F-2 (2026-05-18 audit): surface status='queued' so the
+               user sees a wait message when the 2-job semaphore is
+               saturated. The legacy frontend uses an amber #queueMessage
+               div; v2/app.js sets a Persian setProgress label; here we
+               flip the progress label only and keep polling. */
+            if (d.status === 'queued') {
+              progressLabel.textContent = 'در صف انتظار — سامانه همزمان فقط ۲ فایل را ترجمه می‌کند.';
+            }
             if (d.status === 'done')      { updateProgress(100); return d; }
             if (d.status === 'error')     throw new Error(d.error || 'Translation failed on server.');
             if (d.status === 'cancelled') throw new Error('Cancelled by user.');
