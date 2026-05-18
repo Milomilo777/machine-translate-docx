@@ -133,6 +133,83 @@ def test_call_with_retry_non_retryable_error_propagates_immediately():
     mock_sleep.assert_not_called()
 
 
+# ── TEST-D-2 (2026-05-18 audit): pin APITimeoutError policy ──────────────────
+#
+# Commit fea6115 (2026-05-17) moved APITimeoutError to _NON_RETRYABLE.
+# The cost-guard motivation is in `_retry.py` lines 12-19 — a hung call
+# bills ~25K output tokens per retry, observed to spiral 6× in FLYIN
+# incident. These tests pin the policy so a future maintainer cannot
+# silently move it back without the suite failing.
+
+def _make_api_timeout_error() -> Exception:
+    """Build an APITimeoutError instance the retry loop will actually catch.
+
+    Falls back to a synthetic subclass if the SDK is unavailable.
+    """
+    try:
+        import httpx  # type: ignore[import-not-found]
+        from openai import APITimeoutError
+        req = httpx.Request("POST", "https://api.openai.com/v1/responses")
+        return APITimeoutError(req)
+    except Exception:
+        if _NON_RETRYABLE:
+            return type("APITimeoutError", (_NON_RETRYABLE[-1],), {})("timeout")
+        return RuntimeError("timeout (stub)")
+
+
+def test_apitimeout_is_in_non_retryable_tuple():
+    """Pin the policy at the class level — APITimeoutError MUST be in _NON_RETRYABLE."""
+    try:
+        from openai import APITimeoutError
+    except ImportError:
+        import pytest
+        pytest.skip("openai SDK not installed")
+    assert APITimeoutError in _NON_RETRYABLE, (
+        "Policy change 2026-05-17: APITimeoutError must stay in _NON_RETRYABLE. "
+        "Retrying a hung gpt-5.x call re-bills the same ~25K output tokens."
+    )
+    try:
+        from openai import APITimeoutError as _AT
+    except ImportError:
+        pass
+    else:
+        assert _AT not in _RETRYABLE
+
+
+def test_apitimeout_propagates_immediately_no_sleep():
+    """A single APITimeoutError must surface on attempt #1 — never retry."""
+    err = _make_api_timeout_error()
+    fn = MagicMock(side_effect=err)
+
+    with patch("machine_translate_docx.openai_tools._retry.time.sleep") as mock_sleep:
+        try:
+            call_with_retry(fn)
+            raised = False
+        except type(err):
+            raised = True
+
+    assert raised, "APITimeoutError must propagate immediately"
+    fn.assert_called_once()
+    mock_sleep.assert_not_called()
+
+
+def test_apitimeout_does_not_consume_max_retries_budget():
+    """A single APITimeoutError must NOT trigger MAX_RETRIES SDK calls."""
+    err = _make_api_timeout_error()
+    fn = MagicMock(side_effect=err)
+
+    with patch("machine_translate_docx.openai_tools._retry.time.sleep"):
+        try:
+            call_with_retry(fn)
+        except type(err):
+            pass
+
+    assert fn.call_count == 1, (
+        f"APITimeoutError must not be retried — got {fn.call_count} calls "
+        f"(MAX_RETRIES={MAX_RETRIES} would be the cost-spiral bug)"
+    )
+
+
 # ── prompt_hash ───────────────────────────────────────────────────────────────
 
 def test_prompt_hash_deterministic():

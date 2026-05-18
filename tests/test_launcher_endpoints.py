@@ -240,6 +240,97 @@ def test_double_lines_output_path_appends_before_extension():
     assert _double_lines_output_path(p3).name == "plain_Double_Lines.docx"
 
 
+# ── TEST-D-3 (2026-05-18 audit): /history cost + tokens fields ──────────────
+#
+# Commit bcc8b28 (2026-05-18 A4) made load_recent_runs() surface
+# `summary.total_cost_usd` -> `cost_usd` and `summary.total_tokens.total`
+# -> `total_tokens` so the redesign Recent-runs list can render
+# per-run cost. Pin the field names + types so a future refactor that
+# renames `total_cost_usd` -> `cost_usd_total` cannot silently break
+# the v2 column.
+
+def test_load_recent_runs_surfaces_cost_and_tokens(tmp_path, monkeypatch):
+    """A4 (2026-05-18): load_recent_runs must surface
+    summary.total_cost_usd and summary.total_tokens.total."""
+    import json
+    log_dir = tmp_path / "Log json file"
+    log_dir.mkdir()
+    sidecar = log_dir / "foo_PER_Polish_log.json"
+    sidecar.write_text(json.dumps({
+        "run_info": {
+            "model": "gpt-5.4-mini",
+            "dest_lang": "fa",
+            "completed_at_iso": "2026-05-18T10:00:00Z",
+            "output_file": "/u/foo_PER_Polish.docx",
+        },
+        "summary": {
+            "elapsed_total_seconds": 17.5,
+            "total_cost_usd": 0.0382,
+            "total_tokens": {"prompt": 1000, "completion": 500, "total": 1500},
+        },
+    }), encoding="utf-8")
+    monkeypatch.setattr(
+        "machine_translate_docx.log_paths.resolve_log_dir",
+        lambda: log_dir,
+    )
+    state = _make_state(tmp_path)
+    state._recent_runs_cache = None
+    runs = state.load_recent_runs(limit=5)
+    assert len(runs) == 1
+    r = runs[0]
+    assert r["model"] == "gpt-5.4-mini"
+    assert r["target_lang"] == "fa"
+    assert r["elapsed_seconds"] == 17.5
+    assert r["cost_usd"] == 0.0382
+    assert r["total_tokens"] == 1500
+    assert r["filename"] == "foo_PER_Polish.docx"
+
+
+def test_load_recent_runs_omits_cost_when_summary_missing(tmp_path, monkeypatch):
+    """If a sidecar has no `summary.total_cost_usd` (older log, mock
+    backend, basic-split engines) the entry must omit cost_usd entirely
+    — not emit cost_usd=0.0. The frontend renders missing as '—'."""
+    import json
+    log_dir = tmp_path / "Log json file"
+    log_dir.mkdir()
+    sidecar = log_dir / "bar_ENG_Google_log.json"
+    sidecar.write_text(json.dumps({
+        "run_info": {"engine": "google", "dest_lang": "en"},
+        "summary": {"elapsed_total_seconds": 5.0},
+    }), encoding="utf-8")
+    monkeypatch.setattr(
+        "machine_translate_docx.log_paths.resolve_log_dir",
+        lambda: log_dir,
+    )
+    state = _make_state(tmp_path)
+    state._recent_runs_cache = None
+    runs = state.load_recent_runs(limit=5)
+    assert "cost_usd" not in runs[0]
+    assert "total_tokens" not in runs[0]
+
+
+def test_load_recent_runs_total_tokens_flat_int(tmp_path, monkeypatch):
+    """Sidecars from the chat.completions path may carry
+    summary.total_tokens as a flat int (compact-log shape, 2026-05-15)
+    instead of a dict. The reader must accept both."""
+    import json
+    log_dir = tmp_path / "Log json file"
+    log_dir.mkdir()
+    (log_dir / "baz_PER_chatGPT_log.json").write_text(json.dumps({
+        "run_info": {"model": "gpt-5.5", "dest_lang": "fa"},
+        "summary": {"total_cost_usd": 0.001, "total_tokens": 12345},
+    }), encoding="utf-8")
+    monkeypatch.setattr(
+        "machine_translate_docx.log_paths.resolve_log_dir",
+        lambda: log_dir,
+    )
+    state = _make_state(tmp_path)
+    state._recent_runs_cache = None
+    runs = state.load_recent_runs(limit=5)
+    assert runs[0]["total_tokens"] == 12345
+    assert runs[0]["cost_usd"] == 0.001
+
+
 # ── _append_subscriber ───────────────────────────────────────────────────────
 
 def test_subscribe_valid_email_appends(tmp_path, monkeypatch):
