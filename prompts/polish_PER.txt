@@ -77,7 +77,12 @@ LS-6 ALLOWED_LATIN spans (W1–W4 + ACRONYM-IN-PARENS). Preserved byte-id includ
 LS-7 SPEECH_VERBS — هشدار داد | تأکید کرد | اعلام کرد | ابراز داشت | گوشزد کرد | فرمود/فرمودند/می‌فرمایند/فرموده‌اند | خاطرنشان کرد. Never → گفت.
        HONORIFIC_BLOCK_LOCK: within a contiguous speaker block, do not swap honorific level (فرمودند ↔ گفت ↔ بیان کرد) arbitrarily; keep one register for the same speaker.
 LS-8 SPIRITUAL_VOCAB (source-supported) — بهشت/آسمان/بهشتی per SMTV_LEXICON. SA-8 mismatch → corrective fix permitted.
-LS-9 EMPHASIS_WORDS (source-supported) — کاملاً | آشکارا | دقیقاً | حداقل | قطعاً | به‌شدت | متأسفانه | خوشبختانه. Never drop when source carries. SA-9 (invented certainty) → removal/down-scale permitted.
+LS-9 EMPHASIS_WORDS (source-supported) — kept verbatim when source carries the intensifier:
+       کاملاً | آشکارا | دقیقاً | حداقل | قطعاً | به‌شدت | متأسفانه | خوشبختانه |
+       عمدتاً | اساساً | اصولاً | حقیقتاً | واقعاً | ذاتاً | نهایتاً | حتماً |
+       بی‌تردید | بی‌گمان | بی‌شک | به‌راستی | به‌درستی |
+       عملاً | تقریباً | تنها | فقط | صرفاً.
+       Never drop when source carries. SA-9 (invented certainty) → removal/down-scale permitted.
 LS-10 VERBATIM/LITERARY_QUOTE — text inside " " is byte-id ONLY for verbatim attested quotation, scripture, legal text, song line, literary citation. Ordinary translated quote content is NOT byte-id — hygiene + anchors apply inside. ALLOWED_LATIN spans inside any quote stay byte-id.
 LS-11 BRAND_CHANNEL — Supreme Master TV / Supreme Master Television / SMTV → "سوپریم مستر تلویزیون" canonical. Translator mistakes ("تلویزیون استاد اعظم", "استاد اعظم تلویزیون") → corrective fix MANDATORY. Channel ≠ person title.
 LS-12 BROADCAST_OPENING_PATTERNS — canonical SMTV opening/closing forms. Polish enforces these EXACT Persian forms for cross-episode consistency, even when a more idiomatic alternative exists. This is a deliberate SMTV broadcast convention (every episode re-uses the same templates; downstream editors lose time fixing variations).
@@ -89,6 +94,15 @@ LS-12 BROADCAST_OPENING_PATTERNS — canonical SMTV opening/closing forms. Polis
          "Stay tuned"              → "با ما همراه باشید"
          "Thanks for watching"     → "از تماشای شما سپاسگزاریم"
          "See you next time"       → "تا دفعهٔ بعد"
+         "Today on <X>"            → "امروز در <X>"
+         "Coming up on <X>"        → "در ادامهٔ <X>"
+         "This week on <X>"        → "این هفته در <X>"
+         "Up next"                 → "در ادامه"
+         "Don't go anywhere"       → "همراه ما بمانید"
+         "We'll be right back"     → "به‌زودی برمی‌گردیم"
+         "Back to you, <Name>"     → "<Name> عزیز، به شما برمی‌گردانم"
+         "For our viewers"         → "برای بینندگان ما"
+         "On behalf of <Channel>"  → "از سوی <Channel>"
        Inside the <X> slot, channel/title locks (LS-4, LS-11) apply independently: e.g. "Welcome to Supreme Master TV" → "خوش آمدید به سوپریم مستر تلویزیون".
        This rule is corrective: if [FA] already matches the canonical form → CLEAN. If [FA] uses a different valid phrasing (e.g. "به X خوش آمدید") and the source matches the trigger → rewrite to the canonical form.
 LS-13 FOREIGN_SCRIPT_AUTHENTIC_VOICE — non-Persian, non-English script tokens (Lao, Chinese, Sanskrit, Vietnamese with diacritics, Japanese, Korean, Arabic, Thai, Hebrew, etc.) used as authentic-voice greetings, chants, or short utterances → byte-id. Their romanized transliteration in parens → byte-id. If translator translated/normalized either part → corrective fix to byte-id form.
@@ -101,6 +115,28 @@ LS-13 FOREIGN_SCRIPT_AUTHENTIC_VOICE — non-Persian, non-English script tokens 
          "你好 (Nǐ hǎo)"         →  byte-id (Chinese)
          "नमस्ते (Namaste)"     →  byte-id (Sanskrit)
          "السلام علیکم"        →  byte-id (Arabic greeting in Arabic context)
+LS-14 DIGITAL_TERMS — established Persian forms for common digital-era vocabulary; never re-transliterate, never replace once locked:
+       website       → وب‌سایت     (NOT وبسایت / سایت اینترنتی)
+       app           → اپلیکیشن / برنامه  (mobile = اپلیکیشن; desktop = برنامه)
+       online        → آنلاین      (NOT برخط — too literary for broadcast)
+       email         → ایمیل       (NOT پست الکترونیک for SMTV register)
+       livestream    → پخش زنده / لایو‌استریم  (sport = لایو‌استریم; news = پخش زنده)
+       podcast       → پادکست
+       channel       → کانال (broadcasting); شبکه (TV network)
+       hashtag       → هشتگ
+       link          → پیوند / لینک (formal vs casual)
+       download      → دانلود       (NOT بارگیری)
+       upload        → آپلود        (NOT بارگذاری for SMTV register)
+       social media  → شبکه‌های اجتماعی
+       follower      → دنبال‌کننده / فالوور (formal vs casual)
+       subscribe     → عضو شدن / اشتراک
+       unsubscribe   → لغو اشتراک
+LS-15 NUMBERED_LIST_FORMAT — when source uses ordinal markers as list items, canonical SMTV forms:
+       "First, ... Second, ... Third, ..."          → "نخست، ... دوم، ... سوم، ..." (NOT "اول، ...")
+       "Number one ... Number two ..."              → "اول ... دوم ..."  (or numeric "۱. ... ۲. ..." for list-style)
+       "Step 1 ... Step 2 ..."                      → "گام ۱ ... گام ۲ ..." (FACILITATOR); "مرحلهٔ ۱ ..." (NEWS / medical)
+       "Lesson 1 ... Lesson 2 ..."                  → "درس ۱ ... درس ۲ ..."
+       "Part N of M"                                → "قسمت N از M" (locked per MN-7)
 </LOCKED_SPANS>
 
 <MANDATORY_NORMALIZATION>
@@ -357,6 +393,7 @@ G6 [STRONG] SAGE_WARMTH — SAGE block, warm dignified → CLEAN unless genuinel
 G7 [STRONG] MEANING_PRESERVATION — Lexical substitution PERMITTED if it preserves meaning + speaker + polarity + quantity + tense within same line.
 G8 [CRITICAL] BOUNDARY — content word moved to different line → ABANDON.
 G9 [STRONG] HANDOFF_TRUST — BASE reads native → BLOCKS clause/sentence RESTRUCTURING. Does NOT block: same-meaning ijaz substitutions, calque cleanups, near-synonym upgrades, verb-precision swaps, formality alignment within the line. These are MANDATED whenever they apply, not optional.
+       SMTV_OPENING_EXCEPTION: LS-12 BROADCAST_OPENING_PATTERNS take precedence over HANDOFF_TRUST. If [FA] is a valid Persian rendering of an opening template but NOT the canonical SMTV form, the rewrite to canonical is REQUIRED ("به X خوش آمدید" → "خوش آمدید به X"). This is intentional broadcast consistency, not stylistic preference.
 G10 [CRITICAL] MASTER_SPEECH — 👑 line → EDIT ①–⑤ all SKIPPED by default. Any EDIT step requires clear Persian incomprehensibility AND zero-nuance-loss certainty.
 
 Calibration: 20–35% diagnostic. Not a floor, not a cap. Below 15% on a non-trivial document = re-scan, you are over-applying G2.
@@ -484,7 +521,7 @@ Q1 First-read CLARITY — a Persian monolingual (no English in their head) reads
 Q2 Meaning intact (G1 + G7)?
 Q3 Mode preserved (PERSONA + MASTER_SPEECH if applicable)?
 Q4 Latin zero outside ALLOWED_LATIN?
-Q5 LS-1–LS-13 intact (respecting LS-defined exceptions)?
+Q5 LS-1–LS-15 intact (respecting LS-defined exceptions)?
 Q6 Boundary lock (G8)?
 Q7 Conservatism (G2)?
 Q8 Integrity: line count, blank positions, BLANK POLICY?

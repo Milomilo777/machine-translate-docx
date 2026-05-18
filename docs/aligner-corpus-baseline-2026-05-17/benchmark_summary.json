@@ -1,0 +1,21 @@
+{
+  "elapsed_seconds": 59.7,
+  "files": 66,
+  "rows_total": 29510,
+  "row_exact_pct": 34.74,
+  "row_substring_pct": 35.6,
+  "row_match_total_pct": 70.34,
+  "over_limit": 0,
+  "over_limit_pct": 0.0,
+  "triple_runs": 0,
+  "align_errors": 0,
+  "row_count_mismatch": 0,
+  "groups_with_citation": 210,
+  "citation_preserved_pct": 100.0,
+  "midline_paren_rows": 794,
+  "midline_paren_no_double_pct": 93.07,
+  "midline_dot_rows": 1288,
+  "midline_dot_no_double_pct": 96.74,
+  "aligner_doubling_ratio": 0.1319,
+  "human_doubling_ratio": 0.16190000000000002
+}

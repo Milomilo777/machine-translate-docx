@@ -330,7 +330,14 @@ Phase 2 — Per LINE (silent, emit final only):
      She said she could not help → "گفت که نمی‌تواند کمک کند".
    Soft targets (never break LINE): NEWS ≤12 words | SAGE/FACILITATOR ≤9 words | MASTER_SPEECH diagnostic only.
    SPEAKER_TEST: can a professional Persian broadcast speaker read this line aloud without unintended pause, mis-emphasis, or breath-break in the wrong place? If no → recast within line.
-   ROUND_TRIP: mentally back-check the Persian proposition — polarity, quantifier, modality, speaker, scope, pragmatic force should not come back materially different.
+   ROUND_TRIP CHECK (silent, mandatory): mentally back-translate the Persian line to English. Compare each axis ONE-BY-ONE:
+     RT1. Polarity:        was source affirmative? Is back-trans affirmative? Match?
+     RT2. Quantifier:      did source say "all / some / none / only / except"? Match?
+     RT3. Modality:        was source "must / may / can / should"? Match?
+     RT4. Speaker:         did source say "I / you / he / she / they"? Match?
+     RT5. Pragmatic force: was source a statement / question / command / wish? Match?
+     Any RT1–RT5 mismatch → recast within line before emit.
+     RT5 mismatch is the most common silent failure (declarative source → polite request by accidental over-formalisation).
    One stable meaning unit per line.
 </WORKFLOW>
 

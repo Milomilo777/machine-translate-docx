@@ -1861,10 +1861,22 @@ small,
             const elapsed = fmtElapsed(run.elapsed_seconds);
             const ago = fmtAgo(run.completed_at);
             const model = (run.model || run.engine || '—').replace(/<[^>]*>/g, '');
+            // A4 (2026-05-18): per-run cost + total-tokens surfaced so a
+            // runaway OpenAI bill stands out in the in-app history.
+            const costParts = [];
+            if (typeof run.cost_usd === 'number') {
+              const c = run.cost_usd;
+              costParts.push(c < 0.01 ? '< $0.01' : '$' + c.toFixed(c < 1 ? 3 : 2));
+            }
+            if (typeof run.total_tokens === 'number') {
+              const t = run.total_tokens;
+              costParts.push(t >= 1000 ? (t/1000).toFixed(1) + 'K tok' : t + ' tok');
+            }
+            const costStr = costParts.length ? ' · ' + costParts.join(' · ') : '';
             return '<li>'
               + '<span class="run-flag" data-flag>🌐</span>'
               + '<span class="run-line-1">' + model + ' <span class="run-target">→ ' + target + '</span></span>'
-              + '<span class="run-line-2">' + elapsed + ' · ' + ago + '</span>'
+              + '<span class="run-line-2">' + elapsed + ' · ' + ago + costStr + '</span>'
               + '</li>';
           }).join('');
           /* re-apply the country flag we already fetched */

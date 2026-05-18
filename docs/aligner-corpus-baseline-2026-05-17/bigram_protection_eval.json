@@ -1,0 +1,661 @@
+{
+  "cell_total": 41904,
+  "bigrams": [
+    {
+      "bigram": "از آن",
+      "intact": 363,
+      "broken": 6,
+      "total": 369,
+      "break_rate": 0.0163,
+      "is_currently_protected": false
+    },
+    {
+      "bigram": "به آن",
+      "intact": 295,
+      "broken": 4,
+      "total": 299,
+      "break_rate": 0.0134,
+      "is_currently_protected": false
+    },
+    {
+      "bigram": "از این",
+      "intact": 274,
+      "broken": 20,
+      "total": 294,
+      "break_rate": 0.068,
+      "is_currently_protected": false
+    },
+    {
+      "bigram": "در آن",
+      "intact": 211,
+      "broken": 9,
+      "total": 220,
+      "break_rate": 0.0409,
+      "is_currently_protected": false
+    },
+    {
+      "bigram": "به این",
+      "intact": 211,
+      "broken": 5,
+      "total": 216,
+      "break_rate": 0.0231,
+      "is_currently_protected": false
+    },
+    {
+      "bigram": "بیش از",
+      "intact": 206,
+      "broken": 2,
+      "total": 208,
+      "break_rate": 0.0096,
+      "is_currently_protected": false
+    },
+    {
+      "bigram": "با این",
+      "intact": 117,
+      "broken": 7,
+      "total": 124,
+      "break_rate": 0.0565,
+      "is_currently_protected": false
+    },
+    {
+      "bigram": "از جمله",
+      "intact": 122,
+      "broken": 1,
+      "total": 123,
+      "break_rate": 0.0081,
+      "is_currently_protected": true
+    },
+    {
+      "bigram": "همراه با",
+      "intact": 115,
+      "broken": 1,
+      "total": 116,
+      "break_rate": 0.0086,
+      "is_currently_protected": true
+    },
+    {
+      "bigram": "از طریق",
+      "intact": 101,
+      "broken": 4,
+      "total": 105,
+      "break_rate": 0.0381,
+      "is_currently_protected": true
+    },
+    {
+      "bigram": "در حالی",
+      "intact": 79,
+      "broken": 0,
+      "total": 79,
+      "break_rate": 0.0,
+      "is_currently_protected": false
+    },
+    {
+      "bigram": "به دلیل",
+      "intact": 73,
+      "broken": 0,
+      "total": 73,
+      "break_rate": 0.0,
+      "is_currently_protected": true
+    },
+    {
+      "bigram": "به نظر",
+      "intact": 69,
+      "broken": 1,
+      "total": 70,
+      "break_rate": 0.0143,
+      "is_currently_protected": false
+    },
+    {
+      "bigram": "به نام",
+      "intact": 66,
+      "broken": 2,
+      "total": 68,
+      "break_rate": 0.0294,
+      "is_currently_protected": true
+    },
+    {
+      "bigram": "به عنوان",
+      "intact": 65,
+      "broken": 2,
+      "total": 67,
+      "break_rate": 0.0299,
+      "is_currently_protected": true
+    },
+    {
+      "bigram": "در برابر",
+      "intact": 60,
+      "broken": 1,
+      "total": 61,
+      "break_rate": 0.0164,
+      "is_currently_protected": true
+    },
+    {
+      "bigram": "به اشتراک",
+      "intact": 57,
+      "broken": 1,
+      "total": 58,
+      "break_rate": 0.0172,
+      "is_currently_protected": false
+    },
+    {
+      "bigram": "به خاطر",
+      "intact": 54,
+      "broken": 0,
+      "total": 54,
+      "break_rate": 0.0,
+      "is_currently_protected": true
+    },
+    {
+      "bigram": "به جای",
+      "intact": 51,
+      "broken": 1,
+      "total": 52,
+      "break_rate": 0.0192,
+      "is_currently_protected": true
+    },
+    {
+      "bigram": "به‌ویژه",
+      "intact": 38,
+      "broken": 14,
+      "total": 52,
+      "break_rate": 0.2692,
+      "is_currently_protected": true
+    },
+    {
+      "bigram": "از نظر",
+      "intact": 48,
+      "broken": 1,
+      "total": 49,
+      "break_rate": 0.0204,
+      "is_currently_protected": false
+    },
+    {
+      "bigram": "در حالی که",
+      "intact": 47,
+      "broken": 0,
+      "total": 47,
+      "break_rate": 0.0,
+      "is_currently_protected": true
+    },
+    {
+      "bigram": "بر اساس",
+      "intact": 40,
+      "broken": 0,
+      "total": 40,
+      "break_rate": 0.0,
+      "is_currently_protected": true
+    },
+    {
+      "bigram": "به ویژه",
+      "intact": 37,
+      "broken": 0,
+      "total": 37,
+      "break_rate": 0.0,
+      "is_currently_protected": true
+    },
+    {
+      "bigram": "نه تنها",
+      "intact": 36,
+      "broken": 0,
+      "total": 36,
+      "break_rate": 0.0,
+      "is_currently_protected": false
+    },
+    {
+      "bigram": "به دنبال",
+      "intact": 35,
+      "broken": 0,
+      "total": 35,
+      "break_rate": 0.0,
+      "is_currently_protected": true
+    },
+    {
+      "bigram": "در پی",
+      "intact": 33,
+      "broken": 1,
+      "total": 34,
+      "break_rate": 0.0294,
+      "is_currently_protected": true
+    },
+    {
+      "bigram": "نه فقط",
+      "intact": 33,
+      "broken": 1,
+      "total": 34,
+      "break_rate": 0.0294,
+      "is_currently_protected": false
+    },
+    {
+      "bigram": "هر کس",
+      "intact": 34,
+      "broken": 0,
+      "total": 34,
+      "break_rate": 0.0,
+      "is_currently_protected": false
+    },
+    {
+      "bigram": "با وجود",
+      "intact": 33,
+      "broken": 0,
+      "total": 33,
+      "break_rate": 0.0,
+      "is_currently_protected": true
+    },
+    {
+      "bigram": "در مقابل",
+      "intact": 31,
+      "broken": 1,
+      "total": 32,
+      "break_rate": 0.0312,
+      "is_currently_protected": true
+    },
+    {
+      "bigram": "هر چه",
+      "intact": 31,
+      "broken": 0,
+      "total": 31,
+      "break_rate": 0.0,
+      "is_currently_protected": false
+    },
+    {
+      "bigram": "به همین دلیل",
+      "intact": 30,
+      "broken": 0,
+      "total": 30,
+      "break_rate": 0.0,
+      "is_currently_protected": true
+    },
+    {
+      "bigram": "با این حال",
+      "intact": 26,
+      "broken": 0,
+      "total": 26,
+      "break_rate": 0.0,
+      "is_currently_protected": true
+    },
+    {
+      "bigram": "در نتیجه",
+      "intact": 25,
+      "broken": 0,
+      "total": 25,
+      "break_rate": 0.0,
+      "is_currently_protected": true
+    },
+    {
+      "bigram": "کمتر از",
+      "intact": 21,
+      "broken": 2,
+      "total": 23,
+      "break_rate": 0.087,
+      "is_currently_protected": false
+    },
+    {
+      "bigram": "از سوی",
+      "intact": 18,
+      "broken": 3,
+      "total": 21,
+      "break_rate": 0.1429,
+      "is_currently_protected": true
+    },
+    {
+      "bigram": "این که",
+      "intact": 18,
+      "broken": 1,
+      "total": 19,
+      "break_rate": 0.0526,
+      "is_currently_protected": false
+    },
+    {
+      "bigram": "به سرعت",
+      "intact": 18,
+      "broken": 0,
+      "total": 18,
+      "break_rate": 0.0,
+      "is_currently_protected": false
+    },
+    {
+      "bigram": "در همان",
+      "intact": 18,
+      "broken": 0,
+      "total": 18,
+      "break_rate": 0.0,
+      "is_currently_protected": false
+    },
+    {
+      "bigram": "به نمایش",
+      "intact": 15,
+      "broken": 0,
+      "total": 15,
+      "break_rate": 0.0,
+      "is_currently_protected": false
+    },
+    {
+      "bigram": "هر چند",
+      "intact": 15,
+      "broken": 0,
+      "total": 15,
+      "break_rate": 0.0,
+      "is_currently_protected": false
+    },
+    {
+      "bigram": "به هر حال",
+      "intact": 14,
+      "broken": 0,
+      "total": 14,
+      "break_rate": 0.0,
+      "is_currently_protected": false
+    },
+    {
+      "bigram": "به این شکل",
+      "intact": 13,
+      "broken": 0,
+      "total": 13,
+      "break_rate": 0.0,
+      "is_currently_protected": false
+    },
+    {
+      "bigram": "علاوه بر این",
+      "intact": 13,
+      "broken": 0,
+      "total": 13,
+      "break_rate": 0.0,
+      "is_currently_protected": true
+    },
+    {
+      "bigram": "در عین حال",
+      "intact": 12,
+      "broken": 0,
+      "total": 12,
+      "break_rate": 0.0,
+      "is_currently_protected": true
+    },
+    {
+      "bigram": "هیچ کس",
+      "intact": 12,
+      "broken": 0,
+      "total": 12,
+      "break_rate": 0.0,
+      "is_currently_protected": false
+    },
+    {
+      "bigram": "با توجه به",
+      "intact": 11,
+      "broken": 0,
+      "total": 11,
+      "break_rate": 0.0,
+      "is_currently_protected": false
+    },
+    {
+      "bigram": "به آرامی",
+      "intact": 11,
+      "broken": 0,
+      "total": 11,
+      "break_rate": 0.0,
+      "is_currently_protected": false
+    },
+    {
+      "bigram": "از آنجا که",
+      "intact": 10,
+      "broken": 0,
+      "total": 10,
+      "break_rate": 0.0,
+      "is_currently_protected": true
+    },
+    {
+      "bigram": "از این رو",
+      "intact": 10,
+      "broken": 0,
+      "total": 10,
+      "break_rate": 0.0,
+      "is_currently_protected": false
+    },
+    {
+      "bigram": "تا به حال",
+      "intact": 10,
+      "broken": 0,
+      "total": 10,
+      "break_rate": 0.0,
+      "is_currently_protected": true
+    },
+    {
+      "bigram": "به گفته",
+      "intact": 8,
+      "broken": 0,
+      "total": 8,
+      "break_rate": 0.0,
+      "is_currently_protected": true
+    },
+    {
+      "bigram": "تا اینکه",
+      "intact": 8,
+      "broken": 0,
+      "total": 8,
+      "break_rate": 0.0,
+      "is_currently_protected": false
+    },
+    {
+      "bigram": "تا زمانی که",
+      "intact": 8,
+      "broken": 0,
+      "total": 8,
+      "break_rate": 0.0,
+      "is_currently_protected": false
+    },
+    {
+      "bigram": "به طور کامل",
+      "intact": 6,
+      "broken": 0,
+      "total": 6,
+      "break_rate": 0.0,
+      "is_currently_protected": true
+    },
+    {
+      "bigram": "با این وجود",
+      "intact": 5,
+      "broken": 0,
+      "total": 5,
+      "break_rate": 0.0,
+      "is_currently_protected": true
+    },
+    {
+      "bigram": "هیچ کدام",
+      "intact": 5,
+      "broken": 0,
+      "total": 5,
+      "break_rate": 0.0,
+      "is_currently_protected": false
+    },
+    {
+      "bigram": "آن که",
+      "intact": 4,
+      "broken": 0,
+      "total": 4,
+      "break_rate": 0.0,
+      "is_currently_protected": false
+    },
+    {
+      "bigram": "از این پس",
+      "intact": 4,
+      "broken": 0,
+      "total": 4,
+      "break_rate": 0.0,
+      "is_currently_protected": false
+    },
+    {
+      "bigram": "تا کنون",
+      "intact": 4,
+      "broken": 0,
+      "total": 4,
+      "break_rate": 0.0,
+      "is_currently_protected": true
+    },
+    {
+      "bigram": "به این ترتیب",
+      "intact": 3,
+      "broken": 0,
+      "total": 3,
+      "break_rate": 0.0,
+      "is_currently_protected": false
+    },
+    {
+      "bigram": "به دلیل اینکه",
+      "intact": 3,
+      "broken": 0,
+      "total": 3,
+      "break_rate": 0.0,
+      "is_currently_protected": false
+    },
+    {
+      "bigram": "به فروش",
+      "intact": 3,
+      "broken": 0,
+      "total": 3,
+      "break_rate": 0.0,
+      "is_currently_protected": false
+    },
+    {
+      "bigram": "در راستای",
+      "intact": 3,
+      "broken": 0,
+      "total": 3,
+      "break_rate": 0.0,
+      "is_currently_protected": true
+    },
+    {
+      "bigram": "در صورتی",
+      "intact": 3,
+      "broken": 0,
+      "total": 3,
+      "break_rate": 0.0,
+      "is_currently_protected": false
+    },
+    {
+      "bigram": "پیش از این",
+      "intact": 3,
+      "broken": 0,
+      "total": 3,
+      "break_rate": 0.0,
+      "is_currently_protected": true
+    },
+    {
+      "bigram": "از سوی دیگر",
+      "intact": 2,
+      "broken": 0,
+      "total": 2,
+      "break_rate": 0.0,
+      "is_currently_protected": true
+    },
+    {
+      "bigram": "به منظور",
+      "intact": 2,
+      "broken": 0,
+      "total": 2,
+      "break_rate": 0.0,
+      "is_currently_protected": true
+    },
+    {
+      "bigram": "در صورتی که",
+      "intact": 2,
+      "broken": 0,
+      "total": 2,
+      "break_rate": 0.0,
+      "is_currently_protected": true
+    },
+    {
+      "bigram": "هیچ یک",
+      "intact": 2,
+      "broken": 0,
+      "total": 2,
+      "break_rate": 0.0,
+      "is_currently_protected": false
+    },
+    {
+      "bigram": "از این جهت",
+      "intact": 1,
+      "broken": 0,
+      "total": 1,
+      "break_rate": 0.0,
+      "is_currently_protected": false
+    },
+    {
+      "bigram": "از لحاظ",
+      "intact": 1,
+      "broken": 0,
+      "total": 1,
+      "break_rate": 0.0,
+      "is_currently_protected": false
+    },
+    {
+      "bigram": "این چنین",
+      "intact": 1,
+      "broken": 0,
+      "total": 1,
+      "break_rate": 0.0,
+      "is_currently_protected": false
+    },
+    {
+      "bigram": "به اعتقاد",
+      "intact": 1,
+      "broken": 0,
+      "total": 1,
+      "break_rate": 0.0,
+      "is_currently_protected": true
+    },
+    {
+      "bigram": "به این شیوه",
+      "intact": 1,
+      "broken": 0,
+      "total": 1,
+      "break_rate": 0.0,
+      "is_currently_protected": false
+    },
+    {
+      "bigram": "به این علت",
+      "intact": 1,
+      "broken": 0,
+      "total": 1,
+      "break_rate": 0.0,
+      "is_currently_protected": false
+    },
+    {
+      "bigram": "به شرط آنکه",
+      "intact": 1,
+      "broken": 0,
+      "total": 1,
+      "break_rate": 0.0,
+      "is_currently_protected": false
+    },
+    {
+      "bigram": "به طور کلی",
+      "intact": 1,
+      "broken": 0,
+      "total": 1,
+      "break_rate": 0.0,
+      "is_currently_protected": true
+    },
+    {
+      "bigram": "به لحاظ",
+      "intact": 1,
+      "broken": 0,
+      "total": 1,
+      "break_rate": 0.0,
+      "is_currently_protected": false
+    },
+    {
+      "bigram": "به نقل از",
+      "intact": 1,
+      "broken": 0,
+      "total": 1,
+      "break_rate": 0.0,
+      "is_currently_protected": true
+    },
+    {
+      "bigram": "در قبال",
+      "intact": 1,
+      "broken": 0,
+      "total": 1,
+      "break_rate": 0.0,
+      "is_currently_protected": true
+    }
+  ]
+}

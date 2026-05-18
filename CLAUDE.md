@@ -169,6 +169,22 @@ DeepL / Google runs write a minimal sidecar with row counts only.
 
 ---
 
+## Runtime environment variables
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `OPENAI_API_KEY` | — | Required for any chatgpt / chatgpt-polish run |
+| `MTD_MAX_CONCURRENT_JOBS` | `2` | Cap on simultaneous backend subprocesses. Each subprocess loads python-docx + openai client + tiktoken (~250-500 MB). A third upload while two are running gets `status='queued'` and waits at the semaphore until a slot frees. The frontend surfaces this as a Persian wait message ("در صف انتظار…") and resumes automatically. Raise at your own risk if you have RAM headroom. |
+| `MTD_SKIP_STATS_BROWSER` | unset | When `=1`, `statistics.run_statistics` / `get_robot_usage_comment` early-return — saves a Chrome launch on the basic-split spawn (~22 s → ~8 s). |
+| `MTD_DEBUG_PAYLOADS` | unset | When `=1`, full user_message + response JSON are echoed to stdout. Default mode logs only a redacted summary so subtitle content does not leak into archived logs / Telegram failure alerts. |
+| `MTD_LOG_VERBOSE` | unset | When `=1`, the per-run sidecar JSON keeps `system_prompt`, `user_prompt`, and `response_raw` instead of dropping them. Multiplies log size; use only for one-off debug. |
+| `MTD_VALIDATOR_ENABLED` | unset | When `=1`, the post-translate / post-polish validators run and log their findings. Off by default — validators are diagnostic, never reject output. |
+| `MTD_POLISH_REASONING` | model-default | One of `none / low / medium / high / xhigh`. Overrides the per-model default in `polisher.py`. `mini` defaults to `medium`; non-mini defaults to `none`. Lowering speeds polish ~3× at some quality cost. |
+| `MTD_FROZEN_ROOT` | unset | Set by the PyInstaller wrapper. Points to the bundled `prompts/` directory beside the .exe. Lets a packaged user drop a customised prompts directory next to the binary without rebuilding. |
+| `MTD_TELEGRAM_TOKEN` + `MTD_TELEGRAM_CHAT_ID` | unset | When both set, every Saturday at 12:00 in `MTD_SCHEDULER_TZ` (default `Europe/Paris`) the launcher uploads `subscribers.txt` as a Telegram document. |
+
+---
+
 ## Safety Constraints
 
 - Never commit `.env`, API keys, or

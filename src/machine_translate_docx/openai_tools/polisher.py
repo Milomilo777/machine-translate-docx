@@ -260,7 +260,7 @@ class OpenAIPolisher:
         # change in a non-backwards-compatible way.
         _extra = {
             "prompt_cache_retention": "24h",
-            "prompt_cache_key": "mtd-polisher-v7.5",
+            "prompt_cache_key": "mtd-polisher-v7.6",
         }
         if "mini" in self.model.lower():
             _extra["reasoning_effort"] = "medium"
@@ -275,7 +275,7 @@ class OpenAIPolisher:
         # (Responses API accepts reasoning via the `reasoning` parameter, not extra_body).
         _extra_responses = {
             "prompt_cache_retention": "24h",
-            "prompt_cache_key": "mtd-polisher-v7.5",
+            "prompt_cache_key": "mtd-polisher-v7.6",
         }
         # Reasoning effort policy (per model class):
         #   mini       → medium  (was "high"; 2026-05-12 user lowered to medium
@@ -324,10 +324,17 @@ class OpenAIPolisher:
                     )
                     _chunks: list[str] = []
                     _final = None
+                    _delta_n = 0
                     for event in s:
                         et = getattr(event, "type", "")
                         if et == "response.output_text.delta":
                             _chunks.append(getattr(event, "delta", "") or "")
+                            _delta_n += 1
+                            # B3 (2026-05-18): tick every 50 deltas for the
+                            # launcher's UI progress bar (see local_launcher.py
+                            # stdout reader).
+                            if _delta_n % 50 == 0:
+                                print(f"[STREAM] role=polisher chunks={_delta_n}", flush=True)
                         elif et == "response.completed":
                             _final = getattr(event, "response", None)
                         elif et in ("response.failed", "response.incomplete"):

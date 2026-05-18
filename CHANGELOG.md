@@ -6,6 +6,142 @@
 
 ---
 
+## 2026-05-18 — standard-raising batch (A4 / B3 / C1-4 / C6 / D1 / F1 / F3)
+
+Multi-item batch from the post-FLYIN review. Nothing in this batch
+changes the runtime translation pipeline; the focus is observability,
+prompt completeness, hygiene, and a docs baseline.
+
+### A4 — per-job cost surfaced in `/history` + v2 UI
+
+`local_launcher.py: load_recent_runs()` now reads `summary.total_cost_usd`
+and `summary.total_tokens` from each `*_log.json` sidecar and adds them
+to the JSON returned by `/history?limit=N`. The v2 redesign Recent-runs
+list renders the cost (`$0.035` style) and token count (`29.1K tok`)
+alongside the existing elapsed + age columns, so a runaway OpenAI bill
+is visible inside the app without opening the OpenAI dashboard.
+
+### B3 — stream-aware progress
+
+While translator / polisher are draining a long Responses-API stream,
+they now emit `[STREAM] role=<translator|polisher> chunks=N` every 50
+deltas. The launcher's stdout reader pattern-matches these and nudges
+`job.progress` by +1 (capped at 29 for translator, 64 for polisher so
+the explicit milestone markers PROGRESS:30 / PROGRESS:65 still take
+precedence). Net effect: the UI bar advances during the long stream
+window instead of jumping in three steps.
+
+### C1 — focused dead-import cleanup in `cli.py`
+
+Dropped `import gc`, the duplicate `import pprint`, `import shlex`,
+`import codecs` — all confirmed unused at module scope. Bigger
+type-annotation work (Optional narrowing, dataclass argument types)
+deferred to a separate effort.
+
+### C2 — env-var reference in `CLAUDE.md`
+
+New "Runtime environment variables" table documents every `MTD_*` env
+var the launcher / cli honor (concurrency, debug, validator, polish
+reasoning effort, Telegram, frozen-root). `MTD_MAX_CONCURRENT_JOBS=2`
+was the standout missing piece for operators tuning their workstation.
+
+### C3 — `test_v2_e2e.py` audit
+
+Confirmed: the four tests are already auto-deselected by the
+`@pytest.mark.live` marker, which `pyproject.toml`'s
+`addopts = '-m "not live"'` filters out. The `--ignore=` clause in
+the benchmark scripts was redundant; no production code change
+needed. To run them on demand: `pytest -m live -v`.
+
+### C4 — `tests/test_queue_status.py` (new file, 4 tests)
+
+Deterministic, no-network unit tests for the
+`MTD_MAX_CONCURRENT_JOBS` semaphore + `status='queued'` flip:
+
+  1. A third non-blocking acquire fails when the cap is hit.
+  2. After one release, the third non-blocking acquire succeeds.
+  3. The `status='queued' → 'pending'` transition preserves
+     `progress=5` and never touches `error`.
+  4. A blocked thread unblocks promptly (< 1 s) when a slot frees.
+
+Reloads `local_launcher` per-test under `monkeypatch.setenv` so the
+module-level semaphore is rebuilt with the test's cap. Total runtime
+~0.2 s. Catches regressions in the queue path without spending an
+OpenAI token.
+
+### C6 — dead one-off scripts removed from `notes/scripts/`
+
+Deleted the 14 FLYIN / direct-API / inspect-only scripts from the
+recent incident (`flyin_parallel.py`, `flyin_polish_split.py`,
+`direct_api_test.py`, `inspect_*.py`, `peek_*.py`, etc.) plus the
+`tmp_split_run/` working dir and all `*.log` / `*.txt` dumps.
+
+Kept (reusable): `aligner_benchmark.py`, `aligner_corpus_analysis.py`,
+`benchmark_dump_mismatches.py`, `bigram_extract.py`,
+`bigram_protect_check.py`, `llm_rescue_test.py`,
+`patterns_advanced.py`, `sage_bmd_corpus.py`. These regenerate the
+`docs/aligner-corpus-baseline-2026-05-17/` data on demand.
+
+### D1 — remaining `[A]`-tier prompt items from corpus research
+
+Polish prompt (cache key bumped `v7.5 → v7.6`):
+
+- **LS-9 EMPHASIS_WORDS** expanded from 8 entries to 25
+  (added عمدتاً / اساساً / اصولاً / حقیقتاً / واقعاً / حتماً / بی‌تردید
+  / بی‌گمان / به‌راستی / عملاً / تنها / فقط / صرفاً …).
+- **LS-12 BROADCAST_OPENING_PATTERNS** expanded from 7 to 15 templates
+  (added "Today on", "Coming up on", "This week on", "Up next",
+  "Don't go anywhere", "We'll be right back", "Back to you Name",
+  "For our viewers", "On behalf of").
+- **LS-14 DIGITAL_TERMS** (new lock): canonical Persian renderings
+  for website / app / online / email / livestream / podcast /
+  channel / hashtag / link / download / upload / social media /
+  follower / subscribe / unsubscribe. Never re-transliterate.
+- **LS-15 NUMBERED_LIST_FORMAT** (new lock): "First, Second, Third"
+  → «نخست، دوم، سوم» (not «اول»). Step → گام (FACILITATOR) / مرحله
+  (NEWS-medical). Lesson → درس. Part-N-of-M locked.
+- **G9 SMTV_OPENING_EXCEPTION** clause: LS-12 takes precedence over
+  HANDOFF_TRUST. "به X خوش آمدید" → "خوش آمدید به X" is REQUIRED, not
+  optional.
+- **Q5** quality-gate updated `LS-1–LS-13 → LS-1–LS-15`.
+
+Translator prompt (cache key bumped `v7.2 → v7.3`):
+
+- **ROUND_TRIP CHECK** in step ⑧ rewritten as a 5-point silent
+  back-check (RT1 polarity, RT2 quantifier, RT3 modality, RT4
+  speaker, RT5 pragmatic force) so the model gets explicit
+  comparison axes instead of a single open-ended instruction.
+
+### F1 — branch hygiene
+
+Local: only `master`. No stale feature branches. No tag deletions.
+Status verified before commit.
+
+### F3 — aligner corpus baseline → `docs/aligner-corpus-baseline-2026-05-17/`
+
+15 small files moved into `docs/` with a README mapping each TSV /
+JSON to the corpus-research decision it backed. The 6 MB raw
+`split_pairs.tsv` was excluded (easily regenerated by
+`notes/scripts/aligner_corpus_analysis.py`). Total ~340 KB of
+baseline that documents:
+
+  - Per-folder doubling ratios (BMD 8.4 % … WOW 26.1 %).
+  - `pre_count.tsv` + `post_count.tsv` — the data behind every
+    `LEADING_CONJUNCTIONS` / `LEADING_PREPS` addition.
+  - `bigram_protection_eval.json` — break-rate analysis for each
+    `PROTECTED_BIGRAMS` entry.
+  - `advanced_patterns.json` — citation / midline-paren / midline-dot
+    distributions (562 files).
+  - `sage_summary.json` — the 250-file BMD SAGE study (the
+    «گفت» 2 887 vs «فرمودند» 7 finding that drove `<SAGE_PERSONA>`).
+  - `benchmark_summary.json` + `llm_rescue_summary.json` — aligner
+    regression metrics + LLM-rescue cost-effectiveness study.
+
+Tests: 243 passed / 8 skipped / 10 deselected (no regression).
+Cache keys: `mtd-translator-v7.3`, `mtd-polisher-v7.6`.
+
+---
+
 ## 2026-05-17 — gpt-5.x hang fix (stream=True) + queue-status surfacing + log cosmetic
 
 Three coordinated fixes triggered by the FLYIN 3150 incident. With the

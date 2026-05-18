@@ -609,6 +609,22 @@ class LocalState:
             else:
                 stem = path.name.replace("_log.json", ".docx")
                 entry["filename"] = stem
+            # 2026-05-18 (A4): surface cost + tokens so the v2 UI can render
+            # a per-run column. The user can spot a runaway charge in the
+            # in-app history table without opening the OpenAI dashboard.
+            total_cost = summary.get("total_cost_usd")
+            if total_cost is not None:
+                try:
+                    entry["cost_usd"] = round(float(total_cost), 4)
+                except (TypeError, ValueError):
+                    pass
+            tk = summary.get("total_tokens")
+            if isinstance(tk, dict):
+                tt = tk.get("total")
+                if isinstance(tt, (int, float)):
+                    entry["total_tokens"] = int(tt)
+            elif isinstance(tk, (int, float)):
+                entry["total_tokens"] = int(tk)
             runs.append(entry)
 
         self._recent_runs_cache = (now, limit, runs)
@@ -2031,6 +2047,27 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
                             self.state.update_job(job_id, progress=pct)
                         except ValueError:
                             pass
+                        continue
+                    # 2026-05-18 (B3): stream-aware progress ticks emitted
+                    # by translator / polisher every ~50 chunks. The line
+                    # shape is `[STREAM] role=<translator|polisher> chunks=N`.
+                    # We translate each tick into a +1 nudge inside the
+                    # current PROGRESS:N window so the UI bar moves while
+                    # the large stream is still arriving. We cap each
+                    # phase at its next milestone (translator caps at 29;
+                    # polisher caps at 64) so we never overshoot the next
+                    # explicit PROGRESS marker.
+                    if stripped.startswith("[STREAM] role="):
+                        cur = self.state.get_job(job_id)
+                        if cur is not None:
+                            cur_p = cur.progress
+                            new_p = cur_p
+                            if "role=translator" in stripped and cur_p >= 15 and cur_p < 29:
+                                new_p = cur_p + 1
+                            elif "role=polisher" in stripped and cur_p >= 30 and cur_p < 64:
+                                new_p = cur_p + 1
+                            if new_p != cur_p:
+                                self.state.update_job(job_id, progress=new_p)
                         continue
                     if stripped:
                         print(f"[job {job_id}] {stripped}")

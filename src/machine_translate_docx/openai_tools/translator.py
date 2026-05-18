@@ -328,7 +328,7 @@ class OpenAITranslator:
         # collide on the same key and confuse the cache.
         _extra = {
             "prompt_cache_retention": "24h",
-            "prompt_cache_key": "mtd-translator-v7.2",
+            "prompt_cache_key": "mtd-translator-v7.3",
         }
 
         # GPT-5.x models have broken prompt-caching via chat.completions (known
@@ -358,10 +358,17 @@ class OpenAITranslator:
                 )
                 _chunks: list[str] = []
                 _final = None
+                _delta_n = 0
                 for event in stream:
                     et = getattr(event, "type", "")
                     if et == "response.output_text.delta":
                         _chunks.append(getattr(event, "delta", "") or "")
+                        _delta_n += 1
+                        # B3 (2026-05-18): emit a tick every 50 deltas so
+                        # the launcher can nudge the UI progress bar
+                        # while the stream is still draining.
+                        if _delta_n % 50 == 0:
+                            print(f"[STREAM] role=translator chunks={_delta_n}", flush=True)
                     elif et == "response.completed":
                         _final = getattr(event, "response", None)
                     elif et in ("response.failed", "response.incomplete"):

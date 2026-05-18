@@ -47,16 +47,12 @@ print("*********************************************************")
 
 print("Python programming language %s\n" % (platform.python_version()))
 
-import gc
-import pprint
-from pprint import pprint
+from pprint import pprint                          # 2026-05-18 cleanup: drop bare `import gc`, `import pprint`, `import shlex`, `import codecs` — unused at module scope.
 import traceback
-import shlex
 import subprocess
 import os
 import re
 import time
-import codecs
 import urllib
 import urllib.request
 import requests

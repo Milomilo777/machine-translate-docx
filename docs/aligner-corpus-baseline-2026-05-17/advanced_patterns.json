@@ -1,0 +1,756 @@
+{
+  "elapsed_seconds": 277.7,
+  "files": 562,
+  "bad_files": 0,
+  "fa_rows": 236967,
+  "citation_count": 5697,
+  "citation_own_row": 3095,
+  "citation_text_end": 2602,
+  "midline_paren": 4332,
+  "midline_dot": 10028,
+  "bracketed_count": 1992,
+  "quoted_count": 18389,
+  "country_opener": 38,
+  "top_citation_names": {
+    "بله.": 494,
+    "بله، استاد.": 422,
+    "وگان": 338,
+    "گیاهخوار": 183,
+    "VnExpress": 82,
+    "Fox News": 73,
+    "Reuters": 63,
+    "وای.": 59,
+    "درسته.": 54,
+    "ویتنام": 53,
+    "Tuổi Trẻ": 42,
+    "یورین": 41,
+    "سال نو مبارک!": 36,
+    "New York Post": 34,
+    "اوه.": 32,
+    "Thanh Niên": 31,
+    "یورینی": 31,
+    "AP": 27,
+    "The Guardian": 26,
+    "ویتنامی": 26,
+    "بله، درسته.": 25,
+    "آه.": 23,
+    "متشکرم.": 22,
+    "BBC": 22,
+    "VegNews": 21,
+    "فورموسا": 20,
+    "نور و صوت بهشتی درونی": 19,
+    "بله. بله، استاد.": 18,
+    "Vegconomist": 18,
+    "Earth.com": 17,
+    "Euronews": 17,
+    "WHO": 17,
+    "بله، بله.": 16,
+    "گیاه‌خوار": 16,
+    "Phys.org": 15,
+    "Al Jazeera": 15,
+    "Good News Network": 14,
+    "درسته، استاد.": 13,
+    "چشم.": 13,
+    "Daily Mail": 13,
+    "VTV.vn": 13,
+    "Sky News Australia": 13,
+    "درسته. بله، استاد.": 12,
+    "VietNamNet": 12,
+    "بله، استاد. بله.": 11,
+    "سلام، استاد.": 11,
+    "متشکرم، استاد.": 11,
+    "Dân Trí": 11,
+    "European Commission": 11,
+    "EuroWeekly News": 11,
+    "درسته. بله.": 11,
+    "اوه، وای.": 10,
+    "استاد.": 10,
+    "آه، بله.": 9,
+    "بله. درسته.": 9,
+    "پیتا": 9,
+    "VTV24": 9,
+    "The Times of India": 9,
+    "Taipei Times": 9,
+    "VTV": 9
+  },
+  "top_bracketed_names": {
+    "...": 420,
+    "…": 135,
+    "آمریکا": 118,
+    "آولاک (ویتنام)": 51,
+    "بریتانیا": 33,
+    "هند": 26,
+    "چین": 19,
+    "ویتنام": 18,
+    "استرالیا": 18,
+    "هوش مصنوعی": 17,
+    "کانادا": 14,
+    "اسپانیا": 14,
+    "ایالات متحده": 11,
+    "ژاپن": 10,
+    "ایتالیا": 9,
+    "اندونزی": 8,
+    "فرانسه": 8,
+    "سوریه": 8,
+    "امارات متحده عربی": 8,
+    "گروه": 8,
+    "معنوی": 7,
+    "جمهوری‌خواه": 7,
+    "استاد": 7,
+    "برزیل": 7,
+    "مکزیک": 6,
+    "ایالات‌متحده": 6,
+    "کالیفرنیا، آمریکا": 6,
+    "نیویورک، آمریکا": 6,
+    "حضرت": 6,
+    "مرتاض": 6,
+    "ولی": 5,
+    "ترکیه": 5,
+    "آلمان": 5,
+    "فلوریدا، آمریکا": 5,
+    "ویروس نقص ایمنی انسانی": 5,
+    "یونان": 5,
+    "آفریقای جنوبی": 5,
+    "دام": 5,
+    "خدا": 5,
+    "راهبان": 5
+  },
+  "quoted_lengths_dist": {
+    "2": 291,
+    "3": 807,
+    "4": 1795,
+    "5": 1856,
+    "6": 1744,
+    "7": 1357,
+    "8": 1499,
+    "9": 1216,
+    "10": 1071,
+    "11": 1040,
+    "12": 849,
+    "13": 643,
+    "14": 491,
+    "15": 502,
+    "16": 346,
+    "17": 314,
+    "18": 208,
+    "19": 277,
+    "20": 418,
+    "21": 155,
+    "22": 161,
+    "23": 155,
+    "24": 104,
+    "25": 118,
+    "26": 101,
+    "27": 89,
+    "28": 73,
+    "29": 80,
+    "30": 47,
+    "31": 62,
+    "32": 74,
+    "33": 47,
+    "34": 64,
+    "35": 50,
+    "36": 33,
+    "37": 49,
+    "38": 48,
+    "39": 34,
+    "40": 29
+  },
+  "citation_by_type": {
+    "BMD": 1055,
+    "NS News Scroll": 1896,
+    "AJAR": 442,
+    "CTAW": 28,
+    "VEG": 50,
+    "HL": 34,
+    "VE": 37,
+    "AW": 47,
+    "AP": 144,
+    "SS": 77,
+    "VEGC": 78,
+    "PE": 33,
+    "UL": 18,
+    "GPGW": 28,
+    "FN": 772,
+    "ADS": 203,
+    "LS": 66,
+    "MOS": 46,
+    "NWN": 139,
+    "WOW": 126,
+    "SHOW": 49,
+    "Teasers": 62,
+    "CS": 13,
+    "GAT": 35,
+    "WAU": 42,
+    "AJAR Intro": 19,
+    "BMD intro": 150,
+    "SWLA-SWA-SWL": 6,
+    "NB": 2
+  },
+  "midline_paren_by_type": {
+    "BMD": 600,
+    "NS News Scroll": 392,
+    "AJAR": 331,
+    "CTAW": 92,
+    "VEG": 118,
+    "HL": 44,
+    "VE": 101,
+    "AW": 93,
+    "AP": 208,
+    "SS": 76,
+    "VEGC": 182,
+    "PE": 66,
+    "UL": 100,
+    "GPGW": 131,
+    "FN": 326,
+    "ADS": 227,
+    "LS": 185,
+    "MOS": 96,
+    "NWN": 169,
+    "WOW": 245,
+    "SHOW": 71,
+    "Teasers": 84,
+    "CS": 17,
+    "GAT": 78,
+    "WAU": 93,
+    "AJAR Intro": 24,
+    "BMD intro": 94,
+    "SWLA-SWA-SWL": 58,
+    "NB": 31
+  },
+  "midline_dot_by_type": {
+    "BMD": 2155,
+    "NS News Scroll": 684,
+    "AJAR": 777,
+    "CTAW": 115,
+    "VEG": 158,
+    "HL": 130,
+    "VE": 184,
+    "AW": 206,
+    "AP": 498,
+    "SS": 302,
+    "VEGC": 129,
+    "PE": 252,
+    "UL": 202,
+    "GPGW": 173,
+    "FN": 1525,
+    "ADS": 238,
+    "LS": 187,
+    "MOS": 157,
+    "NWN": 324,
+    "WOW": 523,
+    "SHOW": 179,
+    "Teasers": 221,
+    "CS": 151,
+    "GAT": 132,
+    "WAU": 109,
+    "AJAR Intro": 23,
+    "BMD intro": 210,
+    "SWLA-SWA-SWL": 45,
+    "NB": 39
+  },
+  "midline_paren_samples": [
+    {
+      "type": "BMD",
+      "fa": "(بله.) در کجا بود؟",
+      "file": "BMD 1196 (20201215 SM Conf with... P4of12) sf1 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "در اخبار ما بود؟ (بله.) بسیار خب.",
+      "file": "BMD 1196 (20201215 SM Conf with... P4of12) sf1 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "(بله، استاد.) بسیار خب.",
+      "file": "BMD 1196 (20201215 SM Conf with... P4of12) sf1 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "به اندازه حساب شده باشد، (بله، استاد.) در اندازه های کم باشد.",
+      "file": "BMD 1196 (20201215 SM Conf with... P4of12) sf1 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "(بله، استاد.) بله!",
+      "file": "BMD 1196 (20201215 SM Conf with... P4of12) sf1 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "من باید به این (شیاطین)، رسیدگی می کردم.",
+      "file": "BMD 1196 (20201215 SM Conf with... P4of12) sf1 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "من باید به این (شیاطین)، رسیدگی می کردم.",
+      "file": "BMD 1196 (20201215 SM Conf with... P4of12) sf1 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "(وای.) اما نتوانستند.",
+      "file": "BMD 1196 (20201215 SM Conf with... P4of12) sf1 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "(آه.) (بله، استاد.)",
+      "file": "BMD 1196 (20201215 SM Conf with... P4of12) sf1 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "میدانید، (بله.) تا بتوانید روی این سیاره دوام بیاورید.",
+      "file": "BMD 1316 (20210326 The Phoenix, P4of13) - table fix2 Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "(درسته.) (بله، استاد.)",
+      "file": "BMD 1316 (20210326 The Phoenix, P4of13) - table fix2 Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "(خیر، استاد.) نه!",
+      "file": "BMD 1316 (20210326 The Phoenix, P4of13) - table fix2 Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "(بله.) آنرا روی برگ گذاشتم.",
+      "file": "BMD 1671 (20220403 The United Spirit... P2of12) - table fix1 Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "افتاده در اطراف را، (بله.) روی آن گذاشتم.",
+      "file": "BMD 1671 (20220403 The United Spirit... P2of12) - table fix1 Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "(آه.) و نمی دانم او آنرا از کجا آورده است.",
+      "file": "BMD 1671 (20220403 The United Spirit... P2of12) - table fix1 Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "(آه.) و نمی دانم او آنرا از کجا آورده است.",
+      "file": "BMD 1671 (20220403 The United Spirit... P2of12) - table fix1 Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "(اوه) آن سیاه است.",
+      "file": "BMD 1671 (20220403 The United Spirit... P2of12) - table fix1 Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "(درسته.) او احتمالاً",
+      "file": "BMD 1671 (20220403 The United Spirit... P2of12) - table fix1 Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "(بله، استاد.) چون",
+      "file": "BMD 1671 (20220403 The United Spirit... P2of12) - table fix1 Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "(چند نفری از ما.) چند نفر از شما.",
+      "file": "BMD 1671 (20220403 The United Spirit... P2of12) - table fix1 Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "(نه، نه.) خوب است، خوب.",
+      "file": "BMD 1671 (20220403 The United Spirit... P2of12) - table fix1 Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "(بله.) این فعلاً،",
+      "file": "BMD 1671 (20220403 The United Spirit... P2of12) - table fix1 Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "(بله.) و اوکراین حتی آنها را بخشید،",
+      "file": "BMD 1671 (20220403 The United Spirit... P2of12) - table fix1 Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "(لوهانسک.) \"لوهانسک\".",
+      "file": "BMD 1725 (20220509 Representatives of the Positive..., P5of6) sf2 - table fix2 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "(بله.) شیطان. اهریمن.",
+      "file": "BMD 1725 (20220509 Representatives of the Positive..., P5of6) sf2 - table fix2 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "(آه، بله.) و شخص مراقب او",
+      "file": "BMD 1725 (20220509 Representatives of the Positive..., P5of6) sf2 - table fix2 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "(آه، بله.) و شخص مراقب او",
+      "file": "BMD 1725 (20220509 Representatives of the Positive..., P5of6) sf2 - table fix2 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "(بله، درسته.) یا حالا و همینطور در آینده،",
+      "file": "BMD 1725 (20220509 Representatives of the Positive..., P5of6) sf2 - table fix2 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "(بله، درسته.) یا حالا و همینطور در آینده،",
+      "file": "BMD 1725 (20220509 Representatives of the Positive..., P5of6) sf2 - table fix2 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "(بله.) روسیه، با اینحال او را تهدید کرد.",
+      "file": "BMD 1725 (20220509 Representatives of the Positive..., P5of6) sf2 - table fix2 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "(بله.) روسیه، با اینحال او را تهدید کرد.",
+      "file": "BMD 1725 (20220509 Representatives of the Positive..., P5of6) sf2 - table fix2 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "(بله.) تمام راه از آمریکا تا آنجا آمده است.",
+      "file": "BMD 1777 (20220625 The Real Signs of... P1of8) sf2 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "(بله.) تمام راه از آمریکا تا آنجا آمده است.",
+      "file": "BMD 1777 (20220625 The Real Signs of... P1of8) sf2 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "پس سیاه و آبی (کبود) است.",
+      "file": "BMD 1777 (20220625 The Real Signs of... P1of8) sf2 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "\"جان سیاهپوستان مهم است\" (نام یک جنبش).",
+      "file": "BMD 1777 (20220625 The Real Signs of... P1of8) sf2 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "\"جان سیاهپوستان مهم است\" (نام یک جنبش).",
+      "file": "BMD 1777 (20220625 The Real Signs of... P1of8) sf2 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "(بله.) بسیار خب.",
+      "file": "BMD 1777 (20220625 The Real Signs of... P1of8) sf2 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "(آه.) و آنها میتوانند",
+      "file": "BMD 1777 (20220625 The Real Signs of... P1of8) sf2 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "(نه، نه، استاد.",
+      "file": "BMD 1777 (20220625 The Real Signs of... P1of8) sf2 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "(بله.) پس بروید و یک چیزی",
+      "file": "BMD 1777 (20220625 The Real Signs of... P1of8) sf2 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "(آه.) من این کار را میکنم.",
+      "file": "BMD 1777 (20220625 The Real Signs of... P1of8) sf2 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "(آه.) گاهی اوقات،",
+      "file": "BMD 1777 (20220625 The Real Signs of... P1of8) sf2 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "آنها را دنبال میکنند. (آه، بله، امیدواریم.",
+      "file": "BMD 1777 (20220625 The Real Signs of... P1of8) sf2 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "(بله.) در کشورهای دیگر هم",
+      "file": "BMD 1777 (20220625 The Real Signs of... P1of8) sf2 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "(بله، درست است.",
+      "file": "BMD 1777 (20220625 The Real Signs of... P1of8) sf2 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "(آه، وای.) حتی یک ذره هم نبود.",
+      "file": "BMD 1833 (20220919 The British Monarchy... P8of8) sf2 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "(بله.) گاهی، هتل خیلی شلوغ بود،",
+      "file": "BMD 1833 (20220919 The British Monarchy... P8of8) sf2 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "(درسته.) و نام گارسون های زن و مرد",
+      "file": "BMD 1833 (20220919 The British Monarchy... P8of8) sf2 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "(درسته.) و نام گارسون های زن و مرد",
+      "file": "BMD 1833 (20220919 The British Monarchy... P8of8) sf2 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "(بله.) و گاهی آنها شماره تلفن را هم میگیرند.",
+      "file": "BMD 1833 (20220919 The British Monarchy... P8of8) sf2 - table fix1 Priority Persian.docx"
+    }
+  ],
+  "midline_dot_samples": [
+    {
+      "type": "BMD",
+      "fa": "رفتن به جایی چقدر است. (بله، استاد.)",
+      "file": "BMD 1196 (20201215 SM Conf with... P4of12) sf1 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "به این خاطر است. (بله، استاد.)",
+      "file": "BMD 1196 (20201215 SM Conf with... P4of12) sf1 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "می دانید، درسته؟ (بله، استاد.)",
+      "file": "BMD 1196 (20201215 SM Conf with... P4of12) sf1 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "بسیار خب. آیا خوب است؟",
+      "file": "BMD 1196 (20201215 SM Conf with... P4of12) sf1 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "(بله، استاد. متشکرم.)",
+      "file": "BMD 1196 (20201215 SM Conf with... P4of12) sf1 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "به طور شگفت آوری بالغ بودند.\"",
+      "file": "BMD 1196 (20201215 SM Conf with... P4of12) sf1 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "همه چیز در حال تکامل است. (بله.)",
+      "file": "BMD 1196 (20201215 SM Conf with... P4of12) sf1 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "وضعیت نمی مانیم. (بله، استاد.)",
+      "file": "BMD 1196 (20201215 SM Conf with... P4of12) sf1 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "آنرا فراموش کردید؟ (نه، استاد.)",
+      "file": "BMD 1196 (20201215 SM Conf with... P4of12) sf1 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "خیلی زیادی را پایین آورده است؟ (نه.)",
+      "file": "BMD 1196 (20201215 SM Conf with... P4of12) sf1 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "میتوانید آنرا ببینید، (بله.)",
+      "file": "BMD 1196 (20201215 SM Conf with... P4of12) sf1 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "و حتی از نظر جسمی هم همینطور. (وای.)",
+      "file": "BMD 1196 (20201215 SM Conf with... P4of12) sf1 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "(بله.)",
+      "file": "BMD 1196 (20201215 SM Conf with... P4of12) sf1 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "(بله.) در کجا بود؟",
+      "file": "BMD 1196 (20201215 SM Conf with... P4of12) sf1 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "در اخبار ما بود؟ (بله.) بسیار خب.",
+      "file": "BMD 1196 (20201215 SM Conf with... P4of12) sf1 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "(بله، استاد.) بسیار خب.",
+      "file": "BMD 1196 (20201215 SM Conf with... P4of12) sf1 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "زیرا بدن فیزیکی انسانها، روح نیست. (بله، استاد.)",
+      "file": "BMD 1196 (20201215 SM Conf with... P4of12) sf1 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "به اندازه حساب شده باشد، (بله، استاد.) در اندازه های کم باشد.",
+      "file": "BMD 1196 (20201215 SM Conf with... P4of12) sf1 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "بلافاصله درمان شوید. (بله، استاد.)",
+      "file": "BMD 1196 (20201215 SM Conf with... P4of12) sf1 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "دو، سه قرص بخورید، (بله، استاد.)",
+      "file": "BMD 1196 (20201215 SM Conf with... P4of12) sf1 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "در دو یا سه وعده باشد. (بله.)",
+      "file": "BMD 1196 (20201215 SM Conf with... P4of12) sf1 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "متوجه اید؟ (بله، استاد.)",
+      "file": "BMD 1196 (20201215 SM Conf with... P4of12) sf1 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "(بله.)",
+      "file": "BMD 1196 (20201215 SM Conf with... P4of12) sf1 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "\"خب. چرا همه آن را در یک زمان نزنیم",
+      "file": "BMD 1196 (20201215 SM Conf with... P4of12) sf1 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "زیرا آن قوی و قدرتمند است.\"",
+      "file": "BMD 1196 (20201215 SM Conf with... P4of12) sf1 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "شما نمی توانید چنین کنید! (بله، استاد.)",
+      "file": "BMD 1196 (20201215 SM Conf with... P4of12) sf1 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "که بتواند به آنجا برود. (بله، استاد.)",
+      "file": "BMD 1196 (20201215 SM Conf with... P4of12) sf1 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "ما در حال تکامل هستیم، عزیزم. تغییر میکنیم.",
+      "file": "BMD 1196 (20201215 SM Conf with... P4of12) sf1 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "حتی کوچکتر. (بله.)",
+      "file": "BMD 1196 (20201215 SM Conf with... P4of12) sf1 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "(بله، استاد.)",
+      "file": "BMD 1196 (20201215 SM Conf with... P4of12) sf1 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "این عادلانه نیست، درسته؟ (بله.)",
+      "file": "BMD 1196 (20201215 SM Conf with... P4of12) sf1 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "(بله، استاد.)",
+      "file": "BMD 1196 (20201215 SM Conf with... P4of12) sf1 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "(بله، استاد.) بله!",
+      "file": "BMD 1196 (20201215 SM Conf with... P4of12) sf1 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "هشدار به بشریت وجود دارند. (بله، استاد.)",
+      "file": "BMD 1196 (20201215 SM Conf with... P4of12) sf1 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "(بله، استاد.)",
+      "file": "BMD 1196 (20201215 SM Conf with... P4of12) sf1 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "و میرود. (بله، استاد.)",
+      "file": "BMD 1196 (20201215 SM Conf with... P4of12) sf1 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "(بله، استاد.)",
+      "file": "BMD 1196 (20201215 SM Conf with... P4of12) sf1 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "به اندازه کافی سم داشته باشند. (اوه.)",
+      "file": "BMD 1196 (20201215 SM Conf with... P4of12) sf1 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "(اوه، خدای من.)",
+      "file": "BMD 1196 (20201215 SM Conf with... P4of12) sf1 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "به یاد می آورند. تعداد کمی.",
+      "file": "BMD 1196 (20201215 SM Conf with... P4of12) sf1 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "مانند بودا (بله.)",
+      "file": "BMD 1196 (20201215 SM Conf with... P4of12) sf1 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "که ایشان نگران امنیت خود هستند. (بله.)",
+      "file": "BMD 1196 (20201215 SM Conf with... P4of12) sf1 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "که ایشان نگران امنیت خود هستند. (بله.)",
+      "file": "BMD 1196 (20201215 SM Conf with... P4of12) sf1 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "بله! اما من آنها را به همه جا",
+      "file": "BMD 1196 (20201215 SM Conf with... P4of12) sf1 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "(بله، استاد.)",
+      "file": "BMD 1196 (20201215 SM Conf with... P4of12) sf1 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "(بله، استاد.)",
+      "file": "BMD 1196 (20201215 SM Conf with... P4of12) sf1 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "شیاطین حریص ارفاق می کنم. (بله، استاد.)",
+      "file": "BMD 1196 (20201215 SM Conf with... P4of12) sf1 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "(بله، استاد.)",
+      "file": "BMD 1196 (20201215 SM Conf with... P4of12) sf1 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "نمی توانند آنها را در بند بکشند. (اوه.)",
+      "file": "BMD 1196 (20201215 SM Conf with... P4of12) sf1 - table fix1 Priority Persian.docx"
+    },
+    {
+      "type": "BMD",
+      "fa": "من می بایست این را انجام می دادم. (وای.)",
+      "file": "BMD 1196 (20201215 SM Conf with... P4of12) sf1 - table fix1 Priority Persian.docx"
+    }
+  ]
+}
