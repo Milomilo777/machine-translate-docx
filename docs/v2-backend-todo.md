@@ -1,5 +1,13 @@
 # Backend TODO — endpoints v2 needs
 
+> **STATUS — DONE (2026-05-17 / 2026-05-18).** Both items originally
+> listed as pending have shipped: `GET /history?limit=N` landed in the
+> 2026-05-17 v2-redesign-wireup merge (`cbb5f2e`), and the
+> server-side anti-indexing reinforcement (`/robots.txt` route +
+> `X-Robots-Tag` header) shipped in the same merge. The bcc8b28
+> 2026-05-18 A4 batch added per-job `cost_usd` + `total_tokens` to
+> the `/history` payload. This document is kept as historical record.
+>
 > Tracker for backend changes required to make the v2 redesign
 > (`v2-redesign.html` / `web/v2/index.html`) work end-to-end.
 > Created 2026-05-16. Items are listed in priority order; each one

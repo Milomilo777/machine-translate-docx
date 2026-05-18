@@ -1,5 +1,11 @@
 # Session State Report — 2026-05-16, Sprint D final (architect handoff)
 
+> **HISTORICAL** — branch `refactor/cli-py-sprint-d-final` was merged
+> to master via `44c9f76` on 2026-05-17. Task C
+> (`_sync_globals_from_ctx` collapse) also landed in the cache-refactor
+> merge `28512c3`/`5408f80`. The "NOT merged" claim below was true at
+> the time of writing only.
+>
 > Written from the architect role at the end of the
 > `refactor/cli-py-sprint-d-final` branch session. Reads the whole
 > working state as of commit `468e11e` (branch HEAD) and tells the

@@ -688,7 +688,7 @@ class LocalState:
                 removed += 1
         return removed
 
-    # ── 36-hour cache ────────────────────────────────────────────────────────
+    # ── 5-day cache (DOC-E-13: was 36-hour, bumped 2026-05-15) ──────────────
 
     def cache_lookup(self, key: str) -> dict | None:
         """Return the cache payload dict if a fresh entry exists, else None.
@@ -1682,7 +1682,7 @@ class MockTranslatorHandler(BaseHTTPRequestHandler):
         sound_select = fields.get("soundSelect")
         split_translate = fields.get("splitTranslate", "false").lower() in {"true", "1", "on", "yes"}
 
-        # ── 36-hour cache short-circuit ──────────────────────────────────────
+        # ── 5-day cache short-circuit (DOC-E-13: was 36-hour, bumped 2026-05-15) ─
         # Only API engines cache (chatgpt, chatgpt-polish). Selenium engines
         # are stateful (cookie consent, login) and not worth caching.
         cache_key: str | None = None
