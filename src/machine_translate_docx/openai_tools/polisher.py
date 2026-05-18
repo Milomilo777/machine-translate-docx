@@ -318,14 +318,19 @@ class OpenAIPolisher:
                 # back to non-stream Responses API. Emergency rollback
                 # only — the #2725 hang risk returns under non-stream.
                 from ._stream_helper import (
-                    force_non_stream,
+                    use_non_stream,
                     maybe_log_unknown_event,
                 )
-                if force_non_stream():
+                from ._stream_circuit import (
+                    record_stream_success,
+                    record_stream_failure,
+                )
+                if use_non_stream():
                     print(
-                        "[WARN] MTD_FORCE_NON_STREAM=1 — polisher using "
-                        "non-stream Responses API; #2725 hang risk on "
-                        "large gpt-5.x payloads",
+                        "[INFO] polisher using non-stream Responses API "
+                        "(rollback active: MTD_FORCE_NON_STREAM=1 or "
+                        "circuit breaker OPEN); #2725 hang risk on large "
+                        "gpt-5.x payloads",
                         flush=True,
                     )
                     response = call_with_retry(
@@ -379,17 +384,22 @@ class OpenAIPolisher:
                     )
                     from types import SimpleNamespace
                     _final = _sr["final"]
+                    _text = _sr["text"]
                     # CODE-C-9 (2026-05-18 audit): mirror the translator
                     # warning — stream without response.completed leaves
-                    # usage data unavailable.
+                    # usage data unavailable. Also feed the outcome to
+                    # the circuit breaker for auto-rollback.
                     if _final is None:
                         print(
                             "[WARN] polisher: stream ended without response.completed — "
                             "usage data unavailable, log sidecar will record zero tokens/cost",
                             flush=True,
                         )
+                        record_stream_failure("polisher", "no_response_completed")
+                    else:
+                        record_stream_success("polisher")
                     response = SimpleNamespace(
-                        output_text=_sr["text"],
+                        output_text=_text,
                         model_dump=(lambda f: (lambda: f.model_dump()))(_final) if _final else (lambda: {}),
                     )
             else:

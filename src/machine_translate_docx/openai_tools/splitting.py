@@ -251,14 +251,18 @@ class OpenAISubtitleSplitter:
             # 2026-05-18 hardening: ``MTD_FORCE_NON_STREAM=1`` falls back
             # to non-stream Responses API. Emergency rollback only.
             from ._stream_helper import (
-                force_non_stream,
+                use_non_stream,
                 maybe_log_unknown_event,
             )
-            if force_non_stream():
+            from ._stream_circuit import (
+                record_stream_success,
+                record_stream_failure,
+            )
+            if use_non_stream():
                 print(
-                    "[WARN] MTD_FORCE_NON_STREAM=1 — splitter using "
-                    "non-stream Responses API; #2725 hang risk on large "
-                    "gpt-5.x payloads",
+                    "[INFO] splitter using non-stream Responses API "
+                    "(rollback active: MTD_FORCE_NON_STREAM=1 or circuit "
+                    "breaker OPEN); #2725 hang risk on large gpt-5.x payloads",
                     flush=True,
                 )
                 response = call_with_retry(
@@ -298,8 +302,17 @@ class OpenAISubtitleSplitter:
                 _sr = call_with_retry(_stream_call, label="splitter.responses(stream)")
                 from types import SimpleNamespace
                 _final = _sr["final"]
+                _text = _sr["text"]
+                # 2026-05-18: feed outcome to circuit breaker. The splitter
+                # path doesn't print its own [WARN] line on _final=None
+                # because it's rarely fired (default Split Method is
+                # persian_double_lines), but the breaker still counts it.
+                if _final is None:
+                    record_stream_failure("splitter", "no_response_completed")
+                else:
+                    record_stream_success("splitter")
                 response = SimpleNamespace(
-                    output_text=_sr["text"],
+                    output_text=_text,
                     model_dump=(lambda f: (lambda: f.model_dump()))(_final) if _final else (lambda: {}),
                 )
         else:

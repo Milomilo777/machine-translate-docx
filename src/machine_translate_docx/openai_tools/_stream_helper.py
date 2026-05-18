@@ -86,6 +86,29 @@ def force_non_stream() -> bool:
     return os.environ.get("MTD_FORCE_NON_STREAM") == "1"
 
 
+def use_non_stream() -> bool:
+    """Combined rollback signal for callers.
+
+    Returns True if EITHER:
+      - the operator has set ``MTD_FORCE_NON_STREAM=1`` (manual rollback), OR
+      - the stream-mode circuit breaker is currently OPEN
+        (automatic rollback after N consecutive stream failures).
+
+    This is the single check every Responses-API call site uses to
+    decide between stream and non-stream paths. Importing the circuit
+    breaker lazily so a misconfigured runtime_dir doesn't crash callers.
+    """
+    if force_non_stream():
+        return True
+    try:
+        from ._stream_circuit import should_use_non_stream
+        return should_use_non_stream()
+    except Exception:
+        # Defensive: never let a circuit-breaker glitch crash a run.
+        # Stay in stream mode if the breaker is unreachable.
+        return False
+
+
 def maybe_log_unknown_event(role: str, event_type: str) -> None:
     """Emit a stderr warning for an unrecognised SSE event type.
 

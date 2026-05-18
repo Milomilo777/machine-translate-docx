@@ -353,14 +353,18 @@ class OpenAITranslator:
             # for emergency rollback only — non-streaming still has the
             # #2725 hang risk on gpt-5.x with large payloads.
             from ._stream_helper import (
-                force_non_stream,
+                use_non_stream,
                 maybe_log_unknown_event,
             )
-            if force_non_stream():
+            from ._stream_circuit import (
+                record_stream_success,
+                record_stream_failure,
+            )
+            if use_non_stream():
                 print(
-                    "[WARN] MTD_FORCE_NON_STREAM=1 — translator using "
-                    "non-stream Responses API; #2725 hang risk on large "
-                    "gpt-5.x payloads",
+                    "[INFO] translator using non-stream Responses API "
+                    "(rollback active: MTD_FORCE_NON_STREAM=1 or circuit "
+                    "breaker OPEN); #2725 hang risk on large gpt-5.x payloads",
                     flush=True,
                 )
                 response = call_with_retry(
@@ -418,19 +422,24 @@ class OpenAITranslator:
                 # shape so the rest of the code below works unchanged.
                 from types import SimpleNamespace
                 _final = stream_result["final"]
+                _text = stream_result["text"]
                 # CODE-C-9 (2026-05-18 audit): when the stream ends without a
                 # `response.completed` event (network reset, server early-
                 # close), `_final` stays None. We still have the assembled
                 # text, but token / cost usage is unknown — log it so the
-                # sidecar zero is explainable.
+                # sidecar zero is explainable. Also feed the outcome into
+                # the circuit breaker so repeated failures auto-rollback.
                 if _final is None:
                     print(
                         "[WARN] translator: stream ended without response.completed — "
                         "usage data unavailable, log sidecar will record zero tokens/cost",
                         flush=True,
                     )
+                    record_stream_failure("translator", "no_response_completed")
+                else:
+                    record_stream_success("translator")
                 response = SimpleNamespace(
-                    output_text=stream_result["text"],
+                    output_text=_text,
                     model_dump=(lambda f: (lambda: f.model_dump()))(_final) if _final else (lambda: {}),
                 )
         else:

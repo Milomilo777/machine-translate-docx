@@ -991,8 +991,12 @@ class FASubtitleAligner:
             # 2026-05-18 hardening: ``MTD_FORCE_NON_STREAM=1`` falls back
             # to non-stream Responses API. Emergency rollback only.
             from ._stream_helper import (
-                force_non_stream,
+                use_non_stream,
                 maybe_log_unknown_event,
+            )
+            from ._stream_circuit import (
+                record_stream_success,
+                record_stream_failure,
             )
             _aligner_extra = {
                 "prompt_cache_retention": "24h",
@@ -1002,11 +1006,11 @@ class FASubtitleAligner:
                 {"role": "system", "content": self._LLM_SYSTEM},
                 {"role": "user",   "content": user},
             ]
-            if force_non_stream():
+            if use_non_stream():
                 print(
-                    "[WARN] MTD_FORCE_NON_STREAM=1 — aligner using "
-                    "non-stream Responses API; #2725 hang risk on large "
-                    "gpt-5.x payloads",
+                    "[INFO] aligner using non-stream Responses API "
+                    "(rollback active: MTD_FORCE_NON_STREAM=1 or circuit "
+                    "breaker OPEN); #2725 hang risk on large gpt-5.x payloads",
                     flush=True,
                 )
                 resp = call_with_retry(
@@ -1050,8 +1054,14 @@ class FASubtitleAligner:
                 _sr = call_with_retry(_stream_call, label="aligner.llm_refine(stream)")
                 from types import SimpleNamespace
                 _final = _sr["final"]
+                _text = _sr["text"]
+                # 2026-05-18: feed outcome to circuit breaker.
+                if _final is None:
+                    record_stream_failure("aligner", "no_response_completed")
+                else:
+                    record_stream_success("aligner")
                 resp = SimpleNamespace(
-                    output_text=_sr["text"],
+                    output_text=_text,
                     model_dump=(lambda f: (lambda: f.model_dump()))(_final) if _final else (lambda: {}),
                 )
         except Exception as exc:
