@@ -326,9 +326,18 @@ class OpenAITranslator:
         # Bump the version suffix whenever translate_PER.txt / _smtv_locks.txt
         # change in a non-backwards-compatible way; otherwise old/new prompts
         # collide on the same key and confuse the cache.
+        #
+        # 2026-05-19 (branch experiment/fa-only-polish, cache-pollution fix):
+        # the main and mtd-fa-only worktrees ship DIFFERENT translate_PER.txt
+        # bodies (20,246 vs 43,196 chars). Both were calling OpenAI with the
+        # same key ``mtd-translator-v7.3`` — every call's prefix mismatched
+        # what the OTHER worktree just cached, so cache hits never landed
+        # (3 consecutive runs all reported cached_tokens=0 despite identical
+        # prompt_hash). Suffix this branch's key with ``-faonly`` so it has
+        # its own cache namespace independent of master.
         _extra = {
             "prompt_cache_retention": "24h",
-            "prompt_cache_key": "mtd-translator-v7.3",
+            "prompt_cache_key": "mtd-translator-v7.3-faonly",
         }
 
         # GPT-5.x models have broken prompt-caching via chat.completions (known
