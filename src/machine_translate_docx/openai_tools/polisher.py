@@ -81,34 +81,51 @@ class OpenAIPolisher:
     # ── input / output formatting ─────────────────────────────────────────────
 
     def _build_user_content(self, src_lines: list, fa_lines: list) -> str:
-        """Build the bilingual <PAIRS> block (legacy [EN]/[FA] labels kept).
+        """Build the FA-only user content (experiment/fa-only-polish 2026-05-19).
 
-        The Persian-specific polish prompt uses [EN]/[FA] markers since
-        it's hard-coded for that language pair. The universal polish
-        prompt uses [SRC]/[TGT] in its spec but understands [EN]/[FA]
-        as the concrete instance. Keeping a single emitter avoids a
-        branch in the user payload.
+        ARCHITECTURE CHANGE — branch experiment/fa-only-polish:
+        The user message no longer carries EN source lines. The polisher
+        sees ONLY the Persian target text, line-by-line. The system
+        prompt body (``polish_PER.txt``) is UNCHANGED on this branch
+        — the user explicitly asked for an architecture-only edit so
+        the experiment isolates the effect of dropping the EN context.
+
+        Rationale: most of the remaining quality issues are calque /
+        translationese problems that a bilingual lens tends to miss
+        because the model is busy verifying meaning preservation. By
+        feeding only FA, we re-aim the model's attention on Persian
+        fluency. Risk: it can't catch omission / negation drift / scope
+        without the EN anchor; that's the trade-off being measured.
+
+        ``src_lines`` argument is kept for signature compatibility with
+        the call sites that still pass both — it's ignored here.
         """
+        # Format kept as "Line N [FA]: ..." so the [FA] tag in the
+        # existing system prompt still matches. This keeps the prompt
+        # body byte-identical between bilingual + FA-only branches; only
+        # the user-message structure differs.
         parts = []
-        for i, (en, fa) in enumerate(zip(src_lines, fa_lines), 1):
-            parts.append(f"Line {i} [EN]: {en}")
+        for i, fa in enumerate(fa_lines, 1):
             parts.append(f"Line {i} [FA]: {fa}")
         return "\n".join(parts)
 
     def _build_user_envelope(self, src_lines: list, fa_lines: list) -> str:
-        """Return the JOB_CONFIG + PAIRS user payload for the polisher.
+        """Return the JOB_CONFIG + FA-only user payload (branch-experiment).
 
-        v7 STATIC + JOB_CONFIG layout: the user message starts with a
-        small <JOB_CONFIG> block (source language, target language,
-        line count N), then the bilingual <PAIRS> block. The system
-        prompt is byte-identical across calls — language identity
-        lives in this envelope.
+        v7 STATIC + JOB_CONFIG layout, with the bilingual <PAIRS> block
+        replaced by an FA-only listing inside a renamed <FA_LINES>
+        block. The block-name change is a deliberate signal to the
+        model that the layout is different from the cached prefix.
+
+        2026-05-19 — branch experiment/fa-only-polish: still no edits
+        to the prompt body itself, per user instruction. Only the user
+        message changes.
         """
         from ._lang_descriptors import lang_descriptor
         n = len(fa_lines)
         src_desc = lang_descriptor(self.source_lang)
         tgt_desc = lang_descriptor(self.dest_lang)
-        pairs = self._build_user_content(src_lines, fa_lines)
+        fa_block = self._build_user_content(src_lines, fa_lines)
         return (
             "<JOB_CONFIG>\n"
             f"SOURCE_LANGUAGE: {src_desc}\n"
@@ -116,9 +133,9 @@ class OpenAIPolisher:
             f"N: {n}\n"
             "</JOB_CONFIG>\n"
             "\n"
-            "<PAIRS>\n"
-            f"{pairs}\n"
-            "</PAIRS>"
+            "<FA_LINES>\n"
+            f"{fa_block}\n"
+            "</FA_LINES>"
         )
 
     @staticmethod
@@ -260,7 +277,7 @@ class OpenAIPolisher:
         # change in a non-backwards-compatible way.
         _extra = {
             "prompt_cache_retention": "24h",
-            "prompt_cache_key": "mtd-polisher-v7.6",
+            "prompt_cache_key": "mtd-polisher-v7.6-faonly",
         }
         if "mini" in self.model.lower():
             _extra["reasoning_effort"] = "medium"
@@ -275,7 +292,7 @@ class OpenAIPolisher:
         # (Responses API accepts reasoning via the `reasoning` parameter, not extra_body).
         _extra_responses = {
             "prompt_cache_retention": "24h",
-            "prompt_cache_key": "mtd-polisher-v7.6",
+            "prompt_cache_key": "mtd-polisher-v7.6-faonly",
         }
         # Reasoning effort policy (per model class):
         #   mini       → medium  (was "high"; 2026-05-12 user lowered to medium
