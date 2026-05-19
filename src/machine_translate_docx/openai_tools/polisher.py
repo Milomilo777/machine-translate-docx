@@ -110,16 +110,21 @@ class OpenAIPolisher:
         return "\n".join(parts)
 
     def _build_user_envelope(self, src_lines: list, fa_lines: list) -> str:
-        """Return the JOB_CONFIG + FA-only user payload (branch-experiment).
+        """Return the JOB_CONFIG + OUTPUT_CONTRACT + FA-only user payload
+        (branch-experiment).
 
         v7 STATIC + JOB_CONFIG layout, with the bilingual <PAIRS> block
         replaced by an FA-only listing inside a renamed <FA_LINES>
         block. The block-name change is a deliberate signal to the
         model that the layout is different from the cached prefix.
 
-        2026-05-19 — branch experiment/fa-only-polish: still no edits
-        to the prompt body itself, per user instruction. Only the user
-        message changes.
+        2026-05-19 — branch experiment/fa-only-polish, patch-only update:
+        adds an ``<OUTPUT_CONTRACT>`` block in the user message that
+        overrides the system prompt's EMIT section for this call only.
+        The model is asked to emit ONLY changed lines (or
+        ``<NO_PATCHES/>`` when nothing needs changing). Polish_PER.txt
+        is still untouched — the override lives entirely in this
+        dynamically-built user envelope.
         """
         from ._lang_descriptors import lang_descriptor
         n = len(fa_lines)
@@ -132,6 +137,28 @@ class OpenAIPolisher:
             f"TARGET_LANGUAGE: {tgt_desc}\n"
             f"N: {n}\n"
             "</JOB_CONFIG>\n"
+            "\n"
+            "<OUTPUT_CONTRACT>\n"
+            "PATCH-ONLY OUTPUT. This contract overrides the EMIT section\n"
+            "of the system prompt for THIS call.\n"
+            "\n"
+            "Emit ONLY lines you changed. Do NOT echo unchanged lines.\n"
+            "\n"
+            "Per changed line, emit EXACTLY this shape:\n"
+            "⟨⟨N⟩⟩ <complete final Persian line>\n"
+            "\n"
+            "Rules:\n"
+            f"- N is an ASCII digit in 1..{n}.\n"
+            "- Sort patches by ascending N.\n"
+            "- One patch per line number; no duplicates.\n"
+            "- Payload is the COMPLETE final Persian line, not a diff.\n"
+            "- An empty payload deletes that line's Persian content.\n"
+            "\n"
+            "If no line needs changing, emit EXACTLY this single token:\n"
+            "<NO_PATCHES/>\n"
+            "\n"
+            "NO commentary. NO markdown. NO JSON. NO explanation.\n"
+            "</OUTPUT_CONTRACT>\n"
             "\n"
             "<FA_LINES>\n"
             f"{fa_block}\n"
@@ -163,14 +190,31 @@ class OpenAIPolisher:
 
     def _parse_output(self, raw: str, fa_lines: list) -> list:
         """
-        Parse model output — tries four strategies in order:
+        Parse model output — tries five strategies in order:
 
+        0. ``<NO_PATCHES/>`` token → patch-only contract, no changes;
+           return the input fa_lines unchanged.
         1. ⟨⟨N⟩⟩ tag format (primary — DOTALL, handles extra newlines in content).
         2. Legacy 'Line N: text' numbered format (ASCII or Persian digits).
         3. Plain line-for-line match when model returns exactly N lines.
         4. Pass raw output through so the downstream length check logs the mismatch.
+
+        Strategy 1 is patch-aware: missing line numbers in the parsed
+        dict fall back to the original fa_lines[i-1] via _build_from_dict.
+        So a patch-only response with K patches produces an output list
+        of N entries: K modified, N-K unchanged.
+
+        2026-05-19 (branch experiment/fa-only-polish, patch-only update):
+        added strategy 0 for the explicit ``<NO_PATCHES/>`` sentinel.
         """
         n = len(fa_lines)
+
+        # ── Strategy 0: explicit no-op ──────────────────────────────────────
+        if raw and "<NO_PATCHES/>" in raw:
+            # Patch-only contract: model says nothing to change. Return
+            # the input fa_lines verbatim. This is the most common
+            # output path when polish gets a well-translated document.
+            return list(fa_lines)
 
         def _build_from_dict(result: dict) -> list:
             output = []
@@ -277,7 +321,7 @@ class OpenAIPolisher:
         # change in a non-backwards-compatible way.
         _extra = {
             "prompt_cache_retention": "24h",
-            "prompt_cache_key": "mtd-polisher-v7.6-faonly",
+            "prompt_cache_key": "mtd-polisher-v7.6-faonly-patch",
         }
         if "mini" in self.model.lower():
             _extra["reasoning_effort"] = "medium"
@@ -292,7 +336,7 @@ class OpenAIPolisher:
         # (Responses API accepts reasoning via the `reasoning` parameter, not extra_body).
         _extra_responses = {
             "prompt_cache_retention": "24h",
-            "prompt_cache_key": "mtd-polisher-v7.6-faonly",
+            "prompt_cache_key": "mtd-polisher-v7.6-faonly-patch",
         }
         # Reasoning effort policy (per model class):
         #   mini       → medium  (was "high"; 2026-05-12 user lowered to medium
