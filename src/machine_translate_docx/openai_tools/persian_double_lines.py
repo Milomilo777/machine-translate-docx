@@ -187,6 +187,57 @@ _BRIDGE_PATTERNS_RAW = [
     # as ordinary rows lets the aligner spill the next group's content
     # into them. Also catches the bare prefix without leading paren.
     r'^\(NF[ETHG]\b', r'^NF[ETHG]:',
+
+    # 2026-05-19 (WAU + AW 3153 analysis): row-by-row diff against
+    # human-edited references surfaced five more bridge patterns the
+    # aligner was treating as "empty FA → extra distribution slot" and
+    # spilling the previous group's tail into. Add patterns:
+    #
+    # 1) Bare `(m):` / `(f):` / `(h):` speaker shortcut alone on a row.
+    #    The existing _SPEAKER_RE (line 142) required letters before
+    #    the parens (e.g. "John Smith (m):"); the bare-parens form is
+    #    common in SMTV subtitle exports and needs its own match.
+    #    Risk: false positives are effectively impossible — no real
+    #    dialogue line consists of just "(f):".
+    r'^\s*\(\s*[mfh]\s*\)\s*:?\s*$',
+
+    # 2) Timecode + bare speaker shortcut: `9:39 (f):`, `(9:20):`. The
+    #    existing `^\d{1,2}:\d{2}(:\d{2})?\s*$` matches a bare timecode
+    #    but stops there; this catches the same with a trailing speaker
+    #    tag.
+    r'^\s*\(?\d{1,2}:\d{2}\)?\s*\(\s*[mfh]\s*\)\s*:?\s*$',
+
+    # 3) Title + name + colon STANDALONE: `Dr. Jena Questen:`,
+    #    `Master Ching Hai:`, `Mrs. Brown:`. End-anchor `\s*$` blocks
+    #    matching mid-sentence forms like "Dr. Smith said the patient...".
+    #    Existing patterns covered only the parens-style speaker tag
+    #    (Lee (m):) and ALL-CAPS labels (NARRATOR:).
+    r'^\s*(?:Dr|Mr|Mrs|Ms|Prof|Master|Mistress|Sir|Madam|Sis|Bro|Sister|Brother|Father|Pastor|Reverend|Rev|Imam|Sheikh|Rabbi|Lord|Lady|Saint|St)\.?\s+'
+    r'[A-Za-zÀ-ÖÙ-öù-ÿ][A-Za-zÀ-ÖÙ-öù-ÿ\s\.\-\']{1,60}\s*:\s*$',
+
+    # 4) Section header with parenthetical descriptor:
+    #    `OUTRO (IN ENGLISH):`, `INTRO (IN PERSIAN):`,
+    #    `HOST (CONTINUED):`. The existing `^OUTRO:` / `^INTRO\([mf]\):`
+    #    patterns required the colon to immediately follow OUTRO or
+    #    INTRO — they don't allow a parenthetical between.
+    r'^\s*(OUTRO|INTRO|HOST|TITLE|SHOW|CAPTION|SECTION|PART|EPILOGUE|PROLOGUE)\s*\([^)]+\)\s*:?\s*$',
+
+    # 5) `Priority News:` followed by a SHORT in-line label such as
+    #    `animal-people clip` or `news clip`. Treated as a section
+    #    pointer the human keeps blank in the FA column (the actual
+    #    news content arrives on the next-but-one row). Existing
+    #    `^PRIORITY ANIMAL` was too narrow to catch the "News" variant.
+    #    Requires a colon to avoid over-matching sentence forms like
+    #    `Priority News was discussed in detail.`.
+    r'^\s*Priority\s+News\s*:',
+
+    # 6) Template placeholder rows containing 3+ consecutive underscores,
+    #    e.g. `in _____ with subtitles`. The underscores are an editing
+    #    placeholder for a language name; the row's content isn't final
+    #    English and the human reference keeps the FA blank in these
+    #    rows. Existing patterns covered `[English`/`[German` square-
+    #    bracket forms but not the underscore variant.
+    r'_{3,}',
 ]
 _BRIDGE_RE = [re.compile(p, re.IGNORECASE) for p in _BRIDGE_PATTERNS_RAW]
 

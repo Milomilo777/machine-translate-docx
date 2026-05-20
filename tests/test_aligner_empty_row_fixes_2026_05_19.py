@@ -217,3 +217,142 @@ def test_aligner_no_content_loss_on_simple_doubled_input(tmp_path):
         f"Expected all 3 phrase rows to keep FA after aligning; got "
         f"{nonempty}/3 non-empty: {content_rows!r}"
     )
+
+
+# ── 2026-05-19 (WAU + AW 3153 analysis): five new bridge patterns ────────────
+#
+# Row-by-row diff against human-edited references uncovered five EN row
+# shapes that the previous _BRIDGE_RE did not catch. Each one was
+# receiving spillover content from the preceding semantic group. Tests
+# below pin each pattern + its negative counterpart so a future refactor
+# that drops one of them fails CI.
+
+
+# Pattern 1: bare speaker shortcut "(f):" / "(m):" / "(h):" standalone
+def test_bridge_bare_female_speaker():
+    assert _is_bridge('(f):', '', False) is True
+
+
+def test_bridge_bare_male_speaker():
+    assert _is_bridge('(m):', '', False) is True
+
+
+def test_bridge_bare_speaker_with_whitespace():
+    assert _is_bridge('( f ):', '', False) is True
+
+
+def test_bridge_bare_speaker_uppercase():
+    assert _is_bridge('(F):', '', False) is True
+
+
+def test_bridge_bare_speaker_no_colon():
+    """Optional trailing colon — `(f)` alone is still a bridge."""
+    assert _is_bridge('(f)', '', False) is True
+
+
+def test_not_bridge_speaker_inside_sentence():
+    """Lee (f): then real dialogue ⇒ not standalone, NOT a bridge."""
+    assert _is_bridge('Lee (f): She started talking.', '', False) is False
+
+
+def test_not_bridge_parens_mention_mid_sentence():
+    """`(m) and (f) markers exist.` — parens in the middle of a real
+    English sentence; must NOT be a bridge."""
+    assert _is_bridge('(m) and (f) markers exist.', '', False) is False
+
+
+# Pattern 2: timecode + bare speaker shortcut
+def test_bridge_timecode_bare_speaker():
+    assert _is_bridge('9:39 (f):', '', False) is True
+
+
+def test_bridge_timecode_with_parens_bare_speaker():
+    assert _is_bridge('(9:20) (f):', '', False) is True
+
+
+def test_not_bridge_timecode_in_sentence():
+    """`9:39 marks the time` — timecode followed by real sentence."""
+    assert _is_bridge('9:39 marks the time.', '', False) is False
+
+
+# Pattern 3: title + name + colon standalone
+def test_bridge_dr_name_colon():
+    assert _is_bridge('Dr. Jena Questen:', '', False) is True
+
+
+def test_bridge_master_name_colon():
+    assert _is_bridge('Master Ching Hai:', '', False) is True
+
+
+def test_bridge_mr_name_colon():
+    assert _is_bridge('Mr. Smith:', '', False) is True
+
+
+def test_bridge_mrs_name_colon():
+    assert _is_bridge('Mrs. Brown:', '', False) is True
+
+
+def test_bridge_prof_name_colon():
+    assert _is_bridge('Prof. Johnson:', '', False) is True
+
+
+def test_not_bridge_dr_with_dialogue():
+    """`Dr. Smith said the patient was sick.` — title + name + words,
+    NOT a label, must NOT match."""
+    assert _is_bridge('Dr. Smith said the patient was sick.', '', False) is False
+
+
+def test_not_bridge_dr_continuation():
+    """`Dr. Jena Questen explained that` — name + verb, must NOT match."""
+    assert _is_bridge('Dr. Jena Questen explained that', '', False) is False
+
+
+# Pattern 4: section header with parenthetical descriptor
+def test_bridge_outro_with_parens():
+    assert _is_bridge('OUTRO (IN ENGLISH):', '', False) is True
+
+
+def test_bridge_intro_with_parens():
+    assert _is_bridge('INTRO (BMD):', '', False) is True
+
+
+def test_bridge_host_with_parens():
+    assert _is_bridge('HOST (CONTINUED):', '', False) is True
+
+
+def test_not_bridge_outro_sentence():
+    """`OUTRO is short for outro music.` — sentence about OUTRO, not a
+    header. Must NOT be a bridge."""
+    assert _is_bridge('OUTRO is short for outro music.', '', False) is False
+
+
+# Pattern 5: Priority News section pointer
+def test_bridge_priority_news_with_label():
+    assert _is_bridge('Priority News: animal-people clip', '', False) is True
+
+
+def test_bridge_priority_news_bare():
+    assert _is_bridge('Priority News:', '', False) is True
+
+
+def test_not_bridge_priority_news_sentence():
+    """`Priority News was discussed in detail.` — sentence with no
+    colon after News. Must NOT match (the previous draft of the
+    pattern over-matched here)."""
+    assert _is_bridge('Priority News was discussed in detail.', '', False) is False
+
+
+# Pattern 6: template placeholder with 3+ underscores
+def test_bridge_template_placeholder():
+    """`in _____ with subtitles` — the underscores are an editing
+    placeholder for a language name; FA stays blank."""
+    assert _is_bridge('in _____ with subtitles', '', False) is True
+
+
+def test_bridge_template_placeholder_at_end():
+    assert _is_bridge('with subtitles in _____', '', False) is True
+
+
+def test_not_bridge_single_underscore():
+    """Single underscore (e.g. variable name) shouldn't trigger."""
+    assert _is_bridge('the my_var was set.', '', False) is False
