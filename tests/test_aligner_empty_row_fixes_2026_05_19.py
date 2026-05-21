@@ -473,3 +473,97 @@ def test_absorption_guard_blocks_speaker_turn_absorption(tmp_path):
     assert fa_cells[2] == "", (
         f"Row 2 should stay blank, got {fa_cells[2]!r}"
     )
+
+
+# ── 2026-05-22 (structural fix — answers "why regex whack-a-mole"): the
+# FA aligner now reads run-level editor markers (GRAY_25 / GRAY_50 /
+# PINK / RED highlights, strikethrough, paragraph-level shading) in
+# the EN cell — matching the same signals the basic-split distributor's
+# get_cell_data() reads. This catches editor-marked rows WITHOUT
+# requiring a new regex pattern per name variant.
+#
+# Real-world evidence: AJAR 3154 had 6 rows the editor pre-flagged with
+# GRAY_25 highlight (`Vocalists(all):`, `Band(all):`, multi-name speaker
+# tags, etc.). The aligner now detects them via the structural signal.
+
+def test_editor_marker_detection_gray25_highlight(tmp_path):
+    """A cell where every run carries GRAY_25 highlight is detected as
+    an editor-marked bridge — no regex pattern needed."""
+    import docx as _d
+    from docx.enum.text import WD_COLOR_INDEX
+
+    doc = _d.Document()
+    t = doc.add_table(rows=2, cols=3)
+    # Row 0: bridge — entire EN cell highlighted GRAY_25 (editor marker)
+    t.cell(0, 0).text = ''
+    p = t.cell(0, 1).paragraphs[0]
+    run = p.add_run('Some Unusual New Speaker Form(all):')
+    run.font.highlight_color = WD_COLOR_INDEX.GRAY_25
+    t.cell(0, 2).text = ''
+    # Row 1: normal content
+    t.cell(1, 0).text = ''
+    t.cell(1, 1).text = 'This is real dialogue with no markers.'
+    t.cell(1, 2).text = 'این یک خط طبیعی است.'
+
+    in_path = tmp_path / "marker.docx"
+    doc.save(str(in_path))
+
+    from machine_translate_docx.openai_tools.persian_double_lines import (
+        _cell_has_editor_marker,
+    )
+    out_doc = _d.Document(str(in_path))
+    cells = list(out_doc.tables[0].rows[0].cells)
+    cells_row1 = list(out_doc.tables[0].rows[1].cells)
+    assert _cell_has_editor_marker(cells[1]) is True, (
+        "EN cell with GRAY_25 highlight on all runs MUST be detected as marker"
+    )
+    assert _cell_has_editor_marker(cells_row1[1]) is False, (
+        "EN cell with no markers MUST NOT be detected as marker"
+    )
+
+
+def test_editor_marker_partial_highlight_below_threshold(tmp_path):
+    """If only one of three runs is highlighted (33 %), don't flag as
+    marker — the highlight could be a single emphasized word in real
+    dialogue, not an editor-skip signal."""
+    import docx as _d
+    from docx.enum.text import WD_COLOR_INDEX
+
+    doc = _d.Document()
+    t = doc.add_table(rows=1, cols=3)
+    p = t.cell(0, 1).paragraphs[0]
+    p.add_run('A perfectly ').font.highlight_color = None
+    p.add_run('normal').font.highlight_color = WD_COLOR_INDEX.GRAY_25  # 1 / 3 flagged
+    p.add_run(' sentence here.').font.highlight_color = None
+
+    in_path = tmp_path / "partial.docx"
+    doc.save(str(in_path))
+
+    from machine_translate_docx.openai_tools.persian_double_lines import (
+        _cell_has_editor_marker,
+    )
+    out_doc = _d.Document(str(in_path))
+    cell = out_doc.tables[0].rows[0].cells[1]
+    assert _cell_has_editor_marker(cell) is False, (
+        "Partial highlight (1 of 3 runs) MUST NOT flag the whole cell"
+    )
+
+
+def test_editor_marker_strikethrough(tmp_path):
+    """Strikethrough text on all runs is also an editor "ignore" signal."""
+    import docx as _d
+
+    doc = _d.Document()
+    t = doc.add_table(rows=1, cols=3)
+    p = t.cell(0, 1).paragraphs[0]
+    run = p.add_run('This entire row is struck through.')
+    run.font.strike = True
+
+    in_path = tmp_path / "strike.docx"
+    doc.save(str(in_path))
+
+    from machine_translate_docx.openai_tools.persian_double_lines import (
+        _cell_has_editor_marker,
+    )
+    cell = _d.Document(str(in_path)).tables[0].rows[0].cells[1]
+    assert _cell_has_editor_marker(cell) is True

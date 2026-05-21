@@ -921,6 +921,79 @@ def _cell_text(cell) -> str:
     return ' '.join(p.text.strip() for p in cell.paragraphs if p.text.strip())
 
 
+# 2026-05-22 (architectural fix — answers user's "why regex whack-a-mole"
+# question): the basic-split distributor (``docx_io/cells.py:get_cell_data``)
+# uses RICH SIGNALS to decide "ignore this cell's content" — run-level
+# highlights (GRAY_25/GRAY_50/PINK/RED), strikethrough, font color,
+# paragraph-level shading. The FA aligner historically only checked
+# cell-level grey shading on ``w:tcPr``, which missed every editor-marked
+# row that uses run-level highlights instead.
+#
+# Real-world evidence: AJAR 3154 polish output has GRAY_25 highlights on
+# every run of `Vocalists(all):`, `Band(all):`, `02:52:44 Band(all):`,
+# `Wendy, Carnie Wilson & Owen Elliot(f):` rows. The editor pre-marked
+# these as "skip" but the FA aligner couldn't see it — so it took
+# whack-a-mole regex patches to catch each name variant.
+#
+# This helper checks the SAME set of run-level signals the basic split
+# checks, so the FA aligner respects the editor's "skip" marking
+# automatically — no regex needed.
+_MARKER_HIGHLIGHTS = frozenset({
+    'GRAY_25 (16)', 'GRAY_50 (15)',
+    'PINK (17)', 'RED (6)',
+})
+
+
+def _cell_has_editor_marker(cell) -> bool:
+    """True if any run carries a "skip this" editor marker.
+
+    Markers checked (all from the basic-split distributor's logic):
+    - Run highlights: GRAY_25 / GRAY_50 / PINK / RED
+    - Run strikethrough / double-strike
+    - Paragraph-level shading (any non-white fill colour)
+
+    Returns True only when MOST of the cell's runs are marker-flagged
+    (heuristic: at least half of non-empty runs OR all runs). This
+    prevents a single highlighted word in the middle of real dialogue
+    from collapsing the whole row into a bridge.
+    """
+    flagged = 0
+    nonempty = 0
+    # Paragraph-level shading — if any paragraph has a shaded background,
+    # treat the whole cell as marker. (Editors typically shade the whole
+    # paragraph, not a single run.)
+    for paragraph in cell.paragraphs:
+        p_pPr = paragraph._p.find(_qn('w:pPr'))
+        if p_pPr is not None:
+            p_shd = p_pPr.find(_qn('w:shd'))
+            if p_shd is not None:
+                fill = (p_shd.get(_qn('w:fill')) or '').lower()
+                if fill and fill not in ('auto', 'ffffff', ''):
+                    return True
+    # Run-level markers
+    for paragraph in cell.paragraphs:
+        for run in paragraph.runs:
+            if not (run.text or '').strip():
+                continue
+            nonempty += 1
+            highlight = str(run.font.highlight_color) if run.font.highlight_color else ''
+            is_marker = (
+                highlight in _MARKER_HIGHLIGHTS
+                or bool(run.font.strike)
+                or bool(run.font.double_strike)
+            )
+            if is_marker:
+                flagged += 1
+    # Whole-row marker: all runs flagged (strong signal)
+    # OR ≥ 75 % of runs flagged (typical editor pattern — they highlight
+    # the speaker tag + colon, leaving zero non-highlighted runs).
+    if nonempty == 0:
+        return False
+    if flagged == nonempty:
+        return True
+    return (flagged / nonempty) >= 0.75
+
+
 def _cell_has_shading(cell) -> bool:
     """True if the cell has a GREY bridge background.
 
@@ -1258,7 +1331,17 @@ class FASubtitleAligner:
                 # attributions on every "text (Source)" row; _align_group
                 # now handles citation placement explicitly.
                 'fa':     _cell_text(cells[2]),
-                'shaded': _cell_has_shading(cells[1]),
+                # 2026-05-22 structural fix: the `shaded` signal now
+                # also fires on run-level editor markers (GRAY_25 /
+                # GRAY_50 / PINK / RED highlights, strikethrough,
+                # paragraph-level shading) — matching the signals the
+                # basic-split distributor reads. This is what catches
+                # AJAR 3154's `Vocalists(all):` / `Band(all):` /
+                # multi-name speaker rows without any regex update.
+                'shaded': (
+                    _cell_has_shading(cells[1])
+                    or _cell_has_editor_marker(cells[1])
+                ),
             })
         return rows
 
