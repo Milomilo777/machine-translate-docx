@@ -139,8 +139,22 @@ _RE_CITATION = _RE_CITATION_END
 # matches only when the speaker tag stands alone. The old regex also
 # matched "Lee (f): She ended up" → the whole sentence was marked as
 # bridge and lost its translation.
+#
+# 2026-05-20 (AJAR 3154 + GAT 3154 analysis): two real-world variants
+# were not caught by the prior class:
+#   (1) Multi-name speakers separated by comma / ampersand / apostrophe:
+#       "Wendy, Carnie Wilson & Owen Elliot(f):"
+#       "Al, Matthew & Adam Jardine(m):"
+#       The old character class `[A-Za-z\-\s]` rejected `,` `&` `'` `.`
+#   (2) Group / chorus speaker tags: "Band(all):", "Vocalists(all):"
+#       "(Performer(m): ...)" — the (all)/(group)/(performer)/(vocalists)
+#       variants didn't match the `[mf]` requirement.
+# End-anchor `\s*$` is retained so dialogue lines like
+# "Lee (f): She ended up" remain non-bridge — only standalone labels match.
 _SPEAKER_RE = re.compile(
-    r'^[A-Za-zÀ-ÖÙ-öù-ÿ\s\-]{2,40}\s*[\(\[]\s*[mf]\s*[\)\]]\s*:?\s*$',
+    r'^[A-Za-zÀ-ÖÙ-öù-ÿ][A-Za-zÀ-ÖÙ-öù-ÿ\s\-,&\'.]{1,80}\s*[\(\[]\s*'
+    r'(?:[mfh]|all|group|performer|narrator|vocalists?|chorus|crowd|audience|band|kids?|guests?)'
+    r'\s*[\)\]]\s*:?\s*$',
     re.IGNORECASE
 )
 
@@ -163,7 +177,14 @@ _BRIDGE_PATTERNS_RAW = [
     r'^\d+:\d+\s*[-~]\s*\d+:\d+', r'^\d{1,2}:\d{2}(:\d{2})?\s*$', r'^\(\d+:\d+',
     # 2026-05-13 (AJAR-3147 fix): "HH:MM:SS Speaker(m):" — timecode +
     # speaker label on the same line is a bridge row, not dialogue.
-    r'^\d{1,2}:\d{2}:\d{2}\s+\S.*[\(\[][mf][\)\]]\s*:?\s*$',
+    # 2026-05-20 (AJAR 3154 fix): broadened the speaker token to accept
+    # (all) / (group) / (band) etc. — "02:52:44 Band(all):" was a real
+    # row that the previous `[mf]`-only class missed, so the next
+    # group's FA spilled into it. End-anchor still keeps real dialogue
+    # ("02:52:44 Speaker(m): Hi there") from matching.
+    r'^\d{1,2}:\d{2}:\d{2}\s+\S.*[\(\[]'
+    r'(?:[mfh]|all|group|performer|narrator|vocalists?|chorus|crowd|audience|band)'
+    r'[\)\]]\s*:?\s*$',
     r'^\[English', r'^\[German', r'^\[.*starts\]', r'^\[.*End\]',
     # 2026-05-13 (AJAR-3147 fix): speaker labels are bridges ONLY when
     # they stand alone on their own line. "SM: real dialogue" / "Master:
@@ -193,19 +214,21 @@ _BRIDGE_PATTERNS_RAW = [
     # aligner was treating as "empty FA → extra distribution slot" and
     # spilling the previous group's tail into. Add patterns:
     #
-    # 1) Bare `(m):` / `(f):` / `(h):` speaker shortcut alone on a row.
-    #    The existing _SPEAKER_RE (line 142) required letters before
-    #    the parens (e.g. "John Smith (m):"); the bare-parens form is
-    #    common in SMTV subtitle exports and needs its own match.
+    # 1) Bare `(m):` / `(f):` / `(h):` / `(all):` / `(group):` speaker
+    #    shortcut alone on a row. The existing _SPEAKER_RE (line 142)
+    #    required letters before the parens (e.g. "John Smith (m):");
+    #    the bare-parens form is common in SMTV subtitle exports and
+    #    needs its own match. 2026-05-20: broadened from `[mfh]` to
+    #    the full speaker-token list (matches AJAR 3154 `(all):` form).
     #    Risk: false positives are effectively impossible — no real
     #    dialogue line consists of just "(f):".
-    r'^\s*\(\s*[mfh]\s*\)\s*:?\s*$',
+    r'^\s*\(\s*(?:[mfh]|all|group|performer|narrator|vocalists?|chorus|crowd|audience|band|kids?|guests?)\s*\)\s*:?\s*$',
 
     # 2) Timecode + bare speaker shortcut: `9:39 (f):`, `(9:20):`. The
     #    existing `^\d{1,2}:\d{2}(:\d{2})?\s*$` matches a bare timecode
     #    but stops there; this catches the same with a trailing speaker
-    #    tag.
-    r'^\s*\(?\d{1,2}:\d{2}\)?\s*\(\s*[mfh]\s*\)\s*:?\s*$',
+    #    tag. 2026-05-20: broadened speaker token list (see above).
+    r'^\s*\(?\d{1,2}:\d{2}\)?\s*\(\s*(?:[mfh]|all|group|performer|narrator|vocalists?|chorus|crowd|audience|band)\s*\)\s*:?\s*$',
 
     # 3) Title + name + colon STANDALONE: `Dr. Jena Questen:`,
     #    `Master Ching Hai:`, `Mrs. Brown:`. End-anchor `\s*$` blocks
@@ -240,6 +263,28 @@ _BRIDGE_PATTERNS_RAW = [
     r'_{3,}',
 ]
 _BRIDGE_RE = [re.compile(p, re.IGNORECASE) for p in _BRIDGE_PATTERNS_RAW]
+
+
+# 2026-05-20 (GAT 3154 fix): the SAME `(m):` / `(f):` / `(h):` shortcut
+# that is a bridge when standalone is ALSO a "new turn" marker when
+# followed by dialogue content on the same line (e.g.
+# "(m): Look at you! You pudge!" — GAT row #81). In that case the row
+# is NOT a bridge (the content is real dialogue to translate), but it
+# IS a hard boundary between the previous sentence and this new turn.
+#
+# Without recognising the boundary, `_parse_groups` was absorbing such
+# rows as "spare empty-FA slots" of the preceding sentence's group
+# when the polish stage left their FA blank, then the distributor
+# spilled the previous sentence's tail-chunks into them.
+#
+# This regex is used by ``_parse_groups`` ONLY in the absorption-loop
+# guard (after `_ends_sentence(fa)`). It does NOT participate in
+# bridge classification — we want such rows to remain non-bridge so
+# their FA content (when present) is honoured.
+_TURN_START_AFTER_SENT_END_RE = re.compile(
+    r'^\s*\(\s*[mfh]\s*\)\s*:?\s+\S',
+    re.IGNORECASE,
+)
 
 
 # ── text helpers ───────────────────────────────────────────────────────────────
@@ -1317,6 +1362,13 @@ class FASubtitleAligner:
                 # Look-ahead: absorb any immediately following empty-FA
                 # non-bridge rows into this group.  These are the "spare"
                 # EN rows that single-call translation left blank.
+                #
+                # 2026-05-20 (GAT 3154 fix): also stop on a "new turn"
+                # marker where EN starts with "(m): real content" /
+                # "(f): real content" — even with empty FA. These are
+                # new dialogue turns the polish stage left blank; if
+                # we absorb them, the previous sentence's tail-chunks
+                # spill into them (observed at row #81 of GAT 3154).
                 j = i + 1
                 while j < len(rows):
                     nxt = rows[j]
@@ -1324,6 +1376,8 @@ class FASubtitleAligner:
                         break
                     if nxt['fa'].strip():
                         break   # next sentence starts here
+                    if _TURN_START_AFTER_SENT_END_RE.match(nxt['en']):
+                        break   # new (m):/(f):/(h): dialogue turn
                     current_indices.append(nxt['ri'])
                     current_en_per_row.append(nxt['en'].strip())
                     if nxt['en'].strip():

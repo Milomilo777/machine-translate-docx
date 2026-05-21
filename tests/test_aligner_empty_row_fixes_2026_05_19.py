@@ -356,3 +356,120 @@ def test_bridge_template_placeholder_at_end():
 def test_not_bridge_single_underscore():
     """Single underscore (e.g. variable name) shouldn't trigger."""
     assert _is_bridge('the my_var was set.', '', False) is False
+
+
+# ── 2026-05-20 (AJAR 3154 + GAT 3154 analysis): three more findings ─────────
+#
+# After the 2026-05-19 patch eliminated 6 / 15 over-fills in WAU 3153, two
+# more test documents (AJAR 3154, GAT 3154) revealed three remaining
+# patterns the bridge detector still missed:
+#
+#   A1) Group / chorus speakers — "Band(all):", "Vocalists(all):"
+#   A2) Multi-name speakers with comma + ampersand — "Wendy, Carnie
+#       Wilson & Owen Elliot(f):"
+#   A3) Bare "(m): real dialogue" — not a bridge but a new turn boundary
+#
+# A1 + A2 are fixed by broadening _SPEAKER_RE and the timecode+speaker
+# bridge pattern to accept multi-name characters and the full speaker
+# token list. A3 is fixed by an absorption-loop guard in _parse_groups.
+
+
+# A1 — Group / chorus speaker tags
+def test_bridge_band_all():
+    """`Band(all):` — band/chorus speaker tag, FA should stay blank."""
+    assert _is_bridge('Band(all):', '', False) is True
+
+
+def test_bridge_vocalists_all():
+    """`Vocalists(all):` — same pattern, different keyword."""
+    assert _is_bridge('Vocalists(all):', '', False) is True
+
+
+def test_bridge_performer_m():
+    """`Performer(m):` — broadened from `[mf]` to include any speaker token."""
+    assert _is_bridge('Performer(m):', '', False) is True
+
+
+def test_bridge_timecode_band_all():
+    """`02:52:44 Band(all):` — AJAR 3154 row #336/#356 case."""
+    assert _is_bridge('02:52:44 Band(all):', '', False) is True
+
+
+# A2 — Multi-name speakers with comma + ampersand
+def test_bridge_multi_name_speaker_with_comma_ampersand():
+    """`Wendy, Carnie Wilson & Owen Elliot(f):` — AJAR 3154 row #317/#375
+    case. Old _SPEAKER_RE char class `[A-Za-z\s\-]` rejected `,` `&`."""
+    assert _is_bridge('Wendy, Carnie Wilson & Owen Elliot(f):', '', False) is True
+
+
+def test_bridge_multi_name_with_comma_and():
+    """`Al, Matthew & Adam Jardine(m):` — AJAR 3154 row #245 case."""
+    assert _is_bridge('Al, Matthew & Adam Jardine(m):', '', False) is True
+
+
+def test_not_bridge_speaker_dialogue_after_colon():
+    """`Lee (f): She continued.` — must still NOT match (dialogue, not label)."""
+    assert _is_bridge('Lee (f): She continued.', '', False) is False
+
+
+# A3 — Absorption-loop guard for "(m): real dialogue" rows
+def test_not_bridge_bare_speaker_with_content():
+    """`(m): Look at you! You pudge!` is NOT a bridge — the content
+    after the colon is real dialogue that should be translatable."""
+    assert _is_bridge('(m): Look at you! You pudge!', '', False) is False
+
+
+def test_absorption_guard_blocks_speaker_turn_absorption(tmp_path):
+    """The actual GAT 3154 #80-82 case end-to-end.
+
+    Build a 5-row table where:
+      row 0: complete FA, sentence-ending
+      row 1: EN starts with "(m): ..." and FA is empty (polish stage
+              didn't translate it)
+      row 2: EN is more dialogue, FA also empty
+      row 3: bridge HOST(m):
+      row 4: next sentence, complete FA
+
+    Without the absorption guard, rows 1+2 get absorbed as "spare slots"
+    of row 0's sentence group; the row 0 chunk gets split into pieces
+    and spills into rows 1, 2 (observed bug). With the guard, rows 1+2
+    stay blank and the row 0 chunk lives in row 0 only.
+    """
+    import docx as _d
+
+    doc = _d.Document()
+    t = doc.add_table(rows=5, cols=3)
+    rows = [
+        ('', 'and she is absolutely feisty.', 'و کاملاً پرجنب‌وجوش است.'),
+        ('', '(m): Look at you! You pudge!', ''),
+        ('', 'Let go! Let go!', ''),
+        ('', 'HOST (m):', ''),
+        ('', 'Earth-loving viewers,', 'بینندگان دوستدار زمین'),
+    ]
+    for ri, r in enumerate(rows):
+        for ci in range(3):
+            t.cell(ri, ci).text = r[ci]
+    in_path = tmp_path / "guard.docx"
+    doc.save(str(in_path))
+
+    from machine_translate_docx.openai_tools.persian_double_lines import (
+        FASubtitleAligner,
+    )
+    aligner = FASubtitleAligner(model="gpt-5.4-mini", llm_threshold=0)
+    out_path = tmp_path / "guard_out.docx"
+    aligner.align(str(in_path), str(out_path))
+
+    out_doc = _d.Document(str(out_path))
+    fa_cells = [r.cells[2].text.strip()
+                for table in out_doc.tables for r in table.rows]
+
+    # Row 0: keep the full FA
+    assert fa_cells[0], "Row 0 FA must remain non-empty"
+    # Row 1: must stay blank — the absorption guard prevents this
+    assert fa_cells[1] == "", (
+        f"Row 1 (m): turn-start should stay blank, got {fa_cells[1]!r}"
+    )
+    # Row 2: also stays blank (no FA in polish input, not absorbed)
+    assert fa_cells[2] == "", (
+        f"Row 2 should stay blank, got {fa_cells[2]!r}"
+    )
