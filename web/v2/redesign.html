@@ -1618,17 +1618,29 @@ small,
           }
         }
 
-        /* Split: PDL only for Persian */
-        const pdlOpt = splitSel.querySelector('option[value="persian_double_lines"]');
+        /* Split: PDL only for Persian. 2026-05-22 (user request): also
+           hide the OpenAI API split method for FA — only the two
+           meaningful options (Persian Double Lines + Basic with excel
+           file) remain visible for Persian. OpenAI option stays for
+           non-FA languages where it's still useful. */
+        const pdlOpt    = splitSel.querySelector('option[value="persian_double_lines"]');
+        const openaiOpt = splitSel.querySelector('option[value="openai"]');
         if (pdlOpt) {
           if (targetLanguage === 'fa') {
             pdlOpt.hidden = false;
             splitSel.disabled = false;
             if (setDefault) splitSel.value = 'persian_double_lines';
+            if (openaiOpt) {
+              openaiOpt.hidden = true;
+              if (splitSel.value === 'openai') splitSel.value = 'persian_double_lines';
+            }
           } else {
             pdlOpt.hidden = true;
             if (splitSel.value === 'persian_double_lines') splitSel.value = 'basic';
             splitSel.disabled = false;
+            if (openaiOpt) {
+              openaiOpt.hidden = false;
+            }
           }
         }
 

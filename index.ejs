@@ -512,19 +512,34 @@
         // Split engine: enabled for Persian only. Persian Double Lines is
         // the default Split Method for FA; the option is hidden for every
         // other target language and reverts to "basic" if it was active.
+        //
+        // 2026-05-22 (user request): the OpenAI API split method is also
+        // hidden for FA — only the two meaningful options (Persian Double
+        // Lines + Basic with excel file) remain visible for Persian. The
+        // OpenAI option stays visible for non-FA languages where it is
+        // still useful.
         const splitEnabledLanguages = ['fa'];
         const splitSel = document.getElementById("splitEngine");
         const pdlOption = document.getElementById("persian-double-lines-split-option");
+        const openaiOption = document.getElementById("openai-split-option");
         if (splitEnabledLanguages.includes(targetLanguage)) {
           splitSel.disabled = false;
           if (pdlOption) {
             pdlOption.hidden = false;
             pdlOption.selected = true;
           }
+          if (openaiOption) {
+            openaiOption.hidden = true;
+            // If openai was the active selection, fall back to PDL.
+            if (splitSel.value === 'openai') splitSel.value = 'persian_double_lines';
+          }
         } else {
           if (pdlOption) {
             pdlOption.hidden = true;
             if (splitSel.value === 'persian_double_lines') splitSel.value = 'basic';
+          }
+          if (openaiOption) {
+            openaiOption.hidden = false;
           }
           document.querySelector("#basic-split-option").selected = true;
           splitSel.disabled = true;

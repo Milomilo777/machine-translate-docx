@@ -272,20 +272,37 @@
   // not Persian, and reset the dropdown if it was the active selection.
   // When target switches back to Persian, the option becomes visible and
   // is auto-selected as the default Split Method.
+  //
+  // 2026-05-22 (user request): the OpenAI API split method is also
+  // hidden for FA — only the two meaningful options (Persian Double
+  // Lines + Basic with excel file) remain visible for Persian. The
+  // OpenAI option stays visible for non-FA languages where it's still
+  // useful.
   function syncSplitMethodUI() {
     const tgt = $('targetLanguage');
     const sel = $('splitEngine');
     if (!tgt || !sel) return;
-    const pdl = sel.querySelector('option[value="persian_double_lines"]');
+    const pdl    = sel.querySelector('option[value="persian_double_lines"]');
+    const openai = sel.querySelector('option[value="openai"]');
     if (!pdl) return;
     if (tgt.value === 'fa') {
       pdl.hidden = false;
       pdl.disabled = false;
       sel.value = 'persian_double_lines';
+      if (openai) {
+        openai.hidden = true;
+        openai.disabled = true;
+        // If openai was the active selection, fall back to PDL.
+        if (sel.value === 'openai') sel.value = 'persian_double_lines';
+      }
     } else {
       if (sel.value === 'persian_double_lines') sel.value = 'basic';
       pdl.hidden = true;
       pdl.disabled = true;
+      if (openai) {
+        openai.hidden = false;
+        openai.disabled = false;
+      }
     }
     syncAlignerMaxCharsField();
   }
